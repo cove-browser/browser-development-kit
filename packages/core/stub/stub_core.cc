@@ -400,9 +400,19 @@ void finish_call(const std::shared_ptr<Call>& c, const char* domain, const char*
 void emit_runtime_event(const std::shared_ptr<Runtime>& rt, uint32_t kind,
                         const std::string& detail, bool to_closing) {
     auto subs = rt->subs; /* the subscribers at the time of the event */
+    if (to_closing) {
+        /* Only the subscribers active now are owed the closing event; it is delivered before the
+           release that the shutdown queues after it. An inactive subscription is never called. */
+        subs.erase(std::remove_if(subs.begin(), subs.end(),
+                                  [](const std::shared_ptr<Sub>& s) { return !s->active; }),
+                   subs.end());
+        for (auto& s : subs)
+            s->closing = true;
+    }
     post([subs, kind, detail, to_closing] {
         for (auto& s : subs) {
-            if ((s->active || to_closing) && s->rcb)
+            bool callable = to_closing ? s->closing : s->active;
+            if (callable && s->rcb)
                 s->rcb(s->ctx, kind, view(detail));
         }
     });
@@ -692,8 +702,10 @@ BDK_EXPORT void bdk_unsubscribe(bdk_subscription_t h) {
     if (check_thread() != BDK_OK)
         return;
     auto s = get<Sub>(h, T_SUB);
-    if (s)
+    if (s) {
+        s->closing = false; /* an unsubscribed subscription is not called again */
         deactivate(s);
+    }
 }
 
 BDK_EXPORT BDK_ANY_THREAD void bdk_post_to_ui_thread(void (*fn)(void*), void* ctx) {

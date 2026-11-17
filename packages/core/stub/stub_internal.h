@@ -40,6 +40,7 @@ struct Contents;
 
 struct Sub {
     bool active = true;
+    bool closing = false; /* active at shutdown: owed the closing event, then released */
     void* ctx = nullptr;
     bdk_release_cb rel = nullptr;
     bdk_handle_t handle = 0;

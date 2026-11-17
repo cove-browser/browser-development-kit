@@ -574,6 +574,137 @@ static void test_runtime_events_and_subscription_release(void) {
     CHECK(g_runtime_kinds[g_runtime_n - 1] == BDK_RUNTIME_EVENT_SHUTDOWN_STARTED);
 }
 
+/* A subscriber whose context is "freed" by its release: any call after the release is a bug. */
+typedef struct probe {
+    int events, released, after_release, closing_seq, release_seq;
+    int unsubscribe_on_event; /* unsubscribe from inside the callback */
+    int shutdown_on_event;    /* shut the runtime down from inside the callback */
+    bdk_subscription_t sub;
+    t_capture_t* shutdown_cap;
+} probe_t;
+
+static void probe_on_runtime_event(void* ctx, uint32_t kind, bdk_string_t detail) {
+    probe_t* p = (probe_t*)ctx;
+    (void)detail;
+    ++p->events;
+    if (p->released)
+        ++p->after_release;
+    if (kind == BDK_RUNTIME_EVENT_SHUTDOWN_STARTED)
+        p->closing_seq = t_next_seq();
+    if (p->unsubscribe_on_event && p->sub) {
+        bdk_unsubscribe(p->sub);
+        p->sub = 0;
+    }
+    if (p->shutdown_on_event && kind == BDK_RUNTIME_EVENT_REGISTRATIONS_FROZEN) {
+        p->shutdown_on_event = 0;
+        REQUIRE(bdk_runtime_shutdown(t_runtime, t_on_result, p->shutdown_cap, t_on_release) != 0);
+    }
+}
+static void probe_on_release(void* ctx) {
+    probe_t* p = (probe_t*)ctx;
+    ++p->released;
+    p->release_seq = t_next_seq();
+}
+static bdk_subscription_t probe_subscribe(probe_t* p) {
+    memset(p, 0, sizeof *p);
+    p->sub = bdk_runtime_subscribe(t_runtime, probe_on_runtime_event, p, probe_on_release);
+    REQUIRE(p->sub != 0);
+    return p->sub;
+}
+
+static void test_an_unsubscribed_runtime_subscription_is_not_called_at_shutdown(void) {
+    t_start();
+    probe_t p;
+    bdk_subscription_t s = probe_subscribe(&p);
+    bdk_unsubscribe(s);
+    t_pump();
+    CHECK(p.released == 1);
+    t_stop();
+    CHECK(p.events == 0);
+    CHECK(p.after_release == 0);
+    CHECK(p.released == 1);
+}
+
+static void test_the_closing_event_precedes_the_single_release(void) {
+    t_start();
+    probe_t p, gone;
+    probe_subscribe(&p);
+    bdk_subscription_t g = probe_subscribe(&gone);
+    bdk_unsubscribe(g);
+    t_pump();
+    t_freeze();
+    CHECK(p.events == 1 && gone.events == 0);
+    t_stop();
+    CHECK(p.events == 2 && p.closing_seq != 0);
+    CHECK(p.released == 1 && p.closing_seq < p.release_seq);
+    CHECK(p.after_release == 0);
+    CHECK(gone.events == 0 && gone.after_release == 0 && gone.released == 1);
+}
+
+static void test_unsubscribing_inside_a_callback_stops_later_events(void) {
+    t_start();
+    probe_t p, other;
+    probe_subscribe(&p);
+    probe_subscribe(&other);
+    p.unsubscribe_on_event = 1;
+    t_freeze();
+    CHECK(p.events == 1 && other.events == 1);
+    t_pump();
+    CHECK(p.released == 1 && other.released == 0);
+    t_stop();
+    CHECK(p.events == 1 && p.after_release == 0 && p.released == 1);
+    CHECK(other.events == 2 && other.released == 1 && other.after_release == 0);
+}
+
+static void test_shutdown_from_inside_a_callback(void) {
+    t_start();
+    probe_t a, b;
+    t_capture_t cap;
+    t_cap_init(&cap);
+    probe_subscribe(&a);
+    probe_subscribe(&b);
+    a.shutdown_on_event = 1;
+    a.shutdown_cap = &cap;
+    t_freeze();
+    t_pump();
+    CHECK(cap.results == 1 && cap.releases == 1);
+    CHECK(a.released == 1 && b.released == 1);
+    CHECK(a.after_release == 0 && b.after_release == 0);
+    CHECK(a.closing_seq != 0 && a.closing_seq < a.release_seq);
+    CHECK(b.closing_seq != 0 && b.closing_seq < b.release_seq);
+    CHECK(b.events == 1); /* only the closing event: the freeze event was cut off by the shutdown */
+    t_runtime = 0;
+}
+
+static bdk_subscription_t g_self_sub;
+static void unsubscribe_self(void* ctx, const bdk_contents_event_t* ev) {
+    t_on_contents_event(ctx, ev);
+    bdk_unsubscribe(g_self_sub);
+}
+
+static void test_a_contents_subscription_is_not_called_after_unsubscribe(void) {
+    g_c = new_page();
+    t_events_t gone, self, kept;
+    t_ev_init(&gone);
+    t_ev_init(&self);
+    bdk_subscription_t s =
+        bdk_contents_subscribe(g_c, t_on_contents_event, &gone, t_on_event_release);
+    g_self_sub = bdk_contents_subscribe(g_c, unsubscribe_self, &self, t_on_event_release);
+    watch(g_c, &kept);
+    REQUIRE(s != 0 && g_self_sub != 0);
+    load(g_c, URL_A); /* the events are queued, not yet delivered */
+    bdk_unsubscribe(s);
+    t_pump();
+    CHECK(gone.count == 0 && gone.releases == 1);
+    CHECK(self.count == 1 && self.releases == 1); /* unsubscribed itself inside the callback */
+    CHECK(kept.count == 4 && kept.releases == 0);
+    REQUIRE(bdk_contents_destroy(g_c) == BDK_OK);
+    t_pump();
+    CHECK(gone.releases == 1 && self.releases == 1 && kept.releases == 1);
+    t_stop();
+    CHECK(gone.releases == 1 && self.releases == 1 && kept.releases == 1);
+}
+
 const t_test_t t_contents_tests[] = {
     {"contents.new_state_defaults", test_new_contents_state_defaults},
     {"contents.navigation_events_are_ordered_and_async",
@@ -614,4 +745,13 @@ const t_test_t t_contents_tests[] = {
     {"views.native_view_is_error_or_tagged_handle",
      test_native_view_is_an_error_or_a_tagged_handle},
     {"runtime.events_and_subscription_release", test_runtime_events_and_subscription_release},
+    {"runtime.unsubscribed_subscription_not_called_at_shutdown",
+     test_an_unsubscribed_runtime_subscription_is_not_called_at_shutdown},
+    {"runtime.closing_event_precedes_single_release",
+     test_the_closing_event_precedes_the_single_release},
+    {"runtime.unsubscribe_inside_callback",
+     test_unsubscribing_inside_a_callback_stops_later_events},
+    {"runtime.shutdown_inside_callback", test_shutdown_from_inside_a_callback},
+    {"contents.subscription_not_called_after_unsubscribe",
+     test_a_contents_subscription_is_not_called_after_unsubscribe},
     {NULL, NULL}};
