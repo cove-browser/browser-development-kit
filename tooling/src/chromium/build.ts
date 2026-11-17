@@ -13,6 +13,8 @@ import {
 import { join, relative } from "node:path";
 import { parseArgs } from "node:util";
 import { git, run } from "../git.js";
+import { computeSourceIdentity, sourceKey } from "../runtime/identity.js";
+import { BUILD_STAMP_NAME, clearBuildStamp, writeBuildStamp } from "../runtime/stamp.js";
 import {
   type CheckoutContext,
   checkoutContext,
@@ -231,6 +233,14 @@ export async function buildCheckout(
       );
   }
 
+  // The build is tied to the inputs it starts from. The stamp is gone while the output is in flux and
+  // is written only after a successful, verified build (the packager refuses an out/ without it).
+  const identity = await computeSourceIdentity({
+    repoRoot: ctx.layout.repoRoot,
+    config: options.config,
+  });
+  await clearBuildStamp(join(ctx.src, "out", options.config));
+
   let t = Date.now();
   if (!options.noPatch) {
     await applyToCheckout(ctx, { ...(options.forcePatch ? { force: true } : {}), log });
@@ -288,6 +298,9 @@ export async function buildCheckout(
       `verify: ${OVERLAY_MARKER_SYMBOL} is exported by ${relative(ctx.src, binaries[0] as string)}`,
     );
   }
+
+  await writeBuildStamp(outDir, identity);
+  log(`stamp: ${BUILD_STAMP_NAME} written for source key ${sourceKey(identity)}`);
 
   const timings: BuildTimings = {
     kind,

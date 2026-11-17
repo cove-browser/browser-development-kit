@@ -16,9 +16,11 @@ import {
   fail,
   isMain,
   LOCKED_FLAG,
+  loadSeries,
   readPin,
   relaunchUnderLock,
 } from "./common.js";
+import { assertSafeToSync, UnsafeCheckoutError } from "./patch-apply.js";
 
 export type ExperimentMethod = "clone" | "worktree";
 
@@ -167,10 +169,24 @@ export async function removeExperiment(
   id: string,
   paths: BdkPaths = currentBdkPaths(),
   log: (l: string) => void = console.log,
+  force = false,
 ): Promise<void> {
   const dest = paths.chromiumExperiment(id);
   if (!existsSync(dest)) throw new Error(`Experiment "${id}" does not exist (${dest})`);
   const meta = readMeta(dest);
+  const src = join(dest, "src");
+  if (!force && existsSync(join(src, ".git"))) {
+    if (!meta?.pin) {
+      throw new UnsafeCheckoutError(
+        `${src} has no recorded pin, so unsaved work cannot be ruled out. Pass --force to remove it anyway.`,
+      );
+    }
+    const layout = chromiumLayout();
+    await assertSafeToSync(src, meta.pin, loadSeries(layout.patchesDir).patches, {
+      action: "removing the experiment",
+      exportHint: `chromium:patch-export --experiment ${id}`,
+    });
+  }
   if (meta?.method === "worktree") {
     const from = checkoutContext(sourceCheckout(meta.from), paths, chromiumLayout());
     if (existsSync(join(from.src, ".git"))) {
@@ -243,6 +259,7 @@ async function main(): Promise<void> {
       from: { type: "string", default: "managed" },
       method: { type: "string", default: "clone" },
       json: { type: "boolean", default: false },
+      force: { type: "boolean", default: false },
       [LOCKED_FLAG.slice(2)]: { type: "boolean", default: false },
       [EXP_LOCKED_FLAG.slice(2)]: { type: "boolean", default: false },
     },
@@ -287,7 +304,7 @@ async function main(): Promise<void> {
     } else {
       if (!values.locked)
         process.exit(await relaunchUnderLock({ experiment: id }, import.meta.url, args, paths));
-      await removeExperiment(id, paths);
+      await removeExperiment(id, paths, console.log, values.force);
     }
   } catch (e) {
     if (e instanceof LockBusyError) fail(e.message, 75);

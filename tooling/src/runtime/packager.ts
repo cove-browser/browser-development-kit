@@ -12,8 +12,9 @@ import {
   utimes,
   writeFile,
 } from "node:fs/promises";
-import { dirname, isAbsolute, join, posix } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import type { BdkPaths } from "../paths.js";
+import { assertAbiHashCurrent } from "./abi.js";
 import { FIXED_MTIME } from "./archive.js";
 import { sha256Hex } from "./canonical.js";
 import {
@@ -36,8 +37,9 @@ import {
   verifyRuntimeDir,
 } from "./manifest.js";
 import { readRuntimeFiles } from "./runtime-files.js";
+import { assertBuildStamp } from "./stamp.js";
 import { allocTempDir, installRuntimeDir, removeTree } from "./store.js";
-import { makeReadOnly, walkTree } from "./tree.js";
+import { findEscapingLinks, makeReadOnly, walkTree } from "./tree.js";
 
 export class PackagingError extends Error {
   override readonly name = "PackagingError";
@@ -60,6 +62,9 @@ export class MissingFilesError extends PackagingError {
 /** The key already exists in the store with different file content. */
 export class ContentMismatchError extends PackagingError {}
 
+/** The key already exists in the store but its files no longer match its own manifest. */
+export class DamagedStoreEntryError extends PackagingError {}
+
 export interface PackageOptions {
   readonly repoRoot: string;
   readonly paths: BdkPaths;
@@ -67,8 +72,18 @@ export interface PackageOptions {
   readonly outDir: string;
   /** Chromium `src/DEPS`, hashed into the manifest. */
   readonly depsFile: string;
-  /** The commit the checkout's `src` is at. Must equal the pin. */
-  readonly checkoutCommit: string;
+  /**
+   * The Chromium commit the checkout was VERIFIED to be built from: the caller has confirmed that `src`
+   * is exactly this commit plus exactly the current `chromium/patches` series, with no uncommitted
+   * tracked changes (`verifyCheckout` in chromium/package-checkout.ts). The packager only checks that it
+   * equals `chromium/pin.json`; it never sees the checkout's git state itself.
+   */
+  readonly checkoutBase: string;
+  /**
+   * Refuses to continue when `packages/core/generated/abi-hash.txt` is out of date. Defaults to running
+   * `cmake -DMODE=check -P packages/core/cmake/abi-hash.cmake`; tests inject a no-op.
+   */
+  readonly verifyAbiHash?: (repoRoot: string) => Promise<void>;
   readonly config?: string;
   readonly target?: Target;
   readonly builder: BuildIdentity;
@@ -111,14 +126,14 @@ async function copyEntry(src: string, dest: string): Promise<void> {
   }
 }
 
-/** Every symlink must stay inside the runtime tree. */
+/** Every symlink must stay inside the runtime tree, judged by resolving it through the real filesystem. */
 async function checkLinks(root: string): Promise<void> {
-  for (const e of await walkTree(root)) {
-    if (e.kind !== "symlink") continue;
-    const resolved = posix.normalize(posix.join(posix.dirname(e.rel), e.target ?? ""));
-    if (resolved.startsWith("..") || posix.isAbsolute(e.target ?? "")) {
-      throw new PackagingError(`Symlink ${e.rel} -> ${e.target} points outside the runtime.`);
-    }
+  const bad = await findEscapingLinks(root);
+  if (bad.length > 0) {
+    throw new PackagingError(
+      `Symlink${bad.length === 1 ? "" : "s"} pointing outside the runtime (absolute, or resolving outside it through the real filesystem):\n` +
+        bad.map((l) => `  ${l}`).join("\n"),
+    );
   }
 }
 
@@ -153,17 +168,23 @@ export async function packageRuntime(opts: PackageOptions): Promise<PackageResul
       `GN preset ${gnPresetPath(repoRoot, opts.config ?? "release")} does not exist; the runtime's identity would not cover its build arguments.`,
     );
   }
-  if (identity.chromium.commit !== opts.checkoutCommit) {
+  if (identity.chromium.commit !== opts.checkoutBase) {
     throw new PackagingError(
-      `The checkout is at ${opts.checkoutCommit} but chromium/pin.json pins ${identity.chromium.commit}. ` +
+      `The checkout was verified against ${opts.checkoutBase} but chromium/pin.json pins ${identity.chromium.commit}. ` +
         "Run pnpm chromium:sync and pnpm chromium:build for the pin before packaging.",
     );
   }
+  await (opts.verifyAbiHash ?? assertAbiHashCurrent)(repoRoot);
   const missing: string[] = [];
   for (const rel of declared.paths) {
     if (!(await pathExists(join(outDir, rel)))) missing.push(rel);
   }
   if (missing.length > 0) throw new MissingFilesError(missing, outDir);
+  try {
+    assertBuildStamp(outDir, identity);
+  } catch (error) {
+    throw new PackagingError((error as Error).message);
+  }
   const depsDigest = sha256Hex(await readFile(opts.depsFile));
 
   const key = sourceKey(identity);
@@ -232,6 +253,16 @@ async function sameContentOrThrow(
   files: Readonly<Record<string, string>>,
 ): Promise<{ manifest: Manifest; sha: string } | undefined> {
   if (!(await pathExists(join(dest, MANIFEST_NAME)))) return undefined;
+  // The store is immutable and content addressed, so a damaged entry is never silently replaced or
+  // reported as unchanged: say where it is and how to remove it (the resolver gives the same advice).
+  try {
+    await verifyRuntimeDir(dest, key);
+  } catch (error) {
+    throw new DamagedStoreEntryError(
+      `${(error as Error).message}\nRuntime ${key} already exists in the store but is damaged or was modified (${dest}). ` +
+        `Remove it and package again: chmod -R u+w "${dest}" && rm -rf "${dest}"`,
+    );
+  }
   const existing = parseManifest(await readFile(join(dest, MANIFEST_NAME), "utf8"));
   if (contentDigest(existing.files) !== contentDigest(files)) {
     throw new ContentMismatchError(

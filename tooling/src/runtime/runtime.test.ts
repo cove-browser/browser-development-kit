@@ -1,9 +1,11 @@
+import { execFileSync } from "node:child_process";
 import {
   appendFileSync,
   chmodSync,
   cpSync,
   existsSync,
   lstatSync,
+  mkdirSync,
   readdirSync,
   readFileSync,
   readlinkSync,
@@ -16,16 +18,23 @@ import {
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { bdkPaths } from "../paths.js";
+import { assertAbiHashCurrent } from "./abi.js";
 import { createArchive, extractArchive } from "./archive.js";
 import { fileBackend, githubBackend } from "./backends.js";
 import { canonicalJson } from "./canonical.js";
 import { computeSourceIdentity, sourceKey } from "./identity.js";
 import { type Manifest, parseManifest, verifyRuntimeDir } from "./manifest.js";
-import { ContentMismatchError, MissingFilesError, packageRuntime } from "./packager.js";
+import {
+  ContentMismatchError,
+  DamagedStoreEntryError,
+  MissingFilesError,
+  packageRuntime,
+} from "./packager.js";
 import { parsePin, readPin, writePin } from "./pin.js";
 import { publishRuntime } from "./publisher.js";
 import { checkReproducible } from "./reproducible.js";
 import { resolveRuntime } from "./resolver.js";
+import { BUILD_STAMP_NAME } from "./stamp.js";
 import { removeTree } from "./store.js";
 import {
   BUILDER,
@@ -33,6 +42,7 @@ import {
   makeOut,
   makeSandbox,
   packageOptions,
+  stampOut,
   tempDir,
 } from "./testing.js";
 
@@ -40,9 +50,10 @@ const cleanup: string[] = [];
 afterEach(async () => {
   for (const d of cleanup.splice(0)) await removeTree(d);
 });
-function sandbox(label: string, fixture?: Parameters<typeof makeSandbox>[1]) {
+async function sandbox(label: string, fixture?: Parameters<typeof makeSandbox>[1]) {
   const s = makeSandbox(label, fixture);
   cleanup.push(s.root);
+  await stampOut(s);
   return s;
 }
 const keyOf = async (repo: string) => sourceKey(await computeSourceIdentity({ repoRoot: repo }));
@@ -55,7 +66,7 @@ describe("canonical JSON and identity", () => {
   });
 
   it("does not depend on README edits but does on patch, overlay and GN arguments", async () => {
-    const s = sandbox("identity");
+    const s = await sandbox("identity");
     const base = await keyOf(s.repo);
     writeFileSync(join(s.repo, "chromium/patches/README.md"), "changed docs\n");
     expect(await keyOf(s.repo)).toBe(base);
@@ -66,8 +77,30 @@ describe("canonical JSON and identity", () => {
     expect(await keyOf(s.repo)).not.toBe(overlay);
   });
 
+  it("changes with chromium/runtime-files.json: its paths and target.min_os", async () => {
+    const s = await sandbox("inventory");
+    const base = await keyOf(s.repo);
+    const file = join(s.repo, "chromium/runtime-files.json");
+    const original = readFileSync(file, "utf8");
+    const write = (paths: string[], minOs: string) =>
+      writeFileSync(
+        file,
+        JSON.stringify({ schema: 1, target: { os: "macos", min_os: minOs }, paths }),
+      );
+    write(["Chromium.app", "Required.framework"], "13.0");
+    const morePaths = await keyOf(s.repo);
+    expect(morePaths).not.toBe(base);
+    write(["Chromium.app"], "99.0");
+    expect(await keyOf(s.repo)).not.toBe(base);
+    // Formatting and path order are not content.
+    writeFileSync(file, original.replace(/\s+/g, " "));
+    expect(await keyOf(s.repo)).toBe(base);
+    write(["Required.framework", "Chromium.app"], "13.0");
+    expect(await keyOf(s.repo)).toBe(morePaths);
+  });
+
   it("changes with the ABI hash and refuses a pin/ABI version mismatch", async () => {
-    const s = sandbox("abi");
+    const s = await sandbox("abi");
     const base = await keyOf(s.repo);
     writeFileSync(join(s.repo, "packages/core/generated/abi-hash.txt"), `${"b".repeat(64)}\n`);
     expect(await keyOf(s.repo)).not.toBe(base);
@@ -81,7 +114,7 @@ describe("canonical JSON and identity", () => {
 
 describe("T-CHR-08 packaging", () => {
   it("writes a manifest whose digests match the files, with symlinks kept as symlinks", async () => {
-    const s = sandbox("package");
+    const s = await sandbox("package");
     const r = await packageRuntime(packageOptions(s));
     expect(r.status).toBe("created");
     const verified = await verifyRuntimeDir(r.runtimeDir, r.sourceKey);
@@ -103,7 +136,7 @@ describe("T-CHR-08 packaging", () => {
   });
 
   it("fails when a declared file is missing and names it", async () => {
-    const s = sandbox("missing");
+    const s = await sandbox("missing");
     writeFileSync(
       join(s.repo, "chromium/runtime-files.json"),
       JSON.stringify({
@@ -119,16 +152,16 @@ describe("T-CHR-08 packaging", () => {
   });
 
   it("refuses a checkout that is not at the pin and a missing GN preset", async () => {
-    const s = sandbox("guards");
+    const s = await sandbox("guards");
     await expect(
-      packageRuntime(packageOptions(s, { checkoutCommit: "0".repeat(40) })),
+      packageRuntime(packageOptions(s, { checkoutBase: "0".repeat(40) })),
     ).rejects.toThrow(/pins/);
     await removeTree(join(s.repo, "chromium/gn"));
     await expect(packageRuntime(packageOptions(s))).rejects.toThrow(/GN preset/);
   });
 
   it("is idempotent for identical content and an error for different content", async () => {
-    const s = sandbox("idem");
+    const s = await sandbox("idem");
     const first = await packageRuntime(packageOptions(s));
     const again = await packageRuntime(
       packageOptions(s, { builder: { ...BUILDER, timestamp: "2027-01-01T00:00:00.000Z" } }),
@@ -136,13 +169,129 @@ describe("T-CHR-08 packaging", () => {
     expect(again.status).toBe("unchanged");
     expect(again.manifestSha256).toBe(first.manifestSha256);
     makeOut(s.outDir, "two");
+    await stampOut(s);
     await expect(packageRuntime(packageOptions(s))).rejects.toBeInstanceOf(ContentMismatchError);
   });
 
   it("rejects a symlink that points outside the runtime", async () => {
-    const s = sandbox("escape");
+    const s = await sandbox("escape");
     symlinkSync("../../../../etc/passwd", join(s.outDir, "Chromium.app", "Contents", "evil"));
     await expect(packageRuntime(packageOptions(s))).rejects.toThrow(/outside the runtime/);
+  });
+});
+
+describe("packaging guards", () => {
+  it("rejects a symlink chain that escapes the runtime through an alias to '.'", async () => {
+    const s = await sandbox("chain");
+    symlinkSync(".", join(s.outDir, "Chromium.app", "alias"));
+    symlinkSync("alias/../../outside.bin", join(s.outDir, "Chromium.app", "escape"));
+    mkdirSync(s.paths.runtimes, { recursive: true });
+    writeFileSync(join(s.paths.runtimes, "outside.bin"), "outside");
+    const error = await packageRuntime(packageOptions(s)).catch((e: unknown) => e as Error);
+    expect((error as Error).message).toMatch(/outside the runtime[\s\S]*escape -> alias/);
+    expect(readdirNoTemp(s.paths.runtimes)).toEqual(["outside.bin"]);
+  });
+
+  it("accepts in-tree link chains, dangling in-tree links, and rejects absolute targets", async () => {
+    const s = await sandbox("chain-ok");
+    const app = join(s.outDir, "Chromium.app");
+    symlinkSync(".", join(app, "alias"));
+    symlinkSync("alias/Contents/Info.plist", join(app, "inside"));
+    symlinkSync("Contents/not-there", join(app, "dangling"));
+    await expect(packageRuntime(packageOptions(s))).resolves.toMatchObject({ status: "created" });
+    const s2 = await sandbox("abs");
+    symlinkSync("/etc/passwd", join(s2.outDir, "Chromium.app", "abs"));
+    await expect(packageRuntime(packageOptions(s2))).rejects.toThrow(/Absolute symlink/);
+  });
+
+  it("the store verifier also rejects an escaping link added to an entry", async () => {
+    const s = await sandbox("verify-link");
+    const r = await packageRuntime(packageOptions(s));
+    chmodSync(r.runtimeDir, 0o755);
+    const app = join(r.runtimeDir, "Chromium.app");
+    chmodSync(app, 0o755);
+    symlinkSync("../../outside", join(app, "esc"));
+    await expect(verifyRuntimeDir(r.runtimeDir, r.sourceKey)).rejects.toThrow(
+      /escaping symlink: Chromium\.app\/esc/,
+    );
+  });
+
+  it("re-packaging over a damaged store entry fails instead of reporting unchanged", async () => {
+    const s = await sandbox("damaged");
+    const r = await packageRuntime(packageOptions(s));
+    const victim = join(r.runtimeDir, "Chromium.app/Contents/MacOS/Chromium");
+    chmodSync(victim, 0o755);
+    writeFileSync(victim, "tampered");
+    const error = await packageRuntime(packageOptions(s)).catch((e: unknown) => e as Error);
+    expect(error).toBeInstanceOf(DamagedStoreEntryError);
+    expect((error as Error).message).toContain(r.runtimeDir);
+    expect((error as Error).message).toContain("modified: Chromium.app/Contents/MacOS/Chromium");
+    expect((error as Error).message).toContain("rm -rf");
+    await removeTree(r.runtimeDir);
+    await expect(packageRuntime(packageOptions(s))).resolves.toMatchObject({ status: "created" });
+  });
+});
+
+describe("build stamp (out/<config> must match the identity being packaged)", () => {
+  it("packages when the stamp matches, and the stamp is not part of the runtime", async () => {
+    const s = await sandbox("stamp-ok");
+    expect(existsSync(join(s.outDir, BUILD_STAMP_NAME))).toBe(true);
+    const r = await packageRuntime(packageOptions(s));
+    expect(Object.keys(r.manifest.files).some((f) => f.includes(BUILD_STAMP_NAME))).toBe(false);
+    expect(existsSync(join(r.runtimeDir, BUILD_STAMP_NAME))).toBe(false);
+  });
+
+  it("refuses an out dir with no stamp", async () => {
+    const s = await sandbox("stamp-missing");
+    rmSync(join(s.outDir, BUILD_STAMP_NAME));
+    await expect(packageRuntime(packageOptions(s))).rejects.toThrow(/no bdk-build-identity\.json/);
+  });
+
+  it("refuses a stale stamp (overlay or GN args changed after the build) naming the fields", async () => {
+    const s = await sandbox("stamp-stale");
+    writeFileSync(join(s.repo, "chromium/bdk/engine.cc"), "int engine() { return 2; }\n");
+    const overlay = await packageRuntime(packageOptions(s)).catch((e: unknown) => e as Error);
+    expect((overlay as Error).message).toMatch(/built from different inputs/);
+    expect((overlay as Error).message).toContain("bdk.overlay_digest");
+    writeFileSync(join(s.repo, "chromium/gn/release.gn"), "is_debug = true\n");
+    await expect(packageRuntime(packageOptions(s))).rejects.toThrow(/bdk\.gn_args_digest/);
+    expect(existsSync(s.paths.runtimes) ? readdirNoTemp(s.paths.runtimes) : []).toEqual([]);
+    await stampOut(s);
+    await expect(packageRuntime(packageOptions(s))).resolves.toMatchObject({ status: "created" });
+  });
+});
+
+describe("ABI hash freshness (packager only)", () => {
+  const script = join(import.meta.dirname, "..", "..", "..", "packages/core/cmake/abi-hash.cmake");
+  /** A sandbox repo with the real abi-hash.cmake and its header, and the hash cmake computes. */
+  async function withCmake(label: string, stale: boolean) {
+    const s = await sandbox(label);
+    mkdirSync(join(s.repo, "packages/core/cmake"), { recursive: true });
+    cpSync(script, join(s.repo, "packages/core/cmake/abi-hash.cmake"));
+    execFileSync("cmake", ["-DMODE=generate", "-P", "packages/core/cmake/abi-hash.cmake"], {
+      cwd: s.repo,
+      stdio: "ignore",
+    });
+    if (stale)
+      writeFileSync(join(s.repo, "packages/core/generated/abi-hash.txt"), `${"0".repeat(64)}\n`);
+    await stampOut(s);
+    return s;
+  }
+
+  it("packages when the generated hash is current", async () => {
+    const s = await withCmake("abi-fresh", false);
+    await expect(assertAbiHashCurrent(s.repo)).resolves.toBeUndefined();
+    const { verifyAbiHash: _skip, ...real } = packageOptions(s);
+    await expect(packageRuntime(real)).resolves.toMatchObject({ status: "created" });
+  });
+
+  it("refuses a drifted hash and surfaces the cmake message", async () => {
+    const s = await withCmake("abi-stale", true);
+    const { verifyAbiHash: _skip, ...real } = packageOptions(s);
+    const error = await packageRuntime(real).catch((e: unknown) => e as Error);
+    expect((error as Error).message).toMatch(/generated ABI hash is out of date/);
+    expect((error as Error).message).toMatch(/generate/);
+    expect(existsSync(s.paths.runtimes) ? readdirNoTemp(s.paths.runtimes) : []).toEqual([]);
   });
 });
 
@@ -152,7 +301,7 @@ function readdirNoTemp(dir: string): string[] {
 
 describe("T-CHR-09 resolver (feasibility 9)", () => {
   it("case 1: no runtime fails naming the key and the remedies", async () => {
-    const s = sandbox("case1");
+    const s = await sandbox("case1");
     const key = await keyOf(s.repo);
     const error = await resolveRuntime({ repoRoot: s.repo, paths: s.paths }).catch(
       (e: unknown) => e as Error,
@@ -164,7 +313,7 @@ describe("T-CHR-09 resolver (feasibility 9)", () => {
   });
 
   it("case 2: a published runtime is read-only and complete", async () => {
-    const s = sandbox("case2");
+    const s = await sandbox("case2");
     const r = await packageRuntime(packageOptions(s));
     for (const rel of [
       "manifest.json",
@@ -180,7 +329,7 @@ describe("T-CHR-09 resolver (feasibility 9)", () => {
   });
 
   it("case 3: two worktrees resolve the same inode", async () => {
-    const s = sandbox("case3");
+    const s = await sandbox("case3");
     await packageRuntime(packageOptions(s));
     const wtB = join(s.root, "repo-b");
     cpSync(s.repo, wtB, { recursive: true });
@@ -196,7 +345,7 @@ describe("T-CHR-09 resolver (feasibility 9)", () => {
   });
 
   it("case 4: writing into the runtime is refused", async () => {
-    const s = sandbox("case4");
+    const s = await sandbox("case4");
     await packageRuntime(packageOptions(s));
     await resolveRuntime({ repoRoot: s.repo, paths: s.paths });
     const link = join(s.repo, ".bdk/runtime");
@@ -207,7 +356,7 @@ describe("T-CHR-09 resolver (feasibility 9)", () => {
   });
 
   it("case 6: a changed patch changes the key; the other worktree is unaffected", async () => {
-    const s = sandbox("case6");
+    const s = await sandbox("case6");
     await packageRuntime(packageOptions(s));
     const wtB = join(s.root, "repo-b");
     cpSync(s.repo, wtB, { recursive: true });
@@ -221,7 +370,7 @@ describe("T-CHR-09 resolver (feasibility 9)", () => {
   });
 
   it("cases 10-12: tamper, extra file, retargeted symlink and eviction are detected on every run", async () => {
-    const s = sandbox("case10");
+    const s = await sandbox("case10");
     const r = await packageRuntime(packageOptions(s));
     const opts = { repoRoot: s.repo, paths: s.paths };
     await resolveRuntime(opts);
@@ -248,7 +397,7 @@ describe("T-CHR-09 resolver (feasibility 9)", () => {
   });
 
   it("case 13: a toolchain change keeps the source key and changes the manifest digest", async () => {
-    const s = sandbox("case13");
+    const s = await sandbox("case13");
     const a = await packageRuntime(packageOptions(s));
     const otherHome = join(s.root, "home-b");
     const b = await packageRuntime(
@@ -263,7 +412,7 @@ describe("T-CHR-09 resolver (feasibility 9)", () => {
   });
 
   it("BDK_RUNTIME_MODE=source never downloads", async () => {
-    const s = sandbox("source");
+    const s = await sandbox("source");
     await packageRuntime(packageOptions(s));
     const dest = tempDir("dest");
     cleanup.push(dest);
@@ -285,7 +434,7 @@ describe("T-CHR-09 resolver (feasibility 9)", () => {
 
 describe("T-REP-05 publish and second machine", () => {
   async function published(label: string) {
-    const s = sandbox(label);
+    const s = await sandbox(label);
     await packageRuntime(packageOptions(s));
     const dest = tempDir("release");
     cleanup.push(dest);
@@ -297,6 +446,40 @@ describe("T-REP-05 publish and second machine", () => {
     });
     return { s, dest, result };
   }
+
+  it("refuses a store entry whose manifest was rewritten to disagree with pin.json", async () => {
+    const { s } = await published("rewritten");
+    const pinned = readPin(s.repo).runtime?.manifest_sha256;
+    const dir = s.paths.runtime(await keyOf(s.repo));
+    await expect(resolveRuntime({ repoRoot: s.repo, paths: s.paths })).resolves.toMatchObject({
+      manifestSha256: pinned,
+    });
+    chmodSync(dir, 0o755);
+    await removeTree(join(dir, "Chromium.app"));
+    chmodSync(join(dir, "manifest.json"), 0o644);
+    const m = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8")) as Manifest;
+    writeFileSync(join(dir, "manifest.json"), JSON.stringify({ ...m, files: {} }));
+    const error = (await resolveRuntime({ repoRoot: s.repo, paths: s.paths }).catch(
+      (e: unknown) => e,
+    )) as { code?: string; message: string };
+    expect(error.code).toBe("integrity");
+    expect(error.message).toContain(pinned);
+  });
+
+  it("refuses a self-consistent entry with a different ABI hash than pin.json records", async () => {
+    const { s } = await published("abi-rewritten");
+    const dir = s.paths.runtime(await keyOf(s.repo));
+    chmodSync(dir, 0o755);
+    chmodSync(join(dir, "manifest.json"), 0o644);
+    const m = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8")) as Manifest;
+    writeFileSync(
+      join(dir, "manifest.json"),
+      JSON.stringify({ ...m, bdk_abi: { ...m.bdk_abi, hash: "0".repeat(64) } }),
+    );
+    await expect(resolveRuntime({ repoRoot: s.repo, paths: s.paths })).rejects.toMatchObject({
+      code: "integrity",
+    });
+  });
 
   it("records the pin runtime record and resolves on a second machine", async () => {
     const { s, result } = await published("pub");
@@ -357,7 +540,7 @@ describe("T-REP-05 publish and second machine", () => {
   });
 
   it("refuses to publish from a dirty tree", async () => {
-    const s = sandbox("dirty");
+    const s = await sandbox("dirty");
     await packageRuntime(packageOptions(s));
     const dest = tempDir("release");
     cleanup.push(dest);
@@ -373,7 +556,7 @@ describe("T-REP-05 publish and second machine", () => {
   });
 
   it("refuses to publish a runtime that is not packaged or has been tampered with", async () => {
-    const s = sandbox("nopkg");
+    const s = await sandbox("nopkg");
     const dest = tempDir("release");
     cleanup.push(dest);
     const opts = {
@@ -415,7 +598,7 @@ describe("T-REP-05 publish and second machine", () => {
 
 describe("archives and reproducibility", () => {
   it("archives are deterministic and round-trip symlinks and modes", async () => {
-    const s = sandbox("archive");
+    const s = await sandbox("archive");
     const r = await packageRuntime(packageOptions(s));
     const dest = tempDir("arch");
     cleanup.push(dest);
@@ -430,7 +613,7 @@ describe("archives and reproducibility", () => {
   });
 
   it("packaging the same inputs twice gives the same files and manifests apart from the timestamp", async () => {
-    const s = sandbox("repro");
+    const s = await sandbox("repro");
     const { paths: _paths, ...opts } = packageOptions(s);
     const report = await checkReproducible(opts);
     expect(report.differences).toEqual([]);

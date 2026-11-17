@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { canonicalJson, mapLimit, sha256File, sha256Hex } from "./canonical.js";
 import type { BuildIdentity, SourceIdentity } from "./identity.js";
-import { walkTree } from "./tree.js";
+import { findEscapingLinks, walkTree } from "./tree.js";
 
 export const MANIFEST_NAME = "manifest.json";
 
@@ -114,8 +114,8 @@ export interface VerifiedRuntime {
 }
 
 /**
- * Re-verifies a runtime directory: the manifest parses, names `expectedKey`, and the tree matches
- * `files` exactly (no missing, extra, modified or re-linked entries). Reads every file.
+ * Re-verifies a runtime directory: the manifest parses, names `expectedKey`, the tree matches
+ * `files` exactly (no missing, extra, modified or re-linked entries) and no symlink resolves outside it. Reads every file.
  */
 export async function verifyRuntimeDir(dir: string, expectedKey: string): Promise<VerifiedRuntime> {
   let text: string;
@@ -145,6 +145,7 @@ export async function verifyRuntimeDir(dir: string, expectedKey: string): Promis
   for (const path of Object.keys(actual)) {
     if (!(path in manifest.files)) problems.push(`unexpected: ${path}`);
   }
+  for (const link of await findEscapingLinks(dir)) problems.push(`escaping symlink: ${link}`);
   if (problems.length > 0) {
     const shown = problems.slice(0, 10).join("\n  ");
     const more = problems.length > 10 ? `\n  ... and ${problems.length - 10} more` : "";

@@ -19,7 +19,7 @@ import {
   relaunchUnderLock,
   seconds,
 } from "./common.js";
-import { applyToCheckout, seriesState, UnsafeCheckoutError } from "./patch-apply.js";
+import { applyToCheckout, assertSafeToSync, recordBdkState } from "./patch-apply.js";
 
 /** Renders `chromium/gclient/gclient.template`: `{{chromium_url}}` is the only placeholder. */
 export function renderGclient(template: string, chromiumUrl: string): string {
@@ -76,20 +76,10 @@ export async function syncCheckout(ctx: CheckoutContext, options: SyncOptions = 
   mkdirSync(ctx.root, { recursive: true });
   if (ensureGclientFile(ctx)) log(`sync: wrote ${join(ctx.root, ".gclient")} from the template`);
 
-  // gclient --force would drop commits that are not in the series; refuse unless told to.
+  // gclient --force would drop uncommitted changes and commits BDK did not produce; refuse unless told to.
   if (existsSync(join(ctx.src, ".git")) && !options.force) {
     const { patches } = loadSeries(ctx.layout.patchesDir);
-    const state = await seriesState(ctx.src, pin.commit, patches);
-    if (
-      state.head !== pin.commit &&
-      !state.applied &&
-      (state.dirty.length > 0 || state.extraCommits > 0)
-    ) {
-      throw new UnsafeCheckoutError(
-        `${ctx.src} has uncommitted changes or commits that are not the current series; gclient sync --force would discard them. ` +
-          "Run chromium:patch-export to save them, or pass --force.",
-      );
-    }
+    await assertSafeToSync(ctx.src, pin.commit, patches);
   }
 
   const gclientArgs = [
@@ -117,6 +107,7 @@ export async function syncCheckout(ctx: CheckoutContext, options: SyncOptions = 
         "The tag may have moved, or the pin is wrong.",
     );
   }
+  await recordBdkState(ctx.src, pin.commit, head);
   log(`sync: src is at the pin ${pin.tag} (${pin.commit.slice(0, 12)})`);
 
   if (!options.noPatch) {

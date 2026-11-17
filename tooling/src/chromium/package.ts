@@ -6,7 +6,9 @@ import { currentBdkPaths } from "../paths.js";
 import { detectBuilder } from "../runtime/builder.js";
 import { isMain, repoRootFromHere, takeValue } from "../runtime/cli.js";
 import { packageRuntime } from "../runtime/packager.js";
+import { readPin } from "../runtime/pin.js";
 import { checkReproducible } from "../runtime/reproducible.js";
+import { verifyCheckout } from "./package-checkout.js";
 
 const USAGE =
   "usage: package.ts [--config release] [--experiment <id>] [--reproducible-check]\n" +
@@ -73,7 +75,12 @@ async function main(argv: string[]): Promise<number> {
       repoRoot,
       outDir,
       depsFile: join(src, "DEPS"),
-      checkoutCommit: git(["rev-parse", "HEAD"], src),
+      // HEAD is the pin plus the patch series, never the pin: verify that, then name the pin.
+      checkoutBase: await verifyCheckout({
+        srcDir: src,
+        patchesDir: join(repoRoot, "chromium", "patches"),
+        pinCommit: readPin(repoRoot).commit,
+      }),
       config,
       builder: detectBuilder(src),
       repoCommit: git(["rev-parse", "HEAD"], repoRoot),

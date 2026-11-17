@@ -1,5 +1,5 @@
-import { chmod, lstat, readdir, readlink } from "node:fs/promises";
-import { join, posix } from "node:path";
+import { chmod, lstat, readdir, readlink, realpath } from "node:fs/promises";
+import { dirname, isAbsolute, join, posix, sep } from "node:path";
 
 export interface TreeEntry {
   /** Path relative to the root, with `/` separators. */
@@ -83,4 +83,59 @@ async function openDown(dir: string): Promise<void> {
     const p = join(dir, name);
     if ((await lstat(p)).isDirectory()) await openDown(p);
   }
+}
+
+const MAX_LINK_HOPS = 40;
+
+/**
+ * Resolves `target` (as stored in the link at `linkAbs`) through the real filesystem, one component
+ * at a time, following chains of symlinks. Returns the final absolute path, or `undefined` when the
+ * path leaves `rootReal` at any step, is absolute, or loops. Components that do not exist are taken
+ * literally, so a dangling link is judged by where it would point.
+ */
+async function resolveInside(
+  rootReal: string,
+  linkAbs: string,
+  target: string,
+): Promise<string | undefined> {
+  if (isAbsolute(target)) return undefined;
+  const inside = (p: string): boolean => p === rootReal || p.startsWith(rootReal + sep);
+  let cur = await realpath(dirname(linkAbs));
+  const queue = target.split("/");
+  let hops = 0;
+  while (queue.length > 0) {
+    const part = queue.shift() as string;
+    if (part === "" || part === ".") continue;
+    if (part === "..") {
+      cur = dirname(cur);
+    } else {
+      const next = join(cur, part);
+      const st = await lstat(next).catch(() => undefined);
+      if (st?.isSymbolicLink()) {
+        if (++hops > MAX_LINK_HOPS) return undefined;
+        const t = await readlink(next);
+        if (isAbsolute(t)) return undefined;
+        queue.unshift(...t.split("/"));
+        continue;
+      }
+      cur = next;
+    }
+    if (!inside(cur)) return undefined;
+  }
+  return cur;
+}
+
+/**
+ * Every symlink under `root` whose target, resolved through the real filesystem (chains and `..`
+ * included), is absolute or lands outside `root`. Entries look like `rel -> target`.
+ */
+export async function findEscapingLinks(root: string): Promise<string[]> {
+  const rootReal = await realpath(root);
+  const bad: string[] = [];
+  for (const e of await walkTree(root)) {
+    if (e.kind !== "symlink") continue;
+    const resolved = await resolveInside(rootReal, join(root, e.rel), e.target ?? "");
+    if (resolved === undefined) bad.push(`${e.rel} -> ${e.target ?? ""}`);
+  }
+  return bad;
 }

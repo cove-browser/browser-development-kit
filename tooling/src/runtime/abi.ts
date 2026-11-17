@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -45,4 +46,30 @@ export function readAbi(repoRoot: string): AbiInfo {
     );
   }
   return { version: Number(versionMatch[1]), hash };
+}
+
+/**
+ * Fails when the committed `generated/abi-hash.txt` no longer matches the headers and interface
+ * definitions, by running `cmake -DMODE=check -P packages/core/cmake/abi-hash.cmake` from the repo root.
+ * The source key embeds that file, so a stale one would name a runtime by the wrong ABI.
+ */
+export async function assertAbiHashCurrent(repoRoot: string): Promise<void> {
+  const script = join("packages", "core", "cmake", "abi-hash.cmake");
+  await new Promise<void>((resolve, reject) => {
+    execFile(
+      "cmake",
+      ["-DMODE=check", "-P", script],
+      { cwd: repoRoot, encoding: "utf8" },
+      (error, stdout, stderr) => {
+        if (error === null) return resolve();
+        const detail = `${stderr}${stdout}`.trim() || error.message;
+        reject(
+          new Error(
+            `Refusing to package: the generated ABI hash is out of date or could not be checked ` +
+              `(cmake -DMODE=check -P packages/core/cmake/abi-hash.cmake):\n${detail}`,
+          ),
+        );
+      },
+    );
+  });
 }

@@ -177,7 +177,18 @@ export function makeSandbox(up: Upstream, pinTag = "1.0.0", pinCommit = up.commi
   }
   writeFileSync(
     join(repo, "chromium", "pin.json"),
-    JSON.stringify({ tag: pinTag, commit: pinCommit }),
+    JSON.stringify({ tag: pinTag, commit: pinCommit, bdk_abi_version: 1, runtime: null }),
+  );
+  mkdirSync(join(repo, "packages", "core", "include", "bdk"), { recursive: true });
+  mkdirSync(join(repo, "packages", "core", "generated"), { recursive: true });
+  writeFileSync(
+    join(repo, "packages", "core", "include", "bdk", "bdk_base.h"),
+    "#define BDK_ABI_VERSION 1\n",
+  );
+  writeFileSync(join(repo, "packages", "core", "generated", "abi-hash.txt"), `${"a".repeat(64)}\n`);
+  writeFileSync(
+    join(repo, "chromium", "runtime-files.json"),
+    JSON.stringify({ schema: 1, target: { os: "macos", min_os: "13.0" }, paths: ["Chromium.app"] }),
   );
   writeFileSync(join(repo, "chromium", "patches", "series"), "");
   writeFileSync(

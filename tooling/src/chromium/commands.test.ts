@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.setConfig({ testTimeout: 120_000 });
 
 import { git } from "../git.js";
+import { computeSourceIdentity, sourceKey } from "../runtime/identity.js";
 import { repoRoot } from "./common.js";
 import { exportSeries } from "./patch-export.js";
 import {
@@ -84,6 +85,73 @@ describe("chromium:sync", () => {
     const r = await cli("sync", [], sb);
     expect(r.code).toBe(1);
     expect(r.stderr).toMatch(/chromium\/pin\.json says/);
+  });
+
+  const USER = ["-c", "user.name=U", "-c", "user.email=u@example.invalid"];
+
+  it("refuses to sync over uncommitted edits even when HEAD is at the pin", async () => {
+    const { sb } = await sandboxWithPatch();
+    expect((await cli("sync", ["--no-patch"], sb)).code).toBe(0);
+    const file = join(managedSrc(sb), "base", "unrelated.cc");
+    writeFileSync(file, "USER WORK\n");
+    const r = await cli("sync", ["--no-patch"], sb);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toMatch(/uncommitted changes/);
+    expect(readFileSync(file, "utf8")).toBe("USER WORK\n");
+    expect((await cli("sync", ["--no-patch", "--force"], sb)).code).toBe(0);
+    expect(readFileSync(file, "utf8")).not.toContain("USER WORK");
+  });
+
+  it("refuses to sync over commits on the old pin after the pin moved, and allows a clean roll", async () => {
+    const { up, sb } = await sandboxWithPatch();
+    expect((await cli("sync", ["--no-patch"], sb)).code).toBe(0);
+    const src = managedSrc(sb);
+    writeFileSync(join(src, "base", "unrelated.cc"), "USER COMMIT\n");
+    await git(src, [...USER, "commit", "-qam", "user work"]);
+    const userHead = (await git(src, ["rev-parse", "HEAD"])).trim();
+    writeFileSync(
+      join(sb.repo, "chromium", "pin.json"),
+      JSON.stringify({ tag: "2.0.0", commit: up.commit2 }),
+    );
+    const r = await cli("sync", ["--no-patch"], sb);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toMatch(/patch-export/);
+    expect((await git(src, ["rev-parse", "HEAD"])).trim()).toBe(userHead);
+    // Once the user's commit is gone, rolling to the new pin is allowed.
+    await git(src, ["reset", "--hard", "-q", up.commit1]);
+    const ok = await cli("sync", ["--no-patch"], sb);
+    expect(ok.code, ok.stderr).toBe(0);
+    expect((await git(src, ["rev-parse", "HEAD"])).trim()).toBe(up.commit2);
+  });
+
+  it("allows a roll from a BDK-produced HEAD, and keeps the refs out of the exported series", async () => {
+    const { up, sb } = await sandboxWithPatch();
+    expect((await cli("sync", ["--no-patch"], sb)).code).toBe(0);
+    expect((await cli("patch-apply", [], sb)).code).toBe(0);
+    const src = managedSrc(sb);
+    // HEAD is pin + series; roll the pin (the old series conflicts on 2.0.0, so --no-patch).
+    writeFileSync(
+      join(sb.repo, "chromium", "pin.json"),
+      JSON.stringify({ tag: "2.0.0", commit: up.commit2 }),
+    );
+    const ok = await cli("sync", ["--no-patch"], sb);
+    expect(ok.code, ok.stderr).toBe(0);
+    expect((await git(src, ["rev-parse", "HEAD"])).trim()).toBe(up.commit2);
+    expect((await git(src, ["rev-parse", "refs/worktree/bdk/base"])).trim()).toBe(up.commit2);
+    expect((await git(src, ["rev-list", `${up.commit2}..HEAD`])).trim()).toBe("");
+  });
+
+  it("falls back to the pin when no refs are recorded, and still refuses dirty trees", async () => {
+    const { sb } = await sandboxWithPatch();
+    expect((await cli("sync", [], sb)).code).toBe(0);
+    const src = managedSrc(sb);
+    await git(src, ["update-ref", "-d", "refs/worktree/bdk/base"]);
+    await git(src, ["update-ref", "-d", "refs/worktree/bdk/applied"]);
+    expect((await cli("sync", [], sb)).code).toBe(0);
+    await git(src, ["update-ref", "-d", "refs/worktree/bdk/base"]);
+    await git(src, ["update-ref", "-d", "refs/worktree/bdk/applied"]);
+    writeFileSync(join(src, "base", "unrelated.cc"), "// dirty\n");
+    expect((await cli("sync", [], sb)).code).toBe(1);
   });
 
   it("refuses to run while the checkout lock is held, naming the owner", async () => {
@@ -223,6 +291,29 @@ describe("chromium:build", () => {
     expect((await cli("build", ["--no-verify"], sb, { FAKE_NO_LINK: "1" })).code).toBe(0);
   });
 
+  it("writes the build stamp after a verified build and removes it before the next build starts", async () => {
+    const { sb } = await sandboxWithPatch();
+    await cli("sync", [], sb);
+    const stamp = join(managedSrc(sb), "out", "release", "bdk-build-identity.json");
+    expect((await cli("build", [], sb)).code).toBe(0);
+    const written = JSON.parse(readFileSync(stamp, "utf8")) as {
+      source_key: string;
+      identity: unknown;
+    };
+    const identity = await computeSourceIdentity({ repoRoot: sb.repo });
+    expect(written.source_key).toBe(sourceKey(identity));
+    expect(written.identity).toEqual(identity);
+    // A build that fails (marker missing) must not leave the previous stamp behind.
+    expect((await cli("build", [], sb, { FAKE_NO_LINK: "1" })).code).toBe(1);
+    expect(existsSync(stamp)).toBe(false);
+    // The stamp is gone while autoninja is still running, too.
+    const slow = cli("build", [], sb, { FAKE_BUILD_SECONDS: "2" });
+    await new Promise((r) => setTimeout(r, 1000));
+    expect(existsSync(stamp)).toBe(false);
+    expect((await slow).code).toBe(0);
+    expect(existsSync(stamp)).toBe(true);
+  });
+
   it("refuses to build twice at once on one checkout", async () => {
     const { sb } = await sandboxWithPatch();
     await cli("sync", [], sb);
@@ -308,7 +399,9 @@ describe.skipIf(process.platform !== "darwin")("chromium:experiment", () => {
     await slow;
 
     expect((await cli("experiment", ["create", "e1"], sb)).code).toBe(1); // exists
-    const removed = await cli("experiment", ["remove", "e1"], sb);
+    // The experiment edit above is unsaved work, so removal needs --force.
+    expect((await cli("experiment", ["remove", "e1"], sb)).code).toBe(1);
+    const removed = await cli("experiment", ["remove", "e1", "--force"], sb);
     expect(removed.code, removed.stderr).toBe(0);
     expect(existsSync(expRoot)).toBe(false);
     expect(existsSync(join(mSrc, "out", "release", "built-by"))).toBe(true);
@@ -346,6 +439,43 @@ shutil.copy2(os.path.join(a.parent_repo, ".gclient"), os.path.join(root, ".gclie
     expect(existsSync(root)).toBe(false);
     expect((await git(managedSrc(sb), ["worktree", "list"])).trim().split("\n")).toHaveLength(1);
     expect((await git(managedSrc(sb), ["branch", "--list", "bdk-exp-wt"])).trim()).toBe("");
+  });
+
+  it("refuses to remove an experiment with unsaved work, and removes BDK-produced ones", async () => {
+    const { sb } = await sandboxWithPatch();
+    expect((await cli("sync", [], sb)).code).toBe(0);
+    expect((await cli("experiment", ["create", "r1"], sb)).code).toBe(0);
+    const root = sb.paths.chromiumExperiment("r1");
+    const src = join(root, "src");
+    // Clean and BDK-produced: the refs came along with the clone.
+    expect((await git(src, ["rev-parse", "refs/worktree/bdk/applied"])).trim()).toBe(
+      (await git(src, ["rev-parse", "HEAD"])).trim(),
+    );
+    // Dirty tracked file.
+    writeFileSync(join(src, "base", "unrelated.cc"), "// wip\n");
+    let r = await cli("experiment", ["remove", "r1"], sb);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toMatch(/unrelated\.cc/);
+    expect(r.stderr).toMatch(/patch-export --experiment r1/);
+    expect(existsSync(root)).toBe(true);
+    // Unexported commit.
+    await git(src, [
+      "-c",
+      "user.name=U",
+      "-c",
+      "user.email=u@example.invalid",
+      "commit",
+      "-qam",
+      "wip",
+    ]);
+    r = await cli("experiment", ["remove", "r1"], sb);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toMatch(/wip/);
+    expect(existsSync(root)).toBe(true);
+    // --force removes.
+    r = await cli("experiment", ["remove", "r1", "--force"], sb);
+    expect(r.code, r.stderr).toBe(0);
+    expect(existsSync(root)).toBe(false);
   });
 
   it("rejects invalid ids", async () => {

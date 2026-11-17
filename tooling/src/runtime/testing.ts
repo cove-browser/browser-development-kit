@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { bdkPaths } from "../paths.js";
 import type { BuildIdentity } from "./identity.js";
+import { computeSourceIdentity } from "./identity.js";
 import type { PackageOptions } from "./packager.js";
+import { writeBuildStamp } from "./stamp.js";
 
 /** Test fixtures: a fake BDK repository, a fake Chromium build output, a fake BDK_HOME. Not shipped. */
 
@@ -100,9 +102,15 @@ export function packageOptions(s: Sandbox, over: Partial<PackageOptions> = {}): 
     paths: s.paths,
     outDir: s.outDir,
     depsFile: s.depsFile,
-    checkoutCommit: FAKE_COMMIT,
+    checkoutBase: FAKE_COMMIT,
+    verifyAbiHash: async () => {},
     builder: BUILDER,
     repoCommit: "c".repeat(40),
     ...over,
   };
+}
+
+/** Records in `s.outDir` that it was built from the sandbox repository's current inputs (what chromium:build does). */
+export async function stampOut(s: Sandbox): Promise<void> {
+  await writeBuildStamp(s.outDir, await computeSourceIdentity({ repoRoot: s.repo }));
 }

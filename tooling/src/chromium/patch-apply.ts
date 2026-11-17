@@ -124,6 +124,74 @@ export async function seriesState(
   return { head, dirty, applied, extraCommits, atOrAbovePin };
 }
 
+/**
+ * Per-worktree refs (they live in `.git/refs/worktree/`, so `gclient`, `git am` and `patch-export`
+ * ignore them, an APFS clone keeps them, and a `git worktree` experiment does not share them with
+ * its source): the pin BDK last put `src` on, and the HEAD it left after applying the series.
+ */
+export const BASE_REF = "refs/worktree/bdk/base";
+export const APPLIED_REF = "refs/worktree/bdk/applied";
+
+async function readRef(srcDir: string, ref: string): Promise<string | undefined> {
+  const r = await gitRaw(srcDir, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+  return r.code === 0 ? r.stdout.trim() : undefined;
+}
+
+/** Records the base and resulting HEAD that BDK produced. Call only with HEAD it just produced. */
+export async function recordBdkState(srcDir: string, base: string, applied: string): Promise<void> {
+  await git(srcDir, ["update-ref", BASE_REF, base]);
+  await git(srcDir, ["update-ref", APPLIED_REF, applied]);
+}
+
+/**
+ * Refuses (UnsafeCheckoutError) if `gclient sync --force` would discard work: any uncommitted
+ * change to a tracked file, or a HEAD that BDK did not produce. HEAD is BDK's when it is the
+ * current pin, the recorded applied/base commit, or the recorded base plus exactly the current
+ * series. Without recorded refs (an older checkout) it falls back to "pin plus exactly the series
+ * or nothing" measured against the current pin.
+ */
+export async function assertSafeToSync(
+  srcDir: string,
+  pinCommit: string,
+  patches: readonly PatchFile[],
+  what: { action?: string; exportHint?: string } = {},
+): Promise<void> {
+  const state = await seriesState(srcDir, pinCommit, patches);
+  const refuse = async (why: string): Promise<never> => {
+    const recent = (
+      await gitRaw(srcDir, ["log", "-5", "--format=  %h %s", `${pinCommit}..HEAD`])
+    ).stdout.trim();
+    throw new UnsafeCheckoutError(
+      `${srcDir} ${why}; ${what.action ?? "gclient sync --force"} would discard it.` +
+        `${recent ? `\nCommits on top of the pin:\n${recent}` : ""}\n` +
+        `Run ${what.exportHint ?? "chromium:patch-export"} to save it, or pass --force.`,
+    );
+  };
+  if (state.dirty.length > 0) {
+    await refuse(
+      `has uncommitted changes:\n${state.dirty
+        .slice(0, 20)
+        .map((l) => `  ${l}`)
+        .join("\n")}\n`,
+    );
+  }
+  if (state.head === pinCommit || state.applied) return;
+  const base = await readRef(srcDir, BASE_REF);
+  const applied = await readRef(srcDir, APPLIED_REF);
+  if (base !== undefined && applied !== undefined) {
+    if (state.head === applied || state.head === base) return;
+    if ((await seriesState(srcDir, base, patches)).applied) return;
+    await refuse(
+      `is at ${state.head.slice(0, 12)}, which BDK did not produce (it left ${applied.slice(0, 12)})`,
+    );
+  }
+  if (state.extraCommits > 0) {
+    await refuse(
+      `has ${state.extraCommits} commit(s) on top of the pin that are not the current series`,
+    );
+  }
+}
+
 export interface ApplyOptions {
   readonly srcDir: string;
   readonly pinCommit: string;
@@ -165,6 +233,7 @@ export async function applySeries(opts: ApplyOptions): Promise<ApplyResult> {
   const names = patches.map((p) => p.name);
   if (state.applied) {
     log(`patches: already applied (${patches.length} on ${opts.pinCommit.slice(0, 12)})`);
+    await recordBdkState(opts.srcDir, opts.pinCommit, state.head);
     return { status: "already-applied", patches: names, head: state.head };
   }
   if (!opts.force) {
@@ -197,6 +266,7 @@ export async function applySeries(opts: ApplyOptions): Promise<ApplyResult> {
     if (!r.ok) throw new PatchConflictError(patch.name, r.files, r.output);
   }
   const head = (await git(opts.srcDir, ["rev-parse", "HEAD"])).trim();
+  await recordBdkState(opts.srcDir, opts.pinCommit, head);
   log(`patches: applied ${patches.length} on ${opts.pinCommit.slice(0, 12)}`);
   return { status: "applied", patches: names, head };
 }

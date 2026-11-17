@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { readAbi } from "./abi.js";
 import { canonicalJson, sha256Hex } from "./canonical.js";
 import { readPin } from "./pin.js";
+import { readRuntimeFiles } from "./runtime-files.js";
 import { walkTree } from "./tree.js";
 
 /** Files that never affect a build and must not force a runtime rebuild when edited. */
@@ -34,6 +35,8 @@ export interface SourceIdentity {
     readonly overlay_digest: string;
     /** `"absent"` when the selected preset file does not exist. Packaging refuses that. */
     readonly gn_args_digest: string;
+    /** Digest of chromium/runtime-files.json (paths and min_os): what is packaged decides what the key names. */
+    readonly runtime_files_digest: string;
   };
   readonly target: Target;
 }
@@ -64,6 +67,12 @@ export async function directoryDigest(dir: string): Promise<string> {
   return sha256Hex(lines.join(""));
 }
 
+/** SHA-256 of the canonical runtime inventory: target and the sorted, normalised path list. */
+export function runtimeFilesDigest(repoRoot: string): string {
+  const rf = readRuntimeFiles(repoRoot);
+  return sha256Hex(canonicalJson({ target: rf.target, paths: [...new Set(rf.paths)].sort() }));
+}
+
 export function gnPresetPath(repoRoot: string, config: string): string {
   return join(repoRoot, "chromium", "gn", `${config}.gn`);
 }
@@ -87,6 +96,7 @@ export async function computeSourceIdentity(opts: IdentityOptions): Promise<Sour
       patches_digest: await directoryDigest(join(repoRoot, "chromium", "patches")),
       overlay_digest: await directoryDigest(join(repoRoot, "chromium", "bdk")),
       gn_args_digest: existsSync(preset) ? sha256Hex(readFileSync(preset)) : "absent",
+      runtime_files_digest: runtimeFilesDigest(repoRoot),
     },
     target: opts.target ?? hostTarget(),
   };
@@ -94,7 +104,7 @@ export async function computeSourceIdentity(opts: IdentityOptions): Promise<Sour
 
 /** The store key: first 16 hex digits of the SHA-256 of the canonical source identity. */
 export function sourceKey(id: SourceIdentity): string {
-  return sha256Hex(canonicalJson({ key_schema: 1, ...id })).slice(0, 16);
+  return sha256Hex(canonicalJson({ key_schema: 2, ...id })).slice(0, 16);
 }
 
 export interface BuildIdentity {

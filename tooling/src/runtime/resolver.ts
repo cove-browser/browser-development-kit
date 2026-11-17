@@ -187,6 +187,25 @@ export async function resolveRuntime(opts: ResolveOptions): Promise<ResolveResul
       "integrity",
     );
   }
+  // Self-consistency is not enough: a rewritten manifest and tree verify against each other. When
+  // pin.json records a runtime for this key, the manifest must be the one that was published.
+  // (`source` mode is an explicit local build, whose builder timestamp can never match.)
+  if (opts.mode !== "source" && record !== null && record.source_key === key) {
+    if (verified.manifestSha256 !== record.manifest_sha256) {
+      throw new RuntimeResolveError(
+        `The store entry ${dir} has manifest digest ${verified.manifestSha256} but chromium/pin.json records ${record.manifest_sha256} for this source key. ` +
+          `It does not match the published runtime. Delete it (chmod -R u+w "${dir}" && rm -rf "${dir}") and resolve again to fetch it.`,
+        "integrity",
+      );
+    }
+    if (verified.manifest.bdk_abi.hash !== record.abi_hash) {
+      throw new RuntimeResolveError(
+        `The store entry ${dir} has ABI hash ${verified.manifest.bdk_abi.hash} but chromium/pin.json records ${record.abi_hash}. ` +
+          `Delete it (chmod -R u+w "${dir}" && rm -rf "${dir}") and resolve again.`,
+        "integrity",
+      );
+    }
+  }
   await writePointer(repoRoot, dir, key, verified.manifestSha256);
   return { sourceKey: key, runtimeDir: dir, manifestSha256: verified.manifestSha256, origin };
 }
