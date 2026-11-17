@@ -1,0 +1,272 @@
+name: pr
+
+on:
+  pull_request:
+    branches: [main]
+
+# Read-only by default. Jobs that need more would declare it on the job.
+permissions:
+  contents: read
+
+# A new push to the same pull request cancels the run it supersedes.
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: checks
+    runs-on: ubuntu-latest
+    env:
+      # packages/core builds with clang 18 on Linux, matching the apt packages installed below.
+      CC: clang-18
+      CXX: clang++-18
+    steps:
+      - name: Check out the pull request
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # nx affected and gitleaks need the base commit as well as the head.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        # The version comes from the packageManager field in package.json.
+
+      - name: Install Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install clang, clang-format, clang-tidy and ninja
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang-18 clang-format-18 clang-tidy-18 ninja-build
+          # packages/core/project.json and tooling/clang-tidy.sh call the unversioned names.
+          sudo ln -sf /usr/bin/clang-format-18 /usr/local/bin/clang-format
+          sudo ln -sf /usr/bin/clang-tidy-18 /usr/local/bin/clang-tidy
+
+      - name: Install pinned linters
+        # Each download is checked against the SHA-256 digest written next to it. Digests come from the
+        # release's published checksums or from the asset digests GitHub reports for the release. Taplo 0.10.0
+        # publishes no digest, so the one recorded here was computed from the downloaded asset.
+        run: |
+          set -euo pipefail
+          tools="$RUNNER_TEMP/tools"
+          bin="$tools/bin"
+          mkdir -p "$bin"
+          fetch() {
+            curl --fail --silent --show-error --location --output "$2" "$1"
+          }
+          check() {
+            echo "$2  $1" | sha256sum --check --strict -
+          }
+
+          # actionlint 1.7.12 (rhysd/actionlint)
+          fetch https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz "$tools/actionlint.tar.gz"
+          check "$tools/actionlint.tar.gz" 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+          tar -xzf "$tools/actionlint.tar.gz" -C "$bin" actionlint
+
+          # ShellCheck 0.11.0 (koalaman/shellcheck), installed for the lint job
+          fetch https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz "$tools/shellcheck.tar.xz"
+          check "$tools/shellcheck.tar.xz" 8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+          tar -xJf "$tools/shellcheck.tar.xz" -C "$tools"
+          mv "$tools/shellcheck-v0.11.0/shellcheck" "$bin/shellcheck"
+
+          # shfmt 3.14.1 (mvdan/sh)
+          fetch https://github.com/mvdan/sh/releases/download/v3.14.1/shfmt_v3.14.1_linux_amd64 "$bin/shfmt"
+          check "$bin/shfmt" 76e77641faa025814b77f153b29796b8e6fa2fca03e0c76a691608b86c7ea7bf
+
+          # taplo 0.10.0 (tamasfe/taplo)
+          fetch https://github.com/tamasfe/taplo/releases/download/0.10.0/taplo-linux-x86_64.gz "$tools/taplo.gz"
+          check "$tools/taplo.gz" 8fe196b894ccf9072f98d4e1013a180306e17d244830b03986ee5e8eabeb6156
+          gunzip -c "$tools/taplo.gz" > "$bin/taplo"
+
+          # gitleaks 8.30.1 (gitleaks/gitleaks), the binary rather than the organisation-licensed action
+          fetch https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz "$tools/gitleaks.tar.gz"
+          check "$tools/gitleaks.tar.gz" 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+          tar -xzf "$tools/gitleaks.tar.gz" -C "$bin" gitleaks
+
+          chmod +x "$bin"/*
+          echo "$bin" >> "$GITHUB_PATH"
+
+      - name: Lint, test and build affected projects
+        env:
+          NX_BASE: ${{ github.event.pull_request.base.sha }}
+          NX_HEAD: ${{ github.event.pull_request.head.sha }}
+        # chromium:build compiles Chromium and must never run here, so chromium is excluded.
+        # swift needs Xcode and runs in the swift-macos job, so it is excluded here too.
+        run: pnpm exec nx affected -t lint test build --exclude=chromium,swift
+
+      - name: Patch series applies to the pinned Chromium tag
+        run: pnpm exec nx run chromium:patch-check
+
+      - name: Scan the pull request commits for secrets
+        env:
+          NX_BASE: ${{ github.event.pull_request.base.sha }}
+          NX_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: gitleaks git --redact --no-banner --log-opts="${NX_BASE}..${NX_HEAD}"
+
+  abi-linux:
+    name: abi-linux
+    # Not gated on affected: the public headers and the ABI record are checked on every pull request.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the pull request
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install clang and ninja
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang-18 ninja-build jq
+
+      - name: Configure packages/core with clang and Ninja
+        run: >-
+          cmake -S packages/core -B packages/core/build -G Ninja
+          -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
+
+      - name: Public headers compile as C11 and C++17 with -Werror
+        run: cmake --build packages/core/build --target bdk_header_check
+
+      - name: Build the stub and the conformance suite
+        run: cmake --build packages/core/build
+
+      - name: Run the conformance suite against the stub
+        run: ctest --test-dir packages/core/build --output-on-failure
+
+      - name: ABI hash drift check
+        run: cmake -DMODE=check -P packages/core/cmake/abi-hash.cmake
+
+      - name: ABI hash check against the pin record
+        run: |
+          set -euo pipefail
+          # chromium/pin.json records a published runtime only after one is built and published (repository
+          # and tooling plan, section 10.1). Until then there is nothing to compare.
+          pinned=$(jq -r '.runtime.abi_hash // empty' chromium/pin.json)
+          if [ -z "$pinned" ]; then
+            echo "chromium/pin.json has no published runtime; the pin record ABI check is skipped."
+            exit 0
+          fi
+          current=$(tr -d '[:space:]' < packages/core/generated/abi-hash.txt)
+          if [ "$pinned" != "$current" ]; then
+            echo "::error title=ABI hash mismatch::chromium/pin.json runtime.abi_hash is $pinned but packages/core/generated/abi-hash.txt is $current. The published runtime does not implement these headers; publish a runtime for this ABI or revert the header change."
+            exit 1
+          fi
+          echo "ABI hash matches the published runtime: $current"
+
+  swift-macos:
+    name: swift-macos
+    runs-on: macos-latest
+    steps:
+      - name: Check out the pull request
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Install Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install CMake, Ninja and LLVM 18 tools
+        # Homebrew's formulae are not pinned to digests here. llvm@18 supplies clang-format and clang-tidy at the
+        # same major version as the Linux job. The formulae float within their major version.
+        run: |
+          set -euo pipefail
+          brew install --formula cmake ninja llvm@18
+          echo "$(brew --prefix llvm@18)/bin" >> "$GITHUB_PATH"
+
+      - name: Install pinned SwiftLint
+        run: |
+          set -euo pipefail
+          zip="$RUNNER_TEMP/swiftlint.zip"
+          bin="$RUNNER_TEMP/swiftlint-bin"
+          mkdir -p "$bin"
+          curl --fail --silent --show-error --location --output "$zip" \
+            https://github.com/realm/SwiftLint/releases/download/0.65.1/portable_swiftlint.zip
+          echo "c1e429b0599cf1b516f369a2d9ec04eaf0e436f3c12b637df8851fa52ff694d0  $zip" | shasum -a 256 --check --strict -
+          unzip -o -q "$zip" swiftlint -d "$bin"
+          chmod +x "$bin/swiftlint"
+          echo "$bin" >> "$GITHUB_PATH"
+
+      - name: Build, test and lint the Swift and core projects
+        env:
+          NX_BASE: ${{ github.event.pull_request.base.sha }}
+          NX_HEAD: ${{ github.event.pull_request.head.sha }}
+        # Only swift and core run here. `*,!swift,!core` is the nx exclude pattern for "everything else".
+        run: pnpm exec nx affected -t build test lint --exclude='*,!swift,!core'
+
+  cli-smoke:
+    name: cli-smoke (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out the pull request
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Install Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Package the CLI
+        # packages/cli/project.json: cli:package is a stub until M2 (T-CLI-05) and exits 0 without producing anything.
+        run: pnpm cli:package
+
+      - name: Run the packaged executable with Node removed from PATH
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Where the packaged executable goes is decided with T-CLI-05. This is the path the smoke test expects.
+          exe="packages/cli/dist/bdk"
+          if [ ! -x "$exe" ]; then
+            msg="No packaged CLI executable at $exe. cli:package is a stub until M2 (T-CLI-05), so the CLI smoke test is skipped. It is not a pass."
+            echo "::notice title=CLI smoke test skipped::$msg"
+            echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # PATH with every directory that holds a node binary removed.
+          clean_path=""
+          IFS=':' read -r -a dirs <<< "$PATH"
+          for dir in "${dirs[@]}"; do
+            if [ -n "$dir" ] && [ ! -x "$dir/node" ]; then
+              clean_path="${clean_path:+$clean_path:}$dir"
+            fi
+          done
+          if PATH="$clean_path" /bin/sh -c 'command -v node' >/dev/null 2>&1; then
+            echo "::error::node is still reachable with the cleaned PATH; the smoke test would not prove anything."
+            exit 1
+          fi
+
+          # --version is a placeholder for the smoke command that T-CLI-05 defines.
+          PATH="$clean_path" "$exe" --version
+          echo "The packaged CLI ran with no Node on PATH." >> "$GITHUB_STEP_SUMMARY"
