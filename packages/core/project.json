@@ -20,11 +20,7 @@
       "executor": "nx:run-commands",
       "cache": true,
       "options": {
-        "commands": [
-          "cmake -S packages/core -B packages/core/build -G Ninja",
-          "cmake --build packages/core/build",
-          "ctest --test-dir packages/core/build --output-on-failure"
-        ],
+        "commands": ["ctest --test-dir packages/core/build --output-on-failure"],
         "parallel": false
       },
       "inputs": ["default", "nativeToolchain"],
@@ -34,8 +30,7 @@
       "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "cmake -S packages/core -B packages/core/build -G Ninja",
-          "sh -c 'find packages/core -name \"*.h\" -o -name \"*.cc\" | grep -v /build/ | xargs clang-format --dry-run -Werror'",
+          "sh -c \"git ls-files -z --cached --others --exclude-standard -- 'packages/core/*.h' 'packages/core/*.c' 'packages/core/*.cc' | xargs -0 clang-format --dry-run -Werror\"",
           "sh tooling/clang-tidy.sh packages/core/build packages/core"
         ],
         "parallel": false
@@ -46,7 +41,7 @@
     "format": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "sh -c 'find packages/core -name \"*.h\" -o -name \"*.cc\" | grep -v /build/ | xargs clang-format -i'"
+        "command": "sh -c \"git ls-files -z --cached --others --exclude-standard -- 'packages/core/*.h' 'packages/core/*.c' 'packages/core/*.cc' | xargs -0 clang-format -i\""
       }
     }
   }
