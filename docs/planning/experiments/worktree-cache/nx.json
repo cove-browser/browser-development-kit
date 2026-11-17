@@ -1,0 +1,7 @@
+{
+  "namedInputs": {
+    "sharedGlobals": ["{workspaceRoot}/nx.json"],
+    "chromiumIdentity": ["{workspaceRoot}/chromium/pin.json", "{workspaceRoot}/chromium/patches/**/*", "{workspaceRoot}/chromium/overlay/**/*", "{workspaceRoot}/chromium/gn/**/*", "{workspaceRoot}/tooling/runtime-key.mjs"],
+    "runtimeProbe": [{ "runtime": "node tooling/runtime-key.mjs --probe" }]
+  }
+}

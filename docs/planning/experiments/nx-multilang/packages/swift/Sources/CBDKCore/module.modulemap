@@ -1,0 +1,5 @@
+module CBDKCore {
+  header "../../../core/include/bdk_core.h"
+  link "bdkcore"
+  export *
+}

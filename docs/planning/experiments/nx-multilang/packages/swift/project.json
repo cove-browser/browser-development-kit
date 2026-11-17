@@ -1,0 +1,28 @@
+{
+  "name": "swift",
+  "root": "packages/swift",
+  "projectType": "library",
+  "implicitDependencies": ["core"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/swift",
+        "commands": [
+          "swift build -c release -Xlinker -L../core/dist -Xlinker -lc++",
+          "mkdir -p dist && cp .build/release/BDKDemo dist/BDKDemo"
+        ],
+        "parallel": false
+      },
+      "inputs": ["{projectRoot}/Package.swift", "{projectRoot}/Sources/**/*", "{projectRoot}/project.json", "nativeToolchain", "sharedGlobals",
+        { "dependentTasksOutputFiles": "**/*.a", "transitive": true },
+        "{workspaceRoot}/packages/core/include/**/*"],
+      "outputs": ["{projectRoot}/dist"]
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": { "cwd": "packages/swift", "command": "test \"$(./dist/BDKDemo)\" = \"abi=1 add=42\" && echo swift-test-ok" },
+      "inputs": ["{projectRoot}/Sources/**/*", { "dependentTasksOutputFiles": "**/*", "transitive": true }, "nativeToolchain"]
+    }
+  }
+}

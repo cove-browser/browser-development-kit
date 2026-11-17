@@ -1,0 +1,27 @@
+{
+  "name": "chromium",
+  "root": "chromium",
+  "targets": {
+    "runtime": {
+      "executor": "nx:run-commands", "cache": false,
+      "options": { "command": "node tooling/runtime-resolve.mjs" },
+      "outputs": ["{workspaceRoot}/.bdk/runtime.json"]
+    },
+    "runtime-naive-cached": {
+      "executor": "nx:run-commands", "cache": true,
+      "options": { "command": "node tooling/runtime-resolve.mjs" },
+      "inputs": ["chromiumIdentity"],
+      "outputs": ["{workspaceRoot}/.bdk/runtime.json"]
+    },
+    "runtime-probed-cached": {
+      "executor": "nx:run-commands", "cache": true,
+      "options": { "command": "node tooling/runtime-resolve.mjs" },
+      "inputs": ["chromiumIdentity", "runtimeProbe"],
+      "outputs": ["{workspaceRoot}/.bdk/runtime.json"]
+    },
+    "source-build": {
+      "executor": "nx:run-commands", "cache": false,
+      "options": { "command": "mkdir -p \"$BDK_HOME/chromium/locks\" && lockf -t 0 \"$BDK_HOME/chromium/locks/${BDK_CHECKOUT:-managed}.lock\" node tooling/fake-source-build.mjs ${BDK_CHECKOUT:-managed}" }
+    }
+  }
+}

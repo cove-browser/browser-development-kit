@@ -1,0 +1,21 @@
+{
+  "name": "core",
+  "root": "packages/core",
+  "projectType": "library",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "packages/core",
+        "commands": [
+          "mkdir -p dist",
+          "clang++ -std=c++20 -Wall -Wextra -Werror -Iinclude -c src/bdk_core.cc -o dist/bdk_core.o",
+          "ar rcs dist/libbdkcore.a dist/bdk_core.o"
+        ],
+        "parallel": false
+      },
+      "inputs": ["{projectRoot}/src/**/*", "{projectRoot}/include/**/*", "{projectRoot}/project.json", "nativeToolchain", "sharedGlobals"],
+      "outputs": ["{projectRoot}/dist"]
+    }
+  }
+}

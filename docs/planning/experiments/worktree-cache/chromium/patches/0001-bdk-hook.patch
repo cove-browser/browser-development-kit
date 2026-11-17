@@ -1,0 +1,3 @@
+--- a/chrome/browser/ui/browser.cc
++++ b/chrome/browser/ui/browser.cc
+@@ dummy hook v1 @@

@@ -1,0 +1,1 @@
+{ "name": "bdk-wt-smoke", "private": true, "packageManager": "pnpm@11.1.2", "devDependencies": { "nx": "24.0.6" } }

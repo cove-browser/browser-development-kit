@@ -1,0 +1,27 @@
+{
+  "name": "js-protocol",
+  "root": "packages/js/protocol",
+  "projectType": "library",
+  "implicitDependencies": ["core"],
+  "targets": {
+    "codegen": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": { "command": "node tooling/gen-bindings.mjs packages/core/interface/commands.json packages/js/protocol/src/generated/commands.ts" },
+      "inputs": ["{workspaceRoot}/packages/core/interface/**/*", "{workspaceRoot}/tooling/gen-bindings.mjs"],
+      "outputs": ["{projectRoot}/src/generated"]
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["codegen"],
+      "options": { "cwd": "packages/js/protocol", "command": "tsc -p tsconfig.json" },
+      "inputs": ["{projectRoot}/src/**/*", "{projectRoot}/tsconfig.json", "{projectRoot}/project.json", "{workspaceRoot}/packages/core/interface/**/*", { "externalDependencies": ["typescript"] }, "sharedGlobals"],
+      "outputs": ["{projectRoot}/dist"]
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": { "cwd": "packages/js/protocol", "command": "node -e \"import('./dist/index.js').then(m=>{const s=m.describe(); if(s!=='abi=1 commands=settings.get,settings.set') {console.error(s); process.exit(1)} console.log('ts-test-ok')})\"" },
+      "inputs": ["{projectRoot}/src/**/*", { "dependentTasksOutputFiles": "**/*", "transitive": true }]
+    }
+  }
+}

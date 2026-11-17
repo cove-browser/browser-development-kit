@@ -1,0 +1,7 @@
+{
+  "abiVersion": 1,
+  "commands": [
+    { "name": "settings.get", "capability": "settings.read", "args": "{ key: string }", "result": "string | null" },
+    { "name": "settings.set", "capability": "settings.write", "args": "{ key: string; value: string }", "result": "void" }
+  ]
+}

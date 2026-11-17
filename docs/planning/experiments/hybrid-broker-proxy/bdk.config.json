@@ -1,0 +1,7 @@
+{
+  "browser": { "name": "Cove", "internal_scheme": "cove" },
+  "pages": {
+    "routes": { "preferences": "settings" },
+    "capabilities": { "settings": ["settings.read", "settings.write"], "newtab": [] }
+  }
+}

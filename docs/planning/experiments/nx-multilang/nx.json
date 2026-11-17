@@ -1,0 +1,12 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "namedInputs": {
+    "sharedGlobals": ["{workspaceRoot}/nx.json"],
+    "default": ["{projectRoot}/**/*", "sharedGlobals"],
+    "nativeToolchain": [{ "runtime": "sh tooling/toolchain-id.sh" }]
+  },
+  "targetDefaults": {
+    "build": { "cache": true, "dependsOn": ["^build"] },
+    "test": { "cache": true, "dependsOn": ["build"] }
+  }
+}

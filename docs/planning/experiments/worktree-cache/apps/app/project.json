@@ -1,0 +1,14 @@
+{
+  "name": "app",
+  "root": "apps/app",
+  "implicitDependencies": ["chromium"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands", "cache": true,
+      "dependsOn": [{ "projects": ["chromium"], "target": "runtime" }],
+      "options": { "command": "mkdir -p apps/app/dist && node -e \"const fs=require('fs');const r=JSON.parse(fs.readFileSync('.bdk/runtime.json'));fs.writeFileSync('apps/app/dist/app.txt','app linked against runtime '+r.key+' '+fs.readFileSync('.bdk/runtime/BDK Framework','utf8'))\" && cat apps/app/dist/app.txt" },
+      "inputs": ["{projectRoot}/src/**/*", { "dependentTasksOutputFiles": "**/runtime.json", "transitive": true }],
+      "outputs": ["{projectRoot}/dist"]
+    }
+  }
+}

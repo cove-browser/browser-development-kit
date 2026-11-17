@@ -1,0 +1,14 @@
+{
+  "name": "bdk-nx-smoke",
+  "private": true,
+  "packageManager": "pnpm@11.1.2",
+  "scripts": {
+    "build": "nx run-many -t build",
+    "test": "nx run-many -t test",
+    "graph": "nx graph --file=graph.json"
+  },
+  "devDependencies": {
+    "nx": "24.0.6",
+    "typescript": "7.0.2"
+  }
+}

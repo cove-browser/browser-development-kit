@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.build/
+.nx/
+graph.json
+packages/js/protocol/src/generated/
