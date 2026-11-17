@@ -82,10 +82,36 @@ export async function syncCheckout(ctx: CheckoutContext, options: SyncOptions = 
     await assertSafeToSync(ctx.src, pin.commit, patches);
   }
 
+  // gclient skips its own fetch only when --revision is a SHA it already has (a tag never counts),
+  // and that fetch is a full `git fetch origin` of every branch: over 20 minutes against Chromium,
+  // twice ending in an HTTP 502. So fetch just the pinned tag at depth 1 (under 4 minutes) and, once
+  // it resolves to the pinned commit, hand gclient the SHA. Best effort: on failure gclient fetches.
+  let revision = `refs/tags/${pin.tag}`;
+  if (existsSync(join(ctx.src, ".git"))) {
+    const resolveTag = async () =>
+      (
+        await run("git", ["rev-parse", "--verify", "--quiet", `${revision}^{commit}`], {
+          cwd: ctx.src,
+        })
+      ).stdout.trim();
+    let tagged = await resolveTag();
+    if (tagged !== pin.commit) {
+      log(`sync: fetching ${pin.tag} at depth 1`);
+      const r = await run(
+        "git",
+        ["fetch", "--depth=1", "--no-tags", "origin", `+${revision}:${revision}`],
+        { cwd: ctx.src, inherit: true },
+      );
+      if (r.code !== 0) log(`sync: depth-1 fetch of ${pin.tag} failed; gclient will fetch instead`);
+      tagged = await resolveTag();
+    }
+    if (tagged === pin.commit) revision = pin.commit;
+  }
+
   const gclientArgs = [
     "sync",
     "--revision",
-    `src@refs/tags/${pin.tag}`,
+    `src@${revision}`,
     "--no-history",
     "--shallow",
     "-D",

@@ -134,8 +134,14 @@ describe("chromium:sync", () => {
       join(sb.repo, "chromium", "pin.json"),
       JSON.stringify({ tag: "2.0.0", commit: up.commit2 }),
     );
+    // Without the tag locally, sync fetches just that tag before gclient runs.
+    await git(src, ["tag", "-d", "2.0.0"]);
     const ok = await cli("sync", ["--no-patch"], sb);
     expect(ok.code, ok.stderr).toBe(0);
+    expect(ok.stdout).toContain("sync: fetching 2.0.0 at depth 1");
+    expect(ok.stdout).not.toContain("depth-1 fetch of 2.0.0 failed");
+    // gclient gets the SHA, not the tag: with a tag it runs a full `git fetch origin` every time.
+    expect(log(sb)).toContain(`gclient sync --revision src@${up.commit2} --no-history`);
     expect((await git(src, ["rev-parse", "HEAD"])).trim()).toBe(up.commit2);
     expect((await git(src, ["rev-parse", "refs/worktree/bdk/base"])).trim()).toBe(up.commit2);
     expect((await git(src, ["rev-list", `${up.commit2}..HEAD`])).trim()).toBe("");

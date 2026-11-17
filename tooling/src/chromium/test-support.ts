@@ -132,9 +132,9 @@ const GCLIENT = `#!/bin/sh
 echo "gclient $* (cwd=$(pwd))" >> "$FAKE_LOG"
 if [ "$1" = sync ]; then
   [ -d src/.git ] || git clone -q "$FAKE_UPSTREAM" src
-  tag=$(echo "$*" | sed -n 's|.*refs/tags/\\([^ ]*\\).*|\\1|p')
-  git -C src fetch -q --tags origin
-  git -C src checkout -q -f --detach "refs/tags/$tag"
+  rev=$(echo "$*" | sed -n 's|.*--revision src@\\([^ ]*\\).*|\\1|p')
+  case "$rev" in refs/*) git -C src fetch -q --tags origin;; esac
+  git -C src checkout -q -f --detach "$rev"
 fi
 `;
 const GN = `#!/bin/sh
