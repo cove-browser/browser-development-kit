@@ -1,0 +1,36 @@
+{
+  "name": "bdk",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Browser Development Kit",
+  "type": "module",
+  "packageManager": "pnpm@11.1.2",
+  "engines": {
+    "node": ">=26.9.0 <27"
+  },
+  "scripts": {
+    "setup": "nx run tooling:setup --output-style=stream",
+    "format": "nx run-many -t format",
+    "lint": "nx run-many -t lint",
+    "test": "nx run-many -t test",
+    "build": "nx run-many -t build --exclude=chromium",
+    "cli:package": "nx run cli:package",
+    "chromium:sync": "nx run chromium:sync",
+    "chromium:build": "nx run chromium:build",
+    "chromium:package": "nx run chromium:package",
+    "chromium:publish": "nx run chromium:publish",
+    "test:release": "nx run-many -t test test-integration test-extensions test-e2e",
+    "dev:example": "nx run minimal-browser:dev",
+    "docs:build": "nx run docs-site:build"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.8",
+    "@commitlint/cli": "21.2.4",
+    "@commitlint/config-conventional": "21.2.4",
+    "@types/node": "26.6.6",
+    "nx": "24.0.6",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  }
+}

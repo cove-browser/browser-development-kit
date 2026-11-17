@@ -1,0 +1,53 @@
+{
+  "name": "core",
+  "root": "packages/core",
+  "projectType": "library",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "commands": [
+          "cmake -S packages/core -B packages/core/build -G Ninja",
+          "cmake --build packages/core/build"
+        ],
+        "parallel": false
+      },
+      "inputs": ["default", "nativeToolchain"],
+      "outputs": []
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "commands": [
+          "cmake -S packages/core -B packages/core/build -G Ninja",
+          "cmake --build packages/core/build",
+          "ctest --test-dir packages/core/build --output-on-failure"
+        ],
+        "parallel": false
+      },
+      "inputs": ["default", "nativeToolchain"],
+      "dependsOn": ["build"]
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "cmake -S packages/core -B packages/core/build -G Ninja",
+          "sh -c 'find packages/core -name \"*.h\" -o -name \"*.cc\" | grep -v /build/ | xargs clang-format --dry-run -Werror'",
+          "sh tooling/clang-tidy.sh packages/core/build packages/core"
+        ],
+        "parallel": false
+      },
+      "inputs": ["default", "lintConfig", "nativeToolchain"],
+      "dependsOn": ["build"]
+    },
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "sh -c 'find packages/core -name \"*.h\" -o -name \"*.cc\" | grep -v /build/ | xargs clang-format -i'"
+      }
+    }
+  }
+}

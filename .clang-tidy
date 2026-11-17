@@ -1,0 +1,8 @@
+Checks: >
+  -*,
+  bugprone-*,
+  clang-analyzer-*,
+  performance-*,
+  -bugprone-easily-swappable-parameters
+WarningsAsErrors: "*"
+HeaderFilterRegex: "packages/core/.*"

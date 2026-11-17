@@ -1,0 +1,35 @@
+{
+  "name": "docs-site",
+  "root": "apps/docs",
+  "projectType": "application",
+  "implicitDependencies": [],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "echo 'docs-site:build: not implemented until M9'"
+      }
+    },
+    "dev": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "echo 'docs-site:dev: not implemented until M9'"
+      }
+    },
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec biome format --write {projectRoot}"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "echo 'docs-site:lint: not implemented until M9'"
+      }
+    }
+  }
+}

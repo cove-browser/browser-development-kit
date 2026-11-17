@@ -1,0 +1,53 @@
+{
+  "name": "chromium",
+  "root": "chromium",
+  "projectType": "application",
+  "implicitDependencies": ["core"],
+  "targets": {
+    "runtime": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "pnpm exec tsx tooling/src/chromium/runtime.ts" }
+    },
+    "sync": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "pnpm exec tsx tooling/src/chromium/sync.ts" }
+    },
+    "patch-apply": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "pnpm exec tsx tooling/src/chromium/patch-apply.ts" }
+    },
+    "patch-export": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "pnpm exec tsx tooling/src/chromium/patch-export.ts" }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "pnpm exec tsx tooling/src/chromium/build.ts" }
+    },
+    "package": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "pnpm exec tsx tooling/src/chromium/package.ts" }
+    },
+    "publish": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "pnpm exec tsx tooling/src/chromium/publish.ts" }
+    },
+    "experiment": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "pnpm exec tsx tooling/src/chromium/experiment.ts" }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "echo 'chromium:lint: nothing to lint yet'" }
+    }
+  }
+}

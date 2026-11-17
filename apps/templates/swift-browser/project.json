@@ -1,0 +1,21 @@
+{
+  "name": "template-swift-browser",
+  "root": "apps/templates/swift-browser",
+  "projectType": "application",
+  "implicitDependencies": ["swift", "cli"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "echo 'template-swift-browser:build: not implemented until M9'"
+      }
+    },
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec biome format --write {projectRoot}"
+      }
+    }
+  }
+}

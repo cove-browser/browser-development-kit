@@ -1,0 +1,8 @@
+{
+  "name": "@bdk/tooling",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/paths.js",
+  "types": "dist/paths.d.ts"
+}

@@ -1,0 +1,8 @@
+packages:
+  - "packages/js/*"
+  - "packages/cli"
+  - "tooling"
+# pnpm 11 skips install scripts unless a package is listed here.
+allowBuilds:
+  nx: true
+  esbuild: true
