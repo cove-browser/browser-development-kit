@@ -50,6 +50,38 @@ Environment: `BDK_HOME`, `BDK_CHROMIUM_URL`, `BDK_DEPOT_TOOLS_URL`, `BDK_PATCH_C
 
 Tests use fixture repositories and a fake depot_tools (`src/chromium/test-support.ts`), never a real checkout.
 
+## Chromium roll bot (`src/roll/`)
+
+`pnpm exec nx run chromium:roll [-- --dry-run]` (or `pnpm exec tsx tooling/src/roll/roll.ts`) is the script behind
+`.github/workflows/chromium-roll.yml` (repository and tooling plan, section 6.1). Steps:
+
+1. Detect: the highest stable Mac version from the VersionHistory API, falling back to Chromium Dash.
+   Versions are compared numerically. If it is not newer than `chromium/pin.json`, it prints "pin is up to
+   date" and exits 0 without touching git or GitHub. Chromium Dash is also read for release dates.
+2. Resolve: `git ls-remote <remote> refs/tags/<v> refs/tags/<v>^{}`, preferring the peeled commit. A tag the
+   remote does not have yet is reported and the run ends with exit 0 (the next run retries).
+3. Check: `checkPatchSeries` (the `chromium:patch-check` library) at the new tag.
+4. Bump: branch `chromium-roll/<version>`, `tag` and `commit` rewritten, `runtime` reset to `null`, other
+   fields kept; one commit with the PR title.
+5. Pull request: title `feat(chromium): roll to <v>` when the milestone (first component) changes,
+   `fix(chromium): roll to <v>` for a point release. The body links the Chrome Releases blog search for the
+   version (not every build has a post) and the source log, gives days behind, and lists each failing patch
+   with its conflicting files. A failing series makes it a draft labelled `needs-rebase`. If any open PR has a
+   head starting with `chromium-roll/`, that PR is updated (title, body, draft state, label) and no second
+   one is opened; its existing branch name is kept, since a head cannot be renamed. If that branch already
+   pins the detected version it is not pushed again, so a runtime record a person pushed there survives.
+6. Issue: if the pin has been behind more than `--stale-days` (default 14, or `BDK_ROLL_STALE_DAYS`) an issue
+   `Chromium pin is N days behind stable`, labelled `chromium-pin-stale`, is opened or edited (risk R4).
+   "Days behind" is counted from the release date of the oldest stable release newer than the pin, as
+   Chromium Dash reports it; with no date the PR says "unknown" and no issue is raised.
+
+Options: `--dry-run` (read-only: detects, resolves and runs the patch check, prints the plan and the PR or issue
+text, creates no branch, pushes nothing, never calls `gh`), `--stale-days N`, `--remote R` (default the GitHub
+mirror, or `BDK_PATCH_CHECK_REMOTE`), `--base B` (default `main`). Real runs need `gh` authenticated by
+`GH_TOKEN` and a clean working tree. All GitHub and push operations go through the `GitHubClient` interface
+(`github.ts`): `GhCliClient` for real, `DryRunClient` for `--dry-run`, and a fake in the tests, which use
+fixture remotes and injected `fetch` only.
+
 ## `pnpm run setup`
 
 pnpm has a built-in `setup` command (it edits shell profiles), and built-ins win over scripts, so

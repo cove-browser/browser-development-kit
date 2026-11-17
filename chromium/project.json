@@ -31,6 +31,11 @@
       "cache": false,
       "options": { "command": "pnpm exec tsx tooling/src/chromium/patch-check.ts" }
     },
+    "roll": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "pnpm exec tsx tooling/src/roll/roll.ts" }
+    },
     "patch-export": {
       "executor": "nx:run-commands",
       "cache": false,
