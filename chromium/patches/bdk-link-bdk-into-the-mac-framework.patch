@@ -13,11 +13,15 @@ Also export bdk_overlay_marker() from the framework. The framework hides
 every symbol that is not in framework.exports, and the BDK build runs nm on
 the framework to check that //bdk was really linked in.
 
+List the marker in framework.order as well: verify_chrome_framework_order
+fails the build on any exported symbol that the order file does not name.
+
 Used by: the BDK engine (//bdk), checked by the chromium:build target.
 ---
  chrome/BUILD.gn              | 7 ++++++-
  chrome/app/framework.exports | 1 +
- 2 files changed, 7 insertions(+), 1 deletion(-)
+ chrome/app/framework.order   | 4 ++++
+ 3 files changed, 11 insertions(+), 1 deletion(-)
 
 diff --git a/chrome/BUILD.gn b/chrome/BUILD.gn
 index 06bfcf5a90d093b9ac8e255e93ef2ffd0a00421e..1ece07fef574d21cf4c2191270a76282c96ffb5b 100644
@@ -46,3 +50,17 @@ index 37c881f5d29511347ce508ce7bfb1f54cb37a120..3ad0d19a0c1debfe3cc7180c8d02a2a7
  _ChromeMain
  _ChromeWebAppShortcutCopierMain
 +_bdk_overlay_marker
+diff --git a/chrome/app/framework.order b/chrome/app/framework.order
+index 6dbc3aeff3f8b61285d4324fcb0eee6dcfe1b6ca..f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3 100644
+--- a/chrome/app/framework.order
++++ b/chrome/app/framework.order
+@@ -29,5 +29,9 @@ _ChromeAppModeStart_v8
+ # Entry point for the web app shortcut copier.
+ _ChromeWebAppShortcutCopierMain
+ 
++# BDK: exported marker from the //bdk overlay. See chromium/patches in the BDK
++# repository.
++_bdk_overlay_marker
++
+ # _ChromeMain must be listed last.  That's the whole point of this file.
+ _ChromeMain
