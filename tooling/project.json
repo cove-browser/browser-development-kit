@@ -31,7 +31,21 @@
           "sh tooling/actionlint.sh"
         ],
         "parallel": false
-      }
+      },
+      "inputs": [
+        "default",
+        "lintConfig",
+        "nativeToolchain",
+        "{workspaceRoot}/.github/**/*",
+        "{workspaceRoot}/package.json",
+        "{workspaceRoot}/commitlint.config.mjs",
+        "{workspaceRoot}/lefthook.yml",
+        "{workspaceRoot}/pnpm-workspace.yaml",
+        "{workspaceRoot}/chromium/pin.json",
+        "{workspaceRoot}/chromium/runtime-files.json",
+        "{workspaceRoot}/**/*.toml",
+        { "externalDependencies": ["@biomejs/biome", "typescript"] }
+      ]
     },
     "format": {
       "executor": "nx:run-commands",

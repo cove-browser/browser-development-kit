@@ -5,16 +5,14 @@
   "targets": {
     "build": {
       "executor": "nx:run-commands",
-      "cache": true,
+      "cache": false,
       "options": {
         "commands": [
           "cmake -S packages/core -B packages/core/build -G Ninja",
           "cmake --build packages/core/build"
         ],
         "parallel": false
-      },
-      "inputs": ["default", "nativeToolchain"],
-      "outputs": []
+      }
     },
     "test": {
       "executor": "nx:run-commands",

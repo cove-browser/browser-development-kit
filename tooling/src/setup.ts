@@ -59,7 +59,9 @@ function main(): number {
 
   // 4. Git hooks.
   if (probeTool({ name: "lefthook", args: ["version"], purpose: "" }) === undefined) {
-    console.warn("warning: lefthook not found; git hooks were not installed.");
+    fail(
+      "lefthook is not on PATH, so the git hooks could not be installed. Install it (brew install lefthook).",
+    );
   } else if (run("lefthook", ["install"])) {
     console.log("ok: lefthook hooks installed");
   } else {

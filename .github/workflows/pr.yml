@@ -103,6 +103,12 @@ jobs:
         # swift needs Xcode and runs in the swift-macos job, so it is excluded here too.
         run: pnpm exec nx affected -t lint test build --exclude=chromium,swift
 
+      # Workflows, hooks and root configuration belong to no project, so `nx affected` never selects
+      # the checks that read them (actionlint, Biome on root files, taplo). Run them on every PR;
+      # an affected run above makes this a cache hit.
+      - name: Repository configuration and workflow checks
+        run: pnpm exec nx run tooling:lint
+
       - name: Patch series applies to the pinned Chromium tag
         run: pnpm exec nx run chromium:patch-check
 
