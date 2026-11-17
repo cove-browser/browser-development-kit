@@ -36,10 +36,17 @@ export interface PrUpdate {
 export interface GitHubClient {
   /** Open pull requests whose head branch starts with `chromium-roll/`. */
   listRollPrs(): Promise<RollPr[]>;
-  /** Content of `path` at the tip of `branch` on the remote, or null when the branch or file is absent. */
-  remoteFile(branch: string, path: string): Promise<string | null>;
-  /** Pushes the local `branch`. `update` means the branch exists on the remote and is replaced (with lease). */
-  pushBranch(o: { cwd: string; branch: string; update: boolean }): Promise<void>;
+  /**
+   * Fetches the full history of `branch` from the remote into the local repository and returns the commit it
+   * points at, or null when the remote has no such branch. Throws when the fetch itself fails.
+   */
+  fetchBranch(branch: string): Promise<string | null>;
+  /**
+   * Pushes the local `branch`. Without `replaceSha` the push must be a fast-forward (or create the branch) and
+   * is never forced. With `replaceSha` the remote branch is replaced, but only while it still points at exactly
+   * that commit (`--force-with-lease=<ref>:<sha>`).
+   */
+  pushBranch(o: { cwd: string; branch: string; replaceSha?: string }): Promise<void>;
   ensureLabel(name: string, color: string, description: string): Promise<void>;
   createPr(pr: NewPr): Promise<{ number: number; url: string }>;
   updatePr(current: RollPr, update: PrUpdate): Promise<void>;
@@ -87,7 +94,7 @@ export class GhCliClient implements GitHubClient {
       "--limit",
       "200",
       "--json",
-      "number,url,title,headRefName,isDraft,labels",
+      "number,url,title,headRefName,isDraft,labels,isCrossRepository",
     ]);
     const rows = JSON.parse(out) as Array<{
       number: number;
@@ -95,10 +102,12 @@ export class GhCliClient implements GitHubClient {
       title: string;
       headRefName: string;
       isDraft: boolean;
+      isCrossRepository?: boolean;
       labels: Array<{ name: string }>;
     }>;
+    // A pull request from a fork can carry any branch name; only branches of this repository are the bot's.
     return rows
-      .filter((r) => r.headRefName.startsWith(ROLL_BRANCH_PREFIX))
+      .filter((r) => r.headRefName.startsWith(ROLL_BRANCH_PREFIX) && r.isCrossRepository !== true)
       .map((r) => ({
         number: r.number,
         url: r.url,
@@ -109,23 +118,25 @@ export class GhCliClient implements GitHubClient {
       }));
   }
 
-  async remoteFile(branch: string, path: string): Promise<string | null> {
+  async fetchBranch(branch: string): Promise<string | null> {
+    const listed = await this.exec("git", [
+      "ls-remote",
+      "--heads",
+      "origin",
+      `refs/heads/${branch}`,
+    ]);
+    if (listed.trim() === "") return null;
     const ref = `refs/remotes/origin/${branch}`;
-    const fetched = await run(
-      "git",
-      ["fetch", "--quiet", "--depth=1", "origin", `+refs/heads/${branch}:${ref}`],
-      { cwd: this.cwd },
-    );
-    if (fetched.code !== 0) return null;
-    const shown = await run("git", ["show", `${ref}:${path}`], { cwd: this.cwd });
-    return shown.code === 0 ? shown.stdout : null;
+    await this.exec("git", ["fetch", "--quiet", "origin", `+refs/heads/${branch}:${ref}`]);
+    return (await this.exec("git", ["rev-parse", `${ref}^{commit}`])).trim();
   }
 
-  async pushBranch(o: { cwd: string; branch: string; update: boolean }): Promise<void> {
-    // The lease compares against the remote-tracking ref remoteFile() fetched, so a commit someone else
-    // pushed to the roll branch since then is not overwritten.
+  async pushBranch(o: { cwd: string; branch: string; replaceSha?: string }): Promise<void> {
     const args = ["push", "origin", `${o.branch}:refs/heads/${o.branch}`];
-    if (o.update) args.splice(1, 0, `--force-with-lease=refs/heads/${o.branch}`);
+    // The lease names the commit fetchBranch() saw, not the remote-tracking ref, so a commit pushed after
+    // that fetch is never overwritten.
+    if (o.replaceSha !== undefined)
+      args.splice(1, 0, `--force-with-lease=refs/heads/${o.branch}:${o.replaceSha}`);
     await this.exec("git", args, undefined, o.cwd);
   }
 
@@ -206,10 +217,10 @@ export class DryRunClient implements GitHubClient {
     this.say("dry-run: would list open roll PRs with gh (not called; assuming none)");
     return [];
   }
-  async remoteFile(): Promise<string | null> {
+  async fetchBranch(): Promise<string | null> {
     return null;
   }
-  async pushBranch(o: { branch: string; update: boolean }): Promise<void> {
+  async pushBranch(o: { branch: string }): Promise<void> {
     this.say(`dry-run: would push ${o.branch}`);
   }
   async ensureLabel(name: string): Promise<void> {

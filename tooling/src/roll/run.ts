@@ -1,8 +1,9 @@
 // The Chromium roll (repository and tooling plan, section 6.1): detect, resolve, bump, check, open or update one PR.
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkPatchSeries, type PatchCheckResult } from "../chromium/patch-check.js";
-import { git, gitRaw } from "../git.js";
+import { git, gitRaw, run } from "../git.js";
 import { parsePin } from "../runtime/pin.js";
 import {
   type GitHubClient,
@@ -21,11 +22,15 @@ import {
 } from "./version.js";
 
 export const DEFAULT_STALE_DAYS = 14;
+const ROLL_NAME = "BDK Chromium roll";
+const ROLL_EMAIL = "roll@bdk.invalid";
+/** Every commit the bot makes ends with `BDK-Roll-Bot: <version>`; with the identity, that marks it as the bot's. */
+export const ROLL_TRAILER = "BDK-Roll-Bot";
 const ROLL_IDENTITY = [
   "-c",
-  "user.name=BDK Chromium roll",
+  `user.name=${ROLL_NAME}`,
   "-c",
-  "user.email=roll@bdk.invalid",
+  `user.email=${ROLL_EMAIL}`,
   "-c",
   "commit.gpgsign=false",
 ];
@@ -49,6 +54,7 @@ export interface RollOptions {
 
 export type RollOutcome =
   | { readonly kind: "up-to-date"; readonly pin: string; readonly stable: string }
+  /** The open roll PR already pins a version newer than the detected stable; nothing is changed. */
   | { readonly kind: "tag-missing"; readonly version: string }
   | {
       readonly kind: "rolled";
@@ -126,16 +132,16 @@ export function renderPrBody(b: BodyInput): string {
     );
     for (const p of b.check.patches) {
       if (p.status === "applied") continue;
-      lines.push(`- \`${p.patch}\`: ${p.status}`);
+      lines.push(`- ${code(p.patch)}: ${p.status}`);
       if (p.status === "conflict") {
-        if (p.files.length === 0) lines.push(`  - ${firstLine(p.detail)}`);
-        for (const f of p.files) lines.push(`  - conflicting file: \`${f}\``);
+        if (p.files.length === 0) lines.push(`  - ${plain(firstLine(p.detail))}`);
+        for (const f of p.files) lines.push(`  - conflicting file: ${code(f)}`);
       } else {
-        lines.push(`  - ${p.detail}`);
+        lines.push(`  - ${plain(p.detail)}`);
       }
     }
     for (const o of b.check.orphans)
-      lines.push(`- \`${o}\` is in the patches directory but not in \`series\``);
+      lines.push(`- ${code(o)} is in the patches directory but not in \`series\``);
   }
   lines.push(
     "",
@@ -146,6 +152,19 @@ export function renderPrBody(b: BodyInput): string {
     "_Opened by the Chromium roll bot (`chromium-roll.yml`). The bot rewrites this description and `chromium/pin.json` when a newer stable appears._",
   );
   return lines.join("\n");
+}
+
+/** Inline code span for text that comes from the repository: no backticks, one line. */
+function code(s: string): string {
+  return `\`${s.replace(/[`\r\n]/g, " ")}\``;
+}
+
+/** Text from tool output for a markdown list item: one line, no markup, no mentions or links. */
+function plain(s: string): string {
+  return s
+    .replace(/[\r\n]+/g, " ")
+    .replace(/[`@<>[\]*_]/g, "\\$&")
+    .slice(0, 300);
 }
 
 function firstLine(s: string): string {
@@ -181,8 +200,11 @@ export function renderIssue(o: {
 async function bumpBranch(o: {
   repoRoot: string;
   branch: string;
+  /** Commit the branch is built on; the checked-out commit when absent. */
+  startPoint?: string;
   pinText: string;
   title: string;
+  version: string;
 }): Promise<() => Promise<void>> {
   const dirty = (await git(o.repoRoot, ["status", "--porcelain"])).trim();
   if (dirty)
@@ -191,14 +213,74 @@ async function bumpBranch(o: {
     await git(o.repoRoot, ["symbolic-ref", "--quiet", "--short", "HEAD"]).catch(() => "")
   ).trim();
   const original = head || (await git(o.repoRoot, ["rev-parse", "HEAD"])).trim();
-  await git(o.repoRoot, ["checkout", "--quiet", "-B", o.branch]);
+  await git(o.repoRoot, [
+    "checkout",
+    "--quiet",
+    "-B",
+    o.branch,
+    ...(o.startPoint === undefined ? [] : [o.startPoint]),
+  ]);
   writeFileSync(join(o.repoRoot, "chromium", "pin.json"), o.pinText);
   await git(o.repoRoot, ["add", "chromium/pin.json"]);
-  await git(o.repoRoot, [...ROLL_IDENTITY, "commit", "--quiet", "-m", o.title]);
+  // The environment wins over -c, so set the author explicitly too: the identity marks the bot's commits.
+  await git(
+    o.repoRoot,
+    [...ROLL_IDENTITY, "commit", "--quiet", "-m", o.title, "-m", `${ROLL_TRAILER}: ${o.version}`],
+    {
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: ROLL_NAME,
+        GIT_AUTHOR_EMAIL: ROLL_EMAIL,
+        GIT_COMMITTER_NAME: ROLL_NAME,
+        GIT_COMMITTER_EMAIL: ROLL_EMAIL,
+      },
+    },
+  );
   return async () => {
     await gitRaw(o.repoRoot, ["checkout", "--quiet", original]);
   };
 }
+
+/**
+ * True when every commit in `HEAD..sha` is one the bot made: the roll identity, the trailer, and nothing
+ * touched but chromium/pin.json. Any other commit is a person's work and must survive.
+ */
+export async function onlyBotCommits(repoRoot: string, sha: string): Promise<boolean> {
+  const shas = (await git(repoRoot, ["rev-list", `HEAD..${sha}`])).split("\n").filter(Boolean);
+  for (const c of shas) {
+    const meta = await git(repoRoot, ["show", "-s", "--format=%ae%x00%B", c]);
+    const [email, message = ""] = meta.split("\0");
+    if (email?.trim() !== ROLL_EMAIL) return false;
+    if (!new RegExp(`^${ROLL_TRAILER}: \\d+(\\.\\d+)*\\s*$`, "m").test(message)) return false;
+    const files = (await git(repoRoot, ["diff-tree", "--no-commit-id", "--name-only", "-r", c]))
+      .split("\n")
+      .filter(Boolean);
+    if (files.length !== 1 || files[0] !== "chromium/pin.json") return false;
+  }
+  return true;
+}
+
+/** Writes `chromium/patches` as committed at `sha` to a temporary directory; returns it and a cleanup. */
+async function patchesAt(
+  repoRoot: string,
+  sha: string,
+): Promise<{ dir: string; cleanup: () => void }> {
+  const tmp = mkdtempSync(join(tmpdir(), "bdk-roll-head-"));
+  const cleanup = () => rmSync(tmp, { recursive: true, force: true });
+  try {
+    const tarball = join(tmp, "patches.tar");
+    await git(repoRoot, ["archive", "--format=tar", "-o", tarball, sha, "chromium/patches"]);
+    mkdirSync(join(tmp, "tree"));
+    const x = await run("tar", ["-xf", tarball, "-C", join(tmp, "tree")]);
+    if (x.code !== 0) throw new Error(`tar failed: ${x.stderr.trim()}`);
+  } catch (e) {
+    cleanup();
+    throw new Error(`could not read chromium/patches at ${sha}: ${(e as Error).message}`);
+  }
+  return { dir: join(tmp, "tree", "chromium", "patches"), cleanup };
+}
+
+type BranchMode = "create" | "keep" | "extend" | "replace";
 
 export async function roll(opts: RollOptions): Promise<RollOutcome> {
   const log = opts.log ?? (() => {});
@@ -227,47 +309,100 @@ export async function roll(opts: RollOptions): Promise<RollOutcome> {
   }
   log(`roll: ${version} resolves to ${commit}`);
 
-  // 4. Check the patch series at the new tag (no build). Done before touching branches; it only reads.
-  const check = await checkPatchSeries({
-    remote: opts.remote,
-    tag: version,
-    expectCommit: commit,
-    patchesDir: join(opts.repoRoot, "chromium", "patches"),
-    log,
-  });
+  const client = opts.client;
   const title = rollTitle(pin.tag, version);
   const days = daysBehind(pin.tag, stable.releases, now);
-  const draft = !check.ok;
+
+  // 3. Plan the branch. The roll branch may carry a person's commits (rebased patches, overlay fixes), so what
+  // is on the remote decides what the bot may do to it.
+  const open = await client.listRollPrs();
+  if (open.length > 1)
+    log(`roll: ${open.length} roll PRs are open; updating #${open[0]?.number}, leaving the others`);
+  const existing: RollPr | undefined = open[0];
+  const branch = existing?.headRefName ?? `${ROLL_BRANCH_PREFIX}${version}`;
+  // Also looked up without a PR: a rerun after a push whose PR creation failed must not push a second branch.
+  const headSha = await client.fetchBranch(branch);
+  let mode: BranchMode = "create";
+  let basePin = pinText;
+  if (headSha !== null) {
+    const shown = await gitRaw(opts.repoRoot, ["show", `${headSha}:chromium/pin.json`]);
+    const headPinText = shown.code === 0 ? shown.stdout : null;
+    const headTag = headPinText === null ? null : safeTag(headPinText);
+    if (headTag !== null && compareVersions(headTag, version) > 0) {
+      log(
+        `roll: ${branch} already pins ${headTag}, newer than stable ${version}; leaving it as it is`,
+      );
+      return { kind: "up-to-date", pin: headTag, stable: version };
+    }
+    if (headTag === version) {
+      // A person may have pushed a built runtime to this branch; do not reset it.
+      mode = "keep";
+    } else if (await onlyBotCommits(opts.repoRoot, headSha)) {
+      mode = "replace";
+    } else {
+      mode = "extend";
+      if (headTag !== null && headPinText !== null) basePin = headPinText;
+    }
+  }
+  log(`roll: branch ${branch}: ${mode}${headSha ? ` (remote at ${headSha})` : ""}`);
+
+  // 4. Check the patch series at the new tag (no build); only reads. A branch that keeps or extends the
+  // remote is judged by its own patches, not the default branch's: a maintainer may have repaired them.
+  let patchesDir = join(opts.repoRoot, "chromium", "patches");
+  let cleanup = () => {};
+  if (headSha !== null && (mode === "keep" || mode === "extend")) {
+    const at = await patchesAt(opts.repoRoot, headSha);
+    patchesDir = at.dir;
+    cleanup = at.cleanup;
+  }
+  let check: PatchCheckResult;
+  try {
+    check = await checkPatchSeries({
+      remote: opts.remote,
+      tag: version,
+      expectCommit: commit,
+      patchesDir,
+      log,
+    });
+  } finally {
+    cleanup();
+  }
+  // A PR that already exists keeps its draft state unless its own patches conflict: a person may have
+  // marked it ready, and the bot never takes that back.
+  const draft = existing && check.ok ? existing.isDraft : !check.ok;
   const body = renderPrBody({ oldTag: pin.tag, newTag: version, commit, daysBehind: days, check });
   log(
-    `roll: ${title}; patch series ${check.ok ? "applies" : "FAILS"}${draft ? " (draft, needs-rebase)" : ""}`,
+    `roll: ${title}; patch series ${check.ok ? "applies" : "FAILS"}${!check.ok ? " (draft, needs-rebase)" : ""}`,
   );
 
-  const client = opts.client;
-
-  // 3 and 5. Bump on a branch and open or update the one roll PR.
-  const existing: RollPr | undefined = (await client.listRollPrs())[0];
-  const branch = existing?.headRefName ?? `${ROLL_BRANCH_PREFIX}${version}`;
-  const newPin = bumpedPinText(pinText, version, commit);
-
-  const remotePin = existing ? await client.remoteFile(branch, "chromium/pin.json") : null;
-  const remoteTag = remotePin ? safeTag(remotePin) : null;
-  if (remoteTag === version) {
-    // A person may have pushed a built runtime to this branch; do not reset it.
+  // 5. Bump the branch, then open or update the one roll PR.
+  const newPin = bumpedPinText(basePin, version, commit);
+  if (mode === "keep") {
     log(`roll: ${branch} already pins ${version}; leaving the branch as it is`);
   } else if (dry) {
-    log(`dry-run: would commit to ${branch} (from ${base}) and push:\n${newPin}`);
-    await client.pushBranch({ cwd: opts.repoRoot, branch, update: existing !== undefined });
+    log(`dry-run: would commit to ${branch} (${mode}) and push:\n${newPin}`);
+    await client.pushBranch({ cwd: opts.repoRoot, branch });
   } else {
-    const restore = await bumpBranch({ repoRoot: opts.repoRoot, branch, pinText: newPin, title });
+    const restore = await bumpBranch({
+      repoRoot: opts.repoRoot,
+      branch,
+      ...(mode === "extend" && headSha !== null ? { startPoint: headSha } : {}),
+      pinText: newPin,
+      title,
+      version,
+    });
     try {
-      await client.pushBranch({ cwd: opts.repoRoot, branch, update: existing !== undefined });
+      await client.pushBranch({
+        cwd: opts.repoRoot,
+        branch,
+        ...(mode === "replace" && headSha !== null ? { replaceSha: headSha } : {}),
+      });
     } finally {
       await restore();
     }
   }
 
-  if (draft) {
+  if (!check.ok) {
     await client.ensureLabel(
       NEEDS_REBASE_LABEL,
       "d93f0b",
@@ -281,9 +416,10 @@ export async function roll(opts: RollOptions): Promise<RollOutcome> {
       title,
       body,
       draft,
-      addLabels: draft && !existing.labels.includes(NEEDS_REBASE_LABEL) ? [NEEDS_REBASE_LABEL] : [],
+      addLabels:
+        !check.ok && !existing.labels.includes(NEEDS_REBASE_LABEL) ? [NEEDS_REBASE_LABEL] : [],
       removeLabels:
-        !draft && existing.labels.includes(NEEDS_REBASE_LABEL) ? [NEEDS_REBASE_LABEL] : [],
+        check.ok && existing.labels.includes(NEEDS_REBASE_LABEL) ? [NEEDS_REBASE_LABEL] : [],
     });
     prUrl = existing.url;
     log(`roll: updated ${prUrl}`);
