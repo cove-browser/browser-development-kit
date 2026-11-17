@@ -614,8 +614,8 @@ BDK_EXPORT bdk_call_t bdk_runtime_shutdown(bdk_runtime_t h, bdk_result_cb cb, vo
     for (auto& kv : rt->ui_handlers)
         release_later(kv.second.ctx, kv.second.rel);
     for (auto& r : rt->requests) {
-        if (!r->finished)
-            release_later(r->wctx, r->wrel);
+        r->finished = true;
+        release_withdrawn(*r);
     }
     release_later(rt->log_ctx, rt->log_rel);
     rt->log_cb = nullptr;

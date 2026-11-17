@@ -1,5 +1,7 @@
 /* Stub runtime: profiles, WebContents, views, windows, UI requests and the test hooks. */
 #include <algorithm>
+#include <climits>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -27,6 +29,7 @@ void close_profile(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Pro
 }
 
 void destroy_contents(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Contents>& c) {
+    withdraw_contents_requests(rt, c->handle);
     c->dead = true;
     if (c->nav)
         c->nav->cancelled = true;
@@ -226,7 +229,124 @@ std::shared_ptr<Request> request_of(bdk_request_t h, std::shared_ptr<Runtime>* r
     return r;
 }
 
+enum class ParseState : uint8_t { kOk, kTooNew, kMalformed };
+
+/* A bounds-checked cursor over the serialised session state. Nothing here relies on a terminator or
+   on arithmetic that can overflow: every length is compared against the bytes that remain. */
+struct StateCursor {
+    const char* p;
+    size_t n;
+    size_t pos = 0;
+    size_t remaining() const {
+        return n - pos;
+    }
+    bool expect(char ch) {
+        if (pos >= n || p[pos] != ch)
+            return false;
+        ++pos;
+        return true;
+    }
+    /* Decimal digits only (no sign, no space); false on no digits or a value above UINT64_MAX. */
+    bool uint(uint64_t* out) {
+        size_t start = pos;
+        uint64_t v = 0;
+        while (pos < n && p[pos] >= '0' && p[pos] <= '9') {
+            uint64_t d = static_cast<uint64_t>(p[pos] - '0');
+            if (v > (UINT64_MAX - d) / 10)
+                return false;
+            v = v * 10 + d;
+            ++pos;
+        }
+        *out = v;
+        return pos != start;
+    }
+};
+
+ParseState parse_session_state(const char* data, size_t length, long* current_out,
+                               std::vector<Entry>* entries_out) {
+    static const char kMagic[] = "BDKSTUB";
+    const size_t magic = sizeof kMagic - 1;
+    StateCursor cur{data, length};
+    if (length < magic || memcmp(data, kMagic, magic) != 0)
+        return ParseState::kMalformed;
+    cur.pos = magic;
+    size_t version_start = cur.pos;
+    while (cur.pos < cur.n && data[cur.pos] >= '0' && data[cur.pos] <= '9')
+        ++cur.pos;
+    if (cur.pos == version_start)
+        return ParseState::kMalformed;
+    if (!(cur.pos - version_start == 1 && data[version_start] == '1'))
+        return ParseState::kTooNew;
+    if (!cur.expect(' '))
+        return ParseState::kMalformed;
+
+    /* current is -1 or an index; count is the number of entries. */
+    bool no_current = cur.expect('-');
+    uint64_t current = 0, count = 0;
+    if (no_current) {
+        if (!cur.expect('1'))
+            return ParseState::kMalformed;
+    } else if (!cur.uint(&current)) {
+        return ParseState::kMalformed;
+    }
+    if (!cur.expect(' ') || !cur.uint(&count) || !cur.expect('\n'))
+        return ParseState::kMalformed;
+    /* Each entry takes at least "0 0\n\n" (5 bytes), which bounds the count by the input. */
+    if (count > cur.remaining() / 5 || count > static_cast<uint64_t>(INT_MAX))
+        return ParseState::kMalformed;
+    if (!no_current && current >= count)
+        return ParseState::kMalformed;
+
+    std::vector<Entry> entries;
+    for (uint64_t i = 0; i < count; ++i) {
+        uint64_t ul = 0, tl = 0;
+        if (!cur.uint(&ul) || !cur.expect(' ') || !cur.uint(&tl) || !cur.expect('\n'))
+            return ParseState::kMalformed;
+        size_t left = cur.remaining();
+        if (ul > left || tl > left - static_cast<size_t>(ul))
+            return ParseState::kMalformed;
+        size_t u = static_cast<size_t>(ul), t = static_cast<size_t>(tl);
+        if (left - u - t < 1 || data[cur.pos + u + t] != '\n')
+            return ParseState::kMalformed;
+        entries.push_back(
+            Entry{std::string(data + cur.pos, u), std::string(data + cur.pos + u, t)});
+        cur.pos += u + t + 1;
+    }
+    if (cur.pos != cur.n) /* trailing bytes */
+        return ParseState::kMalformed;
+    *current_out = no_current ? -1 : static_cast<long>(current);
+    *entries_out = std::move(entries);
+    return ParseState::kOk;
+}
+
 } // namespace
+
+namespace bdkstub {
+
+void release_withdrawn(Request& r) {
+    release_later(r.wctx, r.wrel);
+    r.wctx = nullptr;
+    r.wrel = nullptr;
+}
+
+/* contents 0 withdraws every unfinished request. The withdrawn callback runs only here, then the
+   release. */
+void withdraw_contents_requests(const std::shared_ptr<Runtime>& rt, bdk_contents_t contents) {
+    for (auto& r : std::vector<std::shared_ptr<Request>>(rt->requests)) {
+        if (r->finished || (contents && r->contents != contents))
+            continue;
+        r->finished = true;
+        set_outcome(rt, *r, BDK_STUB_UI_WITHDRAWN, "", "");
+        if (r->withdrawn) {
+            void (*cb)(void*) = r->withdrawn;
+            void* ctx = r->wctx;
+            post([cb, ctx] { cb(ctx); });
+        }
+        release_withdrawn(*r);
+    }
+}
+
+} // namespace bdkstub
 
 extern "C" {
 
@@ -450,6 +570,8 @@ BDK_EXPORT bdk_status_t bdk_contents_close(bdk_contents_t h, bdk_error_t* err) {
         return BDK_OK;
     cancel_nav(c, "aborted");
     c->closed = true;
+    if (auto rt = c->rt.lock())
+        withdraw_contents_requests(rt, c->handle);
     emit_later(c, BDK_CONTENTS_EVENT_CLOSED, "", "{}", 0, 0);
     return BDK_OK;
 }
@@ -595,34 +717,19 @@ BDK_EXPORT bdk_status_t bdk_contents_restore(bdk_contents_t h, bdk_bytes_t state
     auto c = open_contents_for(h, err, &st);
     if (!c)
         return st;
-    if (!state.data && state.length)
-        return BDK_ERR_INVALID_ARGUMENT;
-    std::string s(reinterpret_cast<const char*>(state.data), state.length);
-    if (s.compare(0, 7, "BDKSTUB") != 0 || s.size() < 9)
-        return BDK_ERR_INVALID_ARGUMENT;
-    if (s[7] != '1')
-        return fail(err, BDK_DOMAIN_CONTENTS, "stateTooNew",
-                    "the session state is from a newer format");
-    const char* p = s.c_str() + 9;
-    char* end = nullptr;
-    long current = strtol(p, &end, 10);
-    long count = strtol(end, &end, 10);
-    if (count < 0 || current < -1 || current >= count || *end != '\n')
+    if (!state.data || state.length == 0)
         return BDK_ERR_INVALID_ARGUMENT;
     std::vector<Entry> entries;
-    size_t pos = static_cast<size_t>(end - s.c_str()) + 1;
-    for (long i = 0; i < count; ++i) {
-        const char* q = s.c_str() + pos;
-        long ul = strtol(q, &end, 10);
-        long tl = strtol(end, &end, 10);
-        if (ul < 0 || tl < 0 || *end != '\n')
-            return BDK_ERR_INVALID_ARGUMENT;
-        pos = static_cast<size_t>(end - s.c_str()) + 1;
-        if (pos + static_cast<size_t>(ul + tl) > s.size())
-            return BDK_ERR_INVALID_ARGUMENT;
-        entries.push_back(Entry{s.substr(pos, static_cast<size_t>(ul)),
-                                s.substr(pos + static_cast<size_t>(ul), static_cast<size_t>(tl))});
-        pos += static_cast<size_t>(ul + tl) + 1;
+    long current = -1;
+    switch (parse_session_state(reinterpret_cast<const char*>(state.data), state.length, &current,
+                                &entries)) {
+    case ParseState::kOk:
+        break;
+    case ParseState::kTooNew:
+        return fail(err, BDK_DOMAIN_CONTENTS, "stateTooNew",
+                    "the session state is from a newer format");
+    case ParseState::kMalformed:
+        return BDK_ERR_INVALID_ARGUMENT;
     }
     cancel_nav(c, "aborted");
     c->entries = std::move(entries);
@@ -734,8 +841,10 @@ BDK_EXPORT void bdk_contents_set_keyboard_handler(bdk_contents_t h, bdk_key_rese
                                                   bdk_release_cb rel) {
     bdk_status_t st;
     auto c = contents_for(h, nullptr, &st);
-    if (!c)
+    if (!c) { /* rejected: BDK never took the context, and this function cannot report it */
+        release_later(ctx, rel);
         return;
+    }
     release_later(c->key_ctx, c->key_rel);
     c->key_reserve = reserve;
     c->key_unhandled = unhandled;
@@ -829,7 +938,7 @@ BDK_EXPORT bdk_status_t bdk_ui_complete(bdk_request_t h, bdk_string_t completion
         return fail(err, BDK_DOMAIN_UI, BDK_CODE_GESTURE_REQUIRED,
                     "a granting completion needs the gesture event");
     r->finished = true;
-    release_later(r->wctx, r->wrel);
+    release_withdrawn(*r);
     set_outcome(rt, *r, BDK_STUB_UI_COMPLETED, c, a);
     return BDK_OK;
 }
@@ -846,19 +955,19 @@ BDK_EXPORT bdk_status_t bdk_ui_use_default(bdk_request_t h, bdk_error_t* err) {
         return fail(err, BDK_DOMAIN_UI, BDK_CODE_REQUEST_COMPLETED,
                     "the request is already completed");
     r->finished = true;
-    release_later(r->wctx, r->wrel);
+    release_withdrawn(*r);
     set_outcome(rt, *r, BDK_STUB_UI_DEFAULTED, "", "");
     return BDK_OK;
 }
 
 BDK_EXPORT void bdk_ui_set_withdrawn_handler(bdk_request_t h, void (*cb)(void*), void* ctx,
                                              bdk_release_cb rel) {
-    if (check_thread() != BDK_OK)
+    auto r = check_thread() == BDK_OK ? get<Request>(h, T_REQUEST) : nullptr;
+    if (!r || r->finished) { /* rejected or already over: BDK will never use the context */
+        release_later(ctx, rel);
         return;
-    auto r = get<Request>(h, T_REQUEST);
-    if (!r)
-        return;
-    release_later(r->wctx, r->wrel);
+    }
+    release_withdrawn(*r); /* a replaced handler is released */
     r->withdrawn = cb;
     r->wctx = ctx;
     r->wrel = rel;
@@ -873,7 +982,7 @@ BDK_EXPORT void bdk_ui_request_release(bdk_request_t h) {
         return;
     if (!r->finished) {
         r->finished = true;
-        release_later(r->wctx, r->wrel);
+        release_withdrawn(*r);
         set_outcome(rt, *r, BDK_STUB_UI_CANCELLED, "", "");
     }
     table_free(h);
@@ -934,9 +1043,11 @@ BDK_EXPORT bdk_status_t bdk_stub_raise_ui_request(bdk_runtime_t h, uint32_t surf
         r->delivered = true;
         if (resp == BDK_UI_USE_DEFAULT && !r->finished) {
             r->finished = true;
+            release_withdrawn(*r);
             set_outcome(rt, *r, BDK_STUB_UI_DEFAULTED, "", "");
         } else if (resp == BDK_UI_REJECT && !r->finished) {
             r->finished = true;
+            release_withdrawn(*r);
             set_outcome(rt, *r, BDK_STUB_UI_REJECTED, "", "");
         }
     });
@@ -949,18 +1060,7 @@ BDK_EXPORT bdk_status_t bdk_stub_withdraw_ui_requests(bdk_runtime_t h) {
     auto rt = runtime_of(h);
     if (!rt)
         return BDK_ERR_STALE_HANDLE;
-    for (auto& r : rt->requests) {
-        if (r->finished)
-            continue;
-        r->finished = true;
-        set_outcome(rt, *r, BDK_STUB_UI_WITHDRAWN, "", "");
-        if (r->withdrawn) {
-            void (*cb)(void*) = r->withdrawn;
-            void* ctx = r->wctx;
-            post([cb, ctx] { cb(ctx); });
-            release_later(ctx, r->wrel);
-        }
-    }
+    withdraw_contents_requests(rt, 0);
     return BDK_OK;
 }
 

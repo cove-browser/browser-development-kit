@@ -1,5 +1,7 @@
 /* WebContents: lifecycle, navigation state machine, events, session state, page controls, keyboard.
  */
+#include <stdlib.h>
+
 #include "test_support.h"
 
 #define URL_A "https://example.com/a"
@@ -267,6 +269,111 @@ static void test_restore_rejects_garbage_and_newer_formats(void) {
     CHECK(t_error_is(err, "contents", "stateTooNew"));
 }
 
+/* The bytes are copied into an allocation of exactly this size, so a sanitizer sees any read past
+ * it. */
+static bdk_status_t restore_exact(bdk_contents_t c, const char* text, size_t n) {
+    uint8_t* copy = (uint8_t*)malloc(n ? n : 1);
+    REQUIRE(copy != NULL);
+    if (n)
+        memcpy(copy, text, n);
+    bdk_bytes_t bytes = {copy, n};
+    bdk_error_t err = 0;
+    bdk_status_t status = bdk_contents_restore(c, bytes, &err);
+    if (err)
+        bdk_error_release(err);
+    free(copy);
+    return status;
+}
+#define RESTORE(c, lit) restore_exact((c), (lit), sizeof(lit) - 1)
+
+static void expect_untouched(bdk_contents_t c) {
+    bdk_contents_state_t st;
+    state_of(c, &st);
+    CHECK(str_is(st.url, URL_A));
+}
+
+static void test_restore_accepts_exact_size_valid_input(void) {
+    g_c = new_page();
+    CHECK(RESTORE(g_c, "BDKSTUB1 1 2\n3 1\na:bT\n4 0\nc:de\n") == BDK_OK);
+    bdk_contents_state_t st;
+    state_of(g_c, &st);
+    CHECK(str_is(st.url, "c:de"));
+    CHECK(RESTORE(g_c, "BDKSTUB1 -1 0\n") == BDK_OK);
+    CHECK(RESTORE(g_c, "BDKSTUB1 0 1\n0 0\n\n") == BDK_OK); /* an empty entry */
+}
+
+static void test_restore_rejects_integer_overflow(void) {
+    g_c = new_page();
+    load(g_c, URL_A);
+    t_pump();
+    CHECK(RESTORE(g_c, "BDKSTUB1 0 1\n9223372036854775807 1\n") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB1 0 1\n1 9223372036854775807\n") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB1 0 1\n18446744073709551615 1\n") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB1 0 1\n99999999999999999999999 0\n") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB1 0 99999999999999999999999\n") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB1 99999999999999999999999 1\n0 0\n\n") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB1 0 4294967296\n") == BDK_ERR_INVALID_ARGUMENT);
+    expect_untouched(g_c);
+}
+
+static void test_restore_rejects_truncated_input(void) {
+    g_c = new_page();
+    load(g_c, URL_A);
+    t_pump();
+    CHECK(RESTORE(g_c, "BDKSTUB1 0 2\n0 0\n") == BDK_ERR_INVALID_ARGUMENT); /* one entry short */
+    CHECK(RESTORE(g_c, "BDKSTUB1 0 1\n3 1\na:b") == BDK_ERR_INVALID_ARGUMENT);
+    /* Every strict prefix of a valid state is rejected, at an exact-size allocation. */
+    static const char valid[] = "BDKSTUB1 1 2\n3 1\na:bT\n4 0\nc:de\n";
+    for (size_t n = 0; n + 1 < sizeof valid; ++n)
+        CHECK(restore_exact(g_c, valid, n) == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(restore_exact(g_c, valid, sizeof valid - 1) == BDK_OK);
+}
+
+static void test_restore_rejects_missing_separators(void) {
+    g_c = new_page();
+    load(g_c, URL_A);
+    t_pump();
+    CHECK(RESTORE(g_c, "BDKSTUB1 0 1\n3 1\na:bTX") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB1 0 1\n3 1\na:bT") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB1 0 1\n3 1a:bT\n") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB1 0 1\n3x1\na:bT\n") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB1 0 1\n3 1 \na:bT\n") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB1 0 1 \n3 1\na:bT\n") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB1 0\n3 1\na:bT\n") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB1 0 1") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB1") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB1\t0 1\n3 1\na:bT\n") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB1 +0 1\n3 1\na:bT\n") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB1 0 1\n-3 1\na:bT\n") == BDK_ERR_INVALID_ARGUMENT);
+    expect_untouched(g_c);
+}
+
+static void test_restore_rejects_count_mismatch_and_bad_current(void) {
+    g_c = new_page();
+    load(g_c, URL_A);
+    t_pump();
+    CHECK(RESTORE(g_c, "BDKSTUB1 0 1\n3 1\na:bT\n4 0\nc:de\n") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB1 0 3\n3 1\na:bT\n4 0\nc:de\n") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB1 0 0\n3 1\na:bT\n") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB1 1 1\n3 1\na:bT\n") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB1 0 0\n") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB1 -2 1\n3 1\na:bT\n") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB1 -1x 1\n3 1\na:bT\n") == BDK_ERR_INVALID_ARGUMENT);
+    expect_untouched(g_c);
+}
+
+static void test_restore_rejects_trailing_garbage(void) {
+    g_c = new_page();
+    load(g_c, URL_A);
+    t_pump();
+    CHECK(RESTORE(g_c, "BDKSTUB1 0 1\n3 1\na:bT\nx") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB1 0 1\n3 1\na:bT\n\n") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB1 0 1\n3 1\na:bT\n\0x") == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(RESTORE(g_c, "BDKSTUB1 -1 0\nx") == BDK_ERR_INVALID_ARGUMENT);
+    expect_untouched(g_c);
+}
+
 static void test_page_controls_show_in_state(void) {
     g_c = new_page();
     bdk_error_t err = 0;
@@ -404,6 +511,31 @@ static void test_keyboard_handler_reserves_or_passes_on(void) {
     CHECK(g_key_released == 1);
 }
 
+static void test_keyboard_handler_on_a_destroyed_contents_is_released(void) {
+    g_c = new_page();
+    g_key_released = 0;
+    bdk_contents_set_keyboard_handler(g_c, on_reserve, on_unhandled, NULL, on_key_release);
+    REQUIRE(bdk_contents_destroy(g_c) == BDK_OK);
+    t_pump();
+    CHECK(g_key_released == 1); /* released by the destroy */
+    bdk_contents_set_keyboard_handler(g_c, on_reserve, on_unhandled, NULL, on_key_release);
+    t_pump();
+    CHECK(g_key_released ==
+          2); /* rejected as stale: BDK never owns the context, so it is released */
+    t_pump();
+    CHECK(g_key_released == 2);
+}
+
+static void test_keyboard_handler_is_released_once_at_shutdown(void) {
+    g_c = new_page();
+    g_key_released = 0;
+    bdk_contents_set_keyboard_handler(g_c, on_reserve, on_unhandled, NULL, on_key_release);
+    t_stop();
+    CHECK(g_key_released == 1);
+    t_pump();
+    CHECK(g_key_released == 1);
+}
+
 static void test_native_view_is_an_error_or_a_tagged_handle(void) {
     g_c = new_page();
     bdk_native_handle_t h;
@@ -457,6 +589,14 @@ const t_test_t t_contents_tests[] = {
     {"contents.initial_url_navigates", test_initial_url_navigates_after_creation},
     {"contents.session_state_round_trip", test_session_state_round_trip},
     {"contents.restore_rejects_garbage_and_newer", test_restore_rejects_garbage_and_newer_formats},
+    {"contents.restore_accepts_exact_size_valid_input",
+     test_restore_accepts_exact_size_valid_input},
+    {"contents.restore_rejects_integer_overflow", test_restore_rejects_integer_overflow},
+    {"contents.restore_rejects_truncated_input", test_restore_rejects_truncated_input},
+    {"contents.restore_rejects_missing_separators", test_restore_rejects_missing_separators},
+    {"contents.restore_rejects_count_mismatch_and_bad_current",
+     test_restore_rejects_count_mismatch_and_bad_current},
+    {"contents.restore_rejects_trailing_garbage", test_restore_rejects_trailing_garbage},
     {"contents.page_controls_show_in_state", test_page_controls_show_in_state},
     {"contents.discard_keeps_handle_valid", test_discard_keeps_the_handle_valid},
     {"contents.close_then_destroy", test_close_then_destroy},
@@ -467,6 +607,10 @@ const t_test_t t_contents_tests[] = {
     {"contents.subscribers_see_the_same_order", test_two_subscribers_see_the_same_order},
     {"contents.focus_moves_between_contents", test_focus_moves_between_contents},
     {"views.keyboard_handler_reserves_or_passes_on", test_keyboard_handler_reserves_or_passes_on},
+    {"views.keyboard_handler_on_destroyed_contents_is_released",
+     test_keyboard_handler_on_a_destroyed_contents_is_released},
+    {"views.keyboard_handler_released_once_at_shutdown",
+     test_keyboard_handler_is_released_once_at_shutdown},
     {"views.native_view_is_error_or_tagged_handle",
      test_native_view_is_an_error_or_a_tagged_handle},
     {"runtime.events_and_subscription_release", test_runtime_events_and_subscription_release},

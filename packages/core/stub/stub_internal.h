@@ -195,6 +195,10 @@ void log_line(const std::shared_ptr<Runtime>&, uint32_t level, const std::string
 void deactivate(const std::shared_ptr<Sub>&);
 void destroy_contents(const std::shared_ptr<Runtime>&, const std::shared_ptr<Contents>&);
 void close_profile(const std::shared_ptr<Runtime>&, const std::shared_ptr<Profile>&);
+/* Runs a request's withdrawn-handler release exactly once; later calls do nothing. */
+void release_withdrawn(Request&);
+/* Withdraws every unfinished request raised for the contents (the page is gone). */
+void withdraw_contents_requests(const std::shared_ptr<Runtime>&, bdk_contents_t);
 void emit_contents_event_now(const std::shared_ptr<Contents>&, uint32_t kind,
                              const std::string& url, const std::string& detail, int32_t net_error,
                              uint32_t flags);

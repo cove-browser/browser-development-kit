@@ -12,6 +12,14 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 add_compile_options(-Wall -Wextra -Werror -pedantic)
 
+# Optional sanitizer build (not the default): cmake -S packages/core -B packages/core/build-sanitize -DBDK_SANITIZE=ON
+option(BDK_SANITIZE "Build the stub and the conformance suite with AddressSanitizer and UBSan" OFF)
+if(BDK_SANITIZE)
+  add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=undefined
+                      -fno-omit-frame-pointer -g)
+  add_link_options(-fsanitize=address,undefined)
+endif()
+
 enable_testing()
 
 # --- The public headers -------------------------------------------------------------------------------------
