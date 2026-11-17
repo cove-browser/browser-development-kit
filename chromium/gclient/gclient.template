@@ -1,0 +1,15 @@
+# Rendered by `chromium:sync` into <checkout>/.gclient when that file is absent.
+# {{chromium_url}} is the only placeholder.
+solutions = [
+  {
+    "name": "src",
+    "url": "{{chromium_url}}",
+    "managed": False,
+    "custom_deps": {},
+    "custom_vars": {
+      # BDK builds do not use PGO profiles (chrome_pgo_phase = 0 in chromium/gn).
+      "checkout_pgo_profiles": False,
+    },
+  },
+]
+target_os = ["mac"]

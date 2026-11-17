@@ -1,0 +1,22 @@
+# BDK release preset, copied to out/release/args.gn by chromium:build.
+# Every name below was checked against the sources at the pinned commit
+# (see chromium/gn/README.md for where each is declared).
+
+target_os = "mac"
+target_cpu = "arm64"
+
+is_debug = false
+is_component_build = false
+
+# No debug info: saves tens of GB of disk. blink_symbol_level is separate
+# because Blink has its own default (-1 means follow symbol_level).
+symbol_level = 0
+blink_symbol_level = 0
+
+# PGO off: no profile download, and not an official build.
+chrome_pgo_phase = 0
+
+# No remote execution; ccache is the compiler cache. use_remoteexec and
+# cc_wrapper cannot be combined (GN asserts), so this stays false.
+use_remoteexec = false
+cc_wrapper = "env CCACHE_SLOPPINESS=time_macros ccache"

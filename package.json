@@ -19,7 +19,7 @@
     "chromium:build": "nx run chromium:build",
     "chromium:package": "nx run chromium:package",
     "chromium:publish": "nx run chromium:publish",
-    "test:release": "nx run-many -t test test-integration test-extensions test-e2e",
+    "test:release": "nx run-many -t test test-integration test-extensions test-e2e test-release",
     "dev:example": "nx run minimal-browser:dev",
     "docs:build": "nx run docs-site:build"
   },

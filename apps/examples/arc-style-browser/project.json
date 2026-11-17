@@ -7,6 +7,11 @@
     "build": {
       "executor": "nx:run-commands",
       "cache": false,
+      "inputs": [
+        "default",
+        { "dependentTasksOutputFiles": "**/runtime.json", "transitive": false },
+        { "fileset": "{workspaceRoot}/.bdk/runtime.json" }
+      ],
       "options": {
         "command": "echo 'arc-style-browser:build: not implemented until M8'"
       }

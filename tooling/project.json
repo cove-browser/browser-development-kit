@@ -23,7 +23,7 @@
       "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "pnpm exec biome check tooling package.json nx.json biome.json commitlint.config.mjs lefthook.yml pnpm-workspace.yaml tsconfig.base.json chromium/pin.json",
+          "pnpm exec biome check tooling package.json nx.json biome.json commitlint.config.mjs lefthook.yml pnpm-workspace.yaml tsconfig.base.json chromium/pin.json chromium/runtime-files.json",
           "pnpm exec tsc -p tooling/tsconfig.json --noEmit",
           "shellcheck tooling/*.sh",
           "shfmt -d tooling/*.sh",
@@ -37,7 +37,7 @@
       "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "pnpm exec biome format --write tooling package.json nx.json biome.json commitlint.config.mjs lefthook.yml pnpm-workspace.yaml tsconfig.base.json chromium/pin.json",
+          "pnpm exec biome format --write tooling package.json nx.json biome.json commitlint.config.mjs lefthook.yml pnpm-workspace.yaml tsconfig.base.json chromium/pin.json chromium/runtime-files.json",
           "shfmt -w tooling/*.sh",
           "taplo format"
         ],

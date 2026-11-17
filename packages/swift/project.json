@@ -8,14 +8,26 @@
       "executor": "nx:run-commands",
       "cache": true,
       "options": { "command": "swift build --package-path packages/swift" },
-      "inputs": ["default", "nativeToolchain", "{workspaceRoot}/packages/core/include/**/*"],
+      "inputs": [
+        "default",
+        "nativeToolchain",
+        "{workspaceRoot}/packages/core/include/**/*",
+        { "dependentTasksOutputFiles": "**/runtime.json", "transitive": false },
+        { "fileset": "{workspaceRoot}/.bdk/runtime.json" }
+      ],
       "outputs": []
     },
     "test": {
       "executor": "nx:run-commands",
       "cache": true,
       "options": { "command": "swift test --package-path packages/swift" },
-      "inputs": ["default", "nativeToolchain", "{workspaceRoot}/packages/core/include/**/*"]
+      "inputs": [
+        "default",
+        "nativeToolchain",
+        "{workspaceRoot}/packages/core/include/**/*",
+        { "dependentTasksOutputFiles": "**/runtime.json", "transitive": false },
+        { "fileset": "{workspaceRoot}/.bdk/runtime.json" }
+      ]
     },
     "test-integration": {
       "executor": "nx:run-commands",

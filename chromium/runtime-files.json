@@ -1,0 +1,5 @@
+{
+  "schema": 1,
+  "target": { "os": "macos", "min_os": "13.0" },
+  "paths": ["Chromium.app"]
+}

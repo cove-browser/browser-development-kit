@@ -1,0 +1,48 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BDK Patches <patches@bdk.invalid>
+Date: Mon, 16 Nov 2026 00:00:00 +0000
+Subject: [PATCH] bdk: link //bdk into the Mac framework
+
+BDK keeps its engine code in the //bdk overlay (chromium/bdk in the BDK
+repository), which is mounted at src/bdk. Nothing in upstream depends on
+it, so GN would never build it. Add //bdk to the public_deps of
+chrome_framework so the overlay is compiled and linked into the framework
+that BDK ships as its runtime.
+
+Also export bdk_overlay_marker() from the framework. The framework hides
+every symbol that is not in framework.exports, and the BDK build runs nm on
+the framework to check that //bdk was really linked in.
+
+Used by: the BDK engine (//bdk), checked by the chromium:build target.
+---
+ chrome/BUILD.gn              | 7 ++++++-
+ chrome/app/framework.exports | 1 +
+ 2 files changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/chrome/BUILD.gn b/chrome/BUILD.gn
+index 06bfcf5a90d093b9ac8e255e93ef2ffd0a00421e..1ece07fef574d21cf4c2191270a76282c96ffb5b 100644
+--- a/chrome/BUILD.gn
++++ b/chrome/BUILD.gn
+@@ -1398,7 +1398,12 @@ if (is_win) {
+       "CHROMIUM_SHORT_NAME=$chrome_product_short_name",
+     ]
+ 
+-    public_deps = [ ":chrome_dll" ]
++    public_deps = [
++      ":chrome_dll",
++
++      # BDK: the engine overlay. See chromium/patches in the BDK repository.
++      "//bdk",
++    ]
+ 
+     bundle_deps = [
+       ":aperitif_library",
+diff --git a/chrome/app/framework.exports b/chrome/app/framework.exports
+index 37c881f5d29511347ce508ce7bfb1f54cb37a120..3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd 100644
+--- a/chrome/app/framework.exports
++++ b/chrome/app/framework.exports
+@@ -19,3 +19,4 @@
+ _ChromeAppModeStart_v8
+ _ChromeMain
+ _ChromeWebAppShortcutCopierMain
++_bdk_overlay_marker
