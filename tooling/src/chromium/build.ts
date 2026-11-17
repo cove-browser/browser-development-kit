@@ -221,6 +221,15 @@ export async function buildCheckout(
     throw new Error(
       'ccache is not installed or not on PATH; the GN presets use cc_wrapper = "... ccache". Install it (brew install ccache).',
     );
+  if (process.platform === "darwin") {
+    // ANGLE compiles Metal shaders; Xcode 26+ ships the Metal Toolchain as a separate download.
+    const xcrun = process.env.BDK_XCRUN ?? "xcrun";
+    const metal = await run(xcrun, ["-f", "metal"], { env }).catch(() => ({ code: 1 }));
+    if (metal.code !== 0)
+      throw new Error(
+        "The Metal Toolchain is missing (`xcrun -f metal` failed); ANGLE needs it. Install it with: xcodebuild -downloadComponent MetalToolchain",
+      );
+  }
 
   let t = Date.now();
   if (!options.noPatch) {

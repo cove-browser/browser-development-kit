@@ -220,6 +220,8 @@ export function makeSandbox(up: Upstream, pinTag = "1.0.0", pinCommit = up.commi
       BDK_CHROMIUM_URL: "https://example.invalid/src.git",
       FAKE_UPSTREAM: up.dir,
       FAKE_LOG: log,
+      // The Metal Toolchain preflight runs `$BDK_XCRUN -f metal`; `true` always succeeds.
+      BDK_XCRUN: "true",
     },
   };
 }

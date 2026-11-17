@@ -20,3 +20,9 @@ chrome_pgo_phase = 0
 # cc_wrapper cannot be combined (GN asserts), so this stays false.
 use_remoteexec = false
 cc_wrapper = "env CCACHE_SLOPPINESS=time_macros ccache"
+
+# Clang modules off: ccache cannot cache modular compiles ("Could not use
+# modules" for every C++ call on the first M158 build), which defeats the
+# shared compiler cache of repository-and-tooling.md 7.2. Declared in
+# build/config/c++/c++.gni; measured under T-CHR-06.
+use_clang_modules = false
