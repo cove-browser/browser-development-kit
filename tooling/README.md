@@ -31,7 +31,11 @@ All take `--experiment <id>` (default: the managed checkout) and re-execute them
 checkout lock, so a whole sync, patch and build sequence is one lock acquisition. See
 `chromium/patches/README.md`, `chromium/gclient/README.md`, `chromium/gn/README.md`.
 
-- `chromium:sync [--force] [--no-patch] [--no-hooks]`: gclient sync to the pin, verify, apply patches.
+- `chromium:sync [--force] [--no-patch] [--no-hooks]`: fetch the pinned tag at depth 1, gclient sync
+  to the pinned SHA, verify, apply patches. Refuses to discard uncommitted work or commits BDK did not
+  produce. If `src` is already the pin plus exactly the series, it is left untouched and only the
+  dependencies are synced, so the next build has nothing to do; `--force` and `--no-patch` reset to
+  the pin instead.
 - `chromium:patch-apply [--force]`, `chromium:patch-export`, `chromium:patch-check`.
 - `chromium:build [--config dev|release] [--targets a,b | targets...] [--ccache-maxsize 50G] [--no-patch]
   [--no-verify] [--force]`: apply patches, mount `//bdk` (content-diff copy), `gn gen`, `autoninja`
@@ -44,6 +48,29 @@ checkout lock, so a whole sync, patch and build sequence is one lock acquisition
   clone probe fails, i.e. not APFS or another volume); `worktree` runs Chromium's
   `tools/git/worktree.py --light`, after which `chromium:sync --experiment <id>` fetches dependencies.
   Creation holds the source's lock and the experiment's own lock.
+
+### Updating the pin in place
+
+A roll is `chromium/pin.json` changing, then the same three commands on the managed checkout:
+
+```sh
+pnpm exec nx run chromium:sync      # fetches only the new tag, moves src, re-applies the series
+pnpm exec nx run chromium:build     # incremental: only what the roll changed, then a relink
+pnpm exec nx run chromium:package   # a new runtime; the previous one stays in the store
+```
+
+Git rewrites only the files that differ between the two tags, so Siso recompiles those and their
+dependants, and ccache serves anything it has compiled before. How much that is depends on the roll:
+
+- **Within a release branch** the compiler is fixed, so the build is incremental, but its size
+  depends on which dependencies moved. `158.0.8127.37` to `.65` (28 patch releases; V8, Skia, ICU,
+  ANGLE, PDFium, Dawn and LevelDB moved) took 12,868 compiles, 12,785 of them new: 83 minutes on an
+  M2 Max. Rolling back, with every object already in ccache: 12,867 hits, 8 minutes.
+- **To a new milestone** (`158` to `159`) the compiler changes, and every compile misses: about three
+  hours. Building the new branch's beta tag ahead of time in an experiment checkout would fill the
+  cache so that the stable roll is incremental on the day; that is not automated yet.
+- **Nothing changed**: a sync takes about 20 s and rewrites only hook outputs; the next build takes
+  17 s.
 
 Environment: `BDK_HOME`, `BDK_CHROMIUM_URL`, `BDK_DEPOT_TOOLS_URL`, `BDK_PATCH_CHECK_REMOTE`,
 `BDK_CCACHE_MAXSIZE`, `BDK_NM`, and `BDK_REPO_ROOT` (tests).
