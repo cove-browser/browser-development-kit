@@ -4,7 +4,7 @@ project(bdk_core LANGUAGES C CXX)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -30,7 +30,7 @@ list(SORT BDK_HEADERS)
 add_library(bdk_headers INTERFACE)
 target_include_directories(bdk_headers INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
-# Every public header is compiled on its own, included twice, as C11 and as C++17, with warnings as errors.
+# Every public header is compiled on its own, included twice, as C11 and as C++23, with warnings as errors.
 set(BDK_CHECK_DIR "${CMAKE_CURRENT_BINARY_DIR}/header-check")
 set(BDK_CHECK_C_SOURCES)
 set(BDK_CHECK_CXX_SOURCES)
@@ -60,7 +60,7 @@ target_link_libraries(bdk_header_check_c PRIVATE bdk_headers)
 add_library(bdk_header_check_cxx OBJECT ${BDK_CHECK_CXX_SOURCES})
 target_link_libraries(bdk_header_check_cxx PRIVATE bdk_headers)
 add_custom_target(bdk_header_check DEPENDS bdk_header_check_c bdk_header_check_cxx
-  COMMENT "Public headers compile as C11 and C++17")
+  COMMENT "Public headers compile as C11 and C++23")
 
 # --- The ABI hash -------------------------------------------------------------------------------------------
 

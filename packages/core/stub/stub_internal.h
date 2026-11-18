@@ -1,4 +1,4 @@
-/* Internal state of the in-memory stub runtime. Platform-neutral C++17; no platform headers. */
+/* Internal state of the in-memory stub runtime. Platform-neutral C++23; no platform headers. */
 #ifndef BDK_STUB_INTERNAL_H_
 #define BDK_STUB_INTERNAL_H_
 

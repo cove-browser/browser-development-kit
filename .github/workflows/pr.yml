@@ -139,7 +139,7 @@ jobs:
           cmake -S packages/core -B packages/core/build -G Ninja
           -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
 
-      - name: Public headers compile as C11 and C++17 with -Werror
+      - name: Public headers compile as C11 and C++23 with -Werror
         run: cmake --build packages/core/build --target bdk_header_check
 
       - name: Build the stub and the conformance suite

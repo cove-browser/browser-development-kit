@@ -19,8 +19,8 @@ describe("checkNodeVersion", () => {
 
 describe("checkPackageManager", () => {
   it("compares against the packageManager field", () => {
-    expect(checkPackageManager("11.1.2", "pnpm@11.1.2").ok).toBe(true);
-    expect(checkPackageManager("10.0.0", "pnpm@11.1.2").ok).toBe(false);
+    expect(checkPackageManager("12.21.0", "pnpm@12.21.0").ok).toBe(true);
+    expect(checkPackageManager("11.1.2", "pnpm@12.21.0").ok).toBe(false);
   });
 });
 

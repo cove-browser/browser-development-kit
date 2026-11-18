@@ -9,7 +9,7 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
 |---|---|
 | `include/bdk/*.h` | Public headers: plain C, `extern "C"` guards, `BDK_EXPORT`, no platform header, no platform type |
 | `interface/` | Interface definitions (JSON, T-ABI-03). Empty for now; every `*.json` here goes into the hash |
-| `stub/` | In-memory runtime, C++17, no exceptions, no platform code. Test hooks in `stub/bdk_stub.h` are not ABI |
+| `stub/` | In-memory runtime, C++23, no exceptions, no platform code. Test hooks in `stub/bdk_stub.h` are not ABI |
 | `tests/` | Conformance suite in C11, written against `bdk/bdk.h` and `tests/harness.h` only |
 | `cmake/abi-hash.cmake`, `generated/` | Hash generator and checker; the recorded hash |
 
@@ -109,5 +109,5 @@ select tests.
 ## Cross-platform checklist (c-abi.md section 11) for this skeleton
 
 No AppKit, Win32 or toolkit type appears; native objects cross only as `bdk_native_handle_t` (kinds exist for NSView,
-NSWindow, NSApplication, NSEvent, HWND, X11 and Wayland). The stub uses only the C++17 standard library and
+NSWindow, NSApplication, NSEvent, HWND, X11 and Wayland). The stub uses only the C++23 standard library and
 pthreads, and builds on macOS and Linux.
