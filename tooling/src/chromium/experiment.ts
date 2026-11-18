@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { git, run } from "../git.js";
+import { git, gitRaw, run } from "../git.js";
 import {
   type CheckoutId,
   LockBusyError,
@@ -187,6 +187,7 @@ export async function removeExperiment(
       exportHint: `chromium:patch-export --experiment ${id}`,
     });
   }
+  if (!force) await assertNoUnsavedFiles(dest, id);
   if (meta?.method === "worktree") {
     const from = checkoutContext(sourceCheckout(meta.from), paths, chromiumLayout());
     if (existsSync(join(from.src, ".git"))) {
@@ -198,6 +199,41 @@ export async function removeExperiment(
   }
   rmSync(dest, { recursive: true, force: true });
   log(`experiment: removed ${dest}`);
+}
+
+/** Repositories in an experiment: `src` plus every dependency gclient checked out. */
+function experimentRepos(dest: string): string[] {
+  const repos = new Set<string>(["src"]);
+  const entries = join(dest, ".gclient_entries");
+  if (existsSync(entries)) {
+    for (const m of readFileSync(entries, "utf8").matchAll(/^\s*['"]([^'"]+)['"]\s*:/gm))
+      if (m[1]) repos.add(m[1]);
+  }
+  return [...repos].filter((r) => existsSync(join(dest, r, ".git")));
+}
+
+/**
+ * Removal deletes everything, so it refuses untracked (not ignored) files and uncommitted
+ * changes anywhere in the checkout, including Chromium's dependency repositories, which the
+ * sync guard does not look at.
+ */
+async function assertNoUnsavedFiles(dest: string, id: string): Promise<void> {
+  const found: string[] = [];
+  for (const repo of experimentRepos(dest)) {
+    const r = await gitRaw(join(dest, repo), ["status", "--porcelain", "--untracked-files=all"]);
+    if (r.code !== 0) {
+      found.push(`  ${repo}: git status failed`);
+      continue;
+    }
+    for (const line of r.stdout.split("\n").filter(Boolean)) found.push(`  ${repo}: ${line}`);
+  }
+  if (found.length > 0) {
+    throw new UnsafeCheckoutError(
+      `Experiment "${id}" has unsaved files; removing it would delete them:\n${found.slice(0, 20).join("\n")}` +
+        `${found.length > 20 ? `\n  ... and ${found.length - 20} more` : ""}\n` +
+        "Save or delete them, or pass --force.",
+    );
+  }
 }
 
 export interface ExperimentListing extends ExperimentMeta {

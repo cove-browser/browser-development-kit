@@ -197,6 +197,31 @@ export function renderIssue(o: {
   };
 }
 
+/**
+ * The roll reads the pin and patches from the checkout and builds a new roll branch from HEAD,
+ * so HEAD must be the base the pull request targets; otherwise unmerged commits ride along.
+ */
+async function assertOnBase(repoRoot: string, base: string): Promise<void> {
+  const resolve = async (ref: string): Promise<string | null> => {
+    const r = await gitRaw(repoRoot, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+    return r.code === 0 ? r.stdout.trim() : null;
+  };
+  const head = await resolve("HEAD");
+  const candidates = [`refs/remotes/origin/${base}`, `refs/heads/${base}`];
+  const tips: string[] = [];
+  for (const ref of candidates) {
+    const sha = await resolve(ref);
+    if (sha !== null) tips.push(sha);
+  }
+  if (tips.length === 0) throw new Error(`roll: cannot resolve the base branch "${base}"`);
+  if (head === null || !tips.includes(head)) {
+    throw new Error(
+      `roll: HEAD (${head?.slice(0, 12) ?? "none"}) is not the tip of the base branch "${base}"; ` +
+        `check out ${base} so the roll branch does not carry unrelated commits.`,
+    );
+  }
+}
+
 async function bumpBranch(o: {
   repoRoot: string;
   branch: string;
@@ -299,6 +324,7 @@ export async function roll(opts: RollOptions): Promise<RollOutcome> {
     log(`roll: pin is up to date (${pin.tag})`);
     return { kind: "up-to-date", pin: pin.tag, stable: stable.version };
   }
+  await assertOnBase(opts.repoRoot, base);
   const version = stable.version;
 
   // 2. Resolve.

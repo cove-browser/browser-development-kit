@@ -625,7 +625,10 @@ BDK_EXPORT bdk_status_t bdk_contents_go_to_offset(bdk_contents_t h, int32_t offs
         return st;
     if (offset == 0)
         return BDK_ERR_INVALID_ARGUMENT;
-    return nav_to_index(c->rt.lock(), c, c->current + offset, err);
+    const int64_t target = static_cast<int64_t>(c->current) + static_cast<int64_t>(offset);
+    if (target < 0 || target >= static_cast<int64_t>(c->entries.size()))
+        return BDK_ERR_INVALID_ARGUMENT;
+    return nav_to_index(c->rt.lock(), c, static_cast<int>(target), err);
 }
 
 BDK_EXPORT bdk_status_t bdk_contents_go_to_index(bdk_contents_t h, int32_t index,

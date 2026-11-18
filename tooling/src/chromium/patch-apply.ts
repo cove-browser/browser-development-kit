@@ -191,6 +191,37 @@ export async function assertSafeToSync(
       `has ${state.extraCommits} commit(s) on top of the pin that are not the current series`,
     );
   }
+  if (!state.atOrAbovePin && !(await isUpstreamCommit(srcDir, state.head, pinCommit))) {
+    await refuse(
+      `is at ${state.head.slice(0, 12)}, which is not descended from the pin, not upstream history, and not a state BDK recorded`,
+    );
+  }
+}
+
+/**
+ * True when `commit` holds no local work: it is an ancestor of the pin, or it is reachable from
+ * an upstream remote-tracking branch or tag.
+ */
+async function isUpstreamCommit(
+  srcDir: string,
+  commit: string,
+  pinCommit: string,
+): Promise<boolean> {
+  const pinKnown = (await gitRaw(srcDir, ["cat-file", "-e", `${pinCommit}^{commit}`])).code === 0;
+  if (
+    pinKnown &&
+    (await gitRaw(srcDir, ["merge-base", "--is-ancestor", commit, pinCommit])).code === 0
+  )
+    return true;
+  const r = await gitRaw(srcDir, [
+    "for-each-ref",
+    "--count=1",
+    "--format=%(refname)",
+    `--contains=${commit}`,
+    "refs/remotes",
+    "refs/tags",
+  ]);
+  return r.code === 0 && r.stdout.trim() !== "";
 }
 
 export interface ApplyOptions {

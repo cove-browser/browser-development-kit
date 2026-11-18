@@ -199,6 +199,9 @@ const FRAMEWORK_TARGETS = new Set([
   "//chrome:chrome_framework",
 ]);
 
+/** Targets that build the complete runtime (Chromium.app), so a build of them can be stamped. */
+const RUNTIME_TARGETS = new Set(["chrome", "//chrome", "//chrome:chrome"]);
+
 /**
  * Applies patches, mounts the overlay, runs `gn gen` with the preset, then `autoninja`, with
  * the ccache environment of repository-and-tooling.md section 7.2. The caller must hold the
@@ -280,7 +283,8 @@ export async function buildCheckout(
   if (ninja.code !== 0) throw new Error(`autoninja failed (exit ${ninja.code})`);
   const ninjaMs = Date.now() - t;
 
-  if (!options.noVerify && options.targets.some((x) => FRAMEWORK_TARGETS.has(x))) {
+  const verify = !options.noVerify && options.targets.some((x) => FRAMEWORK_TARGETS.has(x));
+  if (verify) {
     const binaries = findFrameworkBinaries(outDir);
     if (binaries.length === 0)
       throw new Error(
@@ -299,8 +303,16 @@ export async function buildCheckout(
     );
   }
 
-  await writeBuildStamp(outDir, identity);
-  log(`stamp: ${BUILD_STAMP_NAME} written for source key ${sourceKey(identity)}`);
+  // Only a verified build of the whole runtime may bless out/ for packaging. A partial build
+  // (e.g. --targets base) leaves older runtime files on disk that do not match these inputs.
+  if (verify && options.targets.some((x) => RUNTIME_TARGETS.has(x))) {
+    await writeBuildStamp(outDir, identity);
+    log(`stamp: ${BUILD_STAMP_NAME} written for source key ${sourceKey(identity)}`);
+  } else {
+    log(
+      `stamp: not written (${options.noVerify ? "--no-verify" : "partial build"}); build chrome with verification before packaging`,
+    );
+  }
 
   const timings: BuildTimings = {
     kind,

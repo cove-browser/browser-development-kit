@@ -419,6 +419,21 @@ static void test_close_then_destroy(void) {
     CHECK(g_ev.releases == 1); /* the subscription's context is released with the contents */
 }
 
+static void test_history_offset_bounds_do_not_overflow(void) {
+    g_c = new_page();
+    bdk_error_t err = 0;
+    /* a new page has no current entry, so INT32_MIN must not wrap */
+    CHECK(bdk_contents_go_to_offset(g_c, INT32_MIN, &err) == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(bdk_contents_go_to_offset(g_c, INT32_MAX, &err) == BDK_ERR_INVALID_ARGUMENT);
+    load(g_c, URL_A);
+    t_pump();
+    load(g_c, URL_B);
+    t_pump();
+    /* current is 1: INT32_MAX would overflow a 32-bit add */
+    CHECK(bdk_contents_go_to_offset(g_c, INT32_MAX, &err) == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(bdk_contents_go_to_offset(g_c, INT32_MIN, &err) == BDK_ERR_INVALID_ARGUMENT);
+}
+
 static void test_destroy_mid_navigation_delivers_nothing_more(void) {
     g_c = new_page();
     watch(g_c, &g_ev);
@@ -446,6 +461,8 @@ static void test_events_go_only_to_their_own_contents_and_unsubscribe_stops_them
     t_pump();
     CHECK(mine.count == 4);
     CHECK(bdk_release(s1) == BDK_ERR_STALE_HANDLE);
+    t_stop(); /* release `theirs` while it is still in scope */
+    CHECK(theirs.releases == 1);
 }
 
 static void test_two_subscribers_see_the_same_order(void) {
@@ -458,6 +475,8 @@ static void test_two_subscribers_see_the_same_order(void) {
     REQUIRE(a.count == b.count && a.count == 4);
     for (int i = 0; i < a.count; ++i)
         CHECK(a.kind[i] == b.kind[i]);
+    t_stop(); /* release `a` and `b` while they are still in scope */
+    CHECK(a.releases == 1 && b.releases == 1);
 }
 
 static void test_focus_moves_between_contents(void) {
@@ -476,6 +495,8 @@ static void test_focus_moves_between_contents(void) {
     CHECK(st.focused == 1);
     CHECK(ea.count == 2 && eb.count == 1);
     CHECK(ea.kind[0] == BDK_CONTENTS_EVENT_FOCUS_CHANGED);
+    t_stop(); /* release `ea` and `eb` while they are still in scope */
+    CHECK(ea.releases == 1 && eb.releases == 1);
 }
 
 static int g_reserve_calls, g_unhandled_calls, g_key_released;
@@ -714,6 +735,7 @@ const t_test_t t_contents_tests[] = {
      test_failed_navigation_reports_the_net_error_and_keeps_the_page},
     {"contents.invalid_urls_are_rejected", test_invalid_urls_are_rejected},
     {"contents.history_navigation", test_history_navigation},
+    {"contents.history_offset_bounds_do_not_overflow", test_history_offset_bounds_do_not_overflow},
     {"contents.reload", test_reload},
     {"contents.stop_aborts_in_flight_navigation", test_stop_aborts_a_navigation_in_flight},
     {"contents.newer_navigation_supersedes_older", test_a_newer_navigation_supersedes_the_older},
