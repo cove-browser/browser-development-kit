@@ -19,7 +19,7 @@ import {
   relaunchUnderLock,
   seconds,
 } from "./common.js";
-import { applyToCheckout, assertSafeToSync, recordBdkState } from "./patch-apply.js";
+import { applyToCheckout, assertSafeToSync, recordBdkState, seriesState } from "./patch-apply.js";
 
 /** Renders `chromium/gclient/gclient.template`: `{{chromium_url}}` is the only placeholder. */
 export function renderGclient(template: string, chromiumUrl: string): string {
@@ -65,7 +65,9 @@ export interface SyncOptions {
 
 /**
  * `gclient sync` the checkout to the pin, check that `src` is at the pinned commit, then apply the
- * patch series. The caller must hold the checkout lock. Shallow, no history: `git-cache` is not
+ * patch series. If `src` is already the pin plus exactly the series (and neither `force` nor
+ * `noPatch` is set), it stays where it is and only the dependencies are synced, so an unchanged
+ * checkout costs the next build nothing. The caller must hold the checkout lock. Shallow, no history: `git-cache` is not
  * used (deviation from repository-and-tooling.md section 7, which lists it for full clones).
  */
 export async function syncCheckout(ctx: CheckoutContext, options: SyncOptions = {}): Promise<void> {
@@ -77,17 +79,25 @@ export async function syncCheckout(ctx: CheckoutContext, options: SyncOptions = 
   if (ensureGclientFile(ctx)) log(`sync: wrote ${join(ctx.root, ".gclient")} from the template`);
 
   // gclient --force would drop uncommitted changes and commits BDK did not produce; refuse unless told to.
+  // If src is already the pin plus exactly the series, keep it: gclient is handed HEAD itself, so it
+  // syncs the dependencies and runs hooks without rewriting the patched files. Resetting to the pin
+  // and re-applying would give them new mtimes and cost the next build a regen and a relink.
+  let keepHead: string | undefined;
   if (existsSync(join(ctx.src, ".git")) && !options.force) {
     const { patches } = loadSeries(ctx.layout.patchesDir);
     await assertSafeToSync(ctx.src, pin.commit, patches);
+    if (!options.noPatch && patches.length > 0) {
+      const state = await seriesState(ctx.src, pin.commit, patches);
+      if (state.applied) keepHead = state.head;
+    }
   }
 
   // gclient skips its own fetch only when --revision is a SHA it already has (a tag never counts),
   // and that fetch is a full `git fetch origin` of every branch: over 20 minutes against Chromium,
   // twice ending in an HTTP 502. So fetch just the pinned tag at depth 1 (under 4 minutes) and, once
   // it resolves to the pinned commit, hand gclient the SHA. Best effort: on failure gclient fetches.
-  let revision = `refs/tags/${pin.tag}`;
-  if (existsSync(join(ctx.src, ".git"))) {
+  let revision = keepHead ?? `refs/tags/${pin.tag}`;
+  if (keepHead === undefined && existsSync(join(ctx.src, ".git"))) {
     const resolveTag = async () =>
       (
         await run("git", ["rev-parse", "--verify", "--quiet", `${revision}^{commit}`], {
@@ -127,6 +137,17 @@ export async function syncCheckout(ctx: CheckoutContext, options: SyncOptions = 
   if (r.code !== 0) throw new Error(`gclient sync failed (exit ${r.code})`);
 
   const head = (await git(ctx.src, ["rev-parse", "HEAD"])).trim();
+  if (keepHead !== undefined) {
+    if (head !== keepHead) {
+      throw new Error(
+        `After gclient sync, ${ctx.src} is at ${head} but it was asked to stay at ${keepHead} (${pin.tag} plus the series).`,
+      );
+    }
+    await recordBdkState(ctx.src, pin.commit, head);
+    log(`sync: src is already ${pin.tag} plus the series (${head.slice(0, 12)}); left untouched`);
+    log(`sync: done in ${seconds(Date.now() - started)}`);
+    return;
+  }
   if (head !== pin.commit) {
     throw new Error(
       `After gclient sync, ${ctx.src} is at ${head} but chromium/pin.json says ${pin.commit} (${pin.tag}). ` +

@@ -124,6 +124,30 @@ describe("chromium:sync", () => {
     expect((await git(src, ["rev-parse", "HEAD"])).trim()).toBe(up.commit2);
   });
 
+  it("leaves a checkout that is already pin plus series untouched, unless --force", async () => {
+    const { sb } = await sandboxWithPatch();
+    expect((await cli("sync", [], sb)).code).toBe(0);
+    const src = managedSrc(sb);
+    const head = (await git(src, ["rev-parse", "HEAD"])).trim();
+    const patched = join(src, "chrome", "BUILD.gn");
+    const old = new Date("2020-01-01T00:00:00Z");
+    utimesSync(patched, old, old);
+
+    const again = await cli("sync", [], sb);
+    expect(again.code, again.stderr + again.stdout).toBe(0);
+    expect(again.stdout).toContain("left untouched");
+    expect(again.stdout).not.toContain("patch: applying");
+    expect(log(sb)).toContain(`gclient sync --revision src@${head} --no-history`);
+    expect((await git(src, ["rev-parse", "HEAD"])).trim()).toBe(head);
+    expect(statSync(patched).mtimeMs).toBe(old.getTime());
+
+    // --force still resets to the pin and re-applies the series.
+    const forced = await cli("sync", ["--force"], sb);
+    expect(forced.code, forced.stderr).toBe(0);
+    expect(forced.stdout).toContain("patch: applying");
+    expect(statSync(patched).mtimeMs).not.toBe(old.getTime());
+  });
+
   it("allows a roll from a BDK-produced HEAD, and keeps the refs out of the exported series", async () => {
     const { up, sb } = await sandboxWithPatch();
     expect((await cli("sync", ["--no-patch"], sb)).code).toBe(0);
