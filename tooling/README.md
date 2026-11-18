@@ -73,7 +73,8 @@ dependants, and ccache serves anything it has compiled before. How much that is 
   17 s.
 
 Environment: `BDK_HOME`, `BDK_CHROMIUM_URL`, `BDK_DEPOT_TOOLS_URL`, `BDK_PATCH_CHECK_REMOTE`,
-`BDK_CCACHE_MAXSIZE`, `BDK_NM`, and `BDK_REPO_ROOT` (tests).
+`BDK_CCACHE_MAXSIZE`, `BDK_NM`, `BDK_TAR` (the tar binary; GNU tar and bsdtar both work), and
+`BDK_REPO_ROOT` (tests).
 
 Tests use fixture repositories and a fake depot_tools (`src/chromium/test-support.ts`), never a real checkout.
 

@@ -22,7 +22,27 @@ export function archiveExtension(format: ArchiveFormat): string {
   return format;
 }
 
-const TAR_CREATE = [
+/** The tar binary: `BDK_TAR` (tests use it to run GNU tar on macOS), else `tar` on PATH. */
+function tarBin(): string {
+  return process.env.BDK_TAR ?? "tar";
+}
+
+const gnuTarCache = new Map<string, boolean>();
+
+/** Whether `tarBin()` is GNU tar (Linux) rather than bsdtar (macOS). Their create flags differ. */
+export function tarIsGnu(): boolean {
+  const bin = tarBin();
+  let gnu = gnuTarCache.get(bin);
+  if (gnu === undefined) {
+    const r = spawnSync(bin, ["--version"], { encoding: "utf8" });
+    gnu = /GNU tar/.test(r.stdout ?? "");
+    gnuTarCache.set(bin, gnu);
+  }
+  return gnu;
+}
+
+/** bsdtar: GNU format, owner 0:0 with no names, no extended attributes, ACLs or AppleDouble files. */
+const BSD_TAR_CREATE = [
   "-c",
   "--format",
   "gnutar",
@@ -39,6 +59,22 @@ const TAR_CREATE = [
   "",
   "--numeric-owner",
   "-n",
+];
+
+/**
+ * The same for GNU tar, whose names differ: `-n` there means --seek, so --no-recursion; and
+ * --verbatim-files-from so that a listed name starting with "-" is not read as an option.
+ */
+const GNU_TAR_CREATE = [
+  "-c",
+  "--format=gnu",
+  "--no-xattrs",
+  "--no-acls",
+  "--owner=0",
+  "--group=0",
+  "--numeric-owner",
+  "--no-recursion",
+  "--verbatim-files-from",
 ];
 
 function compressor(format: ArchiveFormat): readonly [string, string[]] {
@@ -117,7 +153,8 @@ export interface ArchiveResult {
 
 /**
  * Archives the contents of `srcDir` (no wrapping directory) into `outFile`, deterministically: entries in
- * byte order, owner 0:0 with no names, no extended attributes or ACLs, GNU format. File times
+ * byte order, owner 0:0 with no names, no extended attributes or ACLs, GNU format, with bsdtar or
+ * GNU tar. The bytes differ between the two, so compare archives made with the same one. File times
  * come from the tree, which packaging sets to `FIXED_MTIME`.
  */
 export async function createArchive(
@@ -137,7 +174,18 @@ export async function createArchive(
   try {
     await runPipeline(
       [
-        { cmd: "tar", args: [...TAR_CREATE, "-C", srcDir, "-T", listFile, "-f", "-"] },
+        {
+          cmd: tarBin(),
+          args: [
+            ...(tarIsGnu() ? GNU_TAR_CREATE : BSD_TAR_CREATE),
+            "-C",
+            srcDir,
+            "-T",
+            listFile,
+            "-f",
+            "-",
+          ],
+        },
         { cmd: zc, args: zargs },
       ],
       null,
@@ -160,7 +208,7 @@ export async function extractArchive(
   await runPipeline(
     [
       { cmd: dc, args: dargs },
-      { cmd: "tar", args: ["-x", "-f", "-", "-C", destDir] },
+      { cmd: tarBin(), args: ["-x", "-f", "-", "-C", destDir] },
     ],
     archive,
     null,

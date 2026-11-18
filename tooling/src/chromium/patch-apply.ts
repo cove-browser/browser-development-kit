@@ -75,7 +75,8 @@ export async function amPatch(srcDir: string, patchPath: string): Promise<AmResu
       /^CONFLICT \(.+?\): (\S+) (?:deleted|renamed|added) /.exec(line);
     if (m?.[1]) files.add(m[1]);
   }
-  await gitRaw(srcDir, ["am", "--abort"]);
+  // --abort resets HEAD and writes the reflog, which needs an identity; CI runners have none configured.
+  await gitRaw(srcDir, [...bdkIdentityArgs, "am", "--abort"]);
   return { ok: false, files: [...files].sort(), output };
 }
 
@@ -226,7 +227,7 @@ export async function applySeries(opts: ApplyOptions): Promise<ApplyResult> {
         `${opts.srcDir} has a "git am" in progress. Finish it, or run "git am --abort" there, or pass --force.`,
       );
     }
-    await gitRaw(opts.srcDir, ["am", "--abort"]);
+    await gitRaw(opts.srcDir, [...bdkIdentityArgs, "am", "--abort"]);
   }
 
   const state = await seriesState(opts.srcDir, opts.pinCommit, patches);

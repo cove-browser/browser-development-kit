@@ -190,13 +190,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install CMake, Ninja and LLVM 18 tools
-        # Homebrew's formulae are not pinned to digests here. llvm@18 supplies clang-format and clang-tidy at the
-        # same major version as the Linux job. The formulae float within their major version.
+      - name: Install CMake, Ninja and LLVM tools
+        # Homebrew's formulae are not pinned to digests here and float. The current llvm formula supplies
+        # clang-format and clang-tidy, as on developer Macs (tooling/clang-tidy.sh looks there too). llvm@18 cannot
+        # parse the macOS 26 SDK's libc++ headers, which use __builtin_clzg and __builtin_ctzg from clang 19.
         run: |
           set -euo pipefail
-          brew install --formula cmake ninja llvm@18
-          echo "$(brew --prefix llvm@18)/bin" >> "$GITHUB_PATH"
+          brew install --formula cmake ninja llvm
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
 
       - name: Install pinned SwiftLint
         run: |
