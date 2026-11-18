@@ -69,8 +69,10 @@ describe("chromium:sync", () => {
       'solutions = [{"url": "https://example.invalid/src.git"}]\n',
     );
     expect(log(sb)).toContain(
-      "gclient sync --revision src@refs/tags/1.0.0 --no-history --shallow -D --force",
+      "gclient sync --revision src@refs/tags/1.0.0 --no-history --shallow -D (cwd=",
     );
+    // gclient --force resets every dependency and recreates its files; only chromium:sync --force passes it.
+    expect(log(sb)).not.toContain("-D --force");
     expect(readFileSync(join(managedSrc(sb), "chrome", "BUILD.gn"), "utf8")).toContain('"//bdk"');
     expect((await git(managedSrc(sb), ["rev-parse", "HEAD~1"])).trim()).toBe(up.commit1);
     // A second sync is consistent: still pin plus series.
@@ -145,6 +147,7 @@ describe("chromium:sync", () => {
     const forced = await cli("sync", ["--force"], sb);
     expect(forced.code, forced.stderr).toBe(0);
     expect(forced.stdout).toContain("patch: applying");
+    expect(log(sb)).toContain("--no-history --shallow -D --force");
     expect(statSync(patched).mtimeMs).not.toBe(old.getTime());
   });
 

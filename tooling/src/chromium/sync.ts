@@ -125,7 +125,11 @@ export async function syncCheckout(ctx: CheckoutContext, options: SyncOptions = 
     "--no-history",
     "--shallow",
     "-D",
-    "--force",
+    // gclient --force runs `git reset --hard HEAD` in every dependency, even one already at its
+    // revision. That recreated all 466,465 files of the dependencies and made the next build
+    // recompile everything, so pass it only when asked. Without it gclient still moves
+    // dependencies whose revision changed, and -D still removes clean ones DEPS no longer lists.
+    ...(options.force ? ["--force"] : []),
     ...(options.noHooks ? ["--nohooks"] : []),
   ];
   log(`sync: gclient ${gclientArgs.join(" ")}`);
