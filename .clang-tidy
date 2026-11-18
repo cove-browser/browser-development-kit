@@ -1,8 +1,11 @@
+# performance-enum-size is off: the public enums are part of the C ABI, where an enum is int-sized,
+# and narrowing one would change the layout of every struct and signature that carries it.
 Checks: >
   -*,
   bugprone-*,
   clang-analyzer-*,
   performance-*,
-  -bugprone-easily-swappable-parameters
+  -bugprone-easily-swappable-parameters,
+  -performance-enum-size
 WarningsAsErrors: "*"
 HeaderFilterRegex: "packages/core/.*"
