@@ -31,9 +31,10 @@ opt_in_rules:
   - empty_count
   - unused_import
 
-# swift-api.md names `ID` types and the `ui` domain, and nests Navigation.Entry two deep.
+# swift-api.md names `ID` types and the `ui` domain, and nests Navigation.Entry two deep. x and y are
+# coordinates (window features, points).
 identifier_name:
-  excluded: [id, ui]
+  excluded: [id, ui, x, y]
 type_name:
   excluded: [ID]
 nesting:

@@ -13,6 +13,9 @@ public struct BDKConfiguration: Sendable {
     /// The application bundle; pages and scripts are read from here.
     public var bundleURL: URL?
     public var launch: LaunchOptions
+    /// UI-request handlers (swift-api.md section 10). Set the handler of a `custom` surface here.
+    /// The object is shared by copies of the configuration; the runtime copies its handlers at start.
+    public var ui = BDKUIHandlers()
 
     public init(resolvedJSON: String, bundleURL: URL? = nil, launch: LaunchOptions = .init()) {
         self.resolvedJSON = resolvedJSON

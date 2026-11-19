@@ -21,6 +21,12 @@ final class BDKWindows {
         entries[ObjectIdentifier(window)]?.window === window
     }
 
+    /// The application window registered under this handle.
+    func window(handle: bdk_window_t) -> NSWindow? {
+        guard handle != 0 else { return nil }
+        return entries.values.first { $0.handle == handle }?.window
+    }
+
     /// Registers the window unless it already is.
     func register(_ window: NSWindow, with runtime: BDKRuntime) throws {
         let key = ObjectIdentifier(window)

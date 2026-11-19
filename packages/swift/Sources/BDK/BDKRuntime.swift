@@ -42,6 +42,8 @@ public final class BDKRuntime {
 
     public let info: Info
     public private(set) lazy var profiles = BDKProfiles(runtime: self)
+    /// The UI-request handlers the runtime delivers to.
+    public private(set) lazy var ui = BDKUIHandlers()
     public private(set) var areRegistrationsFrozen = false
 
     package private(set) var handle: bdk_runtime_t
@@ -111,6 +113,7 @@ public final class BDKRuntime {
                 abiVersion: bdk_abi_version(), abiHash: swiftString(bdk_abi_hash())))
         current = runtime
         runtime.subscribeToEvents()
+        try runtime.register(configuration)
         if freezingRegistrations { try runtime.freezeRegistrations() }
         EventLoop.kick()
         return runtime
@@ -135,6 +138,12 @@ public final class BDKRuntime {
     }
 
     // MARK: Registrations
+
+    /// Hands the configuration's UI handlers to the runtime. A registration, so this runs before the
+    /// freeze.
+    private func register(_ configuration: BDKConfiguration) throws {
+        try ui.attach(to: self, from: configuration)
+    }
 
     /// Freezes the route and capability tables. Registrations after this fail with
     /// `config.registrationAfterStart`, and a second freeze does too.
@@ -234,6 +243,11 @@ public final class BDKRuntime {
     /// Every live page, in creation order of their handles.
     public var webContents: [BDKWebContents] {
         liveContents.keys.sorted().compactMap { liveContents[$0]?.value }
+    }
+
+    /// The page with this handle, if the application has one for it.
+    func webContents(handle: UInt64) -> BDKWebContents? {
+        handle == 0 ? nil : liveContents[handle]?.value
     }
 
     private func invalidateChildren() {
