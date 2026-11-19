@@ -36,6 +36,8 @@
 #include "bdk/engine/host_context.h"
 #include "bdk/engine/host_view.h"
 #include "bdk/engine/identity.h"
+#include "bdk/engine/services/authentication.h"
+#include "bdk/engine/services/passwords_service.h"
 #include "bdk/engine/session_state.h"
 #include "bdk/engine/testing.h"
 #include "chrome/browser/browser_process.h"
@@ -342,6 +344,25 @@ class EngineBackend final : public bdkcore::Backend {
 
   void CloseContents(const std::shared_ptr<Contents>& c) override {
     Page(*c).Close();
+  }
+
+  // Built-in commands, service by service (engine/services).
+  void ExecuteCommand(
+      Runtime& rt,
+      const std::shared_ptr<bdkcore::BuiltinCall>& call) override {
+    if (ExecutePasswordsOrAutofillCommand(rt, call)) {
+      return;
+    }
+    Backend::ExecuteCommand(rt, call);
+  }
+
+  void Authenticate(Runtime& rt,
+                    const std::string& reason,
+                    std::function<void(bool)> done) override {
+    AuthenticateUser(
+        reason, base::BindOnce([](std::function<void(bool)> done,
+                                  bool authenticated) { done(authenticated); },
+                               std::move(done)));
   }
 
   void DestroyContents(Runtime& rt, Contents& c) override { c.data.reset(); }

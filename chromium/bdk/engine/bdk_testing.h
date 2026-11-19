@@ -107,6 +107,27 @@ BDK_EXPORT bdk_status_t bdk_testing_tab_info(bdk_contents_t,
    run plus pages still loading. A harness pumps until it reads 0. */
 BDK_EXPORT size_t bdk_testing_pending_work(void);
 
+/* The test hooks of the services and the default presenters, behind one
+   function. `verb` names one; `arguments_json` is an object; the result, if
+   the verb has one, is written to `out` as a string. Verbs:
+     authentication        {"answer": "allow"|"deny"|"ask"}: what the operating
+                           system's authentication prompt answers ("ask" is
+                           the real prompt, the default).
+     authentication.count  how many times a command asked for it.
+     presenter             {"surface", "answer"}: the answer of a default
+                           presenter, which then shows no native UI (surface
+                           names as in [ui.surfaces]); an empty answer removes
+                           it. Answers are in docs/planning/sdk/ui-requests.md
+                           section 6.
+     presenter.count       {"surface"}: how often its default presenter ran.
+     script_page           {"url", "body", "contentType", "headers"}: serves
+                           later navigations to url with this content. */
+BDK_EXPORT bdk_status_t bdk_testing_control(bdk_runtime_t,
+                                            bdk_string_t verb,
+                                            bdk_string_t arguments_json,
+                                            char* out,
+                                            size_t out_size);
+
 #ifdef __cplusplus
 }
 #endif

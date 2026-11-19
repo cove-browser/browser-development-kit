@@ -67,8 +67,10 @@ bool capability_granted(const Caller& caller, const std::string& capability);
    wins: after the call is cancelled, or answered, the rest are ignored. */
 class CommandControl {
   public:
-    explicit CommandControl(std::shared_ptr<Call> call, bool progress)
-        : call_(std::move(call)), progress_(progress) {}
+    /* Out of line: the engine compiles this header with Chromium's style plugin, which refuses an
+       inline constructor or implicit destructor on a class with members like these. */
+    CommandControl(std::shared_ptr<Call> call, bool progress);
+    ~CommandControl();
 
     /* Reports progress; ignored unless the command is marked P. fraction is clamped to 0..1. */
     void Progress(double fraction, const std::string& message);

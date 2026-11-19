@@ -73,6 +73,20 @@ source_set("bdk") {
       "engine/host_window_mac.mm",
       "engine/identity.cc",
       "engine/identity.h",
+      "engine/services/authentication.cc",
+      "engine/services/authentication.h",
+      "engine/services/authentication_mac.mm",
+      "engine/services/autofill_service.cc",
+      "engine/services/autofill_service.h",
+      "engine/services/native_presenter.h",
+      "engine/services/native_presenter_mac.mm",
+      "engine/services/passwords_service.cc",
+      "engine/services/passwords_service.h",
+      "engine/services/presenter_answers.cc",
+      "engine/services/presenter_answers.h",
+      "engine/services/service_common.cc",
+      "engine/services/service_common.h",
+      "engine/services/testing_control.cc",
       "engine/session_state.cc",
       "engine/session_state.h",
       "engine/testing.cc",
@@ -88,6 +102,8 @@ source_set("bdk") {
       "//chrome/browser/ui/webui/devtools",
       "//chrome/browser/lifetime",
       "//chrome/browser/profiles:profile",
+      "//components/autofill/core/browser",
+      "//components/password_manager/core/browser",
       "//components/input",
       "//components/keep_alive_registry",
       "//components/os_crypt/common:keychain_password_mac",
@@ -107,6 +123,9 @@ source_set("bdk") {
       "//url",
     ]
     configs += [ ":core_raw_ptr_exclusion" ]
-    frameworks = [ "AppKit.framework" ]
+    frameworks = [
+      "AppKit.framework",
+      "LocalAuthentication.framework",
+    ]
   }
 }

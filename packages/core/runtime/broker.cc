@@ -466,6 +466,11 @@ void resolve_call(const std::shared_ptr<Call>& call, const std::string& result_j
 
 /* ---- CommandControl ---- */
 
+CommandControl::CommandControl(std::shared_ptr<Call> call, bool progress)
+    : call_(std::move(call)), progress_(progress) {}
+
+CommandControl::~CommandControl() = default;
+
 void CommandControl::Progress(double fraction, const std::string& message) {
     if (!progress_ || call_->done || call_->cancelled || !call_->prog || std::isnan(fraction))
         return;
