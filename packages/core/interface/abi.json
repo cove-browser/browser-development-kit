@@ -1,0 +1,143 @@
+{
+  "namespace": "abi",
+  "since": 1,
+  "constants": [
+    {
+      "group": "domains",
+      "kind": "string",
+      "prefix": "BDK_DOMAIN_",
+      "comment": "Error domains and codes (swift-api.md section 16). Strings, so an older binding can report a newer error.",
+      "values": {
+        "ABI": "abi",
+        "RUNTIME": "runtime",
+        "CONFIG": "config",
+        "PROFILE": "profile",
+        "CONTENTS": "contents",
+        "NAVIGATION": "navigation",
+        "BROKER": "broker",
+        "CAPABILITY": "capability",
+        "UI": "ui",
+        "PROVIDER": "provider",
+        "AUTOMATION": "automation",
+        "PLATFORM": "platform"
+      }
+    },
+    {
+      "group": "codes",
+      "kind": "string",
+      "prefix": "BDK_CODE_",
+      "values": {
+        "VERSION_MISMATCH": "versionMismatch",
+        "HASH_MISMATCH": "hashMismatch",
+        "ALREADY_STARTED": "alreadyStarted",
+        "SHUTDOWN_IN_PROGRESS": "shutdownInProgress",
+        "RESOLVED_INVALID": "resolvedInvalid",
+        "REGISTRATION_AFTER_START": "registrationAfterStart",
+        "NOT_FOUND": "notFound",
+        "NAME_TAKEN": "nameTaken",
+        "IS_PRIVATE": "isPrivate",
+        "STALE": "stale",
+        "NET_ERROR": "netError",
+        "UNKNOWN_COMMAND": "unknownCommand",
+        "INVALID_ARGUMENTS": "invalidArguments",
+        "CANCELLED": "cancelled",
+        "GESTURE_REQUIRED": "gestureRequired",
+        "REQUEST_COMPLETED": "requestCompleted"
+      }
+    },
+    {
+      "group": "runtimeEvents",
+      "kind": "enum",
+      "prefix": "BDK_RUNTIME_EVENT_",
+      "comment": "Runtime event kinds (bdk_runtime_event_cb). Provisional: c-abi.md names the callback but not its kinds.",
+      "values": {
+        "REGISTRATIONS_FROZEN": 1,
+        "PROFILE_OPENED": 2,
+        "PROFILE_CLOSED": 3,
+        "SHUTDOWN_STARTED": 4
+      }
+    },
+    {
+      "group": "contentsEvents",
+      "kind": "enum",
+      "prefix": "BDK_CONTENTS_EVENT_",
+      "comment": "Contents event kinds (bdk_contents_event_t.kind). Provisional: c-abi.md says the kinds live here without listing them.",
+      "values": {
+        "NAVIGATION_STARTED": 1,
+        "NAVIGATION_COMMITTED": 2,
+        "NAVIGATION_FAILED": 3,
+        "LOAD_FINISHED": 4,
+        "TITLE_CHANGED": 5,
+        "FOCUS_CHANGED": 6,
+        "CLOSED": 7,
+        "RENDERER_GONE": 8,
+        "VISIBILITY_CHANGED": 9
+      }
+    },
+    {
+      "group": "eventFlags",
+      "kind": "flags",
+      "prefix": "BDK_EVENT_FLAG_",
+      "comment": "bdk_contents_event_t.flags",
+      "values": {
+        "MAIN_FRAME": 1,
+        "SAME_DOCUMENT": 2,
+        "USER_INITIATED": 4,
+        "ERROR_PAGE": 8
+      }
+    },
+    {
+      "group": "audio",
+      "kind": "flags",
+      "prefix": "BDK_AUDIO_",
+      "comment": "bdk_contents_state_t.audio flags",
+      "values": { "AUDIBLE": 1, "MUTED": 2 }
+    },
+    {
+      "group": "security",
+      "kind": "enum",
+      "prefix": "BDK_SECURITY_",
+      "comment": "bdk_contents_state_t.security",
+      "values": { "UNKNOWN": 0, "NONE": 1, "SECURE": 2, "BROKEN": 3 }
+    },
+    {
+      "group": "visibility",
+      "kind": "enum",
+      "prefix": "BDK_VISIBILITY_",
+      "comment": "bdk_contents_state_t.visibility",
+      "values": { "HIDDEN": 0, "VISIBLE": 1 }
+    },
+    {
+      "group": "surfaces",
+      "kind": "enum",
+      "prefix": "BDK_SURFACE_",
+      "comment": "UI surfaces (ui-requests.md section 4, in table order). Values are never reused. A command's raises field names one of these in lower case.",
+      "values": {
+        "PERMISSIONS": 1,
+        "JAVASCRIPT_DIALOGS": 2,
+        "HTTP_AUTH": 3,
+        "CLIENT_CERTIFICATES": 4,
+        "FILE_PICKERS": 5,
+        "CONTEXT_MENUS": 6,
+        "NEW_WINDOWS": 7,
+        "DOWNLOADS": 8,
+        "PASSWORDS": 9,
+        "AUTOFILL": 10,
+        "AUTOFILL_SUGGESTIONS": 11,
+        "PRINTING": 12,
+        "TRANSLATION": 13,
+        "FIND": 14,
+        "FULLSCREEN": 15,
+        "EXCLUSIVE_ACCESS": 16,
+        "NOTIFICATIONS": 17,
+        "CERTIFICATE_ERRORS": 18,
+        "REPUTATION_WARNINGS": 19,
+        "DEVTOOLS": 20,
+        "DEVICE_CHOOSERS": 21,
+        "SCREEN_CAPTURE": 22,
+        "WEBAUTHN": 23,
+        "EXTERNAL_PROTOCOLS": 24
+      }
+    }
+  ]
+}

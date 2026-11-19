@@ -1,0 +1,63 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BDK Patches <patches@bdk.invalid>
+Date: Thu, 19 Nov 2026 10:47:46 -0800
+Subject: [PATCH] bdk: let an embedder supply its ChromeContentBrowserClient
+
+ChromeMainDelegate creates its ChromeContentBrowserClient in
+CreateContentBrowserClient() and keeps it, with the sampling profiler, in
+private members, so a subclass cannot give the browser a client of its own
+without duplicating that. BDK runs //chrome through a ChromeMainDelegate
+subclass and needs its own client: to intercept navigations for its
+conformance harness now, and for its internal pages and broker later.
+
+Add a protected virtual CreateChromeContentBrowserClient() that the
+existing code calls; it returns a plain ChromeContentBrowserClient, so
+Chrome is unchanged.
+
+Used by: the BDK engine (//bdk/engine/chromium_main_mac.mm,
+//bdk/engine/content_browser_client.cc).
+---
+ chrome/app/chrome_main_delegate.cc | 10 ++++++++--
+ chrome/app/chrome_main_delegate.h  |  5 +++++
+ 2 files changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/chrome/app/chrome_main_delegate.cc b/chrome/app/chrome_main_delegate.cc
+index 33a3b3844ad4839eb87c15c7aef0c956abd9f98e..77af286e0d59e42b5564a44227922ed251a59af0 100644
+--- a/chrome/app/chrome_main_delegate.cc
++++ b/chrome/app/chrome_main_delegate.cc
+@@ -1912,11 +1912,17 @@ content::ContentClient* ChromeMainDelegate::CreateContentClient() {
+   return &chrome_content_client_;
+ }
+ 
++#if !defined(BUILDING_CHROME_RENDERER)
++std::unique_ptr<ChromeContentBrowserClient>
++ChromeMainDelegate::CreateChromeContentBrowserClient() {
++  return std::make_unique<ChromeContentBrowserClient>();
++}
++#endif
++
+ content::ContentBrowserClient*
+ ChromeMainDelegate::CreateContentBrowserClient() {
+ #if !defined(BUILDING_CHROME_RENDERER)
+-  chrome_content_browser_client_ =
+-      std::make_unique<ChromeContentBrowserClient>();
++  chrome_content_browser_client_ = CreateChromeContentBrowserClient();
+ #if !BUILDFLAG(IS_ANDROID)
+   // Android does this in `ChromeMainDelegateAndroid::PreSandboxStartup`.
+   CHECK(sampling_profiler_);
+diff --git a/chrome/app/chrome_main_delegate.h b/chrome/app/chrome_main_delegate.h
+index 5fc1e70bb354e7cdf871c7f32f6fde51c80d57c7..f92c12677087c708200d606d5824b48ce9a699b8 100644
+--- a/chrome/app/chrome_main_delegate.h
++++ b/chrome/app/chrome_main_delegate.h
+@@ -87,6 +87,11 @@ class ChromeMainDelegate : public content::ContentMainDelegate {
+ 
+   content::ContentClient* CreateContentClient() override;
+   content::ContentBrowserClient* CreateContentBrowserClient() override;
++#if !defined(BUILDING_CHROME_RENDERER)
++  // BDK: an embedder that runs //chrome supplies its own subclass here.
++  virtual std::unique_ptr<ChromeContentBrowserClient>
++  CreateChromeContentBrowserClient();
++#endif
+   content::ContentGpuClient* CreateContentGpuClient() override;
+   content::ContentRendererClient* CreateContentRendererClient() override;
+   content::ContentUtilityClient* CreateContentUtilityClient() override;

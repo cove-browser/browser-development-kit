@@ -1,0 +1,95 @@
+{
+  "commands": [],
+  "events": [],
+  "constants": {
+    "domains": [
+      { "name": "ABI", "id": "abi" },
+      { "name": "RUNTIME", "id": "runtime" },
+      { "name": "CONFIG", "id": "config" },
+      { "name": "PROFILE", "id": "profile" },
+      { "name": "CONTENTS", "id": "contents" },
+      { "name": "NAVIGATION", "id": "navigation" },
+      { "name": "BROKER", "id": "broker" },
+      { "name": "CAPABILITY", "id": "capability" },
+      { "name": "UI", "id": "ui" },
+      { "name": "PROVIDER", "id": "provider" },
+      { "name": "AUTOMATION", "id": "automation" },
+      { "name": "PLATFORM", "id": "platform" }
+    ],
+    "codes": [
+      { "name": "VERSION_MISMATCH", "id": "versionMismatch" },
+      { "name": "HASH_MISMATCH", "id": "hashMismatch" },
+      { "name": "ALREADY_STARTED", "id": "alreadyStarted" },
+      { "name": "SHUTDOWN_IN_PROGRESS", "id": "shutdownInProgress" },
+      { "name": "RESOLVED_INVALID", "id": "resolvedInvalid" },
+      { "name": "REGISTRATION_AFTER_START", "id": "registrationAfterStart" },
+      { "name": "NOT_FOUND", "id": "notFound" },
+      { "name": "NAME_TAKEN", "id": "nameTaken" },
+      { "name": "IS_PRIVATE", "id": "isPrivate" },
+      { "name": "STALE", "id": "stale" },
+      { "name": "NET_ERROR", "id": "netError" },
+      { "name": "UNKNOWN_COMMAND", "id": "unknownCommand" },
+      { "name": "INVALID_ARGUMENTS", "id": "invalidArguments" },
+      { "name": "CANCELLED", "id": "cancelled" },
+      { "name": "GESTURE_REQUIRED", "id": "gestureRequired" },
+      { "name": "REQUEST_COMPLETED", "id": "requestCompleted" }
+    ],
+    "runtimeEvents": [
+      { "name": "REGISTRATIONS_FROZEN", "id": 1 },
+      { "name": "PROFILE_OPENED", "id": 2 },
+      { "name": "PROFILE_CLOSED", "id": 3 },
+      { "name": "SHUTDOWN_STARTED", "id": 4 }
+    ],
+    "contentsEvents": [
+      { "name": "NAVIGATION_STARTED", "id": 1 },
+      { "name": "NAVIGATION_COMMITTED", "id": 2 },
+      { "name": "NAVIGATION_FAILED", "id": 3 },
+      { "name": "LOAD_FINISHED", "id": 4 },
+      { "name": "TITLE_CHANGED", "id": 5 },
+      { "name": "FOCUS_CHANGED", "id": 6 },
+      { "name": "CLOSED", "id": 7 },
+      { "name": "RENDERER_GONE", "id": 8 },
+      { "name": "VISIBILITY_CHANGED", "id": 9 }
+    ],
+    "eventFlags": [
+      { "name": "MAIN_FRAME", "id": 1 },
+      { "name": "SAME_DOCUMENT", "id": 2 },
+      { "name": "USER_INITIATED", "id": 4 },
+      { "name": "ERROR_PAGE", "id": 8 }
+    ],
+    "audio": [{ "name": "AUDIBLE", "id": 1 }, { "name": "MUTED", "id": 2 }],
+    "security": [
+      { "name": "UNKNOWN", "id": 0 },
+      { "name": "NONE", "id": 1 },
+      { "name": "SECURE", "id": 2 },
+      { "name": "BROKEN", "id": 3 }
+    ],
+    "visibility": [{ "name": "HIDDEN", "id": 0 }, { "name": "VISIBLE", "id": 1 }],
+    "surfaces": [
+      { "name": "PERMISSIONS", "id": 1 },
+      { "name": "JAVASCRIPT_DIALOGS", "id": 2 },
+      { "name": "HTTP_AUTH", "id": 3 },
+      { "name": "CLIENT_CERTIFICATES", "id": 4 },
+      { "name": "FILE_PICKERS", "id": 5 },
+      { "name": "CONTEXT_MENUS", "id": 6 },
+      { "name": "NEW_WINDOWS", "id": 7 },
+      { "name": "DOWNLOADS", "id": 8 },
+      { "name": "PASSWORDS", "id": 9 },
+      { "name": "AUTOFILL", "id": 10 },
+      { "name": "AUTOFILL_SUGGESTIONS", "id": 11 },
+      { "name": "PRINTING", "id": 12 },
+      { "name": "TRANSLATION", "id": 13 },
+      { "name": "FIND", "id": 14 },
+      { "name": "FULLSCREEN", "id": 15 },
+      { "name": "EXCLUSIVE_ACCESS", "id": 16 },
+      { "name": "NOTIFICATIONS", "id": 17 },
+      { "name": "CERTIFICATE_ERRORS", "id": 18 },
+      { "name": "REPUTATION_WARNINGS", "id": 19 },
+      { "name": "DEVTOOLS", "id": 20 },
+      { "name": "DEVICE_CHOOSERS", "id": 21 },
+      { "name": "SCREEN_CAPTURE", "id": 22 },
+      { "name": "WEBAUTHN", "id": 23 },
+      { "name": "EXTERNAL_PROTOCOLS", "id": 24 }
+    ]
+  }
+}

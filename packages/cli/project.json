@@ -30,6 +30,7 @@
       },
       "inputs": [
         "default",
+        "{workspaceRoot}/tests/config/**/*",
         {
           "externalDependencies": ["vitest"]
         }
@@ -39,8 +40,11 @@
       "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "pnpm exec biome check {projectRoot}",
-          "pnpm exec tsc -p {projectRoot}/tsconfig.json --noEmit"
+          "pnpm exec biome check {projectRoot} tests/config",
+          "pnpm exec tsc -p {projectRoot}/tsconfig.json --noEmit",
+          "pnpm exec tsc -p {projectRoot}/scripts/tsconfig.json --noEmit",
+          "pnpm exec tsx {projectRoot}/scripts/check-config-assets.ts",
+          "taplo format --check 'tests/config/valid/*.toml' 'tests/config/resolve/*/bdk.toml'"
         ],
         "parallel": false
       }
@@ -55,8 +59,16 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "echo 'cli:package: not implemented until M2 (T-CLI-05, Rolldown + node --build-sea)'"
-      }
+        "command": "pnpm exec tsx {projectRoot}/scripts/package.ts"
+      },
+      "inputs": [
+        "default",
+        "{workspaceRoot}/.node-version",
+        {
+          "externalDependencies": ["rolldown"]
+        }
+      ],
+      "outputs": ["{projectRoot}/dist/bdk", "{projectRoot}/dist/bdk.artifactbundle"]
     }
   }
 }

@@ -1,0 +1,13 @@
+[browser]
+name = "Cove"
+
+[pages.overrides]
+print = "native"
+bdk-internal = "disabled"
+welcome = "disabled"
+
+[pages.routes]
+theme = "settings"
+
+[pages.capabilities.error]
+allow = ["settings.read"]

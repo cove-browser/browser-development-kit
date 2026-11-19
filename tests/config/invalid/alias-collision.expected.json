@@ -1,0 +1,25 @@
+{
+  "diagnostics": [
+    {
+      "code": "pages.alias_collision",
+      "severity": "error",
+      "message": "Alias \"history\" has the same name as a page.",
+      "file": "bdk.toml",
+      "line": 9
+    },
+    {
+      "code": "pages.alias_collision",
+      "severity": "error",
+      "message": "Alias \"bookmarks\" has the same name as a page.",
+      "file": "bdk.toml",
+      "line": 10
+    },
+    {
+      "code": "pages.alias_collision",
+      "severity": "error",
+      "message": "Alias \"agents\" has the same name as a page.",
+      "file": "bdk.toml",
+      "line": 11
+    }
+  ]
+}

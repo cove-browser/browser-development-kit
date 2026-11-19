@@ -1,0 +1,9 @@
+[browser]
+name = "Cove"
+
+[runtime]
+mode = "hybrid"
+downgrade = "ignore"
+
+[extensions]
+allow_in_private = "always"

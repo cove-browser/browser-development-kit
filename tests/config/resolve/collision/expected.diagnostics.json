@@ -1,0 +1,10 @@
+{
+  "diagnostics": [
+    {
+      "code": "pages.collision",
+      "severity": "error",
+      "message": "\"Pages/NewTab\" and \"Pages/new-tab\" both normalise to the route \"new-tab\".",
+      "file": "Pages/NewTab"
+    }
+  ]
+}

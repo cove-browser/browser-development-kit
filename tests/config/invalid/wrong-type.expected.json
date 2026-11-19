@@ -1,0 +1,25 @@
+{
+  "diagnostics": [
+    {
+      "code": "config.type",
+      "severity": "error",
+      "message": "\"browser.name\" must be a string, found integer.",
+      "file": "bdk.toml",
+      "line": 2
+    },
+    {
+      "code": "config.type",
+      "severity": "error",
+      "message": "\"runtime.snapshot_on_upgrade\" must be a boolean, found string.",
+      "file": "bdk.toml",
+      "line": 5
+    },
+    {
+      "code": "config.type",
+      "severity": "error",
+      "message": "\"pages.overrides\" must be a table, found array.",
+      "file": "bdk.toml",
+      "line": 8
+    }
+  ]
+}

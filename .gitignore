@@ -4,9 +4,14 @@ node_modules/
 dist/
 build/
 .build/
+.swiftpm/
 *.tsbuildinfo
 coverage/
 graph.json
 .DS_Store
+# resolved from bdk.toml by the build
+apps/**/bdk.resolved.json
 # generated bindings are produced by the codegen targets
 packages/js/protocol/src/generated/
+# CMake builds of packages/core next to build/ (engine conformance, sanitizers)
+packages/core/build-*/

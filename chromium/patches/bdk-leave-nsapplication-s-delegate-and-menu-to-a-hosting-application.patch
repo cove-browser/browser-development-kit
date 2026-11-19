@@ -1,0 +1,63 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BDK Patches <patches@bdk.invalid>
+Date: Thu, 19 Nov 2026 09:57:19 -0800
+Subject: [PATCH] bdk: leave NSApplication's delegate and menu to a hosting
+ application
+
+BDK runs //chrome inside an application that owns NSApplication, its
+delegate and its main menu. ChromeBrowserMainPartsMac::PreCreateThreads()
+checks that NSApp has no delegate, then installs Chrome's AppController as
+the delegate and builds Chrome's main menu; DidEndMainMessageLoop() calls
+into the AppController. Both would take the application over.
+
+When the browser process runs with --bdk-hosted (set only by the BDK
+engine), skip both. Chrome itself never passes the switch, so nothing
+changes for it. The application object is still a BrowserCrApplication:
+BDK's BDKApplicationBase subclasses it.
+
+Used by: the BDK engine start-up (//bdk/engine/chromium_main_mac.mm).
+---
+ chrome/browser/chrome_browser_main_mac.mm | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/chrome/browser/chrome_browser_main_mac.mm b/chrome/browser/chrome_browser_main_mac.mm
+index b269f1610a55d31aa58beab694fa7cbb214b58d1..780d10e244e8d094d2d155103a998e96f4454a01 100644
+--- a/chrome/browser/chrome_browser_main_mac.mm
++++ b/chrome/browser/chrome_browser_main_mac.mm
+@@ -54,6 +54,14 @@
+ 
+ namespace {
+ 
++// BDK: set by the BDK engine when //chrome runs inside an application that
++// owns NSApplication, its delegate and its main menu. See //bdk.
++constexpr char kBdkHostedSwitch[] = "bdk-hosted";
++
++bool IsBdkHosted() {
++  return base::CommandLine::ForCurrentProcess()->HasSwitch(kBdkHostedSwitch);
++}
++
+ base::FilePath GetBundlePath() {
+   if (!base::apple::AmIBundled()) {
+     return base::FilePath();
+@@ -155,6 +163,11 @@
+   }
+ 
+   // Create the app delegate by requesting the shared AppController.
++  // BDK: the hosting application keeps its own delegate and main menu.
++  if (IsBdkHosted()) {
++    return content::RESULT_CODE_NORMAL_EXIT;
++  }
++
+   CHECK_EQ(nil, NSApp.delegate);
+   AppController* app_controller = AppController.sharedController;
+   CHECK_NE(nil, NSApp.delegate);
+@@ -182,5 +195,9 @@
+ }
+ 
+ void ChromeBrowserMainPartsMac::DidEndMainMessageLoop() {
++  // BDK: there is no AppController in a hosting application.
++  if (IsBdkHosted()) {
++    return;
++  }
+   [AppController.sharedController didEndMainMessageLoop];
+ }

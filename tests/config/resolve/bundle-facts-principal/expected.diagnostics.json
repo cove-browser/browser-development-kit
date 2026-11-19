@@ -1,0 +1,10 @@
+{
+  "diagnostics": [
+    {
+      "code": "plist.principal_class",
+      "severity": "warning",
+      "message": "Info.plist sets NSPrincipalClass to \"CoveApplication\". It must be BDKApplication or a subclass, which cannot be checked from the plist.",
+      "file": "Info.plist"
+    }
+  ]
+}

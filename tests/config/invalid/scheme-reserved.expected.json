@@ -1,0 +1,11 @@
+{
+  "diagnostics": [
+    {
+      "code": "browser.scheme_invalid",
+      "severity": "error",
+      "message": "\"browser.internal_scheme\" is a reserved scheme: \"https\".",
+      "file": "bdk.toml",
+      "line": 3
+    }
+  ]
+}

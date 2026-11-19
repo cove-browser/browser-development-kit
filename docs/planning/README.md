@@ -1,6 +1,6 @@
 # BDK implementation plan
 
-Planning output for BDK, the Browser Development Kit, dated 2026-11-14. It is based on the BDK Design Specification v0.7 and the planning brief. No production code has been written.
+Planning output for BDK, the Browser Development Kit, dated 2026-11-14. It is based on the BDK Design Specification v0.7 and the planning brief. It was written before any production code; progress since is in the status blocks of [roadmap.md](roadmap.md), and the decisions taken while building that depart from it are in [amendments.md](amendments.md).
 
 | Document | Read it for |
 |---|---|

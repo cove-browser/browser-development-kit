@@ -9,31 +9,71 @@
       "cache": false,
       "inputs": [
         "default",
+        "nativeToolchain",
+        "{workspaceRoot}/Package.swift",
+        "{workspaceRoot}/packages/swift/Sources/**/*",
+        "{workspaceRoot}/packages/core/include/**/*",
+        "{workspaceRoot}/packages/core/stub/**/*",
+        "{workspaceRoot}/packages/core/runtime/**/*",
+        "{workspaceRoot}/packages/core/generated/**/*",
         { "dependentTasksOutputFiles": "**/runtime.json", "transitive": false },
         { "fileset": "{workspaceRoot}/.bdk/runtime.json" }
       ],
       "options": {
-        "command": "echo 'minimal-browser:build: not implemented until M2'"
+        "command": "apps/examples/minimal-browser/scripts/bundle.sh",
+        "cwd": "{workspaceRoot}"
       }
     },
     "dev": {
       "executor": "nx:run-commands",
       "cache": false,
+      "dependsOn": ["build"],
       "options": {
-        "command": "echo 'minimal-browser:dev: not implemented until M2'"
+        "command": "apps/examples/minimal-browser/.build/MinimalBrowser.app/Contents/MacOS/MinimalBrowser",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "swift test --filter MinimalBrowserTests",
+        "cwd": "{projectRoot}"
       }
     },
     "test-e2e": {
       "executor": "nx:run-commands",
       "cache": false,
+      "dependsOn": ["build"],
       "options": {
-        "command": "echo 'minimal-browser:test-e2e: not implemented until M2'"
+        "command": "swift test --filter MinimalBrowserE2ETests",
+        "cwd": "{projectRoot}"
       }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "swift format lint --strict --recursive apps/examples/minimal-browser/Sources apps/examples/minimal-browser/Tests apps/examples/minimal-browser/Package.swift",
+          "swiftlint lint --strict --config .swiftlint.yml apps/examples/minimal-browser",
+          "shellcheck apps/examples/minimal-browser/scripts/bundle.sh",
+          "shfmt -d apps/examples/minimal-browser/scripts/bundle.sh"
+        ],
+        "parallel": false,
+        "cwd": "{workspaceRoot}"
+      },
+      "inputs": ["default", "lintConfig", "nativeToolchain", "{workspaceRoot}/Package.swift"]
     },
     "format": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm exec biome format --write {projectRoot}"
+        "commands": [
+          "swift format --in-place --recursive apps/examples/minimal-browser/Sources apps/examples/minimal-browser/Tests apps/examples/minimal-browser/Package.swift",
+          "shfmt -w apps/examples/minimal-browser/scripts/bundle.sh",
+          "pnpm exec biome format --write apps/examples/minimal-browser"
+        ],
+        "parallel": false,
+        "cwd": "{workspaceRoot}"
       }
     }
   }

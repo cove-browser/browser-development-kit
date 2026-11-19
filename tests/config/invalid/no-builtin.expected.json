@@ -1,0 +1,11 @@
+{
+  "diagnostics": [
+    {
+      "code": "pages.no_builtin",
+      "severity": "error",
+      "message": "\"pages.overrides.agents\" is \"chromium\", but the route \"agents\" has no built-in page.",
+      "file": "bdk.toml",
+      "line": 5
+    }
+  ]
+}

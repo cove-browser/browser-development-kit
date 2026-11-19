@@ -334,6 +334,17 @@ Validation, run in CI with no Chromium:
 - Identifiers in `bdk_ids.h` are assigned once and never reused. Removing a command retires its identifier.
 - The generated output is byte-stable for the same input.
 
+Decisions taken in T-ABI-03 where this section was silent (2026-11-18). The implementation is `packages/js/codegen`; the rules for using it are in `packages/core/docs/conventions.md`.
+
+- Files in `interface/`: one `<namespace>.json` per namespace (the file name equals `namespace`), `policy.json` and `ids.json`. `policy.json` holds the "never for pages" list as data: `neverForPages` (`contents.*`, `automation.*`, `devtools.*`, `cookies.values`: the first three from configuration.md, the last from the services.md table, where Pages is "No") and `neverForSessions` (`passwords.reveal`). A command that lists `session` cannot use a `neverForSessions` capability. Entries are capability names or `namespace.*`.
+- `types` entries are a struct (an object of field types), an enum (`{ "enum": ["a", "b"] }`) or an alias (a type expression). Type names are `PascalCase` and global across files. `void` is valid only as a result.
+- A command or event name is `namespace.verb`, and the verb may have further dotted segments (`autofill.addresses.list`). A capability level may contain hyphens (`top-sites.read`). `capability` may be omitted on a command that needs none (`runtime.caller`) and is required on an event. `since` is required on the file and optional on a command or event. `profile`, `callers`, `args` and `result` are required on a command.
+- A `paginated` command has `limit` and `cursor` in `args` and `items` and `nextCursor` in `result` (services.md section 2).
+- `raises` names a surface in lower case, from the `surfaces` constants group.
+- `constants` holds the identifier families of the ABI itself (error domains and codes, event kinds, flags, security and visibility values, surfaces) as groups with a macro prefix and explicit values. They generate `#define` lines in `bdk_ids.h` and are recorded in the registry like command identifiers.
+- `ids.json` is the registry of every identifier ever assigned. Commands and events are numbered from 1 in the order they first appear (files in name order). A removed name is marked `retired` and its identifier is not reused. The generated macros are `BDK_COMMAND_<NAME>` and `BDK_EVENT_<NAME>`.
+- No commands or events are defined yet. services.md gives names and capabilities but not argument and result types, and the broker that serves them is M3 (T-SVC-01).
+
 ## 8. UI requests
 
 ```c

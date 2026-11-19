@@ -38,7 +38,7 @@ checkout lock, so a whole sync, patch and build sequence is one lock acquisition
   the pin instead.
 - `chromium:patch-apply [--force]`, `chromium:patch-export`, `chromium:patch-check`.
 - `chromium:build [--config dev|release] [--targets a,b | targets...] [--ccache-maxsize 50G] [--no-patch]
-  [--no-verify] [--force]`: apply patches, mount `//bdk` (content-diff copy), `gn gen`, `autoninja`
+  [--no-verify] [--force]`: apply patches, mount `//bdk` (content-diff copy of `chromium/bdk`, plus `packages/core/runtime`, `include/bdk` and `generated` under `//bdk/core`), `gn gen`, `autoninja`
   (default target `chrome`) with `CCACHE_DIR=$BDK_HOME/ccache`, `CCACHE_MAXSIZE` (flag, or
   `BDK_CCACHE_MAXSIZE`, default 50G), `CCACHE_COMPILERCHECK=content`, `CCACHE_NOHASHDIR=1`. Prints
   full or incremental timings and appends them to `out/<config>/bdk-build-timings.jsonl`. After a
@@ -136,11 +136,11 @@ mean equal inputs.
 ### Source key (what names `runtimes/<key>`)
 
 First 16 hex digits of SHA-256 over the canonical JSON (sorted keys, no whitespace) of: Chromium tag and commit;
-BDK ABI version and ABI hash; SHA-256 digest of every file in `chromium/patches` and in `chromium/bdk`
-(path-sorted, relative path hashed in; `README.md` and `.DS_Store` at the top level are ignored so documentation
+BDK ABI version and ABI hash; SHA-256 digest of every file in `chromium/patches`, in `chromium/bdk` and in
+`packages/core/runtime` (the runtime core the engine compiles; path-sorted, relative path hashed in; `README.md` and `.DS_Store` at the top level are ignored so documentation
 edits do not force a rebuild); digest of `chromium/gn/<config>.gn` (`absent` if the preset file does not exist,
 which packaging refuses); digest of `chromium/runtime-files.json` (its sorted paths and `target.min_os`, canonical
-JSON: what is packaged decides what the key names); target OS and architecture. The key's own `key_schema` is 2.
+JSON: what is packaged decides what the key names); target OS and architecture. The key's own `key_schema` is 3.
 The ABI hash is in the key as well as the version: the
 runtime must report exactly the hash the SDK was compiled against, so a header change is a new key.
 Version and hash come from `src/runtime/abi.ts` (header `BDK_ABI_VERSION` and `packages/core/generated/abi-hash.txt`).

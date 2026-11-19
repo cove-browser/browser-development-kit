@@ -1,0 +1,73 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BDK Patches <patches@bdk.invalid>
+Date: Thu, 19 Nov 2026 09:18:07 -0800
+Subject: [PATCH] bdk: let an embedder keep the content runner after Run
+
+BDK hosts //chrome inside an application that already owns NSApplication
+and its run loop. bdk_runtime_start() initialises Chromium and must return
+to the application with the browser running, so the content main runner
+cannot be shut down as soon as RunContentProcess() returns.
+
+Add ContentMainParams::keep_runner_after_run. With it set,
+RunContentProcess() leaves the runner alive and does not hand its stack
+autorelease pool to the browser main loop (the pool ends when the function
+returns). The embedder calls ContentMainRunner::Shutdown() itself when it
+stops the browser. Nothing changes for embedders that leave it false.
+
+Used by: the BDK engine start-up (//bdk/engine/chromium_main_mac.mm).
+---
+ content/app/content_main.cc       | 7 +++++--
+ content/public/app/content_main.h | 8 ++++++++
+ 2 files changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/content/app/content_main.cc b/content/app/content_main.cc
+index 0fd60fa820805069ff01a2442f14de2b5e984e5a..e0c22ed44649c1ac3d0e1296143b18a994a6e016 100644
+--- a/content/app/content_main.cc
++++ b/content/app/content_main.cc
+@@ -194,6 +194,7 @@ NO_STACK_PROTECTOR int RunContentProcess(
+ #if BUILDFLAG(IS_MAC)
+   base::apple::ScopedNSAutoreleasePool autorelease_pool;
+ #endif
++  const bool shutdown_after_run = !params.keep_runner_after_run;
+ 
+   // A flag to indicate whether Main() has been called before. On Android, we
+   // may re-run Main() without restarting the browser process. This flag
+@@ -284,7 +285,7 @@ NO_STACK_PROTECTOR int RunContentProcess(
+     // is not safe. Each main loop should create and destroy its own pool; it
+     // should not be flushing the pool at the base of the autorelease pool
+     // stack.
+-    params.autorelease_pool = &autorelease_pool;
++    params.autorelease_pool = shutdown_after_run ? &autorelease_pool : nullptr;
+     InitializeMac();
+ #endif
+ 
+@@ -337,7 +338,9 @@ NO_STACK_PROTECTOR int RunContentProcess(
+   exit_code = content_main_runner->Run();
+ 
+ #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
+-  content_main_runner->Shutdown();
++  if (shutdown_after_run) {
++    content_main_runner->Shutdown();
++  }
+ #endif
+ 
+   return exit_code;
+diff --git a/content/public/app/content_main.h b/content/public/app/content_main.h
+index abbb4f4cccccff8e6fa2d8f1948fab4ef345c89f..b243045164e206046a40457e45242bc61777fb43 100644
+--- a/content/public/app/content_main.h
++++ b/content/public/app/content_main.h
+@@ -66,6 +66,14 @@ struct CONTENT_EXPORT ContentMainParams {
+   // are left uninitialized.
+   bool minimal_browser_mode = false;
+ 
++  // Set by an embedder whose application already owns the event loop (BDK).
++  // RunContentProcess() then returns once the content runner is initialised
++  // and its Run() has returned, without calling Shutdown(): the embedder keeps
++  // the runner and calls Shutdown() itself when it stops the browser. No
++  // autorelease pool is passed down, because RunContentProcess()'s own pool
++  // ends when it returns.
++  bool keep_runner_after_run = false;
++
+ #if BUILDFLAG(IS_MAC)
+   // The outermost autorelease pool to pass to main entry points.
+   STACK_ALLOCATED_IGNORE("https://crbug.com/1424190")

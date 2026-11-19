@@ -1,0 +1,53 @@
+{
+  "diagnostics": [
+    {
+      "code": "config.denied_switch",
+      "severity": "error",
+      "message": "\"disable_sandbox\" is on the Chromium deny list: it would disable the sandbox, site isolation or process locks (invariant 1).",
+      "file": "bdk.toml",
+      "line": 8
+    },
+    {
+      "code": "config.denied_switch",
+      "severity": "error",
+      "message": "\"remote_debugging_port\" is on the Chromium deny list: remote debugging on a network port or a pipe is not allowed (invariant 7).",
+      "file": "bdk.toml",
+      "line": 9
+    },
+    {
+      "code": "config.denied_switch",
+      "severity": "error",
+      "message": "\"ignore_certificate_errors\" is on the Chromium deny list: it would disable web security, certificate checks or CORS (invariants 1 and 6).",
+      "file": "bdk.toml",
+      "line": 10
+    },
+    {
+      "code": "config.denied_switch",
+      "severity": "error",
+      "message": "\"google_api_key\" is on the Chromium deny list: Google API keys do not belong in configuration (invariant 9).",
+      "file": "bdk.toml",
+      "line": 11
+    },
+    {
+      "code": "config.denied_switch",
+      "severity": "error",
+      "message": "\"enable_sync\" is on the Chromium deny list: it would re-enable sign-in, sync, metrics upload, crash upload or variations fetches (architecture.md section 12).",
+      "file": "bdk.toml",
+      "line": 12
+    },
+    {
+      "code": "config.denied_switch",
+      "severity": "error",
+      "message": "\"auto_grant_permissions\" is on the Chromium deny list: it would auto-grant permissions, media capture or extension installs (invariant 6).",
+      "file": "bdk.toml",
+      "line": 13
+    },
+    {
+      "code": "config.denied_switch",
+      "severity": "error",
+      "message": "\"--no-sandbox\" is on the Chromium deny list: it would disable the sandbox, site isolation or process locks (invariant 1).",
+      "file": "bdk.toml",
+      "line": 14
+    }
+  ]
+}

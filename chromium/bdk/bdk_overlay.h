@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-// Returns the version of the overlay. Its only job is to exist: `chromium:build`
+// Returns a constant. Its only job is to exist: `chromium:build`
 // runs `nm` on the built framework and fails if this symbol is missing, which
 // proves that //bdk was compiled and linked into the framework. The symbol is
 // also listed in chrome/app/framework.exports by the series, because the

@@ -1,0 +1,6 @@
+[browser]
+name = "Cove"
+
+[pages.overrides]
+agents = "chromium"
+history = "chromium"

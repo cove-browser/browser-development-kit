@@ -202,6 +202,23 @@ Propagated to architecture 1, 4.1, 8.3, 10 and 11; tooling 6.1; roadmap G0, M2 a
 
 Still waiting for the product owner: additions S1 to S16 and the five scope statements in [sdk/README.md](sdk/README.md) section 6, and Widevine.
 
+### 2.12 M0 skipped; M2 built on `WebContents` (2026-11-19)
+
+The product owner asked for M0 to be skipped and M2 completed. What that changed:
+
+| Planned | Built in M2 | Consequence |
+|---|---|---|
+| Gate G0 and the M0 evidence (T-ADP-01, T-ADP-02, T-ADP-04, T-ADP-08, T-EXT-01, T-WUI-01, T-PKG-01) before M2 | Not run. T-MAC-01 and T-MAC-02 were done as part of M2, in their final form (no throwaway spike kept). | D1 stays provisional; the extension, WebUI and services evidence of M0 is still owed, now by M3 to M5. |
+| Pages as tabs of `Browser` host contexts with a BDK `BrowserWindow` (architecture 4.1 and 4.2, T-ADP-01 to T-ADP-03) | Each page is a `WebContents` the engine owns directly, with BDK as its delegate. No `Browser`, tab strip or BDK window exists. | Chrome's tab helpers are not attached, so tab-scoped services (permission prompts, find, translate, the extension tab model) are absent. M3 must add the host contexts (T-ADP-01 to T-ADP-03) before T-ADP-04 and the services; the C ABI does not change for it. |
+| `NSApplication` hook patches (feasibility 2) | `BDKApplicationBase`, exported by the framework, subclasses Chromium's `BrowserCrApplication`; the Swift SDK's `BDKApplication` subclasses it. Chromium's loop runs nested in the application's, started from a run-loop timer; quitting cancels and re-terminates (`BDKRuntime.terminate(replyingTo:)`). | Applications must use `BDKApplication` (or a subclass) as their principal class. |
+| The stub and the engine as separate implementations of the ABI | One runtime core (`packages/core/runtime`) with two backends, the stub's and the engine's, so the conformance suite tests the same semantics on both. | Adding an ABI function means adding it to the core once and to a backend if it needs one. |
+| Conformance against the real runtime (T-ABI-04) through ordinary ABI calls | Through test hooks the engine exports (`chromium/bdk/engine/bdk_testing.h`, not ABI): scripted navigations without the network, UI requests raised for the application's handler, script with a user gesture, clicks. | The shipped framework carries the hooks. They act only as the application, on its own pages; no page or session can reach them. |
+| Undocked DevTools through Chrome's `DevToolsWindow` | Chrome's bundled front end in a BDK page with `DevToolsUIBindings`, raised as a new-window request of kind `devTools`. | Docked DevTools and `DevToolsWindow` features (docking, the eye dropper) are absent until a host context exists. |
+
+Notarization and a real Developer ID identity are not M2 work: they happen when a release is cut (T-PKG-06, M9), by the product owner's decision of 2026-11-19. T-PKG-03 is complete with ad hoc signing.
+
+Seven patches are in the series (`chromium/patches`); each message says why. Three behaviours of the suite moved towards Chromium's: a failed navigation commits an error page for its URL, a title event follows only a title change, and the stub's text session format is tested only against the stub.
+
 ## 3. Tasks and workflows
 
 | Task | Change |
@@ -241,7 +258,7 @@ The task list goes from 103 to 106 tasks. The README said 100 before, which was 
 | The version endpoints and the sparse checkout work on a hosted runner | T-CHR-11 |
 | A Chromium-based runtime launches and renders on a hosted macOS runner with no real GPU. If not, integration tests move to the local pass. | T-REP-04 |
 | Every build-time figure: about 90 minutes for a full build is a 2023 report | T-CHR-05 |
-| SwiftPM expects `Package.swift` at the repository root, and the package lives in `packages/swift` | T-PKG-04 |
+| ~~SwiftPM expects `Package.swift` at the repository root, and the package lives in `packages/swift`~~ Settled in M2 (T-SWF-01): the manifest is the root `Package.swift`; sources stay in `packages/swift`. T-PKG-04 still tests binary-target resolution from a clean machine. | T-PKG-04 |
 
 ## 5. Where to look
 
@@ -250,7 +267,7 @@ The task list goes from 103 to 106 tasks. The README said 100 before, which was 
 | [architecture.md](architecture.md) | 1 (A9), 2, 4.1, 8.2, 11.1 (new), 13, 17 |
 | [repository-and-tooling.md](repository-and-tooling.md) | 1, 2, 3, 4, 6.1 (new), 8, 8.1 (new), 9, 10, 10.1 (new), 10.2 (new) |
 | [risks.md](risks.md) | D1, D8, R3, R4, R9, R15, R30 (new) |
-| [roadmap.md](roadmap.md) | M0.7, M1, M2, M6, M9, v1 gates, section 5 |
+| [roadmap.md](roadmap.md) | M0.7, M1, M2, M6, M9, v1 gates, section 5; M2 status (2026-11-19, 2.12) |
 | [tasks.md](tasks.md) | The rows in section 3 above |
 | [feasibility.md](feasibility.md) | Section 10, two sentences |
 | [sdk/](sdk/README.md) | New. The index and all nine documents. |

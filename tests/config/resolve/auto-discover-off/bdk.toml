@@ -1,0 +1,9 @@
+[browser]
+name = "Cove"
+
+[pages]
+auto_discover = false
+directory = "Views"
+
+[pages.overrides]
+agents = "Views/Agents"

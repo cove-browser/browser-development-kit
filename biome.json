@@ -11,11 +11,34 @@
       "!pnpm-lock.yaml",
       "!**/*.md",
       "!**/*.pdf",
-      "!docs/BDK-Design-Spec-v0.7.pdf"
+      "!docs/BDK-Design-Spec-v0.7.pdf",
+      "!tests/config/resolve/*/expected.resolved.json"
     ]
   },
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
   "linter": { "enabled": true, "rules": { "preset": "recommended" } },
+  "overrides": [
+    {
+      "includes": ["packages/cli/src/core/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["**/platform/**", "!**/platform/platform.js"],
+                    "message": "The core must not import a platform module. Receive it through the Context, typed by platform/platform.ts (sdk/cli.md section 2.2)."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "javascript": { "formatter": { "quoteStyle": "double", "semicolons": "always" } },
   "yaml": { "formatter": { "enabled": true, "quoteStyle": "double" } },
   "assist": { "actions": { "source": { "organizeImports": "on" } } }

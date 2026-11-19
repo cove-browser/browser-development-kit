@@ -1,0 +1,32 @@
+{
+  "diagnostics": [
+    {
+      "code": "pages.name_invalid",
+      "severity": "error",
+      "message": "Route \"New Tab\" is not a valid route name. Route names match [a-z][a-z0-9-]*.",
+      "file": "bdk.toml",
+      "line": 5
+    },
+    {
+      "code": "pages.name_invalid",
+      "severity": "error",
+      "message": "Route \"Settings\" is not a valid route name. Route names match [a-z][a-z0-9-]*.",
+      "file": "bdk.toml",
+      "line": 6
+    },
+    {
+      "code": "pages.name_invalid",
+      "severity": "error",
+      "message": "Route \"9lives\" is not a valid route name. Route names match [a-z][a-z0-9-]*.",
+      "file": "bdk.toml",
+      "line": 7
+    },
+    {
+      "code": "pages.name_invalid",
+      "severity": "error",
+      "message": "Alias \"my_alias\" is not a valid route name. Route names match [a-z][a-z0-9-]*.",
+      "file": "bdk.toml",
+      "line": 10
+    }
+  ]
+}

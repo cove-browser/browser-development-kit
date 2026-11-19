@@ -1,0 +1,32 @@
+{
+  "diagnostics": [
+    {
+      "code": "config.type",
+      "severity": "error",
+      "message": "\"services.reputation.update_interval\" has an invalid value: \"hourly\". Write a duration such as 30m, 1h or 1d.",
+      "file": "bdk.toml",
+      "line": 5
+    },
+    {
+      "code": "config.type",
+      "severity": "error",
+      "message": "\"services.translation.endpoint\" has an invalid value: \"ftp://translate.example.test\". Write an http or https URL.",
+      "file": "bdk.toml",
+      "line": 8
+    },
+    {
+      "code": "config.type",
+      "severity": "error",
+      "message": "\"services.translation.bundled_languages.0\" has an invalid value: \"English\". Write a language code such as en or pt-BR.",
+      "file": "bdk.toml",
+      "line": 9
+    },
+    {
+      "code": "config.type",
+      "severity": "error",
+      "message": "\"extensions.install.update_urls\" must be \"any\" or an array of strings, found integer.",
+      "file": "bdk.toml",
+      "line": 12
+    }
+  ]
+}

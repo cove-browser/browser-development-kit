@@ -1,0 +1,60 @@
+{
+  "diagnostics": [
+    {
+      "code": "config.unknown_key",
+      "severity": "error",
+      "message": "Unknown key \"browser.logo\".",
+      "file": "bdk.toml",
+      "line": 4
+    },
+    {
+      "code": "config.unknown_key",
+      "severity": "error",
+      "message": "Unknown key \"browser.user_agent\".",
+      "file": "bdk.toml",
+      "line": 6
+    },
+    {
+      "code": "config.unknown_key",
+      "severity": "error",
+      "message": "Unknown key \"storage\".",
+      "file": "bdk.toml",
+      "line": 9
+    },
+    {
+      "code": "config.unknown_key",
+      "severity": "error",
+      "message": "Unknown key \"search\".",
+      "file": "bdk.toml",
+      "line": 12
+    },
+    {
+      "code": "config.unknown_key",
+      "severity": "error",
+      "message": "Unknown key \"settings\".",
+      "file": "bdk.toml",
+      "line": 15
+    },
+    {
+      "code": "config.unknown_key",
+      "severity": "error",
+      "message": "Unknown key \"diagnostics\".",
+      "file": "bdk.toml",
+      "line": 18
+    },
+    {
+      "code": "config.unknown_key",
+      "severity": "error",
+      "message": "Unknown key \"services.credentials\".",
+      "file": "bdk.toml",
+      "line": 21
+    },
+    {
+      "code": "config.unknown_key",
+      "severity": "error",
+      "message": "Unknown key \"pages.diagnostics\".",
+      "file": "bdk.toml",
+      "line": 25
+    }
+  ]
+}

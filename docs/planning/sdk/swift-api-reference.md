@@ -55,7 +55,7 @@ Rules that apply to every row:
 | Starts normally; calls `BDKRuntime.start` from `applicationWillFinishLaunching` | Checks the ABI, registers the scheme, starts Chromium nested in the running loop, holds a keep-alive |
 | Builds its menus and windows | Nothing |
 | Handles `application(_:open:)` | Nothing. Opening a URL is "create or reuse a page and navigate". |
-| Returns `runtime.terminate(replyingTo:)` from `applicationShouldTerminate` | Runs unload handlers, closes host contexts, stops Chromium, then replies to AppKit |
+| Returns `runtime.terminate(replyingTo:)` from `applicationShouldTerminate` | Cancels that attempt, runs unload handlers, closes host contexts, stops Chromium, then terminates the application again (the second `applicationShouldTerminate` gets `.terminateNow`). Not `.terminateLater`: AppKit's reply loop would nest inside Chromium's and block its shutdown |
 
 ## 4. Configuration and runtime (Plan, M2, T-ABI-04, T-SWF-01)
 

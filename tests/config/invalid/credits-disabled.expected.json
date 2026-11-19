@@ -1,0 +1,11 @@
+{
+  "diagnostics": [
+    {
+      "code": "config.type",
+      "severity": "error",
+      "message": "\"pages.overrides.credits\" cannot be \"disabled\": the third-party notices have to ship.",
+      "file": "bdk.toml",
+      "line": 5
+    }
+  ]
+}

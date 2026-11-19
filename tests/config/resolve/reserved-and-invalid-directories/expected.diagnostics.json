@@ -1,0 +1,28 @@
+{
+  "diagnostics": [
+    {
+      "code": "pages.name_invalid",
+      "severity": "error",
+      "message": "Page directory \"9-lives\" is not a valid route name. Route names match [a-z][a-z0-9-]*.",
+      "file": "Pages/9Lives"
+    },
+    {
+      "code": "pages.reserved",
+      "severity": "error",
+      "message": "Page directory \"bdk-thing\" uses a reserved name. Chromium needs it internally.",
+      "file": "Pages/BdkThing"
+    },
+    {
+      "code": "pages.reserved",
+      "severity": "error",
+      "message": "Page directory \"print\" uses a reserved name. Chromium needs it internally.",
+      "file": "Pages/Print"
+    },
+    {
+      "code": "pages.name_invalid",
+      "severity": "error",
+      "message": "Page directory \"under_score\" is not a valid route name. Route names match [a-z][a-z0-9-]*.",
+      "file": "Pages/Under_score"
+    }
+  ]
+}

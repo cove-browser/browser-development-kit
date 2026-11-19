@@ -1,0 +1,8 @@
+[browser]
+name = "Cove"
+
+[pages.overrides]
+history = "chrome://history"
+
+[pages.routes]
+inspector = "devtools://inspect"

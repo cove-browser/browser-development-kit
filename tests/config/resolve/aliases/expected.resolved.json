@@ -1,0 +1,116 @@
+{
+  "schema": 1,
+  "bdk_version": "0.0.0",
+  "config_digest": "sha256:3e7f6e2045075cf395c64a3279b603170b447c72cde04214e904e35126a301e7",
+  "browser": {
+    "name": "Cove",
+    "internal_scheme": "cove",
+    "logo": "app-icon",
+    "user_agent": {}
+  },
+  "storage": {
+    "directory": "Cove",
+    "keychain_item": "Cove Safe Storage"
+  },
+  "runtime": {
+    "mode": "prebuilt",
+    "downgrade": "refuse",
+    "snapshot_on_upgrade": true
+  },
+  "routes": {
+    "agents": {
+      "mode": "bundled",
+      "path": "Pages/Agents",
+      "host": "bdk-agents",
+      "digest": "sha256:aa5bbd5285ecc36b8287deb197f12a7584d5b32e839ad71804cb8a043965cb7d",
+      "capabilities": [
+        "app.agents.*",
+        "search.read"
+      ]
+    }
+  },
+  "aliases": {
+    "bots": "agents",
+    "preferences": "settings",
+    "zeta": "agents"
+  },
+  "surfaces": {
+    "permissions": "default",
+    "javascript_dialogs": "default",
+    "http_auth": "default",
+    "file_pickers": "default",
+    "context_menus": "default",
+    "new_windows": "default",
+    "downloads": "default",
+    "passwords": "default",
+    "autofill": "default",
+    "printing": "default",
+    "translation": "default",
+    "find": "default",
+    "fullscreen": "default",
+    "notifications": "default",
+    "certificate_errors": "default",
+    "reputation_warnings": "default",
+    "devtools": "default"
+  },
+  "extensions": {
+    "enabled": true,
+    "install_policy": "reject_known_incompatible",
+    "allow_in_private": "user",
+    "install": {
+      "unpacked": true,
+      "crx": true,
+      "update_urls": "any",
+      "stores": []
+    },
+    "ui": {
+      "actions": "default",
+      "popups": "default",
+      "side_panels": "default",
+      "context_menus": "default",
+      "options_pages": "default",
+      "devtools": "default"
+    },
+    "bundled": {}
+  },
+  "services": {
+    "translation": {
+      "provider": "default",
+      "models": "on-demand",
+      "bundled_languages": []
+    },
+    "reputation": {
+      "provider": "default",
+      "update_interval": "1h"
+    },
+    "geolocation": {
+      "provider": "system"
+    },
+    "credentials": {
+      "provider": "chromium"
+    },
+    "leak_check": {
+      "provider": "none"
+    }
+  },
+  "settings_defaults": {},
+  "automation": {
+    "enabled": false,
+    "scripts": {},
+    "external": {
+      "enabled": false
+    }
+  },
+  "devtools": {
+    "frontend": "default",
+    "protocol": true
+  },
+  "diagnostics": {
+    "crash_reports": "local",
+    "log_level": "warning"
+  },
+  "chromium_features": {
+    "enable": [],
+    "disable": []
+  }
+}

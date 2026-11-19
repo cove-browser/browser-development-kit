@@ -1,0 +1,10 @@
+[browser]
+name = "Cove"
+
+[pages.overrides]
+"New Tab" = "disabled"
+Settings = "native"
+9lives = "native"
+
+[pages.routes]
+my_alias = "settings"

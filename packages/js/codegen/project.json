@@ -2,19 +2,66 @@
   "name": "js-codegen",
   "root": "packages/js/codegen",
   "projectType": "library",
-  "implicitDependencies": ["js-protocol"],
+  "implicitDependencies": ["js-protocol", "core"],
   "targets": {
     "build": {
       "executor": "nx:run-commands",
-      "dependsOn": [{ "projects": ["js-protocol"], "target": "build" }],
-      "options": { "command": "pnpm exec tsc -p {projectRoot}/tsconfig.build.json" },
-      "inputs": ["default", { "externalDependencies": ["typescript"] }],
+      "dependsOn": [
+        {
+          "projects": ["js-protocol"],
+          "target": "build"
+        }
+      ],
+      "options": {
+        "command": "pnpm exec tsc -p {projectRoot}/tsconfig.build.json"
+      },
+      "inputs": [
+        "default",
+        {
+          "externalDependencies": ["typescript"]
+        }
+      ],
       "outputs": ["{projectRoot}/dist"]
+    },
+    "codegen": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "dependsOn": ["build"],
+      "options": {
+        "command": "node packages/js/codegen/dist/cli.js generate packages/core"
+      },
+      "inputs": [
+        "default",
+        "{workspaceRoot}/packages/core/interface/**",
+        "{workspaceRoot}/packages/core/include/bdk/bdk_base.h"
+      ],
+      "outputs": [
+        "{workspaceRoot}/packages/core/include/bdk/bdk_ids.h",
+        "{workspaceRoot}/packages/core/interface/ids.json"
+      ]
+    },
+    "codegen-check": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["build"],
+      "options": {
+        "command": "node packages/js/codegen/dist/cli.js check packages/core"
+      }
     },
     "test": {
       "executor": "nx:run-commands",
-      "options": { "command": "pnpm exec vitest run --root {projectRoot}" },
-      "inputs": ["default", { "externalDependencies": ["vitest"] }]
+      "options": {
+        "command": "pnpm exec vitest run --root {projectRoot}"
+      },
+      "inputs": [
+        "default",
+        {
+          "externalDependencies": ["vitest"]
+        },
+        "{workspaceRoot}/packages/core/interface/**",
+        "{workspaceRoot}/packages/core/include/bdk/bdk_base.h",
+        "{workspaceRoot}/packages/core/include/bdk/bdk_ids.h"
+      ]
     },
     "lint": {
       "executor": "nx:run-commands",
@@ -28,7 +75,9 @@
     },
     "format": {
       "executor": "nx:run-commands",
-      "options": { "command": "pnpm exec biome format --write {projectRoot}" }
+      "options": {
+        "command": "pnpm exec biome format --write {projectRoot}"
+      }
     }
   }
 }

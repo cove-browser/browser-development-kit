@@ -1,0 +1,10 @@
+{
+  "diagnostics": [
+    {
+      "code": "automation.collision",
+      "severity": "error",
+      "message": "\"Automation/summarise.js\" and \"Automation/summarise.ts\" are both the script \"summarise\".",
+      "file": "Automation/summarise.js"
+    }
+  ]
+}

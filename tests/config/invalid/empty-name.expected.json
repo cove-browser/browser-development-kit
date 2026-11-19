@@ -1,0 +1,11 @@
+{
+  "diagnostics": [
+    {
+      "code": "config.type",
+      "severity": "error",
+      "message": "\"browser.name\" must not be empty.",
+      "file": "bdk.toml",
+      "line": 2
+    }
+  ]
+}

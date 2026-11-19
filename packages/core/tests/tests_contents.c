@@ -95,10 +95,20 @@ static void test_failed_navigation_reports_the_net_error_and_keeps_the_page(void
     CHECK(g_ev.kind[1] == BDK_CONTENTS_EVENT_NAVIGATION_FAILED);
     CHECK(g_ev.net_error[1] == -105);
     CHECK((g_ev.flags[1] & BDK_EVENT_FLAG_ERROR_PAGE) != 0);
+    /* The error page commits for the URL that failed (swift-api.md: a failed navigation still shows
+       Chromium's error page); the previous page is one step back. */
     bdk_contents_state_t st;
     state_of(g_c, &st);
-    CHECK(str_is(st.url, URL_A));
+    CHECK(str_is(st.url, URL_B));
     CHECK(st.loading == 0);
+    bdk_buffer_t b = 0;
+    bdk_error_t err = 0;
+    REQUIRE(bdk_contents_entries(g_c, &b, &err) == BDK_OK);
+    char text[256];
+    t_buffer_text(b, text, sizeof text);
+    bdk_release(b);
+    CHECK(strstr(text, "\"current\":1") != NULL);
+    CHECK(strstr(text, URL_A) != NULL);
 }
 
 static void test_invalid_urls_are_rejected(void) {
@@ -160,7 +170,11 @@ static void test_reload(void) {
     watch(g_c, &g_ev);
     CHECK(bdk_contents_reload(g_c, 1, &err) == BDK_OK);
     t_pump();
-    CHECK(g_ev.count == 4 && g_ev.kind[0] == BDK_CONTENTS_EVENT_NAVIGATION_STARTED);
+    /* The title did not change, so there is no title event. */
+    REQUIRE(g_ev.count == 3);
+    CHECK(g_ev.kind[0] == BDK_CONTENTS_EVENT_NAVIGATION_STARTED);
+    CHECK(g_ev.kind[1] == BDK_CONTENTS_EVENT_NAVIGATION_COMMITTED);
+    CHECK(g_ev.kind[2] == BDK_CONTENTS_EVENT_LOAD_FINISHED);
     bdk_buffer_t b = 0;
     REQUIRE(bdk_contents_entries(g_c, &b, &err) == BDK_OK);
     char text[256];
@@ -264,7 +278,9 @@ static void test_restore_rejects_garbage_and_newer_formats(void) {
     CHECK(bdk_contents_restore(g_c, junk, &err) == BDK_ERR_INVALID_ARGUMENT);
     bdk_bytes_t empty = {NULL, 0};
     CHECK(bdk_contents_restore(g_c, empty, &err) == BDK_ERR_INVALID_ARGUMENT);
-    bdk_bytes_t newer = {(const uint8_t*)"BDKSTUB9 0 0\n", 13};
+    uint8_t newer_bytes[64];
+    bdk_bytes_t newer = {newer_bytes,
+                         bdk_harness_newer_session_state(newer_bytes, sizeof newer_bytes)};
     CHECK(bdk_contents_restore(g_c, newer, &err) == BDK_ERR_FAILED);
     CHECK(t_error_is(err, "contents", "stateTooNew"));
 }
@@ -286,6 +302,16 @@ static bdk_status_t restore_exact(bdk_contents_t c, const char* text, size_t n) 
 }
 #define RESTORE(c, lit) restore_exact((c), (lit), sizeof(lit) - 1)
 
+/* The tests below craft states in the stub's text format byte by byte; another runtime's format has
+   its own tests (tests_engine.c for the engine). */
+static int stub_format(void) {
+    if (strcmp(bdk_harness_session_format(), "BDKSTUB1") == 0)
+        return 1;
+    printf("    (skipped: written for the BDKSTUB1 format, the runtime writes %s)\n",
+           bdk_harness_session_format());
+    return 0;
+}
+
 static void expect_untouched(bdk_contents_t c) {
     bdk_contents_state_t st;
     state_of(c, &st);
@@ -293,6 +319,8 @@ static void expect_untouched(bdk_contents_t c) {
 }
 
 static void test_restore_accepts_exact_size_valid_input(void) {
+    if (!stub_format())
+        return;
     g_c = new_page();
     CHECK(RESTORE(g_c, "BDKSTUB1 1 2\n3 1\na:bT\n4 0\nc:de\n") == BDK_OK);
     bdk_contents_state_t st;
@@ -303,6 +331,8 @@ static void test_restore_accepts_exact_size_valid_input(void) {
 }
 
 static void test_restore_rejects_integer_overflow(void) {
+    if (!stub_format())
+        return;
     g_c = new_page();
     load(g_c, URL_A);
     t_pump();
@@ -317,6 +347,8 @@ static void test_restore_rejects_integer_overflow(void) {
 }
 
 static void test_restore_rejects_truncated_input(void) {
+    if (!stub_format())
+        return;
     g_c = new_page();
     load(g_c, URL_A);
     t_pump();
@@ -330,6 +362,8 @@ static void test_restore_rejects_truncated_input(void) {
 }
 
 static void test_restore_rejects_missing_separators(void) {
+    if (!stub_format())
+        return;
     g_c = new_page();
     load(g_c, URL_A);
     t_pump();
@@ -350,6 +384,8 @@ static void test_restore_rejects_missing_separators(void) {
 }
 
 static void test_restore_rejects_count_mismatch_and_bad_current(void) {
+    if (!stub_format())
+        return;
     g_c = new_page();
     load(g_c, URL_A);
     t_pump();
@@ -364,6 +400,8 @@ static void test_restore_rejects_count_mismatch_and_bad_current(void) {
 }
 
 static void test_restore_rejects_trailing_garbage(void) {
+    if (!stub_format())
+        return;
     g_c = new_page();
     load(g_c, URL_A);
     t_pump();
@@ -482,6 +520,8 @@ static void test_two_subscribers_see_the_same_order(void) {
 static void test_focus_moves_between_contents(void) {
     g_c = new_page();
     bdk_contents_t other = t_new_contents(t_new_profile("Second"));
+    bdk_harness_attach_view(g_c);
+    bdk_harness_attach_view(other);
     t_events_t ea, eb;
     watch(g_c, &ea);
     watch(other, &eb);
