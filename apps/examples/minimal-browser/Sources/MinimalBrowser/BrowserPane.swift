@@ -134,15 +134,30 @@ final class BrowserPane: NSStackView, NSTextFieldDelegate {
         onChange()
     }
 
-    /// Returns once the page has stopped loading (at most `timeout` later).
+    /// Returns once the page has stopped loading, or when `timeout` has passed even if no further
+    /// event arrives.
     func waitUntilLoaded(timeout: Duration = .seconds(30)) async {
-        var events = page.events.makeAsyncIterator()
-        guard (try? page.state().isLoading) == true else { return }
-        let deadline = ContinuousClock.now + timeout
-        while ContinuousClock.now < deadline, let event = await events.next() {
-            if case .navigationFinished = event { return }
-            if case .navigationFailed = event, (try? page.state().isLoading) != true { return }
+        let page = page
+        let wait = Task { @MainActor in
+            // Subscribe before reading the state, so the end of the load cannot fall in between.
+            var events = page.events.makeAsyncIterator()
+            guard (try? page.state().isLoading) == true else { return }
+            // Cancelling this task ends the wait for the next event.
+            while let event = await events.next() {
+                if case .navigationFinished = event { return }
+                if case .navigationFailed = event, (try? page.state().isLoading) != true { return }
+            }
         }
+        let deadline = Task {
+            try? await Task.sleep(for: timeout)
+            wait.cancel()
+        }
+        await withTaskCancellationHandler {
+            await wait.value
+        } onCancel: {
+            wait.cancel()
+        }
+        deadline.cancel()
     }
 
     @objc private func addressEntered() {
