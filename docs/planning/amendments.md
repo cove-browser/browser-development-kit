@@ -241,7 +241,7 @@ The task list goes from 103 to 106 tasks. The README said 100 before, which was 
 | The version endpoints and the sparse checkout work on a hosted runner | T-CHR-11 |
 | A Chromium-based runtime launches and renders on a hosted macOS runner with no real GPU. If not, integration tests move to the local pass. | T-REP-04 |
 | Every build-time figure: about 90 minutes for a full build is a 2023 report | T-CHR-05 |
-| SwiftPM expects `Package.swift` at the repository root, and the package lives in `packages/swift` | T-PKG-04 |
+| ~~SwiftPM expects `Package.swift` at the repository root, and the package lives in `packages/swift`~~ Settled in M2 (T-SWF-01): the manifest is the root `Package.swift`; sources stay in `packages/swift`. T-PKG-04 still tests binary-target resolution from a clean machine. | T-PKG-04 |
 
 ## 5. Where to look
 

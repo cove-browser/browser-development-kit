@@ -4,6 +4,7 @@ node_modules/
 dist/
 build/
 .build/
+.swiftpm/
 *.tsbuildinfo
 coverage/
 graph.json
