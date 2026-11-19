@@ -362,7 +362,7 @@ bdk.toml grants ─────────────────────�
 | Topic | Rule |
 |---|---|
 | Source of truth | BDK's interface definitions for browser services; the application's Swift types for `app.` commands, events and settings |
-| Extraction | Proposed: the build compiles a small tool from the application's command module that prints the declarations as JSON. Settled in T-SVC-05. |
+| Extraction | The build compiles a small tool from the application's command module. It builds the same `BDKCommandRegistry` the application starts with and calls `declarations.write(to:)`, which writes `bdk.commands.json` (`{"version":1,"commands":[…],"events":[…]}`, entries in the interface-definition format of [c-abi.md](c-abi.md) section 7, sorted so that equal input gives equal bytes). The generator reads that file. Settled in T-SVC-05. |
 | Where output lives | Xcode's derived data. Not in the source tree, not committed. |
 | Editor support | The build keeps a git-ignored `Pages/node_modules/@bdk` and `Automation/node_modules/@bdk` link pointing at the generated output, so editors and `tsc` resolve the types. `bdk build codegen` can be run by hand to refresh it without a full build. |
 | Per-page typing | Proposed: declarations are not narrowed per page. Every module type-checks in every page; the runtime check is what enforces grants. Narrowing would make shared code between pages awkward. |

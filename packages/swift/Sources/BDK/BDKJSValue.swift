@@ -38,3 +38,45 @@ public enum BDKJSValue: Sendable, Equatable {
         }
     }
 }
+
+extension BDKJSValue {
+    /// The compact JSON text of this value, with sorted keys so that the output is stable.
+    package var jsonString: String {
+        let data =
+            (try? JSONSerialization.data(
+                withJSONObject: foundationValue,
+                options: [.fragmentsAllowed, .sortedKeys, .withoutEscapingSlashes])) ?? Data()
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    private var foundationValue: Any {
+        switch self {
+        case .null: NSNull()
+        case .bool(let value): value
+        case .number(let value): value
+        case .string(let value): value
+        case .array(let values): values.map(\.foundationValue)
+        case .object(let fields): fields.mapValues(\.foundationValue)
+        }
+    }
+
+    package var stringValue: String? {
+        if case .string(let value) = self { value } else { nil }
+    }
+
+    package var boolValue: Bool? {
+        if case .bool(let value) = self { value } else { nil }
+    }
+
+    package var doubleValue: Double? {
+        if case .number(let value) = self { value } else { nil }
+    }
+
+    package var arrayValue: [BDKJSValue]? {
+        if case .array(let values) = self { values } else { nil }
+    }
+
+    package var objectValue: [String: BDKJSValue]? {
+        if case .object(let fields) = self { fields } else { nil }
+    }
+}

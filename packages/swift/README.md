@@ -1,7 +1,7 @@
 # swift
 
 The macOS SDK: a Swift layer over the C ABI in `packages/core`. Spec: `docs/planning/sdk/swift-api.md`. Tasks
-T-SWF-01 to T-SWF-03 are implemented and tested against the in-memory stub runtime. Nothing here has run against
+T-SWF-01 to T-SWF-04 and T-SVC-05 are implemented and tested against the in-memory stub runtime. Nothing here has run against
 Chromium, and nothing in this package claims engine behaviour works: the real runtime arrives with T-PKG-04 and
 the engine tasks.
 
@@ -48,8 +48,83 @@ session (a logged-in Mac or the hosted macOS runner).
 | Events | `BDKEventSequence`: any number of iterators, each sees every event from when it was created (call `makeAsyncIterator()` before the action, since an iterator created inside a `Task` subscribes when the task first runs) | T-SWF-02 |
 | Calls | Asynchronous ABI calls bridge to `async throws` with a continuation resumed once; cancelling the task calls `bdk_call_cancel` and throws `broker.cancelled` | T-SWF-02 |
 | Views | `BDKWebView` (hosts `bdk_contents_native_view`, shows URL and title when the runtime reports `platform.unsupported`, registers each `NSWindow` once with `bdk_window_register` and unregisters it when it closes, forwards focus), `BDKWebContentsView` (SwiftUI), `BDKKeyboardDelegate` | T-SWF-03 |
+| UI requests | `BDKUIHandlers` (`config.ui`, `runtime.ui`): one `Surface<Request>` per surface with `setHandler(_:)` and `mode`; `BDKUIResponse` (`.handled`, `.useDefault`, `.reject`); `BDKUIRequest` and a typed subclass per surface (see below) | T-SWF-04 |
+| Commands | `BDKCommand`, `BDKEvent`, `BDKCommandRegistry` (`config.commands`), `BDKCommands` (`runtime.commands`: `register`, `declare`, `emit`, `events`, `invoke`), `BDKCommandContext`, `BDKDeclarations` | T-SVC-05 |
 
 Pages and profiles dropped without `close()` are closed on deinit with a warning in the log.
+
+### UI requests
+
+`config.ui.permissions.setHandler { request in … }` registers a handler before start; the runtime installs the
+configuration's handlers between `bdk_runtime_start` and the freeze, because `bdk_ui_set_handler` is refused
+afterwards (`config.registrationAfterStart`). `runtime.ui` is the live table: a handler set at start can be replaced
+or cleared at any time (a cleared one means use the default); a surface that had none at start cannot gain one after
+the freeze, and `setHandler` throws. `Surface.mode` reads `surfaces` in `bdk.resolved.json`.
+
+Every delivered request becomes a `BDKUIRequest` (`id`, `surface`, `contents`, `window` as an `NSWindow`, `profile`,
+`initiator`, `anchor`, `payload`, `isCompleted`, `isWithdrawn`, `cancellation`, `useDefaultPresenter()`). The object
+owns the ABI handle: a request that is released without completing is cancelled (`bdk_ui_request_release`), so a
+handler that returns `.handled` must keep the request. `.useDefault` and `.reject` finish it. A second completion
+throws `ui.requestCompleted`; completing a withdrawn request does nothing.
+
+| Surface (`runtime.ui.…`) | Request | Completions |
+|---|---|---|
+| `permissions` | `PermissionRequest` | `grant(_:duration:confirmedBy:)` (grant), `deny(persist:)`, `dismiss()` (deny) |
+| `javascriptDialogs` | `JavaScriptDialogRequest` | `accept(text:suppressFurther:)`, `cancel(suppressFurther:)` |
+| `httpAuth` | `HTTPAuthRequest` | `provide(username:password:)`, `cancel()` |
+| `clientCertificates` | `ClientCertificateRequest` | `select(_:)`, `cancel()` |
+| `filePickers` | `FilePickerRequest` | `choose(_:)`, `cancel()` |
+| `contextMenus` | `ContextMenuRequest` | `show(_:at:)`, `perform(_:)`, `dismiss()` |
+| `newWindows` | `NewWindowRequest` | `accept()`, `reject()` |
+| `downloads` | `DownloadRequest`, `DangerousDownloadRequest` | `proceed(to:)`, `cancel()`; `keep(confirmedBy:)` (grant), `discard()` |
+| `passwords` | `PasswordSaveRequest`, `LeakedPasswordRequest` | `save(confirmedBy:)` (grant), `never()`, `dismiss()` |
+| `autofill`, `autofillSuggestions` | `AutofillSaveRequest`, `AutofillSuggestionsRequest` | `save(confirmedBy:)`, `accept(_:confirmedBy:)` (grant), `dismiss()` |
+| `printing` | `PrintRequest` | `printWithSystemDialog()`, `savePDF(to:)`, `cancel()` |
+| `find` | `FindRequest` | `close()` |
+| `fullscreen`, `exclusiveAccess` | `FullscreenRequest`, `ExclusiveAccessRequest` | `allow()`, `deny()`; `acknowledge()` |
+| `notifications` | `NotificationRequest` | `shown()` (local), `clicked(action:)`, `closed(byUser:)` |
+| `certificateErrors`, `reputationWarnings` | `CertificateErrorRequest`, `ReputationWarningRequest` | `goBack()`, `proceed(confirmedBy:)` (grant; `ui.notOverridable` when Chromium refuses) |
+| `devTools`, `externalProtocols` | `DevToolsRequest`, `ExternalProtocolRequest` | `accept()`, `reject()`; `open(remember:confirmedBy:)` (grant), `cancel()` |
+| `translation`, `deviceChoosers`, `screenCapture`, `webAuthn` | `BDKRawUIRequest` | `complete(_:arguments:confirmedBy:)` with "grant", "deny" or "accept" |
+
+Completion mapping (provisional, settled here for T-UIR-01 to T-UIR-06): a completion that grants (permission, a kept
+dangerous download, a saved password or card, an accepted suggestion, a proceed past an interstitial, opening an
+external protocol, a raw "grant") is `"grant"` and takes the `NSEvent` as the gesture handle. Every other positive
+answer is `"accept"`, every negative one is `"deny"`, and the arguments JSON carries the rest (`{"kinds":[…],
+"duration":"thisVisit"}`, `{"username":…,"password":…}`, `{"paths":[…]}`, `{"action":"perform","item":id}` and so
+on; the code in `Sources/BDK/UI` is the reference until the interface definitions fix them). Completions only
+narrow what was asked: a grant for a kind that was not requested, a certificate or menu item the request did not
+offer, or several files for a single-file picker throw a `ui.*` error before the ABI is called.
+
+Payload fields are the camelCase names in ui-requests.md; a missing or malformed field takes a default, so a
+handler always sees the request. Handles inside a payload (`opener`, `newContents`, `previewContents`, `inspected`,
+`frontend`) are decimal strings, since handles exceed 2^53.
+
+### Commands and events
+
+`config.commands.register(OpenTab.self) { input, context in … }` and `config.commands.declare(TabsChanged.self)` collect
+commands and events before start. A `BDKCommand` states its name, `input`/`output` shape (`BDKShape` over `BDKType`:
+the interface language of `packages/core/interface`), named `types`, `requiresUserGesture`, `profile` and
+`reportsProgress`, next to its `Codable` input and output, because Swift cannot reflect a `Codable` type's fields.
+`start` validates names (`config.nameNotApp`, `config.duplicateName`) before the runtime starts, then registers each
+with `bdk_app_command_register` and `bdk_app_event_declare`. The handler is `async`, runs on the main actor and gets
+a `BDKCommandContext` (`caller`, `profile`, `report(progress:message:)`, `isCancelled`, `checkCancelled()`). When
+the caller cancels, the handler's task is cancelled (the ABI has only `bdk_app_command_is_cancelled`, so a 10 ms poll
+drives it). A thrown `BDKError` reaches the caller with its domain and code; any other error is
+`broker.handlerFailed`; an input that does not decode is `broker.invalidArguments`.
+
+`runtime.commands.invoke(OpenTab.self, input)` and `invoke("app.name", arguments:)` call by name with `onProgress`;
+`events(Event.self)` and `events(named:)` subscribe (`bdk_subscribe_named`) and end with the runtime;
+`emit(_:to:)` takes `.all`, `.profile`, `.page` or `.session`. `runtime.commands.register` and `declare` work only
+between start and the freeze, which `BDKRuntime.start` does at once; they exist for tests and fail afterwards with
+`config.registrationAfterStart`.
+
+Declarations for code generation: `config.commands.declarations` (`BDKDeclarations`) needs no runtime.
+`declarations.write(to:)` writes `bdk.commands.json`, `{"version":1,"commands":[…],"events":[…]}` sorted by name with
+sorted keys, so equal input gives equal bytes. Each command entry is an interface-definition entry (`name`,
+`capability`, `callers`, `profile`, `args`, `result`, optional `requires`, `progress`, `types`) with the same type
+expressions as `packages/core/interface`. The extractor (T-JS-02, T-CLI-04) is a small executable target of the
+application that builds its configuration the same way and calls `write(to:)`; the generator reads the JSON.
 
 ### Driving the stub
 
@@ -78,12 +153,19 @@ so a test can start a load and act on it (supersede it, stop it) before the stub
 * `BDKJSValue` exists here because error details need it; scripting reuses it (T-AUT-03).
 * `BDKTestSupport` offers `scriptNavigation` and `simulateKey` rather than `simulateNavigation` and `raise(...)`.
 
+* UI requests (T-SWF-04): `BDKUIRequest` is a class, not a protocol; `window` is an `NSWindow?` (there is no
+  `BDKWindow` yet); `profile` is optional; `setHandler` throws (it can fail after the freeze); a surface with two
+  request kinds (`downloads`, `passwords`) takes `BDKUIRequest`; `NewWindowRequest.newContents` and the other
+  page-carrying fields are optional; `BDKMenuItem` has no `icon`; there is no `AutofillSuggestionsRequest.preview`,
+  `FindRequest.session` or `ProviderDescriptor` beyond `BDKProviderDescriptor(name:isRemote:)`.
+* Commands (T-SVC-05): `BDKCommand` carries its shape; `BDKCommandContext.caller` is `BDKCommandCaller`;
+  `runtime.commands` has no `.profile(profile)` convenience beyond `invoke(…, profile:)`.
+
 ## Not implemented, and what adds it
 
 | Left out | Why | Task |
 |---|---|---|
-| Page and command registration, services, settings, providers on `BDKConfiguration` | The ABI declares `bdk_app_*`, `bdk_page_handler_register` and `bdk_provider_register`, but their Swift shape depends on the interface definitions | T-ABI-03, T-SWF-04, T-SVC-01 |
-| UI-request handlers (`BDKUIHandlers`) | `bdk_ui_*` is declared; the handler API is its own task. The stub raises requests; with no handler they take the default. | T-SWF-04 |
+| Page registration, services, settings, providers on `BDKConfiguration` | The ABI declares `bdk_page_handler_register`, `bdk_app_setting_register` and `bdk_provider_register`; their Swift shape depends on the interface definitions | T-ABI-03, T-SVC-01 |
 | `BDKWindow`, anchors, window delegate, host contexts | `bdk_window_register` takes a window and a kind and nothing more yet; the other `bdk_window_*` functions are not declared | T-UIR-01, T-ADP-06 |
 | Page commands (`perform`, `canPerform`), find, capture, print, translation, scripting, user scripts | Not declared in the ABI | T-UIR-04, T-UIR-06, T-SVC-06, T-AUT-03 |
 | `BDKRuntime.contents` lookup by id, `BDKProfiles.events`, `ProfileDescriptor.lastUsed`, profile rename by id | Not in the ABI (a rename needs an open profile handle) | T-ABI-03 |

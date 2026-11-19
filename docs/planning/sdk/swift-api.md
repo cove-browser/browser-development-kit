@@ -625,6 +625,8 @@ runtime.ui.permissions.setHandler { request in
 - A handler returns synchronously. Presentation is asynchronous, through the request object.
 - A request the application took and then dropped without completing is cancelled when the object is released. It is never granted.
 
+Settled in T-SWF-04 (2026-11-19), against the stub: `BDKUIRequest` is a base class with a subclass per surface, not a protocol; `Surface.setHandler` throws, because the ABI refuses `bdk_ui_set_handler` after the freeze (`config.registrationAfterStart`). A handler set on `config.ui` is installed at start. After the freeze, `runtime.ui` can replace or clear the handler of a surface that had one at start, but cannot add one to another surface; the "default mode, any time" rule above needs the core to allow handler registration after the freeze. `window` is an `NSWindow?` until `BDKWindow` exists. The completions and payload encoding are in [ui-requests.md](ui-requests.md) section 8 and `packages/swift/README.md`.
+
 ## 11. Services and providers
 
 ### 11.1 Services
@@ -807,6 +809,8 @@ runtime.commands.emit(TabsChanged(count: 12), to: .profile(profile))   // .all, 
 ```
 
 A page or session receives an application event only if it holds the capability with the event's name.
+
+Settled in T-SVC-05 (2026-11-19): a `BDKCommand` also states the `input` and `output` shape (`BDKShape`, `BDKType`, `types`), because Swift cannot reflect a `Codable` type's fields; `requiresUserGesture`, `profile` and `reportsProgress` are static properties too. Registration goes on `config.commands` (a value, so code generation can build one without a runtime) and names are validated at start. `runtime.commands` invokes by type or by name, subscribes with `events(_:)`, and emits with `emit(_:to:)`. `BDKDeclarations.write(to:)` writes the JSON that the generator reads; the format is in `packages/swift/README.md`.
 
 ### 12.3 Settings
 

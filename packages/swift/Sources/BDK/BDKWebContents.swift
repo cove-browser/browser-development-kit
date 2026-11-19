@@ -95,6 +95,16 @@ public final class BDKWebContents: Identifiable {
         return contents
     }
 
+    /// Wraps a page the engine created for a request (a new window, a print preview). The page is
+    /// the application's from here on, as one made with `create`.
+    static func adopt(handle: bdk_contents_t, in profile: BDKProfile) -> BDKWebContents {
+        if let existing = profile.runtime.webContents(handle: handle) { return existing }
+        let contents = BDKWebContents(profile: profile, handle: handle)
+        contents.installBridges()
+        profile.runtime.register(contents)
+        return contents
+    }
+
     /// Asks the page to close, waits for it to report `closed`, then destroys it. A page that
     /// already closed itself is destroyed at once.
     public func close() async throws {

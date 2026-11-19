@@ -555,3 +555,16 @@ Action state, popups, side panels, extension context-menu items, options pages, 
 ## 7. Testing a handler
 
 Each request type has a fixture in `BDKTestSupport`, raised against the stub runtime ([swift-api.md](swift-api.md) section 17). The stub records the completion, so a test can assert that a handler denied, deferred to the default or granted with a gesture. The stub enforces the rules in section 3, so a handler that grants without a gesture fails in a unit test, before it meets Chromium.
+
+## 8. The Swift binding (T-SWF-04)
+
+Written against the stub; the real runtime's payloads are the engine tasks' (T-UIR-02 to T-UIR-06).
+
+| Topic | Decision |
+|---|---|
+| Completions | The ABI names three: `"grant"` (needs the confirming `NSEvent`; permission grants, a kept dangerous download, a saved password or card, an accepted suggestion, a proceed past an interstitial, opening an external protocol), `"accept"` (every other positive answer) and `"deny"` (every negative one, including dismiss and go back). The arguments JSON distinguishes the rest. |
+| Arguments | `permissions`: grant `{"kinds":[…],"duration":"persistent"\|"thisVisit"}`, deny `{"persist":bool}` or `{"dismissed":true,"persist":false}`. `javascript_dialogs`: accept `{"text"?,"suppressFurther"}`, deny `{"suppressFurther"}`. `http_auth`: accept `{"username","password"}`. `client_certificates`: accept `{"certificate":id}`. `file_pickers`: accept `{"paths":[…]}`. `context_menus`: accept `{"action":"show","items":[…],"at"?}` or `{"action":"perform","item":id}`. `downloads`: accept `{"destination"?}`. `printing`: accept `{"action":"systemDialog"}` or `{"action":"savePDF","path"}`. `find`: accept `{"action":"close"}`. `passwords`, `autofill`: deny `{"never":true}` or `{"dismissed":true}`. `autofill_suggestions`: grant `{"suggestion":id}`. `notifications`: accept `{"event":"clicked","action"?}`, deny `{"event":"closed","byUser"}`. `external_protocols`: grant `{"remember"}`. |
+| Payload | The field names of section 5 in camelCase. Handles (`opener`, `newContents`, `previewContents`, `inspected`, `frontend`) are decimal strings. Two kinds on one surface are told apart by the payload: `downloads` with a `danger` field is a dangerous download, `passwords` with `"kind":"leaked"` is the leaked-password warning. |
+| Narrowing | Checked in Swift before the ABI call: a grant for kinds the request did not ask for (`ui.kindsNotRequested`), a certificate, menu item or suggestion it did not offer, more than one file for a single-file picker, `proceed` on a non-overridable interstitial (`ui.notOverridable`). |
+| Gaps | The ABI cannot report a notification as shown without completing it, preview an autofill suggestion, or complete an `NSEvent`-less `grant`. `shown()` is local, `preview` is absent. |
+

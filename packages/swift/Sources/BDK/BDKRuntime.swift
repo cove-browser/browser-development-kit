@@ -42,6 +42,10 @@ public final class BDKRuntime {
 
     public let info: Info
     public private(set) lazy var profiles = BDKProfiles(runtime: self)
+    /// The UI-request handlers the runtime delivers to.
+    public private(set) lazy var ui = BDKUIHandlers()
+    /// Application commands and events, and invocation of any command by name.
+    public private(set) lazy var commands = BDKCommands(runtime: self)
     public private(set) var areRegistrationsFrozen = false
 
     package private(set) var handle: bdk_runtime_t
@@ -77,6 +81,7 @@ public final class BDKRuntime {
         _ configuration: BDKConfiguration, host: HostABI = .current,
         freezingRegistrations: Bool = true
     ) throws -> BDKRuntime {
+        try configuration.commands.validate()
         var handle: bdk_runtime_t = 0
         var error: bdk_error_t = 0
         let strings = [
@@ -111,6 +116,7 @@ public final class BDKRuntime {
                 abiVersion: bdk_abi_version(), abiHash: swiftString(bdk_abi_hash())))
         current = runtime
         runtime.subscribeToEvents()
+        try runtime.register(configuration)
         if freezingRegistrations { try runtime.freezeRegistrations() }
         EventLoop.kick()
         return runtime
@@ -135,6 +141,13 @@ public final class BDKRuntime {
     }
 
     // MARK: Registrations
+
+    /// Hands the configuration's UI handlers, commands and events to the runtime. Both are
+    /// registrations, so this runs before the freeze.
+    private func register(_ configuration: BDKConfiguration) throws {
+        try ui.attach(to: self, from: configuration)
+        try commands.adopt(configuration.commands)
+    }
 
     /// Freezes the route and capability tables. Registrations after this fail with
     /// `config.registrationAfterStart`, and a second freeze does too.
@@ -236,7 +249,13 @@ public final class BDKRuntime {
         liveContents.keys.sorted().compactMap { liveContents[$0]?.value }
     }
 
+    /// The page with this handle, if the application has one for it.
+    func webContents(handle: UInt64) -> BDKWebContents? {
+        handle == 0 ? nil : liveContents[handle]?.value
+    }
+
     private func invalidateChildren() {
+        commands.invalidate()
         for contents in webContents { contents.invalidate() }
         for profile in profiles.loaded { profile.invalidate() }
         windows.removeAll()

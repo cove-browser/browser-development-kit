@@ -5,8 +5,11 @@ import CBDKStub
 import Foundation
 
 extension BDKConfiguration {
-    /// A configuration the stub runtime accepts: an empty resolved configuration.
-    public static let stub = BDKConfiguration(resolvedJSON: "{}")
+    /// A configuration the stub runtime accepts: an empty resolved configuration. Each access
+    /// returns a new one, because a configuration's `ui` handlers are shared by its copies.
+    public static var stub: BDKConfiguration {
+        BDKConfiguration(resolvedJSON: "{}")
+    }
 }
 
 extension BDKRuntime {
