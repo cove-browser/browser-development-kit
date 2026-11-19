@@ -70,24 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func openBrowser() async throws {
         guard let runtime else { return }
-        var pages: [BDKWebContents] = []
-        if options.privatePages {
-            // Each page in its own private profile: nothing is shared between them or kept after quit.
-            for _ in 0..<Self.homePages.count {
-                // A profile closes, with its pages, when its last reference goes.
-                let profile = try runtime.profiles.openPrivate()
-                privateProfiles.append(profile)
-                pages.append(try profile.webContents.create(.init()))
-            }
-        } else {
-            let profile = try await runtime.profiles.open("Personal")
-            let saved = loadSession()
-            for index in 0..<Self.homePages.count {
-                let state = saved?.pages.indices.contains(index) == true ? saved?.pages[index] : nil
-                pages.append(try profile.webContents.create(.init(restoring: state)))
-                restored = restored || state != nil
-            }
-        }
+        let pages = try await makePages(runtime)
         let browser = BrowserWindow(pages: pages, notice: RuntimeSource.notice)
         browser.onChange = { [weak self] in self?.report() }
         self.browser = browser
@@ -96,18 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !restored {
             for (pane, home) in zip(browser.panes, Self.homePages) { await pane.navigate(to: home) }
         }
-        // Each one loads completely before the next starts, so a test can depend on their order.
-        for navigation in options.navigations where browser.panes.indices.contains(navigation.page)
-        {
-            let pane = browser.panes[navigation.page]
-            await pane.navigate(to: navigation.url)
-            await pane.waitUntilLoaded()
-        }
-        for index in options.crashPages where browser.panes.indices.contains(index) {
-            // A debug URL Chromium handles itself: the renderer crashes, and the pane reloads the page.
-            let page = browser.panes[index].page
-            Task { _ = try? await page.navigate(to: URL(string: "chrome://crash")!) }
-        }
+        await runLaunchActions(in: browser)
         for pane in browser.panes { pane.refresh() }
         launchFinished = true
         report()
@@ -120,6 +92,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             } catch {
                 log.error("snapshot not written: \(error)")
             }
+        }
+    }
+
+    /// The two pages: each in its own private profile with `--private`, otherwise in the "Personal" profile,
+    /// restored from the saved session when there is one.
+    private func makePages(_ runtime: BDKRuntime) async throws -> [BDKWebContents] {
+        var pages: [BDKWebContents] = []
+        if options.privatePages {
+            // Each page in its own private profile: nothing is shared between them or kept after quit.
+            for _ in 0..<Self.homePages.count {
+                // A profile closes, with its pages, when its last reference goes.
+                let profile = try runtime.profiles.openPrivate()
+                privateProfiles.append(profile)
+                pages.append(try profile.webContents.create(.init()))
+            }
+            return pages
+        }
+        let profile = try await runtime.profiles.open("Personal")
+        let saved = loadSession()
+        for index in 0..<Self.homePages.count {
+            let state = saved?.pages.indices.contains(index) == true ? saved?.pages[index] : nil
+            pages.append(try profile.webContents.create(.init(restoring: state)))
+            restored = restored || state != nil
+        }
+        return pages
+    }
+
+    /// What the launch flags ask for once the window is up.
+    private func runLaunchActions(in browser: BrowserWindow) async {
+        // Each one loads completely before the next starts, so a test can depend on their order.
+        for navigation in options.navigations where browser.panes.indices.contains(navigation.page)
+        {
+            let pane = browser.panes[navigation.page]
+            await pane.navigate(to: navigation.url)
+            await pane.waitUntilLoaded()
+        }
+        guard let crash = URL(string: "chrome://crash") else { return }
+        for index in options.crashPages where browser.panes.indices.contains(index) {
+            // A debug URL Chromium handles itself: the renderer crashes, and the pane reloads the page.
+            let page = browser.panes[index].page
+            Task { _ = try? await page.navigate(to: crash) }
         }
     }
 

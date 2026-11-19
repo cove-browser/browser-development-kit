@@ -29,7 +29,12 @@ final class LocalServer: @unchecked Sendable {
     deinit { listener.cancel() }
 
     func url(_ path: String) -> URL {
-        URL(string: "http://127.0.0.1:\(port)\(path)")!
+        var components = URLComponents()
+        components.scheme = "http"
+        components.host = "127.0.0.1"
+        components.port = Int(port)
+        components.path = path
+        return components.url ?? URL(fileURLWithPath: "/")
     }
 
     /// How many times /cached.png was fetched from the server (not from a cache).
@@ -39,24 +44,29 @@ final class LocalServer: @unchecked Sendable {
 
     private func serve(_ connection: NWConnection) {
         connection.start(queue: queue)
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) {
-            [weak self] data, _, _, _ in
-            guard let self, let data, let request = String(data: data, encoding: .utf8) else {
-                connection.cancel()
-                return
-            }
-            let path = request.split(separator: " ").dropFirst().first.map(String.init) ?? "/"
-            connection.send(
-                content: self.response(for: path), isComplete: true,
-                completion: .contentProcessed { _ in connection.cancel() })
+        // The server outlives every connection: the test holds it until the application has quit.
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { data, _, _, _ in
+            self.answer(data, on: connection)
         }
     }
 
+    private func answer(_ data: Data?, on connection: NWConnection) {
+        guard let data, let request = String(data: data, encoding: .utf8) else {
+            connection.cancel()
+            return
+        }
+        let path = request.split(separator: " ").dropFirst().first.map(String.init) ?? "/"
+        connection.send(
+            content: response(for: path), isComplete: true,
+            completion: .contentProcessed { _ in connection.cancel() })
+    }
+
     /// 1x1 transparent PNG.
-    private static let png = Data(
-        base64Encoded:
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
-    )!
+    private static let png =
+        Data(
+            base64Encoded:
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+        ) ?? Data()
 
     private func response(for path: String) -> Data {
         switch path {
