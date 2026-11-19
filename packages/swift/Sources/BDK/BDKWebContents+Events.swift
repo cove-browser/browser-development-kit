@@ -1,0 +1,141 @@
+import AppKit
+import CBDK
+import Foundation
+
+extension BDKWebContents {
+    public struct NavigationInfo: Sendable, Equatable {
+        public let url: URL?
+        public let isMainFrame: Bool
+        public let isSameDocument: Bool
+        public let isUserInitiated: Bool
+        public let isErrorPage: Bool
+
+        init(url: String, flags: UInt32) {
+            self.url = URL(string: url)
+            isMainFrame = flags & BDK_EVENT_FLAG_MAIN_FRAME != 0
+            isSameDocument = flags & BDK_EVENT_FLAG_SAME_DOCUMENT != 0
+            isUserInitiated = flags & BDK_EVENT_FLAG_USER_INITIATED != 0
+            isErrorPage = flags & BDK_EVENT_FLAG_ERROR_PAGE != 0
+        }
+    }
+
+    public typealias Commit = NavigationInfo
+
+    public struct NavigationFailure: Sendable, Equatable {
+        public let url: URL?
+        /// The network error, or 0 when the navigation was stopped or superseded.
+        public let netError: Int32
+        /// "superseded", "aborted" or "netError".
+        public let reason: String
+        public let isErrorPage: Bool
+
+        /// The failure as the error `load` throws.
+        public var error: BDKError {
+            switch reason {
+            case "superseded":
+                BDKError(
+                    domain: .navigation, code: "superseded",
+                    message: "another navigation replaced this one")
+            case "aborted":
+                BDKError(
+                    domain: .navigation, code: "aborted", message: "the navigation was stopped")
+            default:
+                BDKError(
+                    domain: .navigation, code: "netError",
+                    message: "the navigation failed with network error \(netError)",
+                    details: ["netError": .number(Double(netError))])
+            }
+        }
+    }
+
+    public enum Event: Sendable, Equatable {
+        case navigationStarted(NavigationInfo)
+        case navigationCommitted(Commit)
+        /// The load finished.
+        case navigationFinished(Commit)
+        case navigationFailed(NavigationFailure)
+        case titleChanged(String)
+        case focusChanged(Bool)
+        case closed
+        /// A kind this version does not know, from a newer runtime.
+        case unknown(kind: UInt32)
+    }
+}
+
+extension BDKJSValue {
+    fileprivate func string(_ key: String) -> String? {
+        guard case .object(let object) = self, case .string(let value) = object[key] else {
+            return nil
+        }
+        return value
+    }
+
+    fileprivate func bool(_ key: String) -> Bool? {
+        guard case .object(let object) = self, case .bool(let value) = object[key] else {
+            return nil
+        }
+        return value
+    }
+}
+
+extension BDKWebContents.Event {
+    init(_ event: bdk_contents_event_t) {
+        let detail = BDKJSValue(jsonString: swiftString(event.detail_json))
+        let info = BDKWebContents.NavigationInfo(url: swiftString(event.url), flags: event.flags)
+        switch event.kind {
+        case BDK_CONTENTS_EVENT_NAVIGATION_STARTED:
+            self = .navigationStarted(info)
+        case BDK_CONTENTS_EVENT_NAVIGATION_COMMITTED:
+            self = .navigationCommitted(info)
+        case BDK_CONTENTS_EVENT_NAVIGATION_FAILED:
+            self = .navigationFailed(
+                BDKWebContents.NavigationFailure(
+                    url: info.url, netError: event.net_error,
+                    reason: detail?.string("code") ?? "netError", isErrorPage: info.isErrorPage))
+        case BDK_CONTENTS_EVENT_LOAD_FINISHED:
+            self = .navigationFinished(info)
+        case BDK_CONTENTS_EVENT_TITLE_CHANGED:
+            self = .titleChanged(detail?.string("title") ?? "")
+        case BDK_CONTENTS_EVENT_FOCUS_CHANGED:
+            self = .focusChanged(detail?.bool("focused") ?? false)
+        case BDK_CONTENTS_EVENT_CLOSED:
+            self = .closed
+        default:
+            self = .unknown(kind: event.kind)
+        }
+    }
+}
+
+/// What the event callback needs. It holds the page weakly, so the engine retaining it until the
+/// release callback cannot keep the page alive.
+final class ContentsEventSink {
+    let broadcaster: EventBroadcaster<BDKWebContents.Event>
+    weak var contents: BDKWebContents?
+
+    init(broadcaster: EventBroadcaster<BDKWebContents.Event>, contents: BDKWebContents) {
+        self.broadcaster = broadcaster
+        self.contents = contents
+    }
+}
+
+extension BDKWebContents {
+    /// Subscribes to the page's events and installs the keyboard handler.
+    func installBridges() {
+        let sink = Unmanaged.passRetained(
+            ContentsEventSink(broadcaster: broadcaster, contents: self))
+        _ = bdk_contents_subscribe(
+            handle,
+            { context, event in
+                guard let context, let event else { return }
+                let sink = Unmanaged<ContentsEventSink>.fromOpaque(context).takeUnretainedValue()
+                let mapped = Event(event.pointee)
+                MainActor.assumeIsolated { sink.contents?.noteEvent(mapped) }
+                sink.broadcaster.send(mapped)
+            }, sink.toOpaque(),
+            { context in
+                guard let context else { return }
+                Unmanaged<ContentsEventSink>.fromOpaque(context).release()
+            })
+        installKeyboardHandler()
+    }
+}
