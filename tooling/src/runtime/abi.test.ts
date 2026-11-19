@@ -1,9 +1,9 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { repoRoot } from "../chromium/common.js";
-import { abiExports, readAbi } from "./abi.js";
+import { abiExports, exportedFunctions, readAbi } from "./abi.js";
 
 describe("abiExports", () => {
   it("lists every BDK_EXPORT function and each bdk_mac class, ignoring comments", () => {
@@ -36,5 +36,41 @@ describe("abiExports", () => {
     expect(exports).toContain("_bdk_runtime_shutdown");
     expect(exports).toContain("_OBJC_CLASS_$_BDKApplicationBase");
     expect(readAbi(repoRoot()).version).toBeGreaterThan(0);
+  });
+});
+
+describe("the engine test hooks export patch", () => {
+  // The build checks the C ABI against the framework's exports, but not the test hooks: a hook
+  // missing from the patch links into the engine and is hidden from the conformance app.
+  it("lists every BDK_EXPORT function in bdk_testing.h in both framework lists", () => {
+    const root = repoRoot();
+    const hooks = exportedFunctions(
+      readFileSync(join(root, "chromium", "bdk", "engine", "bdk_testing.h"), "utf8"),
+    );
+    expect(hooks.length).toBeGreaterThan(0);
+    const patch = readFileSync(
+      join(
+        root,
+        "chromium",
+        "patches",
+        "bdk-export-the-bdk-engine-s-test-hooks-from-the-framework.patch",
+      ),
+      "utf8",
+    );
+    for (const file of ["framework.exports", "framework.order"]) {
+      const section = patch
+        .split(/^diff --git /m)
+        .find((s) => s.startsWith(`a/chrome/app/${file} `));
+      const added = new Set(
+        (section ?? "")
+          .split("\n")
+          .filter((line) => line.startsWith("+_"))
+          .map((line) => line.slice(1)),
+      );
+      expect(
+        hooks.filter((h) => !added.has(h)),
+        file,
+      ).toEqual([]);
+    }
   });
 });

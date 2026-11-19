@@ -91,10 +91,7 @@ export function abiExports(repoRoot: string): string[] {
           .map((f) => readFileSync(join(dir, f), "utf8"))
       : [];
   for (const text of headers(join(include, "bdk"))) {
-    const code = text.replace(/\/\*[\s\S]*?\*\//g, "");
-    for (const m of code.matchAll(/\bBDK_EXPORT\b[^;{]*?\b(bdk_[a-z0-9_]+)\s*\(/g)) {
-      if (m[1] !== undefined) names.add(`_${m[1]}`);
-    }
+    for (const name of exportedFunctions(text)) names.add(name);
   }
   for (const text of headers(join(include, "bdk_mac"))) {
     for (const m of text.matchAll(/^@interface\s+([A-Za-z_][A-Za-z0-9_]*)\s*:/gm)) {
@@ -105,4 +102,17 @@ export function abiExports(repoRoot: string): string[] {
     }
   }
   return [...names].sort();
+}
+
+/**
+ * The `BDK_EXPORT` functions one header declares, in Mach-O spelling (leading underscore), ignoring
+ * those inside block comments.
+ */
+export function exportedFunctions(header: string): string[] {
+  const code = header.replace(/\/\*[\s\S]*?\*\//g, "");
+  const names: string[] = [];
+  for (const m of code.matchAll(/\bBDK_EXPORT\b[^;{]*?\b(bdk_[a-z0-9_]+)\s*\(/g)) {
+    if (m[1] !== undefined) names.push(`_${m[1]}`);
+  }
+  return names;
 }
