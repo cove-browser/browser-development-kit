@@ -25,6 +25,7 @@ export interface Manifest {
     readonly repo_commit: string;
     readonly patches_digest: string;
     readonly overlay_digest: string;
+    readonly core_digest: string;
     readonly gn_args_digest: string;
   };
   readonly target: { readonly os: string; readonly arch: string; readonly min_os: string };
@@ -72,6 +73,7 @@ export function buildManifest(i: ManifestInputs): Manifest {
       repo_commit: i.repoCommit,
       patches_digest: i.identity.bdk.patches_digest,
       overlay_digest: i.identity.bdk.overlay_digest,
+      core_digest: i.identity.bdk.core_digest,
       gn_args_digest: i.identity.bdk.gn_args_digest,
     },
     target: { ...i.identity.target, min_os: i.minOs },

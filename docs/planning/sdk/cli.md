@@ -20,7 +20,7 @@ The spec proposes three commands and asks for the CLI to stay lean. `bdk build` 
 | Use | Which `bdk` |
 |---|---|
 | `bdk init`, before a project exists | A standalone binary from the BDK release, or a package manager formula that installs it |
-| Everything inside a project | The binary that ships with the BDK package the project resolved, so the CLI version always equals the SDK and runtime version. On macOS it is an executable in an artifact bundle of the Swift package (unverified; T-CLI-05). |
+| Everything inside a project | The binary that ships with the BDK package the project resolved, so the CLI version always equals the SDK and runtime version. On macOS it is an executable in an artifact bundle of the Swift package (verified with SwiftPM on 2026-11-18, not yet with Xcode; section 2.3). |
 
 A standalone `bdk` run inside a project re-executes the project's own copy. If it cannot find one, it says so and stops; it does not guess.
 
@@ -64,7 +64,7 @@ Nothing in the list needs Swift or links an Apple framework. The one piece of Sw
 
 ### 2.3 Producing the executable
 
-Facts are from each tool's documentation, read on 2026-11-16. Nothing was built.
+Facts are from each tool's documentation, read on 2026-11-16, before anything was built. The first build's results are at the end of this section.
 
 The JavaScript engine inside the CLI does not need to match Chromium's. The CLI is a separate build-time process that reads files and starts other tools. It never loads the runtime, and shares no code, bytecode or snapshot with it. Pages run in Chromium whatever built them, and the automation host's engine is a separate choice (T-AUT-01). The reasons to prefer one option below are about tooling, not about V8.
 
@@ -95,7 +95,7 @@ What it costs, compared with Bun: the executable cannot install packages, so a p
 
 Build steps: bundle `packages/cli` into one file (Rolldown, already in the plan), then run `node --build-sea` once per target on that target's CI runner, so code cache can stay on. The repository pins one Node 26 release in `.node-version` (read by fnm) and in `engines`; that release is also the runtime inside `bdk`. This is a requirement for building BDK, not for using it. v1 ships one executable, for macOS on Apple Silicon (decision D6); other targets are added with their platforms.
 
-Nothing here has been built. T-CLI-05 builds it in M2 and must show the following; the Vite check waits for pages, in T-CLI-04.
+T-CLI-05 builds it in M2 and must show the following; the Vite check waits for pages, in T-CLI-04. Results of the first build, run on 2026-11-18, are in the table and below it.
 
 | Test | Why |
 |---|---|
@@ -104,6 +104,17 @@ Nothing here has been built. T-CLI-05 builds it in M2 and must show the followin
 | `bdk build pages` loads the project's own Vite from `node_modules` with the embedded Node | The page build must not need a second Node of a matching version |
 | Templates and schemas are read from embedded assets on every target | The asset file system is new; plain named assets are the fallback |
 | The binary is signed and notarized in the BDK release and passes Gatekeeper | A standalone download must open without a warning |
+
+Results of the first build (`packages/cli`, `pnpm cli:package`), run on 2026-11-18 on macOS 27, Apple Silicon, Node 26.9.0, Rolldown 1.2.18:
+
+| Test | Result |
+|---|---|
+| No Node on the machine | Passed. With every directory that holds `node` removed from `PATH`, `bdk --version`, `--help`, and `build config` ran and returned their exit codes (0, 0, 1 outside a project; 2 for an unknown command). The `cli-smoke` job in `pr.yml` repeats this on both runners. |
+| Swift package artifact bundle | Passed for SwiftPM. `dist/bdk.artifactbundle/` (`info.json` schema version 1.0, artifact `bdk`, type `executable`, one variant for `arm64-apple-macosx`) was used as `.binaryTarget(path:)` in a throwaway package. A command plugin ran `bdk --version` and got `0.0.0`; a build-tool plugin ran it during `swift build` inside SwiftPM's sandbox. Not verified: an Xcode run-script phase, and Xcode's own build of the package. `xcodebuild` on the machine reported that CoreSimulator is out of date and found no scheme in the throwaway package, so Xcode's environment is only simulated (`XCODE_VERSION_ACTUAL`) in unit tests. |
+| Start-up time | `bdk --version`: median 36 to 39 ms over 50 runs (minimum 34 ms), against 33 ms for `node -e 0` on the same machine. `--help` and `build config` on a one-line project: 41 to 49 ms median. Three runs per Xcode build are about 0.15 s. The executable is 145 MB. Code cache was on. |
+| Embedded assets | Passed with plain named assets: every file under `packages/cli/assets/` is registered automatically, and `bdk build config` read the schema asset inside the executable (checked with a throwaway `bdk.schema.json`, removed again; the real schema is T-CFG-01). A missing asset gives `cli.asset_missing`, exit 3. The asset file system was not used. |
+| Signing | Ad hoc signing (`codesign --sign - --force`) works and the binary runs; Developer ID signing, notarization and Gatekeeper are not tested. |
+| Import rule | Passed: Biome `noRestrictedImports` for `src/core/**` rejects platform imports; a test proves it on fixtures. |
 
 If one of these fails on a point that Bun passes, Bun is the fallback (risk R31). Rules that keep that open:
 
@@ -121,7 +132,7 @@ If one of these fails on a point that Bun passes, Bun is the fallback (risk R31)
 | Output | Human-readable on a terminal. `--json` prints one JSON document on standard output, for CI and editors. Diagnostics go to standard error. |
 | Diagnostics | Each has a stable code, a file and line where one exists, and a fix. In an Xcode build they are printed in the `file:line: error: message` form so Xcode shows them inline. |
 | Colour and prompts | Off when not on a terminal. Only `bdk init` asks questions, and every question has a flag that answers it (section 4.2). No command prompts in CI: a choice with a default takes it, and a choice with no default fails and names the flag. |
-| Network | Only `bdk init` (template and package resolution) and `bdk build runtime` (runtime download) use it. Both verify what they download against a digest. `--offline` makes them fail instead. |
+| Network | Only `bdk init` (template and package resolution) and `bdk build runtime` (runtime download) use it to download, and both verify what they download against a digest. `bdk build sign` with a real identity also reaches Apple's timestamp service through `codesign --timestamp`. `--offline` makes all three fail instead (signing ad hoc needs no network and still works). |
 | Telemetry | None |
 | Disk | No command reports disk usage or manages storage (tooling document, section 7) |
 
@@ -256,6 +267,47 @@ Properties:
 - The steps do not compile Swift and do not invoke `xcodebuild`. Xcode stays the build system.
 
 Why signing is BDK's step: Xcode's "Embed & Sign" is not expected to re-sign the helper applications nested in the framework with the right entitlements (feasibility section 7, unverified). Until task T-PKG-03 shows otherwise, the script does it.
+
+### 5.1 `bdk build sign`, as built and run on 2026-11-18
+
+`bdk build sign --bundle <App.app> --identity <name|-> [--team <id>] [--entitlements <file>]`. In an Xcode build the four values default to `CODESIGNING_FOLDER_PATH`, `EXPANDED_CODE_SIGN_IDENTITY`, `DEVELOPMENT_TEAM` and `CODE_SIGN_ENTITLEMENTS`. `BDK_SKIP_SIGNING=1` skips the step with a warning. The plan is in `packages/cli/src/core/signing/` (pure, tested without `codesign`); every `codesign` and `plutil` call is in the `xcode` module and goes through one runner (`platform/xcode/tools.ts`).
+
+| Part | Identifier | `codesign --options` | Entitlements |
+|---|---|---|---|
+| Libraries (`Libraries/*.dylib`) | Derived by `codesign` | None | None |
+| Loose executables in `Helpers/` | Derived; `<app id>.web_app_shortcut_copier` for that one | `restrict,library,runtime,kill` | None |
+| Helper, Aperitif | `<app id>.helper` | Full | None |
+| GPU, Aperitif GPU | `<app id>.helper` | `restrict,runtime,kill` | `allow-jit` only |
+| Renderer, Aperitif Renderer | `<app id>.helper.renderer` | `restrict,runtime,kill` | `allow-jit` only |
+| Alerts, Aperitif Alerts | `<app id>.framework.AlertNotificationService` | Full | None |
+| Framework | `<app id>.framework` (its `Info.plist` is rewritten) | None | None |
+| Application | `CFBundleIdentifier` | Full | The application's own file |
+
+This follows `parts.py:60-295` at the 158.0.8127.37 pin, except where noted. Order: identifier rewrites, libraries, loose executables, helpers, framework, application, then `codesign --verify --deep --strict` (a failure is exit 4). With a real identity `--timestamp` is added (so `--offline` refuses a real identity, exit 2), and `--team` is checked against the signed application's `TeamIdentifier`. An application entitlement on the deny list (`app-sandbox` and the four `com.apple.security.cs.*` weakenings, in `core/signing/entitlements.ts`) is refused before anything is changed. The deny list is the implementation's choice from configuration.md section 6 and architecture.md section 16; it needs the product owner's confirmation.
+
+Run against a packaged runtime (`~/.bdk/runtimes/a3c82d8de4cecdf1/Chromium.app`, Chromium 158.0.8127.37, cloned with `ditto` into scratch space, the shared original untouched), made into a second application with `CFBundleIdentifier` `com.second.Browser`:
+
+| Observation | Result |
+|---|---|
+| Before signing, same clone | Launches headless and renders the page. |
+| `bdk build sign --bundle Second.app --identity -` | Exit 0, 16 parts signed in about 2.5 s. `codesign --verify --deep --strict` passes. Identifiers are as in the table. The GPU helper carries `com.apple.security.cs.allow-jit`; the plain helper carries no entitlements. |
+| `Second.app/Contents/MacOS/Chromium --headless=new --user-data-dir=<fresh> --dump-dom 'data:text/html,<p>hi</p>'` | Prints `<html><head></head><body><p>hi</p></body></html>`. With a page held open, the process list showed `gpu-process`, `renderer` and `utility` children, run from the re-signed `(Aperitif Renderer)` and plain `(Aperitif)` helpers. No process ran from a `(GPU)` or `(Aperitif GPU)` helper application, so the GPU entitlement path was not exercised at runtime. |
+| `spctl --assess --type execute -vv Second.app` | `rejected`, exit 3. This is expected: an ad hoc signature has no Developer ID and no notarization ticket. |
+| Application entitlement `com.apple.security.app-sandbox` | Refused with `sign.entitlement_denied`, exit 1; the bundle's signature was unchanged. |
+
+Finding that changed the design: Chromium's options cannot be used with an ad hoc identity. The first run, with the options of the table, did not start: `dyld: Library not loaded … code signature … not valid for use in process: mapping process and mapped file (non-platform) have different Team IDs`. The hardened runtime implies library validation, and an ad hoc signature has no team. Dropping only `library` and `runtime` still failed with `security policy does not allow @ path expansion`, caused by `restrict`. Ad hoc signatures therefore get no options. The signatures with a real identity keep Chromium's options, and have not been run: no Developer ID identity was available.
+
+Not verified:
+
+| Item | Why |
+|---|---|
+| Notarization of an application with the re-signed runtime, and Gatekeeper accepting it | No credentials, and none were sought. Needs a Developer ID identity and a notarization profile. |
+| Signing with a real identity, and the hardened options and library validation with a real team | As above. Only the planned `codesign` arguments are unit-tested. |
+| Xcode's "Embed & Sign" not re-signing nested helpers (the premise of this step) | Xcode was not run (see section 2.3). |
+| `--team` on a real signature | Unit-tested with a fake `codesign` only. |
+| `bdk build embed` | Not built. The test copies the runtime with `ditto`. |
+
+The opt-in end-to-end test is `packages/cli/src/platform/xcode/sign.runtime.test.ts`; see `packages/cli/README.md`.
 
 ## 6. `bdk doctor`
 

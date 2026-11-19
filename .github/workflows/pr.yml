@@ -100,8 +100,8 @@ jobs:
           NX_BASE: ${{ github.event.pull_request.base.sha }}
           NX_HEAD: ${{ github.event.pull_request.head.sha }}
         # chromium:build compiles Chromium and must never run here, so chromium is excluded.
-        # swift needs Xcode and runs in the swift-macos job, so it is excluded here too.
-        run: pnpm exec nx affected -t lint test build --exclude=chromium,swift
+        # swift and minimal-browser need Xcode and AppKit and run in the swift-macos job, so they are excluded here too.
+        run: pnpm exec nx affected -t lint test build --exclude=chromium,swift,minimal-browser
 
       # Workflows, hooks and root configuration belong to no project, so `nx affected` never selects
       # the checks that read them (actionlint, Biome on root files, taplo). Run them on every PR;
@@ -148,6 +148,22 @@ jobs:
       - name: Run the conformance suite against the stub
         run: ctest --test-dir packages/core/build --output-on-failure
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        # The version comes from the packageManager field in package.json.
+
+      - name: Install Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Interface definitions are valid and bdk_ids.h and ids.json are current
+        run: pnpm exec nx run js-codegen:codegen-check
+
       - name: ABI hash drift check
         run: cmake -DMODE=check -P packages/core/cmake/abi-hash.cmake
 
@@ -190,13 +206,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install CMake, Ninja and LLVM tools
-        # Homebrew's formulae are not pinned to digests here and float. The current llvm formula supplies
+      - name: Install CMake, Ninja, LLVM tools, ShellCheck and shfmt
+        # Homebrew's formulae are not pinned to digests here and float. ShellCheck and shfmt lint the example's
+        # bundle script (minimal-browser:lint). The current llvm formula supplies
         # clang-format and clang-tidy, as on developer Macs (tooling/clang-tidy.sh looks there too). llvm@18 cannot
         # parse the macOS 26 SDK's libc++ headers, which use __builtin_clzg and __builtin_ctzg from clang 19.
         run: |
           set -euo pipefail
-          brew install --formula cmake ninja llvm
+          brew install --formula cmake ninja llvm shellcheck shfmt
           echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
 
       - name: Install pinned SwiftLint
@@ -212,12 +229,13 @@ jobs:
           chmod +x "$bin/swiftlint"
           echo "$bin" >> "$GITHUB_PATH"
 
-      - name: Build, test and lint the Swift and core projects
+      - name: Build, test and lint the Swift, core and example projects
         env:
           NX_BASE: ${{ github.event.pull_request.base.sha }}
           NX_HEAD: ${{ github.event.pull_request.head.sha }}
-        # Only swift and core run here. `*,!swift,!core` is the nx exclude pattern for "everything else".
-        run: pnpm exec nx affected -t build test lint --exclude='*,!swift,!core'
+        # Only swift, core and minimal-browser run here. `*,!swift,!core,!minimal-browser` is the nx exclude
+        # pattern for "everything else".
+        run: pnpm exec nx affected -t build test lint --exclude='*,!swift,!core,!minimal-browser'
 
   cli-smoke:
     name: cli-smoke (${{ matrix.os }})
@@ -245,20 +263,17 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Package the CLI
-        # packages/cli/project.json: cli:package is a stub until M2 (T-CLI-05) and exits 0 without producing anything.
+        # Bundles with Rolldown, builds the single executable with `node --build-sea`, signs it ad hoc on macOS.
         run: pnpm cli:package
 
       - name: Run the packaged executable with Node removed from PATH
         shell: bash
         run: |
           set -euo pipefail
-          # Where the packaged executable goes is decided with T-CLI-05. This is the path the smoke test expects.
-          exe="packages/cli/dist/bdk"
+          exe="$PWD/packages/cli/dist/bdk"
           if [ ! -x "$exe" ]; then
-            msg="No packaged CLI executable at $exe. cli:package is a stub until M2 (T-CLI-05), so the CLI smoke test is skipped. It is not a pass."
-            echo "::notice title=CLI smoke test skipped::$msg"
-            echo "$msg" >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+            echo "::error::cli:package did not produce $exe."
+            exit 1
           fi
 
           # PATH with every directory that holds a node binary removed.
@@ -274,6 +289,32 @@ jobs:
             exit 1
           fi
 
-          # --version is a placeholder for the smoke command that T-CLI-05 defines.
-          PATH="$clean_path" "$exe" --version
-          echo "The packaged CLI ran with no Node on PATH." >> "$GITHUB_STEP_SUMMARY"
+          expected="$(node -p "require('./packages/cli/package.json').version")"
+          actual="$(PATH="$clean_path" "$exe" --version)"
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::bdk --version printed '$actual', expected '$expected'."
+            exit 1
+          fi
+          PATH="$clean_path" "$exe" --help > /dev/null
+
+          # An unknown command is a usage error: exit code 2.
+          status=0
+          PATH="$clean_path" "$exe" no-such-command 2> /dev/null || status=$?
+          if [ "$status" -ne 2 ]; then
+            echo "::error::bdk no-such-command exited $status, expected 2."
+            exit 1
+          fi
+
+          # Outside a project, `bdk build config` finds no bdk.toml: exit code 1.
+          status=0
+          (cd "$(mktemp -d)" && PATH="$clean_path" "$exe" build config 2> /dev/null) || status=$?
+          if [ "$status" -ne 1 ]; then
+            echo "::error::bdk build config outside a project exited $status, expected 1."
+            exit 1
+          fi
+
+          if [ "$(uname -s)" = "Darwin" ]; then
+            test -f packages/cli/dist/bdk.artifactbundle/info.json
+            codesign --verify --verbose=2 "$exe"
+          fi
+          echo "The packaged CLI ran with no Node on PATH: --version, --help, exit codes 1 and 2." >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,11 @@
+{
+  "diagnostics": [
+    {
+      "code": "config.type",
+      "severity": "error",
+      "message": "\"pages.routes.prefs\" must be a string, found integer.",
+      "file": "bdk.toml",
+      "line": 5
+    }
+  ]
+}

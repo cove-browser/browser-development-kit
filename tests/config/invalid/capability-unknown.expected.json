@@ -1,0 +1,32 @@
+{
+  "diagnostics": [
+    {
+      "code": "pages.capability_unknown",
+      "severity": "error",
+      "message": "\"settings.reed\" is not a BDK capability. A trailing \"*\" is allowed only after \"app.\".",
+      "file": "bdk.toml",
+      "line": 7
+    },
+    {
+      "code": "pages.capability_unknown",
+      "severity": "error",
+      "message": "\"search.*\" is not a BDK capability. A trailing \"*\" is allowed only after \"app.\".",
+      "file": "bdk.toml",
+      "line": 8
+    },
+    {
+      "code": "pages.capability_unknown",
+      "severity": "error",
+      "message": "\"*\" is not a BDK capability. A trailing \"*\" is allowed only after \"app.\".",
+      "file": "bdk.toml",
+      "line": 9
+    },
+    {
+      "code": "pages.capability_unknown",
+      "severity": "error",
+      "message": "\"app.\" is not a BDK capability. A trailing \"*\" is allowed only after \"app.\".",
+      "file": "bdk.toml",
+      "line": 10
+    }
+  ]
+}

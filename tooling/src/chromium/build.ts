@@ -13,6 +13,7 @@ import {
 import { join, relative } from "node:path";
 import { parseArgs } from "node:util";
 import { git, run } from "../git.js";
+import { abiExports } from "../runtime/abi.js";
 import { computeSourceIdentity, sourceKey } from "../runtime/identity.js";
 import { BUILD_STAMP_NAME, clearBuildStamp, writeBuildStamp } from "../runtime/stamp.js";
 import {
@@ -50,8 +51,29 @@ function listFiles(dir: string, base = dir): string[] {
   return out.sort();
 }
 
+/** A directory outside `chromium/bdk` that is copied into the overlay under `prefix`. */
+export interface OverlaySource {
+  readonly dir: string;
+  readonly prefix: string;
+}
+
 /**
- * Makes `<src>/bdk` a content-identical copy of the overlay directory. Only files whose content
+ * What the engine compiles from `packages/core`: the runtime core it shares with the stub, the C ABI
+ * headers and the generated ABI hash. They are copied to `//bdk/core/...`, so the engine builds the
+ * same core sources as the stub and the conformance suite.
+ */
+export function coreOverlaySources(repoRoot: string): OverlaySource[] {
+  const core = join(repoRoot, "packages", "core");
+  return [
+    { dir: join(core, "runtime"), prefix: "core/runtime" },
+    { dir: join(core, "include", "bdk"), prefix: "core/include/bdk" },
+    { dir: join(core, "generated"), prefix: "core/generated" },
+  ];
+}
+
+/**
+ * Makes `<src>/bdk` a content-identical copy of the overlay directory (plus each extra source under
+ * its prefix). Only files whose content
  * differs are written, so they get a fresh mtime and Ninja or Siso rebuilds exactly them; files
  * that are the same keep their mtime and cause no rebuild. Files that no longer exist in the
  * overlay are removed. Also keeps `bdk/` out of `git status` in `src`.
@@ -64,15 +86,30 @@ function listFiles(dir: string, base = dir): string[] {
  * with fresh mtimes only on changed files also fixes a symlink's real weakness: switching the
  * link to an older file would not look newer than the object files, so it would not rebuild.
  */
-export async function mountOverlay(srcDir: string, overlayDir: string): Promise<MountResult> {
+export async function mountOverlay(
+  srcDir: string,
+  overlayDir: string,
+  extra: readonly OverlaySource[] = [],
+): Promise<MountResult> {
   const dest = join(srcDir, "bdk");
   mkdirSync(dest, { recursive: true });
-  const want = listFiles(overlayDir);
+  const sources = new Map<string, string>();
+  for (const f of listFiles(overlayDir)) sources.set(f, join(overlayDir, f));
+  for (const x of extra) {
+    if (!existsSync(x.dir)) continue;
+    for (const f of listFiles(x.dir)) {
+      const rel = join(x.prefix, f);
+      if (sources.has(rel))
+        throw new Error(`overlay: ${rel} exists in chromium/bdk and in ${x.dir}`);
+      sources.set(rel, join(x.dir, f));
+    }
+  }
+  const want = [...sources.keys()].sort();
   const have = existsSync(dest) ? listFiles(dest) : [];
   const copied: string[] = [];
   let unchanged = 0;
   for (const f of want) {
-    const from = join(overlayDir, f);
+    const from = sources.get(f) as string;
     const to = join(dest, f);
     if (existsSync(to) && readFileSync(from).equals(readFileSync(to))) {
       unchanged++;
@@ -158,14 +195,26 @@ export function findFrameworkBinaries(outDir: string): string[] {
  * table. GN has no view of the link result, and a `gn check` or `gn desc` only shows that the
  * dependency edge exists; `nm` on the product shows that the object really reached the binary.
  */
+export async function frameworkExports(
+  binary: string,
+  env: NodeJS.ProcessEnv,
+): Promise<Set<string>> {
+  const nm = process.env.BDK_NM ?? "nm";
+  const r = await run(nm, ["-gU", binary], { env });
+  if (r.code !== 0) throw new Error(`${nm} -gU ${binary} failed: ${r.stderr.trim()}`);
+  return new Set(
+    r.stdout
+      .split("\n")
+      .map((l) => l.trim().split(/\s+/).at(-1) ?? "")
+      .filter((x) => x !== ""),
+  );
+}
+
 export async function frameworkExportsMarker(
   binary: string,
   env: NodeJS.ProcessEnv,
 ): Promise<boolean> {
-  const nm = process.env.BDK_NM ?? "nm";
-  const r = await run(nm, ["-gU", binary], { env });
-  if (r.code !== 0) throw new Error(`${nm} -gU ${binary} failed: ${r.stderr.trim()}`);
-  return r.stdout.split("\n").some((l) => l.trim().endsWith(` ${OVERLAY_MARKER_SYMBOL}`));
+  return (await frameworkExports(binary, env)).has(OVERLAY_MARKER_SYMBOL);
 }
 
 export interface BuildOptions {
@@ -251,7 +300,11 @@ export async function buildCheckout(
   const patchMs = Date.now() - t;
 
   t = Date.now();
-  const mounted = await mountOverlay(ctx.src, ctx.layout.overlayDir);
+  const mounted = await mountOverlay(
+    ctx.src,
+    ctx.layout.overlayDir,
+    coreOverlaySources(ctx.layout.repoRoot),
+  );
   log(
     `overlay: //bdk mounted from ${ctx.layout.overlayDir} (${mounted.copied.length} copied, ${mounted.removed.length} removed, ${mounted.unchanged} unchanged)`,
   );
@@ -301,6 +354,16 @@ export async function buildCheckout(
     log(
       `verify: ${OVERLAY_MARKER_SYMBOL} is exported by ${relative(ctx.src, binaries[0] as string)}`,
     );
+    const wanted = abiExports(ctx.layout.repoRoot);
+    const exported = await frameworkExports(binaries[0] as string, env);
+    const missing = wanted.filter((x) => !exported.has(x));
+    if (missing.length > 0) {
+      throw new Error(
+        `The framework does not export ${missing.length} BDK ABI symbol(s): ${missing.join(", ")}. ` +
+          "Add them to chrome/app/framework.exports and framework.order in the export patch in chromium/patches.",
+      );
+    }
+    if (wanted.length > 0) log(`verify: all ${wanted.length} BDK ABI symbols are exported`);
   }
 
   // Only a verified build of the whole runtime may bless out/ for packaging. A partial build

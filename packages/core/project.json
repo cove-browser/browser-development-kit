@@ -24,6 +24,13 @@
       "inputs": ["default", "nativeToolchain"],
       "dependsOn": ["build"]
     },
+    "test-engine": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "bash packages/core/scripts/test-engine.sh"
+      }
+    },
     "lint": {
       "executor": "nx:run-commands",
       "options": {

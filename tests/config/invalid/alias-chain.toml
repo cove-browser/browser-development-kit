@@ -1,0 +1,9 @@
+[browser]
+name = "Cove"
+
+[pages.routes]
+prefs = "preferences"
+preferences = "settings"
+loop-a = "loop-b"
+loop-b = "loop-a"
+self = "self"

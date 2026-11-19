@@ -1,0 +1,20 @@
+[browser]
+name = "Cove"
+
+[pages.overrides]
+downloads = "native"
+
+[pages.routes]
+prefs = "settings"
+
+[pages.capabilities.history]
+allow = ["history.read"]
+
+[pages.capabilities.downloads]
+allow = ["downloads.read"]
+
+[pages.capabilities.ghost]
+allow = ["settings.read"]
+
+[pages.capabilities.prefs]
+allow = ["settings.read"]

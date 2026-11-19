@@ -20,12 +20,12 @@ Update 2026-11-17: milestone M1 synced, patched, built, packaged and ran the pin
 | # | Investigation | Status | One-line result |
 |---|---|---|---|
 | 1 | Service retention without Chrome's visible UI | Partially verified | Upstream already has a second production window implementation that is not `BrowserView`; a BDK one fits the same seam. A WebContents outside a tab model loses almost every Chrome service. |
-| 2 | Native hosting | Partially verified | The WebContents view is a plain `NSView`; Arc's shipping binary is a Swift app hosting Chromium this way. `//chrome` startup needs patches to accept an app-owned `NSApplication`. |
+| 2 | Native hosting | **Verified** (2026-11-19, M2) | A Swift application owns `NSApplication` and hosts `//chrome` pages in its own views, with three small patches; renderer crash, focus, keys, visibility and accessibility work. Reparenting with a popup open and GPU restart are untested. |
 | 3 | Extension compatibility | Partially verified | The tabs and windows APIs run on window and tab-list interfaces that a real `Browser` satisfies. Side panel, popup and toolbar hosting need BDK implementations of existing interfaces. |
 | 4 | Branded privileged WebUI scheme | Disproven as a true origin; partially verified as an alias | A runtime `<scheme>://` origin with WebUI privileges is not a small patch. A runtime `<scheme>://` alias over `chrome://` is feasible in a prebuilt runtime. |
 | 5 | Hybrid JavaScript broker | Partially verified | Chromium has the binding points needed for per-page capability checks. A proxy prototype was written and not executed. |
 | 6 | Service providers | Partially verified | Workable non-Google defaults exist for translation and geolocation. Reputation has a real protection gap that needs a product decision. |
-| 7 | Prebuilt packaging | Partially verified | One framework can serve many app identities with a short list of patches. Nested-helper signing in Xcode is unconfirmed. |
+| 7 | Prebuilt packaging | Partially verified | One framework can serve many app identities with a short list of patches; the identity (data directory, Keychain item, product name) is taken at runtime (M2). Nested-helper signing in Xcode and notarization are unconfirmed. |
 | 8 | Nx multi-language | **Verified** | C++, Swift and TypeScript targets build, cache and invalidate correctly from root scripts. |
 | 9 | Worktrees and cache correctness | **Verified** (dummy runtimes in M0; a real Chromium checkout in M1) | Shared immutable runtime, isolated outputs, exclusive locking and stale-cache detection all behave as designed, and held on a real build. |
 | 10 | Arc-style reference scenario | Partially verified | Scoped. Two coupling problems are identified: one active tab per window, and upstream split view stops at two panes. |
@@ -140,7 +140,7 @@ At the pinned tag on macOS, copy `WebUIBrowserWindow` into a BDK window behind a
 
 ## 2. Native hosting
 
-**Status: partially verified.**
+**Status: verified on 2026-11-19 (see "Verified on 2026-11-19" below); the rest of this section is the 2026-11-14 source reading.**
 
 | Question | Finding | Evidence |
 |---|---|---|
@@ -170,6 +170,19 @@ At the pinned tag on macOS, copy `WebUIBrowserWindow` into a BDK window behind a
 - Reparenting while a popup, a `<select>` menu or fullscreen is open.
 - Input-method and VoiceOver behaviour in a non-Views host.
 - GPU process restart.
+
+### Verified on 2026-11-19 (M2, Chromium 158.0.8127.37, macOS 27.2, Apple silicon)
+
+Built and run, not read: the engine in `chromium/bdk` with the patch series, against the release build.
+
+| Question | Result | How |
+|---|---|---|
+| Does `//chrome` run nested inside an application's `NSApplication` run loop? | Yes. `ChromeMainDelegate` is subclassed so `BrowserMainRunner::Initialize` returns to the application; `Run` is then called from a one-shot run-loop timer and nests (`MessagePumpNSApplication` sees the application running). A run-loop *block* starves every block queued with it, and a main-queue block blocks the main queue: both were tried and failed. | Engine start-up; example and conformance app |
+| Which checks fire? | `RegisterBrowserCrApp` (NSApp must be a `BrowserCrApplication`: met by subclassing it), the nil-delegate check and the main menu (patched to skip under `--bdk-hosted`), `RunContentProcess` shutting the runner down after `Run` (patched: `keep_runner_after_run`), `BrowserCrApplication +initialize` reading the command line (the base class initialises it in `+load`), and a feature-flag read in `-finishLaunching` before Chromium starts (skipped when there is no feature list yet). | Spike and engine |
+| Clean termination | Yes, with one constraint: `NSTerminateLater` deadlocks, because AppKit's reply loop nests inside Chromium's loop, which cannot quit until it returns. Cancel and terminate again after the runtime stops. | Example quits with status 0 |
+| Input methods, VoiceOver | Key events reach the page and unhandled ones the application; VoiceOver's activation exposes the page's accessibility tree. The view needs no explicit accessibility parent: in-process hosting keeps AppKit's own hierarchy. Composition by an input method needs a key window and was not exercised from a terminal-launched harness. | Engine scenarios |
+| Renderer crash | `PrimaryMainFrameRenderProcessGone` reaches the application; a reload recovers; other pages are untouched. | Example end-to-end test |
+| Reparenting with a popup or `<select>` open, GPU process restart | Not tested. | — |
 
 ### Proxy experiment, not executed
 
@@ -405,11 +418,41 @@ Conclusion: one prebuilt framework can serve many application identities if help
 ### Not verified
 
 - Whether Xcode's "Embed & Sign" re-signs nested helper applications. The plan assumes it does not and supplies a signing script.
-- Whether a SwiftPM archive keeps framework symlinks intact at this size.
-- What the Aperitif helpers are for and whether BDK needs them.
-- Notarization of an application that embeds the re-signed runtime.
+- What the Aperitif helpers are for and whether BDK needs them. (The signing step handles them like their plain counterparts; in the run below the headless browser used the Aperitif Renderer and Aperitif helpers.)
+- Notarization of an application that embeds the re-signed runtime, and Gatekeeper acceptance. No credentials were available.
+- Signing with a real Developer ID identity: the hardened runtime options and library validation with a real team identifier.
+- Downloading a SwiftPM binary target from a URL. SwiftPM refuses non-https URLs for binary targets (`valid schemes are: 'https'`), so this can only be tested against a published release asset.
+
+### Verified on 2026-11-18
+
+Re-signing under another identity (T-PKG-03). Runtime: the packaged Chromium 158.0.8127.37 at `~/.bdk/runtimes/a3c82d8de4cecdf1/Chromium.app` (697 MB), cloned with `ditto` into scratch space and made a second application (`CFBundleIdentifier` `com.second.Browser`); `bdk build sign --identity -` from `packages/cli` (see [sdk/cli.md](sdk/cli.md) section 5.1 for the plan and the full observations).
+
+| Finding | Evidence |
+|---|---|
+| A packaged runtime can be re-signed under a different bundle identifier and still launch. | `codesign --verify --deep --strict` passed. `--headless=new --dump-dom data:text/html,<p>hi</p>` printed the rendered page. The process list showed renderer, utility and GPU-process children from re-signed helpers (the GPU process ran from the plain Aperitif helper, not from a `(GPU)` helper). |
+| Helper identifiers can be rewritten with `plutil -replace CFBundleIdentifier` before signing. | The signed helpers report `com.second.Browser.helper`, `.helper.renderer` and `.framework.AlertNotificationService`; the framework reports `com.second.Browser.framework`. |
+| Renderer and GPU helpers need only `com.apple.security.cs.allow-jit`. | Signed with that entitlement alone; the renderer helper ran. The `(GPU)` helper was not launched in the run, and with an ad hoc identity the hardened runtime is off, so this is not a test of the entitlement's necessity. |
+| Chromium's `--options` (`restrict`, `library`, `runtime`) cannot be used with an ad hoc identity. | With them the application fails to start: `different Team IDs` (library validation, implied by the hardened runtime). Without `library` and `runtime` but with `restrict`: `security policy does not allow @ path expansion`. With no options it starts. |
+| Gatekeeper rejects an ad hoc re-signed application. | `spctl --assess --type execute -vv` printed `rejected`, exit 3. Expected; not a failure. |
+| A SwiftPM `.binaryTarget(path:)` over a zipped xcframework of the 713 MB "Chromium Framework.framework" keeps all 5 symlinks and an identical file tree after extraction. | Reported by the coordinator, not run in this session: archive made with `zip -ry`, 235 MB; `swift build` resolved it in about 11 s. |
 
 ---
+
+### 7.1 System codecs (T-CHR-12, decision D7), 2026-11-19
+
+Measured on the packaged runtime: pages are offered VP9, AV1 and Opus, and no H.264, AAC or HEVC, in media elements and in Media Source (an engine scenario pins this). The build has `proprietary_codecs = false` (the default for a non-Chrome-branded build, `build/config/features.gni:31`) and `ffmpeg_branding = "Chromium"`, so no proprietary decoder is bundled.
+
+From the source at the pin:
+
+| Piece | State |
+|---|---|
+| MP4 demuxing and the H.264, AAC and HEVC codec strings | Behind `proprietary_codecs`. Turning it on with `ffmpeg_branding = "Chromium"` keeps FFmpeg's proprietary decoders out. |
+| H.264 decode through the system | VideoToolbox (`media/gpu/mac/video_toolbox_h264_accelerator.cc`, the decompression session manager) in the GPU process. |
+| HEVC | `enable_platform_hevc` follows `proprietary_codecs` (`media/media_options.gni:159`); decode is VideoToolbox's. |
+| AAC through the system | `media/filters/mac/audio_toolbox_audio_decoder.cc` decodes only xHE-AAC, AC-3 and E-AC-3; AAC-LC would need a patch to accept it (the AudioConverter set-up already handles AAC magic cookies). Its size is not yet known. |
+| H.264 in WebRTC | Not examined. |
+
+Not done: the build with `proprietary_codecs = true` that would show H.264 and HEVC playing through VideoToolbox and measure the AAC patch. It changes a GN argument that rebuilds most of the tree (hours), so it belongs in an experiment checkout. D7 stays as decided; T-CHR-12 is not an M2 exit criterion.
 
 ## 8. Nx multi-language feasibility
 

@@ -1,0 +1,18 @@
+{
+  "diagnostics": [
+    {
+      "code": "services.provider_unknown",
+      "severity": "error",
+      "message": "\"services.translation.provider\" names a provider BDK does not ship: \"bing\". Valid providers are \"default\", \"app\", \"apple\", \"deepl\", \"microsoft\", \"google\".",
+      "file": "bdk.toml",
+      "line": 5
+    },
+    {
+      "code": "services.provider_unknown",
+      "severity": "error",
+      "message": "\"services.geolocation.provider\" names a provider BDK does not ship: \"gps\". Valid providers are \"system\", \"app\", \"google\".",
+      "file": "bdk.toml",
+      "line": 11
+    }
+  ]
+}

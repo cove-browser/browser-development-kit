@@ -1,0 +1,6 @@
+[browser]
+name = "Cove"
+
+[pages.routes]
+prefs = "settingz"
+tools = "agents"

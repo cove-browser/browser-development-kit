@@ -1,0 +1,12 @@
+browser.name = "Dot"
+browser.internal_scheme = "dot"
+
+[pages]
+overrides = { history = "chromium", "downloads" = "native" }
+routes = { prefs = "settings" }
+
+[pages.capabilities]
+settings.allow = [
+  "settings.read",
+  "app.sidebar.*", # a prefix grant
+]

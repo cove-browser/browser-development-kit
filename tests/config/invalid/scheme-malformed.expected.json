@@ -1,0 +1,11 @@
+{
+  "diagnostics": [
+    {
+      "code": "browser.scheme_invalid",
+      "severity": "error",
+      "message": "\"browser.internal_scheme\" is not a valid URL scheme: \"Cove App\". Use lower-case letters, digits, \"+\", \"-\" and \".\", starting with a letter.",
+      "file": "bdk.toml",
+      "line": 3
+    }
+  ]
+}

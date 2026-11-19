@@ -1,0 +1,5 @@
+[browser]
+name = "Cove"
+
+[pages.routes]
+prefs = 5

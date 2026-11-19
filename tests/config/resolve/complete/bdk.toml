@@ -1,0 +1,73 @@
+[browser]
+name = "Cove"
+internal_scheme = "cove"
+
+[runtime]
+mode = "prebuilt"
+downgrade = "refuse"
+
+[pages]
+auto_discover = true
+
+[pages.overrides]
+history = "chromium" # keep the built-in even though Pages/History exists
+downloads = "native" # delivered to a Swift handler
+flags = "disabled"
+
+[pages.routes]
+preferences = "settings" # cove://preferences, same identity as cove://settings
+
+[pages.capabilities.settings]
+allow = [
+  "settings.read",
+  "settings.write",
+  "permissions.manage",
+  "search.manage",
+  "app.appearance.*",
+]
+
+[pages.capabilities.new-tab]
+allow = ["top-sites.read", "favicons.read", "app.tabs.open"]
+
+[ui]
+default_browser_surfaces = true
+
+[ui.surfaces]
+context_menus = "custom"
+downloads = "custom"
+notifications = "disabled"
+
+[extensions]
+enabled = true
+install_policy = "reject_known_incompatible"
+
+[extensions.install]
+unpacked = true
+crx = true
+update_urls = "any"
+stores = []
+
+[extensions.ui]
+actions = "custom"
+popups = "custom"
+side_panels = "custom"
+context_menus = "default"
+options_pages = "default"
+
+[services.translation]
+provider = "default"
+
+[services.reputation]
+provider = "default"
+
+[services.geolocation]
+provider = "system"
+
+[automation]
+enabled = true
+
+[automation.external]
+enabled = false
+
+[devtools]
+frontend = "default"

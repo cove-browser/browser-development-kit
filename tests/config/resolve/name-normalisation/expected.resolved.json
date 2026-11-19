@@ -1,0 +1,130 @@
+{
+  "schema": 1,
+  "bdk_version": "0.0.0",
+  "config_digest": "sha256:03950a0edc035e7981147c4b87cdf63e561b6290a9762a1454280193065c3988",
+  "browser": {
+    "name": "Cove",
+    "internal_scheme": "cove",
+    "logo": "app-icon",
+    "user_agent": {}
+  },
+  "storage": {
+    "directory": "Cove",
+    "keychain_item": "Cove Safe Storage"
+  },
+  "runtime": {
+    "mode": "prebuilt",
+    "downgrade": "refuse",
+    "snapshot_on_upgrade": true
+  },
+  "routes": {
+    "agents2-go": {
+      "mode": "bundled",
+      "path": "Pages/Agents2Go",
+      "host": "bdk-agents2-go",
+      "digest": "sha256:c6acf28fef827491e382b07f0e5b3a04bfa0796abc77cb5ae24794245deec858",
+      "capabilities": []
+    },
+    "already-hyphenated": {
+      "mode": "bundled",
+      "path": "Pages/already-hyphenated",
+      "host": "bdk-already-hyphenated",
+      "digest": "sha256:84e4ade452523c4561fd417193df0f94cfc45872729f541b3eecbf786cb7390e",
+      "capabilities": []
+    },
+    "html-page": {
+      "mode": "bundled",
+      "path": "Pages/HTMLPage",
+      "host": "bdk-html-page",
+      "digest": "sha256:0c97e64ae1917d3b5bbdfea83094df1c570447be3a3ea0ffd7a64a09459773d0",
+      "capabilities": []
+    },
+    "new-tab": {
+      "mode": "bundled",
+      "path": "Pages/NewTab",
+      "host": "bdk-new-tab",
+      "digest": "sha256:f67e26314409864ae115877cce4fe1778c1ee3ed60a53158a2ac3013b16b934a",
+      "capabilities": []
+    }
+  },
+  "aliases": {},
+  "surfaces": {
+    "permissions": "default",
+    "javascript_dialogs": "default",
+    "http_auth": "default",
+    "file_pickers": "default",
+    "context_menus": "default",
+    "new_windows": "default",
+    "downloads": "default",
+    "passwords": "default",
+    "autofill": "default",
+    "printing": "default",
+    "translation": "default",
+    "find": "default",
+    "fullscreen": "default",
+    "notifications": "default",
+    "certificate_errors": "default",
+    "reputation_warnings": "default",
+    "devtools": "default"
+  },
+  "extensions": {
+    "enabled": true,
+    "install_policy": "reject_known_incompatible",
+    "allow_in_private": "user",
+    "install": {
+      "unpacked": true,
+      "crx": true,
+      "update_urls": "any",
+      "stores": []
+    },
+    "ui": {
+      "actions": "default",
+      "popups": "default",
+      "side_panels": "default",
+      "context_menus": "default",
+      "options_pages": "default",
+      "devtools": "default"
+    },
+    "bundled": {}
+  },
+  "services": {
+    "translation": {
+      "provider": "default",
+      "models": "on-demand",
+      "bundled_languages": []
+    },
+    "reputation": {
+      "provider": "default",
+      "update_interval": "1h"
+    },
+    "geolocation": {
+      "provider": "system"
+    },
+    "credentials": {
+      "provider": "chromium"
+    },
+    "leak_check": {
+      "provider": "none"
+    }
+  },
+  "settings_defaults": {},
+  "automation": {
+    "enabled": false,
+    "scripts": {},
+    "external": {
+      "enabled": false
+    }
+  },
+  "devtools": {
+    "frontend": "default",
+    "protocol": true
+  },
+  "diagnostics": {
+    "crash_reports": "local",
+    "log_level": "warning"
+  },
+  "chromium_features": {
+    "enable": [],
+    "disable": []
+  }
+}

@@ -7,6 +7,21 @@
 
 extern "C" {
 
+void bdk_harness_prepare_start_config(bdk_start_config_t*) {}
+
+void bdk_harness_attach_view(bdk_contents_t) {}
+
+const char* bdk_harness_session_format(void) {
+    return "BDKSTUB1";
+}
+
+size_t bdk_harness_newer_session_state(uint8_t* out, size_t cap) {
+    static const char newer[] = "BDKSTUB9 0 0\n";
+    size_t n = sizeof newer - 1 < cap ? sizeof newer - 1 : cap;
+    memcpy(out, newer, n);
+    return n;
+}
+
 size_t bdk_harness_pump(void) {
     return bdk_stub_pump();
 }

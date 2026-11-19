@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BDK Patches <patches@bdk.invalid>
+Date: Thu, 19 Nov 2026 10:19:32 -0800
+Subject: [PATCH] bdk: let the embedding application name its Keychain item
+
+The key that protects cookies and passwords on macOS is kept in a Keychain
+item named "Chromium Safe Storage". Every BDK application embeds the same
+prebuilt runtime, so with a fixed name they would all share one item, and
+renaming the browser would orphan its data. bdk.toml sets the name per
+application ([storage] keychain_item, configuration.md section 3.2).
+
+KeychainPassword already supports runtime names behind
+ALLOW_RUNTIME_CONFIGURABLE_KEY_STORAGE (Electron uses it). Define it for
+the keychain_password_mac target as a public config, so the target and every
+file that includes its header agree on the types.
+
+Used by: the BDK engine identity (//bdk/engine/identity.cc).
+---
+ components/os_crypt/common/BUILD.gn | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/components/os_crypt/common/BUILD.gn b/components/os_crypt/common/BUILD.gn
+index 10db0687101b69542f9dd33592d0655c7343e3c8..d9d138c7031d090b8629f6899985d36b367e8eef 100644
+--- a/components/os_crypt/common/BUILD.gn
++++ b/components/os_crypt/common/BUILD.gn
+@@ -17,7 +17,15 @@ group("crypto_lib") {
+ }
+ 
+ if (is_apple) {
++  # BDK: each application that embeds the BDK runtime names its own Keychain
++  # item. The define makes the service and account names mutable; it is a
++  # public config because it changes the header's types for every includer.
++  config("keychain_password_mac_config") {
++    defines = [ "ALLOW_RUNTIME_CONFIGURABLE_KEY_STORAGE" ]
++  }
++
+   source_set("keychain_password_mac") {
++    public_configs = [ ":keychain_password_mac_config" ]
+     sources = [
+       "keychain_password_mac.h",
+       "keychain_password_mac.mm",

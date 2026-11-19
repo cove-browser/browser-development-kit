@@ -1,0 +1,469 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:bdk:schema:bdk-toml:1",
+  "title": "bdk.toml",
+  "description": "BDK application configuration. The single source of truth for BDK-specific settings; the CLI validates it and writes bdk.resolved.json. See docs/planning/sdk/configuration.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["browser"],
+  "properties": {
+    "browser": { "$ref": "#/$defs/browser" },
+    "runtime": { "$ref": "#/$defs/runtime" },
+    "chromium": { "$ref": "#/$defs/chromium" },
+    "pages": { "$ref": "#/$defs/pages" },
+    "ui": { "$ref": "#/$defs/ui" },
+    "extensions": { "$ref": "#/$defs/extensions" },
+    "services": { "$ref": "#/$defs/services" },
+    "automation": { "$ref": "#/$defs/automation" },
+    "devtools": { "$ref": "#/$defs/devtools" },
+    "codegen": { "$ref": "#/$defs/codegen" }
+  },
+  "$defs": {
+    "pathString": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A path relative to the directory of bdk.toml, with forward slashes, that stays inside it."
+    },
+    "surfaceModeDefaultCustom": {
+      "enum": ["default", "custom"],
+      "description": "The surface allows the default presenter or a custom handler. It cannot be disabled."
+    },
+    "surfaceModeAny": {
+      "enum": ["default", "custom", "disabled"],
+      "description": "default: the default presenter unless a handler takes over. custom: a handler is required before start. disabled: the feature is unavailable."
+    },
+    "endpoint": {
+      "type": "string",
+      "pattern": "^https?://[^\\s]+$",
+      "description": "Optional. Keeps the provider's protocol and sends requests to this URL."
+    },
+    "browser": {
+      "type": "object",
+      "description": "Identity of the browser: its display name and branded internal URL scheme.",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Display name. Used in default-presenter text and as the fallback for the identifiers derived from it."
+        },
+        "internal_scheme": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9+.-]*$",
+          "description": "The branded internal URL scheme, for example cove for cove://settings. Lower case, matches [a-z][a-z0-9+.-]*, not a reserved scheme. Set it explicitly: a scheme derived from the name changes when the name does."
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "description": "Which Chromium runtime the application uses and how profiles survive upgrades.",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": ["prebuilt", "source"],
+          "default": "prebuilt",
+          "description": "prebuilt uses the published runtime for the resolved BDK version. source builds one from the checkout with the application's patches."
+        },
+        "downgrade": {
+          "enum": ["refuse", "fresh-profile"],
+          "default": "refuse",
+          "description": "What happens when an older engine meets a profile last used by a newer one and no snapshot exists. refuse fails start; fresh-profile starts with a new profile and leaves the old one untouched."
+        },
+        "snapshot_on_upgrade": {
+          "type": "boolean",
+          "default": true,
+          "description": "Snapshot each profile before the first launch of a newer engine milestone."
+        }
+      }
+    },
+    "chromium": {
+      "type": "object",
+      "description": "Chromium build inputs. Source only: every key here is an error when runtime.mode is prebuilt.",
+      "additionalProperties": false,
+      "properties": {
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A Chromium tag. Source only. Defaults to the pin of the resolved BDK version, and must be one the BDK version declares compatible."
+        },
+        "patches": {
+          "description": "Source only. A directory with a series file, or an ordered list of patch files, applied after BDK's own series. Defaults to Chromium/patches if it exists.",
+          "anyOf": [
+            { "$ref": "#/$defs/pathString" },
+            { "type": "array", "items": { "$ref": "#/$defs/pathString" } }
+          ]
+        },
+        "gn_args": {
+          "type": "object",
+          "description": "Source only. Extra GN arguments. Arguments on the deny list (sandbox, remote debugging, web security, Google API keys, sign-in and sync, auto-granted permissions) are rejected.",
+          "additionalProperties": {
+            "type": ["string", "number", "boolean", "array"],
+            "description": "The value of one GN argument."
+          }
+        }
+      }
+    },
+    "pages": {
+      "type": "object",
+      "description": "Internal pages: discovery, per-route overrides, aliases and capability grants.",
+      "additionalProperties": false,
+      "properties": {
+        "auto_discover": {
+          "type": "boolean",
+          "default": true,
+          "description": "Treat each directory under pages.directory that has an index.html as a page."
+        },
+        "directory": {
+          "$ref": "#/$defs/pathString",
+          "default": "Pages",
+          "description": "Where bundled pages live."
+        },
+        "overrides": {
+          "type": "object",
+          "description": "One line per logical route: route = mode. chromium serves the built-in page, native delivers the navigation to a Swift handler, disabled blocks it, and a path serves the bundled page at that path.",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "description": "chromium, native, disabled, or a path to a directory that contains index.html."
+          }
+        },
+        "routes": {
+          "type": "object",
+          "description": "One line per alias: alias = target. The target must be a page, never another alias. The alias shares the target's identity and capabilities.",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The logical route the alias points at."
+          }
+        },
+        "capabilities": {
+          "type": "object",
+          "description": "Capability grants, one table per bundled route: [pages.capabilities.<route>]. A page with no table has no capability.",
+          "additionalProperties": {
+            "type": "object",
+            "description": "The grants for one route.",
+            "additionalProperties": false,
+            "properties": {
+              "allow": {
+                "type": "array",
+                "default": [],
+                "description": "The BDK capabilities this page may use. A trailing * is allowed only after app., for example app.sidebar.*.",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "A capability name such as settings.read."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "ui": {
+      "type": "object",
+      "description": "Browser-owned UI surfaces and who presents them.",
+      "additionalProperties": false,
+      "properties": {
+        "default_browser_surfaces": {
+          "type": "boolean",
+          "default": true,
+          "description": "The mode for every surface not listed under [ui.surfaces]: true means default, false means custom."
+        },
+        "surfaces": {
+          "type": "object",
+          "description": "One line per surface: surface = default, custom or disabled. Which modes a surface allows is in ui-requests.md section 4.",
+          "additionalProperties": false,
+          "properties": {
+            "permissions": {
+              "$ref": "#/$defs/surfaceModeDefaultCustom",
+              "description": "Site permission prompts."
+            },
+            "javascript_dialogs": {
+              "$ref": "#/$defs/surfaceModeDefaultCustom",
+              "description": "alert, confirm, prompt and beforeunload."
+            },
+            "http_auth": {
+              "$ref": "#/$defs/surfaceModeDefaultCustom",
+              "description": "HTTP and proxy authentication."
+            },
+            "file_pickers": {
+              "$ref": "#/$defs/surfaceModeAny",
+              "description": "File and directory choosers."
+            },
+            "context_menus": {
+              "$ref": "#/$defs/surfaceModeAny",
+              "description": "Page context menus."
+            },
+            "new_windows": {
+              "$ref": "#/$defs/surfaceModeDefaultCustom",
+              "description": "Popups, undocked DevTools, picture-in-picture and extension windows."
+            },
+            "downloads": {
+              "$ref": "#/$defs/surfaceModeAny",
+              "description": "Download start, progress and warnings."
+            },
+            "passwords": {
+              "$ref": "#/$defs/surfaceModeAny",
+              "description": "Save, update and generate password prompts."
+            },
+            "autofill": {
+              "$ref": "#/$defs/surfaceModeAny",
+              "description": "Save address or card; fill confirmation."
+            },
+            "printing": {
+              "$ref": "#/$defs/surfaceModeAny",
+              "description": "Print preview and the system print dialog."
+            },
+            "translation": {
+              "$ref": "#/$defs/surfaceModeAny",
+              "description": "Translation offer, progress, result, errors and preferences."
+            },
+            "find": {
+              "$ref": "#/$defs/surfaceModeDefaultCustom",
+              "description": "The find bar."
+            },
+            "fullscreen": {
+              "$ref": "#/$defs/surfaceModeAny",
+              "description": "HTML fullscreen."
+            },
+            "notifications": {
+              "$ref": "#/$defs/surfaceModeAny",
+              "description": "Web notifications."
+            },
+            "certificate_errors": {
+              "$ref": "#/$defs/surfaceModeDefaultCustom",
+              "description": "Certificate interstitials. Cannot be disabled."
+            },
+            "reputation_warnings": {
+              "$ref": "#/$defs/surfaceModeDefaultCustom",
+              "description": "Malware, phishing and download warnings. Cannot be disabled."
+            },
+            "devtools": {
+              "$ref": "#/$defs/surfaceModeAny",
+              "description": "The DevTools front end."
+            }
+          }
+        }
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "description": "The extension system: whether it exists, how extensions install and which UI surfaces present them.",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "The extension system as a whole. false removes extension APIs, pages and installation."
+        },
+        "install_policy": {
+          "enum": ["reject_known_incompatible", "allow_all"],
+          "default": "reject_known_incompatible",
+          "description": "Whether a manifest that requires a disabled or unsupported surface is refused before installation. With allow_all it installs, and unsupported calls still fail explicitly."
+        },
+        "allow_in_private": {
+          "enum": ["user", "never"],
+          "default": "user",
+          "description": "Whether the user may allow an extension in private profiles."
+        },
+        "install": {
+          "type": "object",
+          "description": "Where extensions may come from.",
+          "additionalProperties": false,
+          "properties": {
+            "unpacked": {
+              "type": "boolean",
+              "default": true,
+              "description": "Load from a directory."
+            },
+            "crx": {
+              "type": "boolean",
+              "default": true,
+              "description": "Install a local CRX file. BDK owns the off-store policy and keeps Chromium's install prompt."
+            },
+            "update_urls": {
+              "default": "any",
+              "description": "Which self-hosted update manifests an extension may name: any, or an array of URL patterns.",
+              "anyOf": [
+                { "const": "any" },
+                { "type": "array", "items": { "type": "string", "minLength": 1 } }
+              ]
+            },
+            "stores": {
+              "type": "array",
+              "default": [],
+              "description": "Named store sources. chrome-web-store is available and off unless listed.",
+              "items": {
+                "enum": ["chrome-web-store"],
+                "description": "A store BDK ships an adapter for."
+              }
+            }
+          }
+        },
+        "ui": {
+          "type": "object",
+          "description": "One line per extension surface, with the same three modes as [ui.surfaces]. Details are in extensions.md section 4.",
+          "additionalProperties": false,
+          "properties": {
+            "actions": {
+              "$ref": "#/$defs/surfaceModeAny",
+              "description": "Extension action buttons."
+            },
+            "popups": { "$ref": "#/$defs/surfaceModeAny", "description": "Action popups." },
+            "side_panels": {
+              "$ref": "#/$defs/surfaceModeAny",
+              "description": "Extension side panels."
+            },
+            "context_menus": {
+              "$ref": "#/$defs/surfaceModeAny",
+              "description": "Extension items in context menus."
+            },
+            "options_pages": {
+              "$ref": "#/$defs/surfaceModeAny",
+              "description": "Extension options pages."
+            },
+            "devtools": {
+              "$ref": "#/$defs/surfaceModeAny",
+              "description": "Extension panels in DevTools."
+            }
+          }
+        }
+      }
+    },
+    "services": {
+      "type": "object",
+      "description": "Provider choice for each service. A flag is not a credential: choosing a provider never implies that its keys exist.",
+      "additionalProperties": false,
+      "properties": {
+        "translation": {
+          "type": "object",
+          "description": "Page translation.",
+          "additionalProperties": false,
+          "properties": {
+            "provider": {
+              "enum": ["default", "app", "apple", "deepl", "microsoft", "google"],
+              "default": "default",
+              "description": "default is the local engine, app is a Swift registration. The named providers arrive after v1."
+            },
+            "endpoint": { "$ref": "#/$defs/endpoint" },
+            "models": {
+              "enum": ["on-demand", "bundled"],
+              "default": "on-demand",
+              "description": "Whether language models download when first needed or ship in the bundle."
+            },
+            "bundled_languages": {
+              "type": "array",
+              "default": [],
+              "description": "With models = bundled, which language pairs to include.",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]+)*$",
+                "description": "A language code such as en or pt-BR."
+              }
+            }
+          }
+        },
+        "reputation": {
+          "type": "object",
+          "description": "Malware and phishing reputation.",
+          "additionalProperties": false,
+          "properties": {
+            "provider": {
+              "enum": ["default", "app", "web-risk", "google"],
+              "default": "default",
+              "description": "default is the signed static block lists, app is a Swift registration."
+            },
+            "endpoint": { "$ref": "#/$defs/endpoint" },
+            "update_interval": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*(s|m|h|d)$",
+              "default": "1h",
+              "description": "How often list updates are fetched, for list-based providers. A duration such as 30m, 1h or 1d."
+            }
+          }
+        },
+        "geolocation": {
+          "type": "object",
+          "description": "Geolocation.",
+          "additionalProperties": false,
+          "properties": {
+            "provider": {
+              "enum": ["system", "app", "google"],
+              "default": "system",
+              "description": "system is the operating system's provider, app is a Swift registration."
+            },
+            "endpoint": { "$ref": "#/$defs/endpoint" }
+          }
+        }
+      }
+    },
+    "automation": {
+      "type": "object",
+      "description": "The automation host and application-authored scripts.",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether the automation host exists in this application."
+        },
+        "directory": {
+          "$ref": "#/$defs/pathString",
+          "default": "Automation",
+          "description": "Where application-authored scripts live. Each top-level .ts or .js file is one script."
+        },
+        "external": {
+          "type": "object",
+          "description": "The authenticated local endpoint. There is no key for a network port.",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether the application may open the authenticated local endpoint at runtime. true only permits it; Swift opens it."
+            }
+          }
+        }
+      }
+    },
+    "devtools": {
+      "type": "object",
+      "description": "The DevTools front end and protocol.",
+      "additionalProperties": false,
+      "properties": {
+        "frontend": {
+          "type": "string",
+          "minLength": 1,
+          "default": "default",
+          "description": "default (Chromium's front end), disabled (none), or a path to a complete replacement packaged from that directory."
+        },
+        "overlay": {
+          "$ref": "#/$defs/pathString",
+          "description": "A directory of CSS and JavaScript loaded into the default front end."
+        },
+        "protocol": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether the DevTools protocol is available to Swift and to automation sessions that hold contents.debug. Independent of the front end."
+        }
+      }
+    },
+    "codegen": {
+      "type": "object",
+      "description": "Generation of the @bdk/* TypeScript declarations.",
+      "additionalProperties": false,
+      "properties": {
+        "typescript": {
+          "type": "boolean",
+          "description": "Generate @bdk/* declarations. Defaults to true when Pages/ or Automation/ exists."
+        },
+        "commands_module": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The Swift module whose command, event and setting declarations are extracted. Defaults to the application target."
+        }
+      }
+    }
+  }
+}

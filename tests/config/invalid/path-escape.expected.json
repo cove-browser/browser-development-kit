@@ -1,0 +1,39 @@
+{
+  "diagnostics": [
+    {
+      "code": "config.path_escape",
+      "severity": "error",
+      "message": "\"pages.directory\" is not a path inside the project: \"../Pages\". It leaves the directory of bdk.toml.",
+      "file": "bdk.toml",
+      "line": 5
+    },
+    {
+      "code": "config.path_escape",
+      "severity": "error",
+      "message": "\"pages.overrides.settings\" is not a path inside the project: \"../../elsewhere/settings\". It leaves the directory of bdk.toml.",
+      "file": "bdk.toml",
+      "line": 8
+    },
+    {
+      "code": "config.path_escape",
+      "severity": "error",
+      "message": "\"pages.overrides.history\" is not a path inside the project: \"Pages\\history\". Use forward slashes.",
+      "file": "bdk.toml",
+      "line": 9
+    },
+    {
+      "code": "config.path_escape",
+      "severity": "error",
+      "message": "\"automation.directory\" is not a path inside the project: \"/opt/automation\". It is absolute; paths are relative to the directory of bdk.toml.",
+      "file": "bdk.toml",
+      "line": 12
+    },
+    {
+      "code": "config.path_escape",
+      "severity": "error",
+      "message": "\"devtools.overlay\" is not a path inside the project: \"~/overlay\". It is absolute; paths are relative to the directory of bdk.toml.",
+      "file": "bdk.toml",
+      "line": 15
+    }
+  ]
+}

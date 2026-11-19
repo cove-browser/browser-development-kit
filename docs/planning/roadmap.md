@@ -93,10 +93,32 @@ If a step fails:
 | Host view behaviour | T-MAC-03, T-MAC-05 | Attach, hide, reparent, focus, keyboard, accessibility parent, fullscreen and context-menu requests. Verified with VoiceOver and an input method. |
 | Configuration and the CLI executable | T-CLI-05, T-CFG-01, T-CFG-02 | `bdk.toml` validates against the schema; invalid fixtures fail with specific messages; the resolved file is produced by a `bdk` executable that runs with no Node installed. |
 | System codecs | T-CHR-12 | The spike for decision D7 is recorded: whether H.264, AAC and HEVC play through the system decoders with no bundled proprietary decoder. Not an exit criterion for M2. |
-| Prebuilt runtime | T-PKG-02, T-PKG-03, T-PKG-04 | The runtime is published with a manifest and a recorded digest, resolved through SwiftPM, signed inside an application with another team identifier, and notarized. |
+| Prebuilt runtime | T-PKG-02, T-PKG-03, T-PKG-04 | The runtime is published with a manifest and a recorded digest, resolved through SwiftPM, and signed inside an application with another team identifier. Notarization is part of the release procedure (T-PKG-06, M9), not M2 (product owner, 2026-11-19). |
 | Example | T-SWF-05 | `pnpm dev:example` launches the minimal browser with two pages visible. |
 
 Exit criteria: the multi-page sample survives a renderer crash and an application relaunch. Private profiles keep cookies, cache and permissions separate.
+
+**Status, 2026-11-19: the exit criteria are met on Chromium 158; publishing and the codec build remain.** M0 was skipped at the product owner's request (2026-11-19): the engine was built straight onto Chromium's `WebContents`, without the `Browser`-based host contexts of M0 (T-ADP-01 to T-ADP-03). [amendments.md](amendments.md) section 2.12 records that departure and what it leaves for M3. Everything below was run against the packaged runtime (`pnpm chromium:package`, `chromium:runtime`); nothing in CI builds Chromium.
+
+| Task | Status | Where it is recorded |
+|---|---|---|
+| T-ABI-03 | Done. Contents events gained `RENDERER_GONE` and `VISIBILITY_CHANGED`. | `packages/core/docs/conventions.md`; [sdk/c-abi.md](sdk/c-abi.md) section 7 |
+| T-ABI-04 | Done: the engine (`chromium/bdk`) is the Chromium backend of the runtime core the stub also uses. The conformance suite passes against it (121 tests) together with 15 engine scenarios: 136 of 136 (`nx run core:test-engine`). | `chromium/bdk/README.md`; `packages/core/docs/conventions.md` |
+| T-MAC-01, T-MAC-02 (M0, done in M2's form) | Done: `//chrome` starts inside an application-owned `NSApplication` (`BDKApplicationBase` subclasses `BrowserCrApplication`), no Chrome window, menu or delegate, clean termination. Patches 2 to 4 of the series. | `chromium/bdk/README.md`; [feasibility.md](feasibility.md) section 2 |
+| T-ADP-05 | Done: `window.open` (kind `popup`), new-page dispositions and "open link in new page" (`newPage`), and undocked DevTools from the context menu's Inspect (`devTools`) each raise one new-window request carrying the new page. A rejected or unhandled one is destroyed: the default presenter is T-UIR-03 (M3). Picture-in-picture is not routed. | engine scenarios in `packages/core/tests/tests_engine.c` |
+| T-ADP-07 | Done: Chromium restores nothing at start (`--no-startup-window`); a page's state is Chromium's own navigation entries in a BDK envelope, restored into a new page with its history. | engine scenario; minimal-browser relaunch test |
+| T-MAC-03 | Done: the host view keeps the page through restore and discard; visibility events on hide and show; focus events and state; unhandled shortcuts reach the application with the `NSEvent`, reserved keys never reach the page; VoiceOver's activation (`AXEnhancedUserInterface`) exposes the page's `AXWebArea`, heading and text. The input-method composition step needs a key window, which a terminal-launched harness cannot get, so it is skipped there with a message; typing into a field is checked. Not verified by a person with VoiceOver or an input method. | engine scenarios |
+| T-MAC-05 | Done: HTML fullscreen enters and exits through fullscreen requests (default presenter: the window goes fullscreen); a denial leaves the page not fullscreen (content has no asynchronous refusal); context-menu requests carry the context and items, `perform` runs one, the default presenter is an `NSMenu`. | engine scenarios |
+| T-SWF-01 to T-SWF-03 | Done against the stub and the real runtime. `BDKApplication` subclasses the runtime's `BDKApplicationBase`; `terminate(replyingTo:)` cancels and re-terminates instead of `.terminateLater`. The Swift UI-request API is T-SWF-04 (M3). | `packages/swift/README.md` |
+| T-CFG-01, T-CFG-02, T-CLI-05 | Done (unchanged). | as before |
+| T-PKG-02 | Done: data directory, Keychain item and product name come from `bdk.resolved.json` (a new patch makes the Keychain name settable). A real run created the item "Minimal Browser Safe Storage" and left "Chromium Safe Storage" alone. | `chromium/bdk/README.md` |
+| T-PKG-03 | Done for M2: signing, ad hoc; `bdk build sign` signs the example with its embedded runtime. A real Developer ID identity and notarization moved to the release procedure (T-PKG-06), at the product owner's decision. | [sdk/cli.md](sdk/cli.md) section 5.1 |
+| T-PKG-04 | Partly, unchanged: the https download path needs a published runtime. Publishing (`chromium:publish`) is an outward action left to the product owner. | [feasibility.md](feasibility.md) section 7 |
+| T-SWF-05 | Done on the real runtime: `pnpm dev:example` shows two real pages. | `apps/examples/minimal-browser/README.md` |
+| T-CHR-12 | Spike recorded from measurement and source; the build that would test system decoders has not run. | [feasibility.md](feasibility.md) section 7.1 |
+| Exit criterion: renderer crash | Met: `chrome://crash` kills a page's renderer, the application gets `rendererGone`, reloads it, the other page is untouched. | minimal-browser end-to-end test |
+| Exit criterion: relaunch | Met: a relaunch restores both pages with Chromium's own history. | minimal-browser end-to-end test |
+| Exit criterion: private profiles | Met for cookies, local storage and the HTTP cache (with the shared profile as control). Permissions are kept apart by construction (each private profile is its own off-the-record profile with its own content settings); no test grants one, because BDK has no permission prompt before M3 (T-UIR-02). | minimal-browser end-to-end tests |
 
 ### M3 — Browser services and default UI
 

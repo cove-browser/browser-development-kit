@@ -1,0 +1,10 @@
+[browser]
+name = "Cove"
+
+[ui.surfaces]
+contextmenus = "custom"
+webauthn = "custom"
+telepathy = "default"
+
+[extensions.ui]
+popup = "custom"

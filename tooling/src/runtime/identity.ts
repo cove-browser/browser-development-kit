@@ -33,6 +33,8 @@ export interface SourceIdentity {
   readonly bdk: {
     readonly patches_digest: string;
     readonly overlay_digest: string;
+    /** Digest of packages/core/runtime, the runtime core the engine compiles into //bdk. */
+    readonly core_digest: string;
     /** `"absent"` when the selected preset file does not exist. Packaging refuses that. */
     readonly gn_args_digest: string;
     /** Digest of chromium/runtime-files.json (paths and min_os): what is packaged decides what the key names. */
@@ -95,6 +97,7 @@ export async function computeSourceIdentity(opts: IdentityOptions): Promise<Sour
     bdk: {
       patches_digest: await directoryDigest(join(repoRoot, "chromium", "patches")),
       overlay_digest: await directoryDigest(join(repoRoot, "chromium", "bdk")),
+      core_digest: await directoryDigest(join(repoRoot, "packages", "core", "runtime")),
       gn_args_digest: existsSync(preset) ? sha256Hex(readFileSync(preset)) : "absent",
       runtime_files_digest: runtimeFilesDigest(repoRoot),
     },
@@ -104,7 +107,7 @@ export async function computeSourceIdentity(opts: IdentityOptions): Promise<Sour
 
 /** The store key: first 16 hex digits of the SHA-256 of the canonical source identity. */
 export function sourceKey(id: SourceIdentity): string {
-  return sha256Hex(canonicalJson({ key_schema: 2, ...id })).slice(0, 16);
+  return sha256Hex(canonicalJson({ key_schema: 3, ...id })).slice(0, 16);
 }
 
 export interface BuildIdentity {

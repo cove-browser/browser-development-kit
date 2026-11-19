@@ -1,0 +1,18 @@
+{
+  "diagnostics": [
+    {
+      "code": "config.internal_url",
+      "severity": "error",
+      "message": "\"pages.overrides.history\" contains an internal Chromium URL (\"chrome://\"). Pages are named logically.",
+      "file": "bdk.toml",
+      "line": 5
+    },
+    {
+      "code": "config.internal_url",
+      "severity": "error",
+      "message": "\"pages.routes.inspector\" contains an internal Chromium URL (\"devtools://\"). Pages are named logically.",
+      "file": "bdk.toml",
+      "line": 8
+    }
+  ]
+}

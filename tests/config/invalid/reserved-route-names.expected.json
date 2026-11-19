@@ -1,0 +1,39 @@
+{
+  "diagnostics": [
+    {
+      "code": "pages.reserved",
+      "severity": "error",
+      "message": "Route \"print\" uses a reserved name. Chromium needs it internally.",
+      "file": "bdk.toml",
+      "line": 5
+    },
+    {
+      "code": "pages.reserved",
+      "severity": "error",
+      "message": "Route \"bdk-internal\" uses a reserved name. Chromium needs it internally.",
+      "file": "bdk.toml",
+      "line": 6
+    },
+    {
+      "code": "pages.reserved",
+      "severity": "error",
+      "message": "Route \"welcome\" uses a reserved name. The feature is excluded from the runtime, so the route is never reachable.",
+      "file": "bdk.toml",
+      "line": 7
+    },
+    {
+      "code": "pages.reserved",
+      "severity": "error",
+      "message": "Alias \"theme\" uses a reserved name. Chromium needs it internally.",
+      "file": "bdk.toml",
+      "line": 10
+    },
+    {
+      "code": "pages.reserved",
+      "severity": "error",
+      "message": "Route \"error\" uses a reserved name. Chromium needs it internally.",
+      "file": "bdk.toml",
+      "line": 12
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+[browser]
+name = "Cove"
+
+[pages.routes]
+preferences = "settings"
+bots = "agents"
+zeta = "agents"
+
+[pages.capabilities.agents]
+allow = ["app.agents.*", "search.read", "app.agents.*"]

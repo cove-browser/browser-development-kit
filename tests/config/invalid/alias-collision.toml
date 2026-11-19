@@ -1,0 +1,11 @@
+[browser]
+name = "Cove"
+
+[pages.overrides]
+history = "chromium"
+agents = "Pages/Agents"
+
+[pages.routes]
+history = "settings"
+bookmarks = "settings"
+agents = "settings"

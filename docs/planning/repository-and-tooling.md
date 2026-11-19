@@ -41,7 +41,7 @@ bdk/
 │       └── pages/                  # Internal-page starters per framework, used by `bdk init`
 ├── packages/
 │   ├── core/                       # Public C ABI headers, interface definitions, stub runtime
-│   ├── swift/                      # macOS SDK (SwiftPM package)
+│   ├── swift/                      # macOS SDK sources (the SwiftPM manifest is the root Package.swift)
 │   ├── js/
 │   │   ├── automation/             # Trusted automation SDK
 │   │   ├── internal/               # Privileged internal-page SDK
@@ -327,7 +327,7 @@ Deferred, and not designed in detail:
 - A `dev` branch that publishes beta prereleases (`X.Y.Z-beta.N`), with `main` carrying stable releases.
 - An automated `release.yml`.
 
-One ordering constraint: a SwiftPM binary target names the runtime archive's checksum inside `Package.swift`, and that file must be correct at the tagged commit, before the tag exists. By hand the order is: publish the archive, commit its checksum, then tag. Later automation has to keep that order, most likely by having the release pull request carry the checksum. SwiftPM also expects `Package.swift` at the repository root, which T-PKG-04 has to settle for a package that lives in `packages/swift`.
+One ordering constraint: a SwiftPM binary target names the runtime archive's checksum inside `Package.swift`, and that file must be correct at the tagged commit, before the tag exists. By hand the order is: publish the archive, commit its checksum, then tag. Later automation has to keep that order, most likely by having the release pull request carry the checksum. SwiftPM also expects `Package.swift` at the repository root, so the manifest lives there (decided in M2, T-SWF-01) and its targets point at `packages/swift` and `packages/core`; T-PKG-04 adds the binary target to it.
 
 ## 9. Formatting, linting and hooks
 
@@ -467,4 +467,4 @@ When a `dev` branch starts producing beta releases, a build machine and a build 
 | Everything above on a real Chromium checkout and build | Unverified; tasks T-CHR-01 to T-CHR-07 |
 | Nx behaviour with concurrent runs writing very large outputs | Unverified, and avoided by design |
 | Linux and Windows equivalents of `lockf` and APFS clones | Unverified; `flock` and reflink copies are the expected equivalents |
-| A Node single executable of the CLI runs from a Swift package artifact bundle and an Xcode build phase | Unverified; T-CLI-05 |
+| A Node single executable of the CLI runs from a Swift package artifact bundle and an Xcode build phase | Verified for the executable, the artifact bundle under SwiftPM, no Node on `PATH` and start-up time (2026-11-18, [sdk/cli.md](sdk/cli.md) section 2.3). Not verified in an Xcode run-script phase. |

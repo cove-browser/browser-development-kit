@@ -1,0 +1,201 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BDK Patches <patches@bdk.invalid>
+Date: Thu, 19 Nov 2026 10:19:41 -0800
+Subject: [PATCH] bdk: export the BDK C ABI from the framework
+
+The framework hides every symbol that chrome/app/framework.exports does
+not name. The BDK engine (//bdk) implements the C ABI that applications
+call (packages/core/include/bdk in the BDK repository) and the
+BDKApplicationBase class that a BDK application's NSApplication subclasses
+(packages/core/include/bdk_mac). List every ABI function and the class in
+the exports, and in framework.order, because verify_chrome_framework_order
+fails the build on an exported symbol the order file does not name. The
+functions go before _ChromeMain, which stays the last text symbol; the
+class's data symbols go after it.
+
+chromium:build compares the framework's exports with the headers after
+every build, so a function added to the ABI without a line here fails the
+build.
+
+Used by: the BDK engine (//bdk/engine) and the Swift SDK.
+---
+ chrome/app/framework.exports | 79 ++++++++++++++++++++++++++++++++++++
+ chrome/app/framework.order   | 79 ++++++++++++++++++++++++++++++++++++
+ 2 files changed, 158 insertions(+)
+
+diff --git a/chrome/app/framework.exports b/chrome/app/framework.exports
+index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..ad7ed13c9e4980b02bc52bbda39b9ff8d8f25e19 100644
+--- a/chrome/app/framework.exports
++++ b/chrome/app/framework.exports
+@@ -20,3 +20,82 @@ _ChromeAppModeStart_v8
+ _ChromeMain
+ _ChromeWebAppShortcutCopierMain
+ _bdk_overlay_marker
++
++# BDK: the C ABI (packages/core/include/bdk) and the macOS application base
++# class (packages/core/include/bdk_mac). See chromium/patches in the BDK
++# repository; chromium:build checks this list against the headers.
++_bdk_abi_hash
++_bdk_abi_version
++_bdk_app_command_caller_json
++_bdk_app_command_is_cancelled
++_bdk_app_command_progress
++_bdk_app_command_register
++_bdk_app_command_reject
++_bdk_app_command_resolve
++_bdk_app_event_declare
++_bdk_app_event_emit
++_bdk_app_setting_register
++_bdk_buffer_bytes
++_bdk_call_cancel
++_bdk_contents_close
++_bdk_contents_create
++_bdk_contents_destroy
++_bdk_contents_discard
++_bdk_contents_entries
++_bdk_contents_focus
++_bdk_contents_go_to_index
++_bdk_contents_go_to_offset
++_bdk_contents_load
++_bdk_contents_native_view
++_bdk_contents_reload
++_bdk_contents_restore
++_bdk_contents_session_state
++_bdk_contents_set_auto_discardable
++_bdk_contents_set_keyboard_handler
++_bdk_contents_set_muted
++_bdk_contents_set_user_agent
++_bdk_contents_set_zoom
++_bdk_contents_state
++_bdk_contents_stop
++_bdk_contents_subscribe
++_bdk_error_code
++_bdk_error_details_json
++_bdk_error_domain
++_bdk_error_message
++_bdk_error_release
++_bdk_invoke
++_bdk_invoke_named
++_bdk_log_set_handler
++_bdk_page_handler_register
++_bdk_post_to_ui_thread
++_bdk_profile_close
++_bdk_profile_create
++_bdk_profile_delete
++_bdk_profile_info
++_bdk_profile_open
++_bdk_profile_open_private
++_bdk_profile_rename
++_bdk_profiles_list
++_bdk_provider_register
++_bdk_provider_set_key
++_bdk_release
++_bdk_runtime_freeze_registrations
++_bdk_runtime_manifest_json
++_bdk_runtime_shutdown
++_bdk_runtime_start
++_bdk_runtime_subscribe
++_bdk_session_create
++_bdk_session_grant_contents
++_bdk_session_revoke
++_bdk_subscribe
++_bdk_subscribe_named
++_bdk_ui_complete
++_bdk_ui_request_release
++_bdk_ui_set_handler
++_bdk_ui_set_withdrawn_handler
++_bdk_ui_use_default
++_bdk_unsubscribe
++_bdk_window_register
++_bdk_window_unregister
++_OBJC_METACLASS_$_BDKApplicationBase
++_OBJC_CLASS_$_BDKApplicationBase
+diff --git a/chrome/app/framework.order b/chrome/app/framework.order
+index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..242a325e18bc6b0f8d976b6cde02c9b429125ce7 100644
+--- a/chrome/app/framework.order
++++ b/chrome/app/framework.order
+@@ -33,5 +33,84 @@ _ChromeWebAppShortcutCopierMain
+ # repository.
+ _bdk_overlay_marker
+ 
++# BDK: the C ABI, in the order the framework lays it out.
++_bdk_abi_hash
++_bdk_abi_version
++_bdk_app_command_caller_json
++_bdk_app_command_is_cancelled
++_bdk_app_command_progress
++_bdk_app_command_register
++_bdk_app_command_reject
++_bdk_app_command_resolve
++_bdk_app_event_declare
++_bdk_app_event_emit
++_bdk_app_setting_register
++_bdk_buffer_bytes
++_bdk_call_cancel
++_bdk_contents_close
++_bdk_contents_create
++_bdk_contents_destroy
++_bdk_contents_discard
++_bdk_contents_entries
++_bdk_contents_focus
++_bdk_contents_go_to_index
++_bdk_contents_go_to_offset
++_bdk_contents_load
++_bdk_contents_native_view
++_bdk_contents_reload
++_bdk_contents_restore
++_bdk_contents_session_state
++_bdk_contents_set_auto_discardable
++_bdk_contents_set_keyboard_handler
++_bdk_contents_set_muted
++_bdk_contents_set_user_agent
++_bdk_contents_set_zoom
++_bdk_contents_state
++_bdk_contents_stop
++_bdk_contents_subscribe
++_bdk_error_code
++_bdk_error_details_json
++_bdk_error_domain
++_bdk_error_message
++_bdk_error_release
++_bdk_invoke
++_bdk_invoke_named
++_bdk_log_set_handler
++_bdk_page_handler_register
++_bdk_post_to_ui_thread
++_bdk_profile_close
++_bdk_profile_create
++_bdk_profile_delete
++_bdk_profile_info
++_bdk_profile_open
++_bdk_profile_open_private
++_bdk_profile_rename
++_bdk_profiles_list
++_bdk_provider_register
++_bdk_provider_set_key
++_bdk_release
++_bdk_runtime_freeze_registrations
++_bdk_runtime_manifest_json
++_bdk_runtime_shutdown
++_bdk_runtime_start
++_bdk_runtime_subscribe
++_bdk_session_create
++_bdk_session_grant_contents
++_bdk_session_revoke
++_bdk_subscribe
++_bdk_subscribe_named
++_bdk_ui_complete
++_bdk_ui_request_release
++_bdk_ui_set_handler
++_bdk_ui_set_withdrawn_handler
++_bdk_ui_use_default
++_bdk_unsubscribe
++_bdk_window_register
++_bdk_window_unregister
++
+ # _ChromeMain must be listed last.  That's the whole point of this file.
+ _ChromeMain
++
++# BDK: the macOS application base class (data, after every text symbol).
++_OBJC_METACLASS_$_BDKApplicationBase
++_OBJC_CLASS_$_BDKApplicationBase
