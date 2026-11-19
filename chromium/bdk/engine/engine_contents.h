@@ -12,6 +12,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "bdk/core/runtime/core_internal.h"
+#include "bdk/engine/services/events.h"
 #include "content/public/browser/web_contents_delegate.h"
 #include "content/public/browser/web_contents_observer.h"
 
@@ -29,6 +30,9 @@ struct EngineProfile : bdkcore::BackendData {
   ~EngineProfile() override;
 
   raw_ptr<Profile> profile = nullptr;
+  // Observes the profile's history, bookmarks and downloads for the service
+  // events.
+  std::unique_ptr<ServiceEvents> events;
 };
 
 Profile* ProfileOf(const bdkcore::Contents& contents);

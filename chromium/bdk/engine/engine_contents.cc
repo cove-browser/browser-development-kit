@@ -24,6 +24,7 @@
 #include "bdk/engine/identity.h"
 #include "bdk/engine/session_state.h"
 #include "bdk/engine/testing.h"
+#include "chrome/browser/history/history_tab_helper.h"
 #include "chrome/browser/profiles/profile.h"
 #include "components/input/native_web_keyboard_event.h"
 #include "content/public/browser/context_menu_params.h"
@@ -216,6 +217,9 @@ void EngineContents::Attach(
     web_contents_->SetAudioMuted(true);
   }
   Observe(web_contents_);
+  // Visits are recorded in history, except in a private profile (the helper
+  // has no history service there). Creating it again does nothing.
+  HistoryTabHelper::CreateForWebContents(web_contents_);
   // A DevTools front end moves its bindings to the new front-end WebContents
   // before the old one goes.
   if (devtools_) {

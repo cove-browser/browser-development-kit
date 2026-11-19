@@ -36,6 +36,8 @@
 #include "bdk/engine/host_context.h"
 #include "bdk/engine/host_view.h"
 #include "bdk/engine/identity.h"
+#include "bdk/engine/services/events.h"
+#include "bdk/engine/services/services.h"
 #include "bdk/engine/session_state.h"
 #include "bdk/engine/testing.h"
 #include "chrome/browser/browser_process.h"
@@ -160,6 +162,7 @@ class EngineBackend final : public bdkcore::Backend {
       registry_writer_ = base::ThreadPool::CreateSequencedTaskRunner(
           {base::MayBlock(), base::TaskShutdownBehavior::BLOCK_SHUTDOWN});
     }
+    SetRuntimeInfo(resolved);
     base_profile_ = ProfileManager::GetLastUsedProfileIfLoaded();
     if (!base_profile_) {
       return bdkcore::fail(out_error, BDK_DOMAIN_RUNTIME, "startFailed",
@@ -215,6 +218,12 @@ class EngineBackend final : public bdkcore::Backend {
         .value_or("{}");
   }
 
+  void ExecuteCommand(
+      Runtime& rt,
+      const std::shared_ptr<bdkcore::BuiltinCall>& call) override {
+    ExecuteBuiltinCommand(rt, call);
+  }
+
   void ProfilesChanged(Runtime& rt) override {
     base::ListValue profiles;
     registry_.next_id = rt.next_id;
@@ -263,6 +272,7 @@ class EngineBackend final : public bdkcore::Backend {
                     backend->KeepLoaded(path, loaded);
                     auto data = std::make_unique<EngineProfile>();
                     data->profile = loaded;
+                    data->events = CreateServiceEvents(loaded, p);
                     p->data = std::move(data);
                     done("", "");
                   },

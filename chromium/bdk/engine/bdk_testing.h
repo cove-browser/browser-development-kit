@@ -103,6 +103,31 @@ typedef struct bdk_testing_tab_info {
 BDK_EXPORT bdk_status_t bdk_testing_tab_info(bdk_contents_t,
                                              bdk_testing_tab_info_t* out);
 
+/* The services' test hooks, behind one function so that the framework's export
+   list needs one name for them. `op` is one of the BDK_TESTING_SERVICES_*
+   values; `page` is a page of the profile the hook looks at.
+
+   PREF_JSON: writes into `out` the JSON value of the Chromium preference named
+   `a` in the profile; fails when there is no such preference.
+   CONTENT_SETTING: writes into `out` what Chromium's content settings hold for
+   the profile, URL `a` and permission kind `b`: "allow", "block" or "ask".
+   CAPTURE_PNG, CAPTURE_PDF: capture the page to the file named `a`, a PNG
+   screenshot of its visible area or a PDF of the document. They run in the
+   background; poll CAPTURE_STATE.
+   CAPTURE_STATE: writes "0" (running, or none started), "1" (the file is
+   written) or "2" (it failed) into `out`. */
+#define BDK_TESTING_SERVICES_PREF_JSON 1u
+#define BDK_TESTING_SERVICES_CONTENT_SETTING 2u
+#define BDK_TESTING_SERVICES_CAPTURE_PNG 3u
+#define BDK_TESTING_SERVICES_CAPTURE_PDF 4u
+#define BDK_TESTING_SERVICES_CAPTURE_STATE 5u
+BDK_EXPORT bdk_status_t bdk_testing_services(uint32_t op,
+                                             bdk_contents_t page,
+                                             bdk_string_t a,
+                                             bdk_string_t b,
+                                             char* out,
+                                             size_t n);
+
 /* Work the engine has queued or started for the application: BDK tasks not yet
    run plus pages still loading. A harness pumps until it reads 0. */
 BDK_EXPORT size_t bdk_testing_pending_work(void);
