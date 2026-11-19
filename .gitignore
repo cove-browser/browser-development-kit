@@ -13,3 +13,5 @@ graph.json
 apps/**/bdk.resolved.json
 # generated bindings are produced by the codegen targets
 packages/js/protocol/src/generated/
+# CMake builds of packages/core next to build/ (engine conformance, sanitizers)
+packages/core/build-*/

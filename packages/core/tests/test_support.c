@@ -46,6 +46,7 @@ void t_fill_start_config(bdk_start_config_t* c) {
     c->framework_path = S("/nonexistent/framework");
     c->host_abi_version = bdk_abi_version();
     c->host_abi_hash = bdk_abi_hash();
+    bdk_harness_prepare_start_config(c);
 }
 
 void t_pump(void) {
@@ -152,6 +153,9 @@ void t_on_contents_event(void* ctx, const bdk_contents_event_t* ev) {
              ev->url.data ? ev->url.data : "");
     snprintf(e->detail[i], sizeof e->detail[i], "%.*s", (int)ev->detail_json.length,
              ev->detail_json.data ? ev->detail_json.data : "");
+    if (getenv("BDK_TEST_TRACE")) /* a runtime's actual event order, for diagnosis */
+        printf("    event %u %s %s %d 0x%x\n", ev->kind, e->url[i], e->detail[i], ev->net_error,
+               ev->flags);
 }
 void t_on_event_release(void* ctx) {
     ++((t_events_t*)ctx)->releases;
@@ -216,8 +220,12 @@ bdk_contents_t t_new_contents(bdk_profile_t profile) {
 
 /* ---- runner ---- */
 
-static const t_test_t* const kTables[] = {t_base_tests,    t_runtime_tests,  t_broker_tests,
-                                          t_profile_tests, t_contents_tests, t_ui_tests};
+static const t_test_t* const kTables[] = {
+    t_base_tests,   t_runtime_tests, t_broker_tests, t_profile_tests, t_contents_tests, t_ui_tests,
+#ifdef BDK_HARNESS_ENGINE_TESTS
+    t_engine_tests, /* scenarios only a real engine can run (tests_engine.c) */
+#endif
+};
 
 static int run_one(const t_test_t* t) {
     g_failures_in_test = 0;
@@ -237,7 +245,13 @@ static int run_one(const t_test_t* t) {
     return g_failures_in_test == 0;
 }
 
+/* A harness whose runtime must own the process's main thread first (an application event loop)
+   defines BDK_HARNESS_OWNS_MAIN and calls this from its own main. */
+#ifdef BDK_HARNESS_OWNS_MAIN
+int bdk_conformance_main(int argc, char** argv) {
+#else
 int main(int argc, char** argv) {
+#endif
     int list = 0;
     const char* only = NULL;
     for (int i = 1; i < argc; ++i) {

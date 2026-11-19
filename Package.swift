@@ -21,6 +21,13 @@ let package = Package(
             name: "BDKStubRuntime",
             dependencies: ["CBDK"],
             path: "packages/core",
+            // Everything else in packages/core, CMake's build directories included (one embeds the engine
+            // framework, whose localized resources SwiftPM would otherwise pick up).
+            exclude: [
+                "build", "build-engine", "build-sanitize", "cmake", "docs", "include", "interface",
+                "scripts", "tests",
+                "CMakeLists.txt", "README.md", "project.json", "generated/abi-hash.txt",
+            ],
             sources: ["runtime/core.cc", "runtime/core_host.cc", "stub/stub_backend.cc"],
             publicHeadersPath: "stub",
             cxxSettings: [.headerSearchPath("runtime"), .headerSearchPath("generated")]

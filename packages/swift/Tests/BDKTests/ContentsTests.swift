@@ -66,7 +66,8 @@ extension BDKStubTests {
                     #expect(error.domain == .navigation && error.code == "netError")
                     #expect(error.details["netError"] == .number(-105))
                 }
-                #expect(try page.navigation.entries.isEmpty)
+                // The error page commits as an entry for the URL that failed, as in Chromium.
+                #expect(try page.navigation.entries.map(\.url) == [example])
             }
         }
 

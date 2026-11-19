@@ -98,6 +98,15 @@ void begin_nav(const std::shared_ptr<Contents>& c, const std::string& url, int t
             }
         }
         if (net_error != 0) {
+            /* As in Chromium, the error page commits as an entry for the URL that failed (a new
+               entry, or the history entry being revisited). */
+            if (target_index < 0) {
+                d2.entries.resize(static_cast<size_t>(d2.current) + 1);
+                d2.entries.push_back(Entry{url, url});
+                d2.current = static_cast<int>(d2.entries.size()) - 1;
+            } else {
+                d2.current = target_index;
+            }
             d2.nav.reset();
             d2.loading = false;
             d2.progress = 1.0;
@@ -106,18 +115,25 @@ void begin_nav(const std::shared_ptr<Contents>& c, const std::string& url, int t
                                     flags | BDK_EVENT_FLAG_ERROR_PAGE);
             return;
         }
+        /* Like Chromium, a title event only when the entry's title changes: a new entry always,
+           a reload or a history navigation only if the title differs. */
+        bool title_changed = true;
         if (target_index < 0) {
             d2.entries.resize(static_cast<size_t>(d2.current) + 1);
             d2.entries.push_back(Entry{url, title});
             d2.current = static_cast<int>(d2.entries.size()) - 1;
         } else {
             d2.current = target_index;
-            d2.entries[static_cast<size_t>(target_index)].title = title;
+            Entry& entry = d2.entries[static_cast<size_t>(target_index)];
+            title_changed = entry.title != title;
+            entry.title = title;
         }
         d2.progress = 0.8;
         emit_contents_event_now(c, BDK_CONTENTS_EVENT_NAVIGATION_COMMITTED, url, "{}", 0, flags);
-        emit_contents_event_now(c, BDK_CONTENTS_EVENT_TITLE_CHANGED, url,
-                                "{\"title\":\"" + json_escape(title) + "\"}", 0, kMainFrame);
+        if (title_changed) {
+            emit_contents_event_now(c, BDK_CONTENTS_EVENT_TITLE_CHANGED, url,
+                                    "{\"title\":\"" + json_escape(title) + "\"}", 0, kMainFrame);
+        }
         post([c, nav, url, flags] {
             if (nav->cancelled || c->dead)
                 return;

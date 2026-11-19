@@ -112,3 +112,49 @@ if(BDK_RUNTIME_LIBRARY STREQUAL "bdk_stub")
 endif()
 add_dependencies(bdk_conformance bdk_header_check)
 add_test(NAME conformance COMMAND bdk_conformance)
+
+# --- The conformance suite against the Chromium engine ------------------------------------------------------
+#
+# With -DBDK_ENGINE_FRAMEWORK=<directory holding "Chromium Framework.framework"> (a packaged runtime's
+# Chromium.app/Contents/Frameworks), the same suite, plus the scenarios only a real engine can run
+# (tests/tests_engine.c), builds as BDKEngineConformance.app around that framework, through the engine's test
+# hooks (chromium/bdk/engine/bdk_testing.h). macOS only. Run it with
+#   <build>/BDKEngineConformance.app/Contents/MacOS/BDKEngineConformance [--list] [--run <test>]
+
+set(BDK_ENGINE_FRAMEWORK "" CACHE PATH "Directory with the engine's Chromium Framework.framework")
+if(BDK_ENGINE_FRAMEWORK AND APPLE)
+  enable_language(OBJCXX)
+  set(BDK_ENGINE_HOOKS "${CMAKE_CURRENT_SOURCE_DIR}/../../chromium/bdk/engine")
+  add_executable(bdk_engine_conformance MACOSX_BUNDLE
+    tests/test_support.c tests/tests_base.c tests/tests_runtime.c tests/tests_broker.c
+    tests/tests_profile.c tests/tests_contents.c tests/tests_ui.c tests/tests_engine.c
+    tests/harness_engine.mm)
+  target_compile_definitions(bdk_engine_conformance PRIVATE BDK_HARNESS_OWNS_MAIN BDK_HARNESS_ENGINE_TESTS)
+  target_include_directories(bdk_engine_conformance PRIVATE tests "${BDK_ENGINE_HOOKS}")
+  target_link_libraries(bdk_engine_conformance PRIVATE bdk_headers)
+  target_compile_options(bdk_engine_conformance PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
+  target_link_options(bdk_engine_conformance PRIVATE
+    "SHELL:-F \"${BDK_ENGINE_FRAMEWORK}\"" "SHELL:-framework \"Chromium Framework\""
+    "SHELL:-framework AppKit")
+  set_target_properties(bdk_engine_conformance PROPERTIES
+    OUTPUT_NAME BDKEngineConformance
+    MACOSX_BUNDLE_GUI_IDENTIFIER dev.bdk.conformance
+    MACOSX_BUNDLE_BUNDLE_NAME BDKEngineConformance)
+  # The framework goes inside the bundle, where Chromium looks for it and its helpers (an APFS clone), again
+  # whenever the framework is rebuilt.
+  set(BDK_ENGINE_APP "${CMAKE_CURRENT_BINARY_DIR}/BDKEngineConformance.app")
+  set(BDK_ENGINE_BINARY
+      "${BDK_ENGINE_FRAMEWORK}/Chromium Framework.framework/Versions/Current/Chromium Framework")
+  add_custom_command(
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/engine-framework.stamp"
+    DEPENDS "${BDK_ENGINE_BINARY}"
+    COMMAND rm -rf "${BDK_ENGINE_APP}/Contents/Frameworks"
+    COMMAND mkdir -p "${BDK_ENGINE_APP}/Contents/Frameworks"
+    COMMAND cp -cR "${BDK_ENGINE_FRAMEWORK}/Chromium Framework.framework" "${BDK_ENGINE_APP}/Contents/Frameworks/"
+    COMMAND chmod -R u+w "${BDK_ENGINE_APP}/Contents/Frameworks"
+    COMMAND touch "${CMAKE_CURRENT_BINARY_DIR}/engine-framework.stamp"
+    COMMENT "Embedding the engine framework")
+  add_custom_target(bdk_engine_framework DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/engine-framework.stamp")
+  add_dependencies(bdk_engine_conformance bdk_engine_framework)
+  add_dependencies(bdk_engine_conformance bdk_header_check)
+endif()

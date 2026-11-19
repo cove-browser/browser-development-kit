@@ -12,6 +12,22 @@
 extern "C" {
 #endif
 
+/* Adjusts a start configuration the suite filled in, for what this runtime needs to start (a data
+   directory, a browser name). Called last by t_fill_start_config. */
+void bdk_harness_prepare_start_config(bdk_start_config_t* config);
+
+/* Puts the page's view on screen, in one window shared by every page this is called for. A runtime
+   with no views does nothing. Focus needs it: a real page takes focus only in a window. */
+void bdk_harness_attach_view(bdk_contents_t contents);
+
+/* The session-state format the runtime writes, such as "BDKSTUB1". Tests that craft states byte by
+   byte run only for the format they were written for. */
+const char* bdk_harness_session_format(void);
+
+/* Writes a session state of a newer format than the runtime reads into out (at most cap bytes) and
+   returns its length. */
+size_t bdk_harness_newer_session_state(uint8_t* out, size_t cap);
+
 /* Runs every pending callback and simulated step on the calling (UI) thread until idle. Returns the
  * count. */
 size_t bdk_harness_pump(void);
