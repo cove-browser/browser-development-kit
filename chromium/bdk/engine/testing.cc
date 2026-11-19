@@ -26,9 +26,14 @@
 #include "base/task/current_thread.h"
 #include "base/time/time.h"
 #include "bdk/core/runtime/core_internal.h"
+#include "bdk/engine/bdk_browser_window.h"
 #include "bdk/engine/bdk_testing.h"
 #include "bdk/engine/engine_contents.h"
+#include "bdk/engine/host_context.h"
+#include "bdk/engine/host_window.h"
+#include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
+#include "components/sessions/content/session_tab_helper.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_widget_host.h"
 #include "content/public/browser/render_widget_host_view.h"
@@ -356,11 +361,41 @@ BDK_EXPORT bdk_status_t bdk_testing_click(bdk_contents_t contents,
 BDK_EXPORT size_t bdk_testing_chrome_window_count(void) {
   size_t count = 0;
   ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
-      [&count](BrowserWindowInterface*) {
-        ++count;
+      [&count](BrowserWindowInterface* browser) {
+        if (!bdk::HostContexts::Get().IsHostContext(browser)) {
+          ++count;
+        }
         return true;
       });
   return count;
+}
+
+BDK_EXPORT size_t bdk_testing_host_context_count(void) {
+  return bdk::HostContexts::Get().ContextCount();
+}
+
+BDK_EXPORT bdk_status_t bdk_testing_tab_info(bdk_contents_t handle,
+                                             bdk_testing_tab_info_t* out) {
+  std::shared_ptr<bdkcore::Contents> c = bdkcore::contents_of(handle);
+  if (!c || !out || out->struct_size < sizeof *out) {
+    return BDK_ERR_INVALID_ARGUMENT;
+  }
+  *out = bdk_testing_tab_info_t{};
+  out->struct_size = sizeof *out;
+  content::WebContents* contents =
+      bdk::EngineContents::From(*c)->web_contents();
+  bdk::HostContext* context = bdk::HostContexts::Get().ContextOf(contents);
+  if (!context) {
+    return BDK_OK;
+  }
+  out->is_tab = 1;
+  out->parking = context->is_parking();
+  out->active = context->IsActive(contents);
+  out->tab_id = sessions::SessionTabHelper::IdForTab(contents).id();
+  out->context_id = context->browser()->GetSessionID().id();
+  out->tab_count = static_cast<uint32_t>(context->tab_count());
+  out->has_native_window = context->browser_window()->host_window() != nullptr;
+  return BDK_OK;
 }
 
 BDK_EXPORT void bdk_testing_forget_profiles(void) {

@@ -19,9 +19,20 @@
 // and Chromium follows it for visibility: moving it between windows or hiding
 // it hides or shows the page.
 @interface BDKContentsHostView : NSView
+// Runs after the view moved into a window or out of one.
+@property(nonatomic, copy) void (^windowChanged)(void);
 @end
 
 @implementation BDKContentsHostView
+
+@synthesize windowChanged = _windowChanged;
+
+- (void)viewDidMoveToWindow {
+  [super viewDidMoveToWindow];
+  if (self.windowChanged) {
+    self.windowChanged();
+  }
+}
 
 - (BOOL)isFlipped {
   return YES;
@@ -67,6 +78,7 @@ class HostViewMac : public HostView {
         (view_.window.styleMask & NSWindowStyleMaskFullScreen)) {
       [view_.window toggleFullScreen:nil];
     }
+    view_.windowChanged = nil;
     for (NSView* view in [view_.subviews copy]) {
       [view removeFromSuperview];
     }
@@ -90,6 +102,19 @@ class HostViewMac : public HostView {
   }
 
   bool IsInWindow() override { return view_.window != nil; }
+
+  bdk_native_handle_t Window() override {
+    NSWindow* window = view_.window;
+    return window ? bdk_native_handle_t{BDK_NATIVE_NSWINDOW,
+                                        (__bridge void*)window, 0}
+                  : bdk_native_handle_t{};
+  }
+
+  void SetWindowChangedCallback(base::RepeatingClosure callback) override {
+    view_.windowChanged = ^{
+      callback.Run();
+    };
+  }
 
   void ShowMenu(const std::vector<MenuItem>& items,
                 double x,

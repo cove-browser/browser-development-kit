@@ -140,6 +140,80 @@ void bdk_harness_attach_view(bdk_contents_t contents) {
     bdk_harness_pump();
 }
 
+/* Application windows registered with the runtime (bdk_window_register), for the host-context
+   scenarios. A window is its index in this list; closing one leaves a hole. */
+static NSMutableArray<NSWindow*>* RegisteredWindows() {
+    static NSMutableArray<NSWindow*>* windows;
+    if (!windows)
+        windows = [NSMutableArray array];
+    return windows;
+}
+
+static NSMutableDictionary<NSNumber*, NSNumber*>* WindowHandles() {
+    static NSMutableDictionary<NSNumber*, NSNumber*>* handles;
+    if (!handles)
+        handles = [NSMutableDictionary dictionary];
+    return handles;
+}
+
+int bdk_harness_engine_window_open(bdk_runtime_t rt) {
+    NSWindow* window = [[NSWindow alloc] initWithContentRect:NSMakeRect(100, 100, 640, 480)
+                                                   styleMask:NSWindowStyleMaskTitled
+                                                     backing:NSBackingStoreBuffered
+                                                       defer:NO];
+    window.releasedWhenClosed = NO;
+    [window orderFront:nil];
+    bdk_native_handle_t native;
+    memset(&native, 0, sizeof native);
+    native.kind = BDK_NATIVE_NSWINDOW;
+    native.pointer = (__bridge void*)window;
+    bdk_window_t handle = 0;
+    bdk_error_t error = 0;
+    if (bdk_window_register(rt, native, 1, &handle, &error) != BDK_OK)
+        return -1;
+    [RegisteredWindows() addObject:window];
+    int index = (int)RegisteredWindows().count - 1;
+    WindowHandles()[@(index)] = @(handle);
+    return index;
+}
+
+void bdk_harness_engine_window_attach(int window, bdk_contents_t contents) {
+    bdk_native_handle_t view;
+    bdk_error_t error = 0;
+    if (bdk_contents_native_view(contents, &view, &error) != BDK_OK || !view.pointer)
+        return;
+    NSWindow* w = RegisteredWindows()[window];
+    NSView* page = (__bridge NSView*)view.pointer;
+    page.frame = w.contentView.bounds;
+    page.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    /* Adding a view that is in another window's view tree moves it. */
+    [w.contentView addSubview:page];
+    bdk_harness_pump();
+}
+
+void bdk_harness_engine_window_detach(bdk_contents_t contents) {
+    bdk_native_handle_t view;
+    bdk_error_t error = 0;
+    if (bdk_contents_native_view(contents, &view, &error) != BDK_OK || !view.pointer)
+        return;
+    [(__bridge NSView*)view.pointer removeFromSuperview];
+    bdk_harness_pump();
+}
+
+/* Unregisters the window and closes it, as an application does when a window goes. */
+void bdk_harness_engine_window_close(int window) {
+    NSWindow* w = RegisteredWindows()[window];
+    bdk_error_t error = 0;
+    bdk_window_unregister((bdk_window_t)WindowHandles()[@(window)].unsignedLongLongValue, &error);
+    [w orderOut:nil];
+    [w close];
+    bdk_harness_pump();
+}
+
+size_t bdk_harness_engine_app_window_count(void) {
+    return NSApp.windows.count;
+}
+
 const char* bdk_harness_session_format(void) {
     return "BDKC1";
 }

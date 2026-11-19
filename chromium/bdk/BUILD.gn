@@ -49,6 +49,8 @@ source_set("bdk") {
   if (is_mac) {
     sources += [
       "engine/application_mac.mm",
+      "engine/bdk_browser_window.cc",
+      "engine/bdk_browser_window.h",
       "engine/bdk_testing.h",
       "engine/chromium_main.h",
       "engine/chromium_main_mac.mm",
@@ -59,8 +61,12 @@ source_set("bdk") {
       "engine/engine_backend.cc",
       "engine/engine_contents.cc",
       "engine/engine_contents.h",
+      "engine/host_context.cc",
+      "engine/host_context.h",
       "engine/host_view.h",
       "engine/host_view_mac.mm",
+      "engine/host_window.h",
+      "engine/host_window_mac.mm",
       "engine/identity.cc",
       "engine/identity.h",
       "engine/session_state.cc",

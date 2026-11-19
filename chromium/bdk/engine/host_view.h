@@ -45,6 +45,14 @@ class HostView {
   virtual bdk_native_handle_t NativeHandle() = 0;
   // Whether the host view is in a window.
   virtual bool IsInWindow() = 0;
+  // The native window the host view is in, as a tagged handle, or a handle of
+  // kind 0 when it is in none.
+  virtual bdk_native_handle_t Window() = 0;
+  // Called after the host view moved into a window or out of one (the
+  // application attached or detached it), from inside the application's own
+  // call: do not do work that Chromium or the application must not see
+  // half-finished.
+  virtual void SetWindowChangedCallback(base::RepeatingClosure callback) = 0;
 
   // The key event as a tagged native handle, borrowed for the callback.
   static bdk_native_handle_t KeyEvent(

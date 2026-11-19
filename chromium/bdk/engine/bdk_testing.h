@@ -78,9 +78,30 @@ BDK_EXPORT void bdk_testing_run_for(double seconds);
    stays on disk under identifiers that are not reused. */
 BDK_EXPORT void bdk_testing_forget_profiles(void);
 
-/* How many Chrome browser windows (Browser objects) exist. BDK never creates
-   one, so anything above 0 means Chromium opened a window on its own. */
+/* How many Chrome browser windows (Browser objects) exist that are not host
+   contexts. BDK's host contexts are Browsers with no native window of their
+   own, so they are not counted: anything above 0 means Chromium opened a window
+   on its own. */
 BDK_EXPORT size_t bdk_testing_chrome_window_count(void);
+
+/* How many host contexts (the Browsers BDK keeps its pages' tabs in) exist. */
+BDK_EXPORT size_t bdk_testing_host_context_count(void);
+
+typedef struct bdk_testing_tab_info {
+  size_t struct_size;
+  uint8_t is_tab;            /* the page is a tab of a host context */
+  uint8_t parking;           /* ... of a parking context (no window) */
+  uint8_t active;            /* ... and the active tab of it */
+  uint8_t has_native_window; /* the context's window has a native window */
+  int32_t tab_id;     /* the tab's session identifier: the extension tab id */
+  int32_t context_id; /* the context's window identifier (Browser session id) */
+  uint32_t tab_count; /* tabs in the context */
+  uint32_t reserved;
+} bdk_testing_tab_info_t;
+
+/* Where the page's tab is. */
+BDK_EXPORT bdk_status_t bdk_testing_tab_info(bdk_contents_t,
+                                             bdk_testing_tab_info_t* out);
 
 /* Work the engine has queued or started for the application: BDK tasks not yet
    run plus pages still loading. A harness pumps until it reads 0. */

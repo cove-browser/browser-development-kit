@@ -33,6 +33,7 @@
 #include "bdk/core/runtime/core_internal.h"
 #include "bdk/engine/chromium_main.h"
 #include "bdk/engine/engine_contents.h"
+#include "bdk/engine/host_context.h"
 #include "bdk/engine/host_view.h"
 #include "bdk/engine/identity.h"
 #include "bdk/engine/session_state.h"
@@ -181,6 +182,8 @@ class EngineBackend final : public bdkcore::Backend {
       c->data.reset();
     }
     rt.contents.clear();
+    // Every page is gone: the contexts that held them go before the profiles.
+    HostContexts::Get().DestroyAll();
     for (auto& p : rt.profiles) {
       if (p->data) {
         ReleaseProfile(*p);
@@ -286,6 +289,11 @@ class EngineBackend final : public bdkcore::Backend {
   }
 
   void CloseProfile(Runtime& rt, bdkcore::Profile& profile) override {
+    // The profile's pages are destroyed; the contexts that held them go before
+    // the profile may.
+    if (profile.data) {
+      HostContexts::Get().DestroyProfileContexts(ProfileData(profile).profile);
+    }
     ReleaseProfile(profile);
   }
 
@@ -314,6 +322,10 @@ class EngineBackend final : public bdkcore::Backend {
     if (!profile) {
       return bdkcore::fail(out_error, BDK_DOMAIN_PROFILE, "notOpen",
                            "the profile is not loaded yet");
+    }
+    if (!HostContexts::CanHost(profile)) {
+      return bdkcore::fail(out_error, BDK_DOMAIN_PROFILE, "notOpen",
+                           "Chromium cannot open a page in this profile");
     }
     // With its renderer from the start: a page can take focus and receive
     // input before its first navigation, as the stub's pages can.
@@ -499,18 +511,30 @@ class EngineBackend final : public bdkcore::Backend {
   }
 
   bdk_status_t Focus(Runtime& rt, const std::shared_ptr<Contents>& c) override {
-    Page(*c).LoadIfDiscarded();
-    Page(*c).web_contents()->Focus();
+    Page(*c).Focus();
     return BDK_OK;
   }
 
   bdk_status_t RegisterWindow(Runtime& rt,
                               const bdkcore::Window& window,
                               bdk_error_t* out_error) override {
+    HostContexts::Get().RegisterWindow(&window, window.native);
+    // Pages whose views are already in the window move into its contexts.
+    for (EngineContents* page : EngineContents::All()) {
+      page->Reconcile();
+    }
     return BDK_OK;
   }
 
-  void UnregisterWindow(const bdkcore::Window& window) override {}
+  void UnregisterWindow(const bdkcore::Window& window) override {
+    // The window's pages go to parking, then its contexts close.
+    for (EngineContents* page : EngineContents::All()) {
+      if (page->IsInWindow(&window)) {
+        page->Park();
+      }
+    }
+    HostContexts::Get().UnregisterWindow(&window);
+  }
 
   // Keeps a persistent profile loaded for the life of the runtime, from its
   // first open. Closing it in BDK does not unload it in Chromium: an unload

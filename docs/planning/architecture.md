@@ -107,11 +107,12 @@ BDK has no space, workspace, group or tab type, in the public API or in configur
 | Autofill bubble handler, translate bubble, download UI entry points | Emit UI requests |
 | `AsBrowserView()` | Returns null |
 
-Patches needed for this, all small:
+Patches needed for this, all small (as built; see [amendments.md](amendments.md) section 2.13):
 
-- A third branch in `BrowserWindow::CreateBrowserWindow` and in `BrowserWindow::FromBrowser`.
-- A third arm in `BrowserWindowFeatures` initialisation.
-- Null guards where non-Views code casts to `BrowserView` and upstream's own Webium work has not already added one.
+- A settable factory that `BrowserWindow::CreateBrowserWindow` asks first. `BrowserWindow::FromBrowser` needs nothing.
+- No `BrowserWindowFeatures` arm: it already tolerates a window with no `BrowserView`. A window must call `TearDownPreBrowserWindowDestruction()` before it goes, and supply a location bar, find bar, exclusive-access context and modal-dialog host.
+- A guard where upstream accepts a `Browser` without a side panel UI for Webium only (read-anything), and an exception for BDK's private profiles in `OTRProfileID::AllowsBrowserWindows`. More guards are expected as the services of M3 and M5 reach `BrowserView` casts.
+- A context belongs to one profile, so a window showing pages of two profiles has two contexts.
 
 BDK's window-scoped glue goes in upstream's `EmbedderBrowserWindowFeatures` hook, which exists for embedders.
 
