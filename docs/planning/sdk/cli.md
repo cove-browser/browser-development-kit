@@ -268,6 +268,47 @@ Properties:
 
 Why signing is BDK's step: Xcode's "Embed & Sign" is not expected to re-sign the helper applications nested in the framework with the right entitlements (feasibility section 7, unverified). Until task T-PKG-03 shows otherwise, the script does it.
 
+### 5.1 `bdk build sign`, as built and run on 2026-11-18
+
+`bdk build sign --bundle <App.app> --identity <name|-> [--team <id>] [--entitlements <file>]`. In an Xcode build the four values default to `CODESIGNING_FOLDER_PATH`, `EXPANDED_CODE_SIGN_IDENTITY`, `DEVELOPMENT_TEAM` and `CODE_SIGN_ENTITLEMENTS`. `BDK_SKIP_SIGNING=1` skips the step with a warning. The plan is in `packages/cli/src/core/signing/` (pure, tested without `codesign`); every `codesign` and `plutil` call is in the `xcode` module and goes through one runner (`platform/xcode/tools.ts`).
+
+| Part | Identifier | `codesign --options` | Entitlements |
+|---|---|---|---|
+| Libraries (`Libraries/*.dylib`) | Derived by `codesign` | None | None |
+| Loose executables in `Helpers/` | Derived; `<app id>.web_app_shortcut_copier` for that one | `restrict,library,runtime,kill` | None |
+| Helper, Aperitif | `<app id>.helper` | Full | None |
+| GPU, Aperitif GPU | `<app id>.helper` | `restrict,runtime,kill` | `allow-jit` only |
+| Renderer, Aperitif Renderer | `<app id>.helper.renderer` | `restrict,runtime,kill` | `allow-jit` only |
+| Alerts, Aperitif Alerts | `<app id>.framework.AlertNotificationService` | Full | None |
+| Framework | `<app id>.framework` (its `Info.plist` is rewritten) | None | None |
+| Application | `CFBundleIdentifier` | Full | The application's own file |
+
+This follows `parts.py:60-295` at the 158.0.8127.37 pin, except where noted. Order: identifier rewrites, libraries, loose executables, helpers, framework, application, then `codesign --verify --deep --strict` (a failure is exit 4). With a real identity `--timestamp` is added, and `--team` is checked against the signed application's `TeamIdentifier`. An application entitlement on the deny list (`app-sandbox` and the four `com.apple.security.cs.*` weakenings, in `core/signing/entitlements.ts`) is refused before anything is changed. The deny list is the implementation's choice from configuration.md section 6 and architecture.md section 16; it needs the product owner's confirmation.
+
+Run against a packaged runtime (`~/.bdk/runtimes/a3c82d8de4cecdf1/Chromium.app`, Chromium 158.0.8127.37, cloned with `ditto` into scratch space, the shared original untouched), made into a second application with `CFBundleIdentifier` `com.second.Browser`:
+
+| Observation | Result |
+|---|---|
+| Before signing, same clone | Launches headless and renders the page. |
+| `bdk build sign --bundle Second.app --identity -` | Exit 0, 16 parts signed in about 2.5 s. `codesign --verify --deep --strict` passes. Identifiers are as in the table. The GPU helper carries `com.apple.security.cs.allow-jit`; the plain helper carries no entitlements. |
+| `Second.app/Contents/MacOS/Chromium --headless=new --user-data-dir=<fresh> --dump-dom 'data:text/html,<p>hi</p>'` | Prints `<html><head></head><body><p>hi</p></body></html>`. With a page held open, the process list showed `gpu-process`, `renderer` and `utility` children, run from the re-signed `(Aperitif Renderer)` and plain `(Aperitif)` helpers. No process ran from a `(GPU)` or `(Aperitif GPU)` helper application, so the GPU entitlement path was not exercised at runtime. |
+| `spctl --assess --type execute -vv Second.app` | `rejected`, exit 3. This is expected: an ad hoc signature has no Developer ID and no notarization ticket. |
+| Application entitlement `com.apple.security.app-sandbox` | Refused with `sign.entitlement_denied`, exit 1; the bundle's signature was unchanged. |
+
+Finding that changed the design: Chromium's options cannot be used with an ad hoc identity. The first run, with the options of the table, did not start: `dyld: Library not loaded … code signature … not valid for use in process: mapping process and mapped file (non-platform) have different Team IDs`. The hardened runtime implies library validation, and an ad hoc signature has no team. Dropping only `library` and `runtime` still failed with `security policy does not allow @ path expansion`, caused by `restrict`. Ad hoc signatures therefore get no options. The signatures with a real identity keep Chromium's options, and have not been run: no Developer ID identity was available.
+
+Not verified:
+
+| Item | Why |
+|---|---|
+| Notarization of an application with the re-signed runtime, and Gatekeeper accepting it | No credentials, and none were sought. Needs a Developer ID identity and a notarization profile. |
+| Signing with a real identity, and the hardened options and library validation with a real team | As above. Only the planned `codesign` arguments are unit-tested. |
+| Xcode's "Embed & Sign" not re-signing nested helpers (the premise of this step) | Xcode was not run (see section 2.3). |
+| `--team` on a real signature | Unit-tested with a fake `codesign` only. |
+| `bdk build embed` | Not built. The test copies the runtime with `ditto`. |
+
+The opt-in end-to-end test is `packages/cli/src/platform/xcode/sign.runtime.test.ts`; see `packages/cli/README.md`.
+
 ## 6. `bdk doctor`
 
 ```text

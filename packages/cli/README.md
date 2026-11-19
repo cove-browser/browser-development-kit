@@ -9,6 +9,7 @@ Task: T-CLI-05. This is the foundation; commands are added as their tasks land.
 | Command | Status |
 |---|---|
 | `bdk build config [--out <file>]` | Resolves `bdk.toml` against the embedded schema (`assets/bdk.schema.json`) and, on macOS inside Xcode, the `Info.plist` and entitlements Xcode names. Writes `bdk.resolved.json` next to `bdk.toml` (or to `--out`) only when there are no errors. The resolver itself is T-CFG-02 (`src/core/config/`). |
+| `bdk build sign --bundle <App.app> --identity <name\|-> [--team <id>] [--entitlements <file>]` | Re-signs the application and the runtime nested in it with the application's identity (T-PKG-03): rewrites each helper's `CFBundleIdentifier` to `<app id>.helper[.renderer]` (Alerts: `<app id>.framework.AlertNotificationService`), then signs inside-out (libraries, loose executables, helpers with the JIT entitlement for renderer and GPU, framework, application) and verifies with `codesign --verify --deep --strict`. Refuses an application entitlement on the deny list. `BDK_SKIP_SIGNING=1` skips it. In Xcode the flags default to `CODESIGNING_FOLDER_PATH`, `EXPANDED_CODE_SIGN_IDENTITY`, `DEVELOPMENT_TEAM` and `CODE_SIGN_ENTITLEMENTS`. An ad hoc identity (`-`) gets no `--options`; see [sdk/cli.md](../../docs/planning/sdk/cli.md) section 5.1. |
 
 Global flags: `--help`, `--version`, `--json` (one JSON document on standard output; diagnostics stay on standard
 error), `--project <dir>` (otherwise the nearest ancestor with `bdk.toml`), `--offline`, and
@@ -68,6 +69,20 @@ how tests supply fakes.
 
 Signing with a Developer ID identity and notarization are part of the release procedure (T-PKG-06), not done here.
 
+## Signing
+
+The plan (`src/core/signing/`) is pure and unit-tested against a fake bundle tree with a fake `codesign` and `plutil` runner (`src/platform/xcode/tools.ts` is the only place either is started). Not built: `bdk build embed`.
+
+### The end-to-end signing test (opt in)
+
+`src/platform/xcode/sign.runtime.test.ts` re-signs a real packaged runtime. It is skipped, with a warning, unless `BDK_TEST_RUNTIME_APP` names a runtime's `Chromium.app`:
+
+```sh
+BDK_TEST_RUNTIME_APP=~/.bdk/runtimes/<key>/Chromium.app pnpm exec nx run cli:test
+```
+
+It clones the runtime with `ditto` (a copy-on-write clone on APFS, so it takes under a second and the shared original is never modified), makes the clone a second application (`com.second.Browser`), signs it ad hoc, then checks `codesign --verify --deep --strict`, the helper identifiers and entitlements, launches it with `--headless=new --dump-dom data:text/html,<p>hi</p>` and a fresh `--user-data-dir`, and records what `spctl --assess` says (a rejection is the expected result for an ad hoc signature). It takes about 10 seconds. It needs no Chromium build and no credentials. Notarization is not tested.
+
 ## What was verified (2026-11-18, macOS 27, Apple Silicon, Node 26.9.0)
 
 | Check | Result |
@@ -79,6 +94,7 @@ Signing with a Developer ID identity and notarization are part of the release pr
 | Executable size | 145 MB (a copy of the Node binary plus a 17 KB bundle) |
 | The artifact bundle works as a SwiftPM binary target | Pass: a throwaway package with `.binaryTarget(path: "bdk.artifactbundle")` and a command plugin ran `bdk --version` (printed `0.0.0`, status 0); a build-tool plugin ran it during `swift build`, inside SwiftPM's sandbox |
 | Run from an Xcode run-script phase, or Xcode's own build of the package | Not verified. `xcodebuild` on this machine reports that CoreSimulator is out of date and found no scheme in the throwaway package. The Xcode environment is simulated in tests by setting `XCODE_VERSION_ACTUAL`. |
+| Re-signing a packaged runtime as another application, verifying it and launching it headless | Pass, ad hoc (`sign.runtime.test.ts`; details in cli.md section 5.1). `spctl` rejects it, as expected. Notarization and a real Developer ID identity were not tested. |
 | Gatekeeper with a signed and notarized binary | Not verified; release procedure (T-PKG-06) |
 | Vite loaded from a project's `node_modules` with the embedded Node | Not verified; waits for pages (T-CLI-04) |
 | The embedded asset file system (`node:sea` virtual file system) | Not used; plain named assets only, per risk R31 |

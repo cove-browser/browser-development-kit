@@ -405,9 +405,23 @@ Conclusion: one prebuilt framework can serve many application identities if help
 ### Not verified
 
 - Whether Xcode's "Embed & Sign" re-signs nested helper applications. The plan assumes it does not and supplies a signing script.
-- Whether a SwiftPM archive keeps framework symlinks intact at this size.
-- What the Aperitif helpers are for and whether BDK needs them.
-- Notarization of an application that embeds the re-signed runtime.
+- What the Aperitif helpers are for and whether BDK needs them. (The signing step handles them like their plain counterparts; in the run below the headless browser used the Aperitif Renderer and Aperitif helpers.)
+- Notarization of an application that embeds the re-signed runtime, and Gatekeeper acceptance. No credentials were available.
+- Signing with a real Developer ID identity: the hardened runtime options and library validation with a real team identifier.
+- Downloading a SwiftPM binary target from a URL. SwiftPM refuses non-https URLs for binary targets (`valid schemes are: 'https'`), so this can only be tested against a published release asset.
+
+### Verified on 2026-11-18
+
+Re-signing under another identity (T-PKG-03). Runtime: the packaged Chromium 158.0.8127.37 at `~/.bdk/runtimes/a3c82d8de4cecdf1/Chromium.app` (697 MB), cloned with `ditto` into scratch space and made a second application (`CFBundleIdentifier` `com.second.Browser`); `bdk build sign --identity -` from `packages/cli` (see [sdk/cli.md](sdk/cli.md) section 5.1 for the plan and the full observations).
+
+| Finding | Evidence |
+|---|---|
+| A packaged runtime can be re-signed under a different bundle identifier and still launch. | `codesign --verify --deep --strict` passed. `--headless=new --dump-dom data:text/html,<p>hi</p>` printed the rendered page. The process list showed renderer, utility and GPU-process children from re-signed helpers (the GPU process ran from the plain Aperitif helper, not from a `(GPU)` helper). |
+| Helper identifiers can be rewritten with `plutil -replace CFBundleIdentifier` before signing. | The signed helpers report `com.second.Browser.helper`, `.helper.renderer` and `.framework.AlertNotificationService`; the framework reports `com.second.Browser.framework`. |
+| Renderer and GPU helpers need only `com.apple.security.cs.allow-jit`. | Signed with that entitlement alone; the renderer helper ran. The `(GPU)` helper was not launched in the run, and with an ad hoc identity the hardened runtime is off, so this is not a test of the entitlement's necessity. |
+| Chromium's `--options` (`restrict`, `library`, `runtime`) cannot be used with an ad hoc identity. | With them the application fails to start: `different Team IDs` (library validation, implied by the hardened runtime). Without `library` and `runtime` but with `restrict`: `security policy does not allow @ path expansion`. With no options it starts. |
+| Gatekeeper rejects an ad hoc re-signed application. | `spctl --assess --type execute -vv` printed `rejected`, exit 3. Expected; not a failure. |
+| A SwiftPM `.binaryTarget(path:)` over a zipped xcframework of the 713 MB "Chromium Framework.framework" keeps all 5 symlinks and an identical file tree after extraction. | Reported by the coordinator, not run in this session: archive made with `zip -ry`, 235 MB; `swift build` resolved it in about 11 s. |
 
 ---
 
