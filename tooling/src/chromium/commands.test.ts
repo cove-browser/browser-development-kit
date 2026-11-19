@@ -1,5 +1,14 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
@@ -7,6 +16,7 @@ vi.setConfig({ testTimeout: 120_000 });
 
 import { git } from "../git.js";
 import { computeSourceIdentity, sourceKey } from "../runtime/identity.js";
+import { mountOverlay } from "./build.js";
 import { repoRoot } from "./common.js";
 import { exportSeries } from "./patch-export.js";
 import {
@@ -311,6 +321,35 @@ describe("chromium:build", () => {
     rmSync(join(overlay, "sub"), { recursive: true });
     await cli("build", [], sb);
     expect(existsSync(join(dest, "sub", "extra.cc"))).toBe(false);
+  });
+
+  it("mounts the runtime core, the ABI headers and the generated hash under //bdk/core", async () => {
+    const { sb } = await sandboxWithPatch();
+    await cli("sync", [], sb);
+    mkdirSync(join(sb.repo, "packages", "core", "runtime"), { recursive: true });
+    writeFileSync(join(sb.repo, "packages", "core", "runtime", "core.cc"), "// core\n");
+    expect((await cli("build", [], sb)).code).toBe(0);
+    const dest = join(managedSrc(sb), "bdk", "core");
+    expect(readFileSync(join(dest, "runtime", "core.cc"), "utf8")).toBe("// core\n");
+    expect(existsSync(join(dest, "include", "bdk", "bdk_base.h"))).toBe(true);
+    expect(existsSync(join(dest, "generated", "abi-hash.txt"))).toBe(true);
+    const { rmSync } = await import("node:fs");
+    rmSync(join(sb.repo, "packages", "core", "runtime", "core.cc"));
+    expect((await cli("build", [], sb)).code).toBe(0);
+    expect(existsSync(join(dest, "runtime", "core.cc"))).toBe(false);
+  });
+
+  it("refuses an overlay file that the core would also provide", async () => {
+    const src = mkdtempSync(join(tmpdir(), "bdk-mount-"));
+    const overlay = mkdtempSync(join(tmpdir(), "bdk-overlay-"));
+    const core = mkdtempSync(join(tmpdir(), "bdk-core-"));
+    await git(src, ["init", "-q"]);
+    mkdirSync(join(overlay, "core"));
+    writeFileSync(join(overlay, "core", "a.cc"), "");
+    writeFileSync(join(core, "a.cc"), "");
+    await expect(mountOverlay(src, overlay, [{ dir: core, prefix: "core" }])).rejects.toThrow(
+      /core\/a.cc exists in chromium\/bdk/,
+    );
   });
 
   it("fails if the marker symbol is not in the framework", async () => {
