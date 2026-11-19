@@ -83,9 +83,24 @@ final class BrowserPane: NSStackView, NSTextFieldDelegate {
             for await event in events {
                 guard let self else { return }
                 if case .focusChanged(true) = event { onFocus(self) }
+                if case .rendererGone = event { recoverRenderer() }
                 refresh()
                 onChange()
             }
+        }
+    }
+
+    /// How many times the renderer went away and the page was reloaded.
+    private(set) var rendererRecoveries = 0
+
+    /// The page's renderer crashed or was killed: it shows nothing until it loads again. A browser decides
+    /// what to do; this one reloads at once.
+    private func recoverRenderer() {
+        rendererRecoveries += 1
+        do {
+            try page.navigation.reload()
+        } catch {
+            NSSound.beep()
         }
     }
 
@@ -117,6 +132,17 @@ final class BrowserPane: NSStackView, NSTextFieldDelegate {
         }
         refresh()
         onChange()
+    }
+
+    /// Returns once the page has stopped loading (at most `timeout` later).
+    func waitUntilLoaded(timeout: Duration = .seconds(30)) async {
+        var events = page.events.makeAsyncIterator()
+        guard (try? page.state().isLoading) == true else { return }
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline, let event = await events.next() {
+            if case .navigationFinished = event { return }
+            if case .navigationFailed = event, (try? page.state().isLoading) != true { return }
+        }
     }
 
     @objc private func addressEntered() {
@@ -165,6 +191,8 @@ final class BrowserPane: NSStackView, NSTextFieldDelegate {
             currentIndex: (try? page.navigation.currentIndex) ?? -1,
             entries: entries.map { .init(url: $0.url?.absoluteString ?? "", title: $0.title) },
             isVisible: view.window?.isVisible == true && !view.isHiddenOrHasHiddenAncestor
-                && view.bounds.width > 0 && view.bounds.height > 0)
+                && view.bounds.width > 0 && view.bounds.height > 0,
+            isLoading: (try? page.state().isLoading) ?? false,
+            rendererRecoveries: rendererRecoveries)
     }
 }

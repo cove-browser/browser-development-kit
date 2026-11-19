@@ -15,7 +15,7 @@ struct AppOptionsTests {
             "MinimalBrowser", "--support-dir", "/tmp/s", "--status-file", "/tmp/s/status.json",
             "--snapshot-file", "/tmp/s/window.png",
             "--navigate", "0=https://example.net/", "--navigate", "1=https://example.com/a?b=c",
-            "--quit-after-report",
+            "--crash-page", "1", "--private", "--quit-after-report",
         ])
         #expect(options.supportDirectory == URL(fileURLWithPath: "/tmp/s"))
         #expect(options.statusFile == URL(fileURLWithPath: "/tmp/s/status.json"))
@@ -25,6 +25,8 @@ struct AppOptionsTests {
                 .init(page: 0, url: URL(string: "https://example.net/")!),
                 .init(page: 1, url: URL(string: "https://example.com/a?b=c")!),
             ])
+        #expect(options.crashPages == [1])
+        #expect(options.privatePages)
         #expect(options.quitAfterReport)
     }
 
@@ -33,6 +35,15 @@ struct AppOptionsTests {
         #expect(
             try AppOptions.parse(["MinimalBrowser", "-NSDocumentRevisionsDebugMode", "YES"])
                 == AppOptions())
+    }
+
+    @Test("--crash-page takes page 0 or 1")
+    func crashPage() {
+        for bad in ["2", "x", "-1"] {
+            #expect(throws: AppOptions.Failure.invalidPage(bad)) {
+                try AppOptions.parse(["MinimalBrowser", "--crash-page", bad])
+            }
+        }
     }
 
     @Test("a flag without a value, and a bad navigation, are errors")
@@ -81,6 +92,19 @@ struct AppStatusTests {
 
     private func status(_ windows: [AppStatus.Window]) -> AppStatus {
         AppStatus(phase: .running, runtime: "stub", restored: false, windows: windows)
+    }
+
+    @Test("a crashed page counts as recovered once it reloaded and stopped loading")
+    func recovered() {
+        var crashed = page(0)
+        crashed.rendererRecoveries = 1
+        crashed.isLoading = true
+        var window = AppStatus.Window(title: "t", isVisible: true, pages: [crashed, page(1)])
+        #expect(!status([window]).recovered(pages: [0]))
+        window.pages[0].isLoading = false
+        #expect(status([window]).recovered(pages: [0]))
+        #expect(!status([window]).recovered(pages: [0, 1]))
+        #expect(status([window]).recovered(pages: []))
     }
 
     @Test("two visible pages in one visible window")

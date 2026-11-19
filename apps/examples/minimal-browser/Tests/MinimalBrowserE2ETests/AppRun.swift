@@ -19,6 +19,13 @@ final class AppRun {
             .appendingPathComponent(".build/MinimalBrowser.app")
     }
 
+    /// "chromium" when the bundle carries the real runtime's framework, "stub" otherwise.
+    static var runtime: String {
+        let framework = bundleURL.appendingPathComponent(
+            "Contents/Frameworks/Chromium Framework.framework")
+        return FileManager.default.fileExists(atPath: framework.path) ? "chromium" : "stub"
+    }
+
     let supportDirectory: URL
     let statusFile: URL
     private let process = Process()
@@ -44,8 +51,15 @@ final class AppRun {
         process.executableURL = executable
         process.arguments =
             ["--support-dir", supportDirectory.path, "--status-file", statusFile.path] + arguments
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
+        // Chromium's mock Keychain: a test must never wait on a Keychain prompt.
+        process.environment = ProcessInfo.processInfo.environment.merging(
+            ["BDK_ENGINE_MOCK_KEYCHAIN": "1"]) { _, new in new }
+        // The application's output, kept for a failing test to be diagnosed.
+        let log = supportDirectory.appendingPathComponent("app-\(UUID().uuidString).log")
+        FileManager.default.createFile(atPath: log.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: log)
+        process.standardOutput = handle
+        process.standardError = handle
         try process.run()
     }
 

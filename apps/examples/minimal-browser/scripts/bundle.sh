@@ -7,8 +7,9 @@
 #    packages/cli/dist/bdk exists, otherwise the TypeScript sources through tsx.
 # 2. swift build builds the executable.
 # 3. The bundle gets the executable, Info.plist (NSPrincipalClass = BDKApplication) and bdk.resolved.json in
-#    Resources, and is signed ad hoc. There is no runtime inside it: the example runs against the stub
-#    runtime (Sources/MinimalBrowser/StubRuntime.swift), so `bdk build sign` has nothing to re-sign yet.
+#    Resources. Built against the real runtime (Package.swift: .bdk/runtime exists and BDK_RUNTIME is not
+#    "stub"), it also gets the runtime's framework in Contents/Frameworks, and `bdk build sign` re-signs the
+#    framework and its helpers as this application (ad hoc). Against the stub it is signed ad hoc as is.
 set -euo pipefail
 
 configuration="${1:-debug}"
@@ -16,21 +17,36 @@ project="$(cd "$(dirname "$0")/.." && pwd)"
 root="$(cd "$project/../../.." && pwd)"
 app="$project/.build/MinimalBrowser.app"
 
-if [[ -x "$root/packages/cli/dist/bdk" ]]; then
-  "$root/packages/cli/dist/bdk" build config --project "$project"
-else
-  (cd "$root" && pnpm exec tsx packages/cli/src/main.ts build config --project "$project")
-fi
+bdk() {
+  if [[ -x "$root/packages/cli/dist/bdk" ]]; then
+    "$root/packages/cli/dist/bdk" "$@"
+  else
+    (cd "$root" && pnpm exec tsx packages/cli/src/main.ts "$@")
+  fi
+}
+
+bdk build config --project "$project"
+framework="$root/.bdk/runtime/Chromium.app/Contents/Frameworks/Chromium Framework.framework"
 
 cd "$project"
 swift build --configuration "$configuration"
 product="$(swift build --configuration "$configuration" --show-bin-path)/MinimalBrowser"
 
+if [[ -d "$app" ]]; then chmod -R u+w "$app"; fi
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$product" "$app/Contents/MacOS/MinimalBrowser"
 cp "$project/Info.plist" "$app/Contents/Info.plist"
 cp "$project/bdk.resolved.json" "$app/Contents/Resources/bdk.resolved.json"
-codesign --force --sign - "$app"
+# The executable links the framework only when it was built against the real runtime.
+if otool -L "$product" | grep -q "Chromium Framework.framework"; then
+  mkdir -p "$app/Contents/Frameworks"
+  # A copy-on-write clone on APFS; the runtime store is read-only, the bundle must not be.
+  cp -cR "$framework" "$app/Contents/Frameworks/"
+  chmod -R u+w "$app/Contents/Frameworks"
+  bdk build sign --bundle "$app" --identity -
+else
+  codesign --force --sign - "$app"
+fi
 
 echo "$app"

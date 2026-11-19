@@ -21,10 +21,13 @@ public struct AppStatus: Codable, Equatable, Sendable {
         public var entries: [Entry]
         /// The page's view is in a visible window, is not hidden and has a size.
         public var isVisible: Bool
+        public var isLoading: Bool
+        /// How many times the page's renderer went away and the application reloaded the page.
+        public var rendererRecoveries: Int
 
         public init(
             index: Int, url: String, title: String, currentIndex: Int, entries: [Entry],
-            isVisible: Bool
+            isVisible: Bool, isLoading: Bool = false, rendererRecoveries: Int = 0
         ) {
             self.index = index
             self.url = url
@@ -32,6 +35,8 @@ public struct AppStatus: Codable, Equatable, Sendable {
             self.currentIndex = currentIndex
             self.entries = entries
             self.isVisible = isVisible
+            self.isLoading = isLoading
+            self.rendererRecoveries = rendererRecoveries
         }
     }
 
@@ -71,6 +76,15 @@ public struct AppStatus: Codable, Equatable, Sendable {
         windows.count == 1 && windows[0].isVisible
             && windows[0].pages.filter(\.isVisible).count == count
             && (!loaded || windows[0].pages.allSatisfy { $0.currentIndex >= 0 })
+    }
+
+    /// Every page in `pages` had its renderer replaced at least once and has loaded again.
+    public func recovered(pages: [Int]) -> Bool {
+        pages.allSatisfy { index in
+            windows.first?.pages.first { $0.index == index }.map {
+                $0.rendererRecoveries > 0 && !$0.isLoading
+            } ?? false
+        }
     }
 
     public static func read(from url: URL) throws -> AppStatus {

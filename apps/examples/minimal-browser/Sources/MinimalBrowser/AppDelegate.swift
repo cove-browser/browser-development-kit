@@ -20,6 +20,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var phase = AppStatus.Phase.launching
     private var restored = false
     private var didQuitAfterReport = false
+    private var didReportTermination = false
+    private var launchFinished = false
+    private var privateProfiles: [BDKProfile] = []
 
     init(options: AppOptions) {
         self.options = options
@@ -37,7 +40,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         do {
-            runtime = try RuntimeSource.start(try BDKConfiguration.load())
+            var configuration = try BDKConfiguration.load()
+            // A test run keeps the engine's data (profiles, cookies, caches) beside its session.
+            if let directory = options.supportDirectory {
+                configuration.launch.userDataDirectory = directory.appendingPathComponent("Engine")
+            }
+            runtime = try RuntimeSource.start(configuration)
         } catch {
             // Never continue without a runtime.
             let alert = NSAlert()
@@ -62,13 +70,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func openBrowser() async throws {
         guard let runtime else { return }
-        let profile = try await runtime.profiles.open("Personal")
-        let saved = loadSession()
         var pages: [BDKWebContents] = []
-        for index in 0..<Self.homePages.count {
-            let state = saved?.pages.indices.contains(index) == true ? saved?.pages[index] : nil
-            pages.append(try profile.webContents.create(.init(restoring: state)))
-            restored = restored || state != nil
+        if options.privatePages {
+            // Each page in its own private profile: nothing is shared between them or kept after quit.
+            for _ in 0..<Self.homePages.count {
+                // A profile closes, with its pages, when its last reference goes.
+                let profile = try runtime.profiles.openPrivate()
+                privateProfiles.append(profile)
+                pages.append(try profile.webContents.create(.init()))
+            }
+        } else {
+            let profile = try await runtime.profiles.open("Personal")
+            let saved = loadSession()
+            for index in 0..<Self.homePages.count {
+                let state = saved?.pages.indices.contains(index) == true ? saved?.pages[index] : nil
+                pages.append(try profile.webContents.create(.init(restoring: state)))
+                restored = restored || state != nil
+            }
         }
         let browser = BrowserWindow(pages: pages, notice: RuntimeSource.notice)
         browser.onChange = { [weak self] in self?.report() }
@@ -78,11 +96,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !restored {
             for (pane, home) in zip(browser.panes, Self.homePages) { await pane.navigate(to: home) }
         }
+        // Each one loads completely before the next starts, so a test can depend on their order.
         for navigation in options.navigations where browser.panes.indices.contains(navigation.page)
         {
-            await browser.panes[navigation.page].navigate(to: navigation.url)
+            let pane = browser.panes[navigation.page]
+            await pane.navigate(to: navigation.url)
+            await pane.waitUntilLoaded()
+        }
+        for index in options.crashPages where browser.panes.indices.contains(index) {
+            // A debug URL Chromium handles itself: the renderer crashes, and the pane reloads the page.
+            let page = browser.panes[index].page
+            Task { _ = try? await page.navigate(to: URL(string: "chrome://crash")!) }
         }
         for pane in browser.panes { pane.refresh() }
+        launchFinished = true
         report()
         // Layout settles after the window is on screen; report again from there.
         try? await Task.sleep(for: .milliseconds(200))
@@ -108,6 +135,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: Report
 
     private func report() {
+        // The report made when quitting starts is the last: the shutdown that follows ends the pages.
+        if didReportTermination { return }
+        if phase == .terminating { didReportTermination = true }
         let status = AppStatus(
             phase: phase, runtime: RuntimeSource.name, restored: restored,
             windows: browser.map { [$0.status] } ?? [])
@@ -118,8 +148,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 log.error("status file not written: \(error)")
             }
         }
-        if options.quitAfterReport, !didQuitAfterReport,
-            status.showsPages(Self.homePages.count, loaded: true)
+        // Not before the launch has finished: with the real runtime the home pages can load before the
+        // navigations the options ask for have run.
+        if options.quitAfterReport, launchFinished, !didQuitAfterReport,
+            status.showsPages(Self.homePages.count, loaded: true),
+            status.recovered(pages: options.crashPages)
         {
             didQuitAfterReport = true
             // Quit from a run-loop timer, as a menu or an Apple event would: the quit waits for the runtime to
@@ -138,16 +171,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        saveSession()
-        phase = .terminating
-        report()
+        // Called twice: once to shut the runtime down, then again with the runtime stopped.
+        if BDKRuntime.isRunning {
+            saveSession()
+            phase = .terminating
+            report()
+        }
         return runtime?.terminate(replyingTo: sender) ?? .terminateNow
     }
 
     /// Saves the session while the pages are still alive: the shutdown that follows ends them. With no
     /// window (the launch had not finished) the previous session is kept rather than replaced by nothing.
     private func saveSession() {
-        guard let browser, let store else { return }
+        guard !options.privatePages, let browser, let store else { return }
         do {
             let states = try browser.panes.map { try $0.page.sessionState() }
             try store.save(.init(pages: states))

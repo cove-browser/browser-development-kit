@@ -9,7 +9,9 @@ import Foundation
 /// | `--status-file <path>` | Write a JSON report of pages and windows here whenever they change. |
 /// | `--navigate <page>=<url>` | After launch, load the URL in page 0 or 1. May repeat. |
 /// | `--snapshot-file <path>` | Write a PNG of the window's contents here once the pages are shown. |
-/// | `--quit-after-report` | Quit once the first report shows every page visible. |
+/// | `--private` | Show each page in its own private profile, with no session saved or restored. |
+/// | `--crash-page <page>` | After launch, crash page 0 or 1's renderer (`chrome://crash`). May repeat. |
+/// | `--quit-after-report` | Quit once the first report shows every page visible (and every crashed page recovered). |
 public struct AppOptions: Equatable, Sendable {
     public struct Navigation: Equatable, Sendable {
         public var page: Int
@@ -24,12 +26,14 @@ public struct AppOptions: Equatable, Sendable {
     public enum Failure: Error, Equatable, CustomStringConvertible {
         case missingValue(String)
         case invalidNavigation(String)
+        case invalidPage(String)
 
         public var description: String {
             switch self {
             case .missingValue(let flag): "\(flag) needs a value"
             case .invalidNavigation(let value):
                 "--navigate expects <page>=<url> with a page of 0 or 1, not \(value)"
+            case .invalidPage(let value): "--crash-page expects 0 or 1, not \(value)"
             }
         }
     }
@@ -38,16 +42,21 @@ public struct AppOptions: Equatable, Sendable {
     public var statusFile: URL?
     public var snapshotFile: URL?
     public var navigations: [Navigation] = []
+    public var crashPages: [Int] = []
+    public var privatePages = false
     public var quitAfterReport = false
 
     public init(
         supportDirectory: URL? = nil, statusFile: URL? = nil, snapshotFile: URL? = nil,
-        navigations: [Navigation] = [], quitAfterReport: Bool = false
+        navigations: [Navigation] = [], crashPages: [Int] = [], privatePages: Bool = false,
+        quitAfterReport: Bool = false
     ) {
         self.supportDirectory = supportDirectory
         self.statusFile = statusFile
         self.snapshotFile = snapshotFile
         self.navigations = navigations
+        self.crashPages = crashPages
+        self.privatePages = privatePages
         self.quitAfterReport = quitAfterReport
     }
 
@@ -70,6 +79,14 @@ public struct AppOptions: Equatable, Sendable {
                 options.snapshotFile = URL(fileURLWithPath: try value(for: argument))
             case "--navigate":
                 options.navigations.append(try navigation(try value(for: argument)))
+            case "--crash-page":
+                let text = try value(for: argument)
+                guard let page = Int(text), (0...1).contains(page) else {
+                    throw Failure.invalidPage(text)
+                }
+                options.crashPages.append(page)
+            case "--private":
+                options.privatePages = true
             case "--quit-after-report":
                 options.quitAfterReport = true
             default:
