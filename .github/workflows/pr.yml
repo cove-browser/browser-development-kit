@@ -100,8 +100,8 @@ jobs:
           NX_BASE: ${{ github.event.pull_request.base.sha }}
           NX_HEAD: ${{ github.event.pull_request.head.sha }}
         # chromium:build compiles Chromium and must never run here, so chromium is excluded.
-        # swift needs Xcode and runs in the swift-macos job, so it is excluded here too.
-        run: pnpm exec nx affected -t lint test build --exclude=chromium,swift
+        # swift and minimal-browser need Xcode and AppKit and run in the swift-macos job, so they are excluded here too.
+        run: pnpm exec nx affected -t lint test build --exclude=chromium,swift,minimal-browser
 
       # Workflows, hooks and root configuration belong to no project, so `nx affected` never selects
       # the checks that read them (actionlint, Biome on root files, taplo). Run them on every PR;
@@ -206,13 +206,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install CMake, Ninja and LLVM tools
-        # Homebrew's formulae are not pinned to digests here and float. The current llvm formula supplies
+      - name: Install CMake, Ninja, LLVM tools, ShellCheck and shfmt
+        # Homebrew's formulae are not pinned to digests here and float. ShellCheck and shfmt lint the example's
+        # bundle script (minimal-browser:lint). The current llvm formula supplies
         # clang-format and clang-tidy, as on developer Macs (tooling/clang-tidy.sh looks there too). llvm@18 cannot
         # parse the macOS 26 SDK's libc++ headers, which use __builtin_clzg and __builtin_ctzg from clang 19.
         run: |
           set -euo pipefail
-          brew install --formula cmake ninja llvm
+          brew install --formula cmake ninja llvm shellcheck shfmt
           echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
 
       - name: Install pinned SwiftLint
@@ -228,12 +229,13 @@ jobs:
           chmod +x "$bin/swiftlint"
           echo "$bin" >> "$GITHUB_PATH"
 
-      - name: Build, test and lint the Swift and core projects
+      - name: Build, test and lint the Swift, core and example projects
         env:
           NX_BASE: ${{ github.event.pull_request.base.sha }}
           NX_HEAD: ${{ github.event.pull_request.head.sha }}
-        # Only swift and core run here. `*,!swift,!core` is the nx exclude pattern for "everything else".
-        run: pnpm exec nx affected -t build test lint --exclude='*,!swift,!core'
+        # Only swift, core and minimal-browser run here. `*,!swift,!core,!minimal-browser` is the nx exclude
+        # pattern for "everything else".
+        run: pnpm exec nx affected -t build test lint --exclude='*,!swift,!core,!minimal-browser'
 
   cli-smoke:
     name: cli-smoke (${{ matrix.os }})
