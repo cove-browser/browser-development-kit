@@ -194,7 +194,7 @@ Decisions taken where the specification was silent (2026-11-19):
     implements a command. `Backend::Authenticate` defaults to refusing.
 12. The stub. `stub/stub_services.cc` implements, in memory and per profile id: `runtime.info`, `profiles.list` and
     `current`, `settings.get`, `getMany`, `set`, `reset`, history (`add`, `search` with an offset cursor, `visits`,
-    `deleteUrls`, `deleteRange`, `deleteAll`), bookmarks (`roots`, `get`, `children`, `create`, `createFolder`, `remove`,
+    `deleteUrls`, `deleteRange`, `deleteAll`), bookmarks (`roots`, `get`, `children`, `create`, `createFolder`, `update`, `move`, `remove`,
     `search`, `forUrl`), `downloads.list` and `get` (empty), `permissions.get`, `set`, `reset`, `getDefault`,
     `setDefault`, `cookies.sites` (empty), `privacy.clear` (clears history; reports progress), `passwords.add`, `list`,
     `forOrigin`, `reveal`, `update`, `remove`, `autofill.addresses.add`, `list`, `remove` and

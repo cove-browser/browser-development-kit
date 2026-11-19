@@ -333,6 +333,39 @@ bool run(Ctx& c) {
         c.out = node_json(b);
         return true;
     }
+    if (name == "bookmarks.update") {
+        ensure_roots(s);
+        Bookmark* b = find_bookmark(s, c.text("id"));
+        if (!b || b->parent.empty())
+            return c.fail(BDK_CODE_INVALID_ARGUMENTS, "'" + c.text("id") + "' cannot be changed");
+        if (c.arg("title"))
+            b->title = c.text("title");
+        if (c.arg("url")) {
+            if (b->folder)
+                return c.fail(BDK_CODE_INVALID_ARGUMENTS, "a folder has no URL");
+            b->url = c.text("url");
+        }
+        c.out = node_json(*b);
+        return true;
+    }
+    if (name == "bookmarks.move") {
+        /* The stub keeps children in creation order, so `index` is accepted and not applied. */
+        ensure_roots(s);
+        Bookmark* b = find_bookmark(s, c.text("id"));
+        Bookmark* parent = find_bookmark(s, c.text("parentId"));
+        if (!b || b->parent.empty())
+            return c.fail(BDK_CODE_INVALID_ARGUMENTS, "'" + c.text("id") + "' cannot be moved");
+        if (!parent || !parent->folder)
+            return c.fail(BDK_CODE_INVALID_ARGUMENTS,
+                          "'" + c.text("parentId") + "' is not a folder");
+        for (const Bookmark* up = parent; up; up = find_bookmark(s, up->parent)) {
+            if (up == b)
+                return c.fail(BDK_CODE_INVALID_ARGUMENTS, "a folder cannot move into itself");
+        }
+        b->parent = parent->id;
+        c.out = node_json(*b);
+        return true;
+    }
     if (name == "bookmarks.remove") {
         ensure_roots(s);
         std::string id = c.text("id");
