@@ -78,6 +78,10 @@ BDK_EXPORT void bdk_testing_run_for(double seconds);
    stays on disk under identifiers that are not reused. */
 BDK_EXPORT void bdk_testing_forget_profiles(void);
 
+/* How many Chrome browser windows (Browser objects) exist. BDK never creates
+   one, so anything above 0 means Chromium opened a window on its own. */
+BDK_EXPORT size_t bdk_testing_chrome_window_count(void);
+
 /* Work the engine has queued or started for the application: BDK tasks not yet
    run plus pages still loading. A harness pumps until it reads 0. */
 BDK_EXPORT size_t bdk_testing_pending_work(void);

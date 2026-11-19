@@ -57,6 +57,13 @@ void bdk_harness_prepare_start_config(bdk_start_config_t* config) {
 }
 
 size_t bdk_harness_pump(void) {
+    static size_t last_windows;
+    if (getenv("BDK_TEST_TRACE")) {
+        size_t windows = bdk_testing_chrome_window_count();
+        if (windows != last_windows)
+            printf("    chrome windows: %zu\n", windows);
+        last_windows = windows;
+    }
     /* Idle means no BDK task queued and no page loading, three slices running. */
     NSDate* deadline = [NSDate dateWithTimeIntervalSinceNow:20];
     int idle = 0;
@@ -324,6 +331,11 @@ void RunSuite(void*) {
         exit(2);
     }
     int rc = bdk_conformance_main(g_argc, g_argv);
+    /* BDK never opens a Chrome window; one here means Chromium opened it on its own. */
+    if (size_t windows = bdk_testing_chrome_window_count()) {
+        printf("FAIL: Chromium opened %zu browser window(s) of its own\n", windows);
+        rc = 1;
+    }
     fflush(stdout);
     exit(rc);
 }

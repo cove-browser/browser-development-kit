@@ -28,6 +28,7 @@
 #include "bdk/core/runtime/core_internal.h"
 #include "bdk/engine/bdk_testing.h"
 #include "bdk/engine/engine_contents.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_widget_host.h"
 #include "content/public/browser/render_widget_host_view.h"
@@ -350,6 +351,16 @@ BDK_EXPORT bdk_status_t bdk_testing_click(bdk_contents_t contents,
     view->GetRenderWidgetHost()->ForwardMouseEvent(event);
   }
   return BDK_OK;
+}
+
+BDK_EXPORT size_t bdk_testing_chrome_window_count(void) {
+  size_t count = 0;
+  ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
+      [&count](BrowserWindowInterface*) {
+        ++count;
+        return true;
+      });
+  return count;
 }
 
 BDK_EXPORT void bdk_testing_forget_profiles(void) {
