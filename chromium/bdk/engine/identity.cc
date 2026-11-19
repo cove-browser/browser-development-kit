@@ -39,7 +39,18 @@ std::optional<Identity> ParseIdentity(const std::string& resolved_json) {
       resolved->FindStringByDottedPath("storage.keychain_item");
   identity.keychain_item =
       keychain && !keychain->empty() ? *keychain : *name + " Safe Storage";
+  const std::string* devtools =
+      resolved->FindStringByDottedPath("surfaces.devtools");
+  identity.devtools = !devtools || *devtools != "disabled";
   return identity;
+}
+
+namespace {
+bool g_devtools_enabled = true;
+}  // namespace
+
+bool DevToolsEnabled() {
+  return g_devtools_enabled;
 }
 
 void ApplyIdentityBeforeStart(const Identity& identity) {
@@ -50,6 +61,7 @@ void ApplyIdentityBeforeStart(const Identity& identity) {
 }
 
 void ApplyIdentityAfterStart(const Identity& identity) {
+  g_devtools_enabled = identity.devtools;
   ui::ResourceBundle& bundle = ui::ResourceBundle::GetSharedInstance();
   const std::u16string name = base::UTF8ToUTF16(identity.name);
   bundle.OverrideLocaleStringResource(IDS_PRODUCT_NAME, name);

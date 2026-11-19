@@ -197,6 +197,44 @@ static void test_engine_a_right_click_on_the_page_offers_navigation_items(void) 
     bdk_harness_engine_show(c, 0);
 }
 
+/* Undocked DevTools arrive as a new-window request of their own kind (T-ADP-05). */
+static void test_engine_inspect_opens_devtools_through_a_new_window_request(void) {
+    reset_logs();
+    bdk_contents_t c = start_with_page();
+    bdk_harness_engine_show(c, 1);
+    REQUIRE(bdk_testing_click(c, 20, 20, 2) == BDK_OK);
+    for (int i = 0; i < 20 && g_menus.calls == 0; ++i)
+        t_pump();
+    REQUIRE(g_menus.calls == 1);
+    CHECK(strstr(g_menus.payload, "\"id\":\"inspect\"") != NULL);
+    g_new_windows.complete = "accept";
+    bdk_native_handle_t none;
+    memset(&none, 0, sizeof none);
+    bdk_error_t err = 0;
+    REQUIRE(bdk_ui_complete(g_menus.request, S("perform"), S("{\"id\":\"inspect\"}"), none, &err) ==
+            BDK_OK);
+    t_pump();
+    REQUIRE(g_new_windows.calls == 1);
+    CHECK(g_new_windows.contents == c);
+    CHECK(strstr(g_new_windows.payload, "\"kind\":\"devTools\"") != NULL);
+    CHECK(strstr(g_new_windows.payload, "\"targetURL\":\"devtools://devtools/bundled/") != NULL);
+    bdk_contents_t front = new_contents_of(g_new_windows.payload);
+    bdk_harness_engine_show(front, 1);
+    bdk_contents_state_t st;
+    int loaded = 0;
+    for (int i = 0; i < 40 && !loaded; ++i) {
+        t_pump();
+        memset(&st, 0, sizeof st);
+        st.struct_size = sizeof st;
+        REQUIRE(bdk_contents_state(front, &st, &err) == BDK_OK);
+        loaded = str_has(st.url, "devtools://devtools/bundled/devtools_app.html") && !st.loading;
+    }
+    CHECK(loaded);
+    bdk_harness_engine_show(front, 0);
+    CHECK(bdk_contents_destroy(front) == BDK_OK);
+    bdk_harness_engine_show(c, 0);
+}
+
 /* ---- fullscreen (T-MAC-05) ---- */
 
 static void test_engine_html_fullscreen_enters_and_exits_through_requests(void) {
@@ -368,6 +406,8 @@ const t_test_t t_engine_tests[] = {
      test_engine_a_right_click_on_a_link_raises_a_context_menu_with_link_items},
     {"engine_a_right_click_on_the_page_offers_navigation_items",
      test_engine_a_right_click_on_the_page_offers_navigation_items},
+    {"engine_inspect_opens_devtools_through_a_new_window_request",
+     test_engine_inspect_opens_devtools_through_a_new_window_request},
     {"engine_html_fullscreen_enters_and_exits_through_requests",
      test_engine_html_fullscreen_enters_and_exits_through_requests},
     {"engine_a_denied_page_ends_up_not_fullscreen",

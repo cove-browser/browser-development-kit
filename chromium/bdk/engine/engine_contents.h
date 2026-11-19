@@ -15,10 +15,10 @@
 #include "content/public/browser/web_contents_observer.h"
 
 class Profile;
-class ScopedProfileKeepAlive;
 
 namespace bdk {
 
+class DevToolsFrontend;
 class HostView;
 
 // What the engine keeps for a profile the application opened.
@@ -27,8 +27,6 @@ struct EngineProfile : bdkcore::BackendData {
   ~EngineProfile() override;
 
   raw_ptr<Profile> profile = nullptr;
-  // Keeps a persistent profile loaded while the application has it open.
-  std::unique_ptr<ScopedProfileKeepAlive> keep_alive;
 };
 
 Profile* ProfileOf(const bdkcore::Contents& contents);
@@ -122,9 +120,14 @@ class EngineContents : public bdkcore::BackendData,
             int32_t net_error,
             uint32_t flags);
   void Attach(std::unique_ptr<content::WebContents> web_contents);
+  // Opens undocked DevTools for this page in a page of its own, through a
+  // new-window request of kind "devTools".
+  void OpenDevTools();
+  // Asks the application to close this page, as window.close() does.
+  void RequestClose();
   // Wraps `new_contents` as a page in the same profile and asks the
-  // application where it goes (a new-window request).
-  content::WebContents* RequestNewWindow(
+  // application where it goes (a new-window request). Returns the new page.
+  EngineContents* RequestNewWindow(
       std::unique_ptr<content::WebContents> new_contents,
       const std::string& kind,
       WindowOpenDisposition disposition,
@@ -138,6 +141,8 @@ class EngineContents : public bdkcore::BackendData,
   std::weak_ptr<bdkcore::Contents> core_;
   std::unique_ptr<HostView> host_view_;
   std::unique_ptr<content::WebContents> web_contents_;
+  // For a DevTools front-end page: the bindings to the page it inspects.
+  std::unique_ptr<DevToolsFrontend> devtools_;
   std::string user_agent_;
   double zoom_ = 1.0;
   bool auto_discardable_ = true;

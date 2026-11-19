@@ -7,6 +7,7 @@
 // the checks and the bookkeeping, exactly as for the stub runtime.
 
 #include <atomic>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -194,6 +195,7 @@ class EngineBackend final : public bdkcore::Backend {
     }
     chromium_tasks_.store(false);
     // Chromium destroys its profiles as it stops.
+    loaded_.clear();
     base_profile_ = nullptr;
     StopChromium(
         base::BindOnce([](std::function<void()> d) { d(); }, std::move(done)));
@@ -243,7 +245,8 @@ class EngineBackend final : public bdkcore::Backend {
     std::weak_ptr<bdkcore::Profile> weak = profile;
     g_browser_process->profile_manager()->CreateProfileAsync(
         path, base::BindOnce(
-                  [](std::weak_ptr<bdkcore::Profile> weak, Done done,
+                  [](EngineBackend* backend, base::FilePath path,
+                     std::weak_ptr<bdkcore::Profile> weak, Done done,
                      Profile* loaded) {
                     std::shared_ptr<bdkcore::Profile> p = weak.lock();
                     if (!loaded) {
@@ -254,14 +257,13 @@ class EngineBackend final : public bdkcore::Backend {
                       done("openFailed", "the profile was closed");
                       return;
                     }
+                    backend->KeepLoaded(path, loaded);
                     auto data = std::make_unique<EngineProfile>();
                     data->profile = loaded;
-                    data->keep_alive = std::make_unique<ScopedProfileKeepAlive>(
-                        loaded, ProfileKeepAliveOrigin::kBrowserWindow);
                     p->data = std::move(data);
                     done("", "");
                   },
-                  weak, std::move(done)));
+                  base::Unretained(this), path, weak, std::move(done)));
   }
 
   bdk_status_t OpenPrivateProfile(Runtime& rt,
@@ -291,6 +293,8 @@ class EngineBackend final : public bdkcore::Backend {
                      const bdkcore::Profile& profile,
                      Done done) override {
     const base::FilePath path = user_data_dir_.AppendASCII(profile.id);
+    // Chromium unloads it as part of the deletion.
+    loaded_.erase(path);
     ProfileManager* manager = g_browser_process->profile_manager();
     // A profile that was never opened has nothing on disk and is unknown to
     // Chromium.
@@ -508,6 +512,18 @@ class EngineBackend final : public bdkcore::Backend {
 
   void UnregisterWindow(const bdkcore::Window& window) override {}
 
+  // Keeps a persistent profile loaded for the life of the runtime, from its
+  // first open. Closing it in BDK does not unload it in Chromium: an unload
+  // runs in the background, and opening the profile again meanwhile would
+  // give Chromium a second instance on the same files, whose databases the
+  // first still holds.
+  void KeepLoaded(const base::FilePath& path, Profile* profile) {
+    if (!loaded_.contains(path)) {
+      loaded_[path] = std::make_unique<ScopedProfileKeepAlive>(
+          profile, ProfileKeepAliveOrigin::kBrowserWindow);
+    }
+  }
+
   // For bdk_testing_forget_profiles().
   void ForgetProfiles() { registry_.profiles.clear(); }
 
@@ -567,6 +583,7 @@ class EngineBackend final : public bdkcore::Backend {
   raw_ptr<Profile> base_profile_ = nullptr;
   scoped_refptr<base::SequencedTaskRunner> registry_writer_;
   Registry registry_;
+  std::map<base::FilePath, std::unique_ptr<ScopedProfileKeepAlive>> loaded_;
 };
 
 }  // namespace

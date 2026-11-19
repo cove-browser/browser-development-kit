@@ -18,6 +18,7 @@ struct Identity {
   std::string name;               // [browser] name
   std::string storage_directory;  // [storage] directory
   std::string keychain_item;      // [storage] keychain_item
+  bool devtools = true;           // [ui.surfaces] devtools is not "disabled"
 };
 
 // Reads the identity from bdk.resolved.json. The storage keys default as
@@ -34,6 +35,9 @@ void ApplyIdentityAfterStart(const Identity& identity);
 // sets. Test and diagnostic runs add more through BDK_ENGINE_SWITCHES (space
 // separated, without dashes) and BDK_ENGINE_MOCK_KEYCHAIN=1.
 std::vector<std::string> ExtraSwitches();
+
+// Whether the application allows DevTools (the context menu's Inspect item).
+bool DevToolsEnabled();
 
 }  // namespace bdk
 

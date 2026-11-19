@@ -14,10 +14,12 @@
 #include "base/json/json_writer.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/values.h"
+#include "bdk/engine/devtools_frontend.h"
 #include "bdk/engine/host_view.h"
+#include "bdk/engine/identity.h"
 #include "bdk/engine/session_state.h"
-#include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"
 #include "chrome/browser/profiles/profile.h"
 #include "components/input/native_web_keyboard_event.h"
 #include "content/public/browser/context_menu_params.h"
@@ -124,6 +126,10 @@ base::ListValue MenuItems(const content::ContextMenuParams& params,
     add("forward", "Forward", controller.CanGoForward());
     add("reload", "Reload", true);
   }
+  if (DevToolsEnabled()) {
+    separator();
+    add("inspect", "Inspect", true);
+  }
   return items;
 }
 
@@ -144,6 +150,8 @@ EngineContents::EngineContents(
 }
 
 EngineContents::~EngineContents() {
+  // The bindings belong to the front end's WebUI, which goes with the page.
+  devtools_.reset();
   Observe(nullptr);
   if (web_contents_) {
     web_contents_->SetDelegate(nullptr);
@@ -291,8 +299,10 @@ content::WebContents* EngineContents::OpenURLFromTab(
   if (handle && navigation_handle_callback) {
     std::move(navigation_handle_callback).Run(*handle);
   }
-  return RequestNewWindow(std::move(created), "newPage", params.disposition,
-                          params.url, nullptr, params.user_gesture);
+  EngineContents* page =
+      RequestNewWindow(std::move(created), "newPage", params.disposition,
+                       params.url, nullptr, params.user_gesture);
+  return page ? page->web_contents() : nullptr;
 }
 
 content::WebContents* EngineContents::AddNewContents(
@@ -304,12 +314,13 @@ content::WebContents* EngineContents::AddNewContents(
     bool user_gesture,
     bool* was_blocked) {
   const bool popup = disposition == WindowOpenDisposition::kNewPopup;
-  return RequestNewWindow(std::move(new_contents), popup ? "popup" : "newPage",
-                          disposition, target_url, &window_features,
-                          user_gesture);
+  EngineContents* page =
+      RequestNewWindow(std::move(new_contents), popup ? "popup" : "newPage",
+                       disposition, target_url, &window_features, user_gesture);
+  return page ? page->web_contents() : nullptr;
 }
 
-content::WebContents* EngineContents::RequestNewWindow(
+EngineContents* EngineContents::RequestNewWindow(
     std::unique_ptr<content::WebContents> new_contents,
     const std::string& kind,
     WindowOpenDisposition disposition,
@@ -325,8 +336,10 @@ content::WebContents* EngineContents::RequestNewWindow(
   page->rt = rt;
   page->profile = opener->profile;
   page->handle = bdkcore::table_make(bdkcore::T_CONTENTS, page);
-  content::WebContents* raw = new_contents.get();
-  page->data = std::make_unique<EngineContents>(page, std::move(new_contents));
+  auto engine_page =
+      std::make_unique<EngineContents>(page, std::move(new_contents));
+  EngineContents* raw = engine_page.get();
+  page->data = std::move(engine_page);
   rt->contents.push_back(page);
 
   base::DictValue payload;
@@ -373,6 +386,37 @@ content::WebContents* EngineContents::RequestNewWindow(
   };
   bdkcore::raise_ui_request(rt, request);
   return raw;
+}
+
+void EngineContents::OpenDevTools() {
+  const GURL url = DevToolsFrontend::FrontendURL();
+  std::unique_ptr<content::WebContents> frontend = content::WebContents::Create(
+      content::WebContents::CreateParams(web_contents_->GetBrowserContext()));
+  frontend->GetController().LoadURL(url, content::Referrer(),
+                                    ui::PAGE_TRANSITION_AUTO_TOPLEVEL,
+                                    std::string());
+  content::WebContents* frontend_contents = frontend.get();
+  EngineContents* page =
+      RequestNewWindow(std::move(frontend), "devTools",
+                       WindowOpenDisposition::kNewWindow, url, nullptr,
+                       /*user_gesture=*/true);
+  if (!page) {
+    return;
+  }
+  base::WeakPtr<EngineContents> weak_page = page->weak_factory_.GetWeakPtr();
+  page->devtools_ = std::make_unique<DevToolsFrontend>(
+      frontend_contents, web_contents_.get(),
+      base::BindRepeating(
+          [](base::WeakPtr<EngineContents> p) {
+            // Never from inside the bindings' own call.
+            base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+                FROM_HERE, base::BindOnce(&EngineContents::RequestClose, p));
+          },
+          weak_page));
+}
+
+void EngineContents::RequestClose() {
+  CloseContents(web_contents_.get());
 }
 
 void EngineContents::CloseContents(content::WebContents* source) {
@@ -490,6 +534,8 @@ void EngineContents::PerformMenuItem(const content::ContextMenuParams& params,
   } else if (id == "copyLink" && params.link_url.is_valid()) {
     ui::ScopedClipboardWriter(ui::ClipboardBuffer::kCopyPaste)
         .WriteText(base::UTF8ToUTF16(params.link_url.spec()));
+  } else if (id == "inspect" && DevToolsEnabled()) {
+    OpenDevTools();
   } else if (id == "openLinkInNewPage" && params.link_url.is_valid()) {
     content::OpenURLParams open(params.link_url, content::Referrer(),
                                 WindowOpenDisposition::kNewForegroundTab,
