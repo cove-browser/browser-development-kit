@@ -1,0 +1,5 @@
+[browser]
+name = "Cove"
+
+[extensions.install]
+stores = ["chrome-web-store", "firefox-addons"]

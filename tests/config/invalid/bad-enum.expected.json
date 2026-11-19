@@ -1,0 +1,25 @@
+{
+  "diagnostics": [
+    {
+      "code": "config.type",
+      "severity": "error",
+      "message": "\"runtime.mode\" must be one of \"prebuilt\", \"source\", found \"hybrid\".",
+      "file": "bdk.toml",
+      "line": 5
+    },
+    {
+      "code": "config.type",
+      "severity": "error",
+      "message": "\"runtime.downgrade\" must be one of \"refuse\", \"fresh-profile\", found \"ignore\".",
+      "file": "bdk.toml",
+      "line": 6
+    },
+    {
+      "code": "config.type",
+      "severity": "error",
+      "message": "\"extensions.allow_in_private\" must be one of \"user\", \"never\", found \"always\".",
+      "file": "bdk.toml",
+      "line": 9
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "diagnostics": [
+    {
+      "code": "plist.principal_class",
+      "severity": "error",
+      "message": "Info.plist has no NSPrincipalClass. It must be BDKApplication or a subclass.",
+      "file": "Info.plist"
+    }
+  ]
+}

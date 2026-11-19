@@ -588,6 +588,7 @@ Each has a stable code, used by fixtures in `tests/config/`. Messages name the f
 | `config.syntax` | Invalid TOML |
 | `config.unknown_key` | A key not in the schema |
 | `config.type` | A value of the wrong type or outside the allowed set |
+| `config.required` | A required key or table is missing |
 | `config.internal_url` | A value contains an internal Chromium scheme |
 | `config.secret` | A value looks like a credential |
 | `config.path_escape` | A path leaves the project directory |
@@ -601,11 +602,13 @@ Each has a stable code, used by fixtures in `tests/config/`. Messages name the f
 | `pages.alias_chain` | An alias points at an alias |
 | `pages.alias_target` | An alias points at nothing |
 | `pages.reserved` | A page, alias or directory uses a reserved name |
+| `pages.name_invalid` | A page directory, route or alias name does not match `[a-z][a-z0-9-]*` after normalisation |
 | `pages.no_builtin` | `chromium` mode for a route with no built-in page |
 | `pages.missing_entry` | A bundled path with no `index.html` or Vite entry |
 | `pages.capability_unknown` | A capability name that does not exist |
 | `pages.capability_denied` | A capability that pages can never hold |
 | `pages.capability_target` | A grant for a route that is not a bundled page |
+| `automation.collision` | Two files in the automation directory have the same script name |
 | `ui.surface_unknown` | An unknown surface name |
 | `ui.surface_mode` | A mode the surface does not allow, such as `disabled` for interstitials |
 | `extensions.store_unknown` | A store name BDK does not ship |
@@ -619,6 +622,24 @@ Each has a stable code, used by fixtures in `tests/config/`. Messages name the f
 | `plist.conflict` | `bdk.toml` and the Xcode project disagree |
 | `plist.min_os` | The deployment target is below the runtime's minimum |
 | `plist.app_sandbox` | The App Sandbox entitlement is set |
+
+### Decisions made in T-CFG-01/02
+
+Dated 2026-11-18. The documents were silent on these points; the schema and resolver in `packages/cli` follow them.
+
+- Only keys with status Plan are in the schema. Every key marked Added, with or without an S number, and every Conditional or Later key, is rejected as an unknown key until the product owner accepts it. The list is in `packages/cli/src/core/config/README.md`. For the resolved file, the sections those keys would fill carry their documented defaults.
+- Three codes were added to the table above: `config.required`, `pages.name_invalid` and `automation.collision`. Disabling `credits` is `config.type`.
+- Surface names under `[ui.surfaces]` and `[extensions.ui]` that are not in the schema are `ui.surface_unknown`, except the S3 surfaces, which are the ordinary `config.unknown_key`. A mode the surface does not allow is `ui.surface_mode`; a value that is not a mode at all is `config.type`.
+- Provider values outside the listed enum are `services.provider_unknown`. The named providers documented as "after v1" are accepted by the schema.
+- Reserved names are the fixed list in 4.3 plus `chrome-error`, `chrome-search`, `chrome-untrusted`. The excluded routes of 4.4 (`signin`, `sign-in`, `sync-internals`, `feedback`, `whats-new`, `welcome`) are also `pages.reserved`.
+- A directory under `Pages/` is a page only if it contains `index.html`; other directories are ignored. Directory names are split on case boundaries (`HTMLPage` is `html-page`); underscores and spaces are not converted, so they are `pages.name_invalid`.
+- Collisions between aliases and pages cover discovered pages, overrides and the standard and diagnostic routes. An alias of an alias, including itself or a cycle, is `pages.alias_chain` on each alias that points at an alias.
+- A capability grant for an alias, a built-in route, a `native` or `disabled` route, or a route that does not exist is `pages.capability_target`. A capability on a `contents.`, `automation.` or `devtools.` prefix, or one the services.md table marks as not granted to pages (`cookies.values`), is `pages.capability_denied`.
+- `app.<segments>` capabilities are accepted by shape; whether the application declares them is not checked by the CLI step.
+- A route table lists discovered pages and `[pages.overrides]` entries only, as in section 7. With `[extensions] enabled = false` and no entry for `extensions`, the route is written as `disabled`.
+- Digests are SHA-256 of the files in the source directory (path, size and content in sorted path order) and of the script file. `config_digest` is the SHA-256 of the resolved file without that key.
+- `bdk_version` comes from the caller; `Info.plist` checks run only for the facts passed in. A scheme declared in `CFBundleURLTypes` is `browser.scheme_conflict`; a `NSPrincipalClass` other than `BDKApplication` is a warning because a subclass cannot be recognised from the plist.
+- The deny list in 3.4.1 is implemented as name patterns in `denylist.ts`; it applies to `gn_args` keys and to switch-like values.
 
 Start errors, raised by `BDKRuntime.start`, are in [swift-api.md](swift-api.md) section 16.
 

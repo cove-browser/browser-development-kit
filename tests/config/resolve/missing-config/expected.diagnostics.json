@@ -1,0 +1,10 @@
+{
+  "diagnostics": [
+    {
+      "code": "config.missing",
+      "severity": "error",
+      "message": "There is no bdk.toml in the project directory.",
+      "file": "bdk.toml"
+    }
+  ]
+}

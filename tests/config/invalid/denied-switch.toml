@@ -1,0 +1,15 @@
+[browser]
+name = "Cove"
+
+[runtime]
+mode = "source"
+
+[chromium.gn_args]
+disable_sandbox = true
+remote_debugging_port = 9222
+ignore_certificate_errors = true
+google_api_key = ""
+enable_sync = true
+auto_grant_permissions = true
+extra_flags = "--no-sandbox"
+is_debug = false

@@ -30,6 +30,7 @@
       },
       "inputs": [
         "default",
+        "{workspaceRoot}/tests/config/**/*",
         {
           "externalDependencies": ["vitest"]
         }
@@ -39,9 +40,11 @@
       "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "pnpm exec biome check {projectRoot}",
+          "pnpm exec biome check {projectRoot} tests/config",
           "pnpm exec tsc -p {projectRoot}/tsconfig.json --noEmit",
-          "pnpm exec tsc -p {projectRoot}/scripts/tsconfig.json --noEmit"
+          "pnpm exec tsc -p {projectRoot}/scripts/tsconfig.json --noEmit",
+          "pnpm exec tsx {projectRoot}/scripts/check-config-assets.ts",
+          "taplo format --check 'tests/config/valid/*.toml' 'tests/config/resolve/*/bdk.toml'"
         ],
         "parallel": false
       }

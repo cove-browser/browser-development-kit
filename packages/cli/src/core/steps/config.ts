@@ -1,6 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 import { AssetNotFoundError } from "../../assets.js";
+import { serialiseResolved } from "../config/index.js";
+import type { Diagnostic } from "../diagnostics.js";
 import { hasErrors } from "../diagnostics-format.js";
 import { CliError, ExitCode } from "../exit-codes.js";
 import type { Step, StepResult } from "./step.js";
@@ -37,11 +39,14 @@ export const configStep: Step = {
     const result = await ctx.resolveConfig({
       projectDir: project.dir,
       schema,
+      // The CLI ships with the SDK and runtime and carries their version (cli.md section 2).
+      bdkVersion: ctx.version,
       ...(bundleFacts === undefined ? {} : { bundleFacts }),
     });
-    if (hasErrors(result.diagnostics)) {
+    const diagnostics = result.diagnostics.map((d) => inProject(d, project.dir));
+    if (hasErrors(diagnostics)) {
       return {
-        diagnostics: result.diagnostics,
+        diagnostics,
         exitCode: ExitCode.ProjectFailure,
         data: { wrote: false },
       };
@@ -60,11 +65,17 @@ export const configStep: Step = {
     const out =
       args.out === undefined ? resolve(project.dir, RESOLVED_FILE) : resolve(ctx.cwd, args.out);
     await mkdir(dirname(out), { recursive: true });
-    await writeFile(out, `${JSON.stringify(result.resolved, null, 2)}\n`);
+    await writeFile(out, serialiseResolved(result.resolved));
     return {
-      diagnostics: result.diagnostics,
+      diagnostics,
       exitCode: ExitCode.Success,
       data: { wrote: true, out },
     };
   },
 };
+
+/** The resolver reports project-relative paths; Xcode and terminals need them absolute. */
+function inProject(diagnostic: Diagnostic, projectDir: string): Diagnostic {
+  if (diagnostic.file === undefined || isAbsolute(diagnostic.file)) return diagnostic;
+  return { ...diagnostic, file: resolve(projectDir, diagnostic.file) };
+}

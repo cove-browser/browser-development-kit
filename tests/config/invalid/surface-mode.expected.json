@@ -1,0 +1,18 @@
+{
+  "diagnostics": [
+    {
+      "code": "ui.surface_mode",
+      "severity": "error",
+      "message": "Surface \"certificate_errors\" does not allow the mode \"disabled\". Allowed modes: \"default\", \"custom\".",
+      "file": "bdk.toml",
+      "line": 5
+    },
+    {
+      "code": "ui.surface_mode",
+      "severity": "error",
+      "message": "Surface \"find\" does not allow the mode \"disabled\". Allowed modes: \"default\", \"custom\".",
+      "file": "bdk.toml",
+      "line": 6
+    }
+  ]
+}

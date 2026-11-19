@@ -1,0 +1,7 @@
+[browser]
+name = "Cove"
+
+[ui.surfaces]
+certificate_errors = "disabled"
+find = "disabled"
+file_pickers = "disabled"

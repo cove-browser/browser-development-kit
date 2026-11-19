@@ -1,0 +1,11 @@
+{
+  "diagnostics": [
+    {
+      "code": "browser.scheme_invalid",
+      "severity": "error",
+      "message": "The scheme derived from \"browser.name\" is reserved: \"chrome\".",
+      "file": "bdk.toml",
+      "line": 2
+    }
+  ]
+}

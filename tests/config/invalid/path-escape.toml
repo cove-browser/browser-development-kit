@@ -1,0 +1,15 @@
+[browser]
+name = "Cove"
+
+[pages]
+directory = "../Pages"
+
+[pages.overrides]
+settings = "../../elsewhere/settings"
+history = "Pages\\history"
+
+[automation]
+directory = "/opt/automation"
+
+[devtools]
+overlay = "~/overlay"

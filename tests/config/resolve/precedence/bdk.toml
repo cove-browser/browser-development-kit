@@ -1,0 +1,8 @@
+[browser]
+name = "Cove"
+internal_scheme = "cove"
+
+[pages.overrides]
+flags = "disabled"
+history = "chromium"
+new-tab = "Custom/Sidebar"

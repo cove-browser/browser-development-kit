@@ -1,0 +1,12 @@
+{
+  "infoPlist": {
+    "CFBundleURLTypes": [
+      {
+        "CFBundleURLSchemes": ["http", "cove"]
+      }
+    ]
+  },
+  "entitlements": {
+    "com.apple.security.app-sandbox": true
+  }
+}

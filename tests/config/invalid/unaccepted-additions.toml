@@ -1,0 +1,25 @@
+# Keys that configuration.md lists as Added or Conditional are not accepted yet.
+[browser]
+name = "Cove"
+logo = "Resources/logo.svg"
+
+[browser.user_agent]
+brand = "Cove"
+
+[storage]
+directory = "Cove"
+
+[search]
+default = "duckduckgo"
+
+[settings.defaults]
+"security.httpsOnly" = true
+
+[diagnostics]
+crash_reports = "local"
+
+[services.credentials]
+provider = "app"
+
+[pages]
+diagnostics = "disabled"

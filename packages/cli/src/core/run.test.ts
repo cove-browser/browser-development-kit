@@ -106,6 +106,7 @@ describe("bdk build config", () => {
       projectDir: dir,
       schema: { type: "object" },
       bundleFacts: { infoPlist: { CFBundleName: "App" } },
+      bdkVersion: "1.2.3",
     });
   });
 
@@ -116,7 +117,9 @@ describe("bdk build config", () => {
       resolveConfig: () => Promise.resolve({ diagnostics: [error], resolved: { ignored: true } }),
     });
     expect(await run(["build", "config"], ctx)).toBe(ExitCode.ProjectFailure);
-    expect(ctx.err.join("")).toBe("bdk.toml:3: error: bad value [config.type]\n  fix: Quote it.\n");
+    expect(ctx.err.join("")).toBe(
+      `${join(dir, "bdk.toml")}:3: error: bad value [config.type]\n  fix: Quote it.\n`,
+    );
     await expect(stat(join(dir, "bdk.resolved.json"))).rejects.toThrow();
   });
 
@@ -193,7 +196,7 @@ describe("bdk build config", () => {
       ok: false,
       exitCode: 1,
       command: "build config",
-      diagnostics: [error],
+      diagnostics: [{ ...error, file: join(dir, "bdk.toml") }],
       result: { config: { wrote: false } },
     });
     expect(ctx.err.join("")).toContain("error: bad value");
@@ -231,12 +234,24 @@ describe("diagnostic form selection", () => {
       stderrIsTTY: true,
     });
     await run(["build", "config", ...extra], ctx);
-    return ctx.err.join("");
+    return ctx.err.join("").replaceAll(`${dir}/`, "");
   }
 
   it("uses the Xcode form inside an Xcode build", async () => {
     const text = await failing({ XCODE_VERSION_ACTUAL: "2600" });
     expect(text).toBe("bdk.toml:3: error: [config.type] bad value\nbdk.toml:3: note: Quote it.\n");
+  });
+
+  it("reports project files with absolute paths, as Xcode needs", async () => {
+    const { dir } = await tempProject();
+    const ctx = testContext({
+      cwd: dir,
+      env: { XCODE_VERSION_ACTUAL: "2600" },
+      platform: ideAwarePlatform,
+      resolveConfig: () => Promise.resolve({ diagnostics: [error] }),
+    });
+    await run(["build", "config"], ctx);
+    expect(ctx.err.join("")).toContain(`${join(dir, "bdk.toml")}:3: error:`);
   });
 
   it("uses the human form, with colour on a terminal, otherwise", async () => {

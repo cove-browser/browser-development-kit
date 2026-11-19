@@ -1,0 +1,6 @@
+[browser]
+name = "Cove"
+
+[pages.overrides]
+agents = "Pages/Agents"
+ghost = "Pages/Ghost"

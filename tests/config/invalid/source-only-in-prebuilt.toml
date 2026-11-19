@@ -1,0 +1,12 @@
+[browser]
+name = "Cove"
+
+[runtime]
+mode = "prebuilt"
+
+[chromium]
+revision = "150.0.7000.1"
+patches = "Chromium/patches"
+
+[chromium.gn_args]
+is_debug = false

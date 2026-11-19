@@ -1,0 +1,25 @@
+{
+  "diagnostics": [
+    {
+      "code": "config.source_only",
+      "severity": "error",
+      "message": "\"chromium.revision\" is only valid when runtime.mode = \"source\".",
+      "file": "bdk.toml",
+      "line": 8
+    },
+    {
+      "code": "config.source_only",
+      "severity": "error",
+      "message": "\"chromium.patches\" is only valid when runtime.mode = \"source\".",
+      "file": "bdk.toml",
+      "line": 9
+    },
+    {
+      "code": "config.source_only",
+      "severity": "error",
+      "message": "\"chromium.gn_args\" is only valid when runtime.mode = \"source\".",
+      "file": "bdk.toml",
+      "line": 11
+    }
+  ]
+}

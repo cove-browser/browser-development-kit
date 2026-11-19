@@ -1,0 +1,18 @@
+{
+  "diagnostics": [
+    {
+      "code": "pages.missing_entry",
+      "severity": "error",
+      "message": "\"pages.overrides.agents\" points at \"Pages/Agents\", which has no index.html.",
+      "file": "bdk.toml",
+      "line": 5
+    },
+    {
+      "code": "pages.missing_entry",
+      "severity": "error",
+      "message": "\"pages.overrides.ghost\" points at \"Pages/Ghost\", which has no index.html.",
+      "file": "bdk.toml",
+      "line": 6
+    }
+  ]
+}

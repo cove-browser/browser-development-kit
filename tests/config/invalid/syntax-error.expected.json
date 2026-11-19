@@ -1,0 +1,11 @@
+{
+  "diagnostics": [
+    {
+      "code": "config.syntax",
+      "severity": "error",
+      "message": "bdk.toml is not valid TOML.",
+      "file": "bdk.toml",
+      "line": 2
+    }
+  ]
+}

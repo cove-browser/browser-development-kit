@@ -1,0 +1,39 @@
+{
+  "diagnostics": [
+    {
+      "code": "pages.capability_denied",
+      "severity": "error",
+      "message": "\"contents.read\" can never be granted to a page. Only Swift and automation sessions can hold it.",
+      "file": "bdk.toml",
+      "line": 5
+    },
+    {
+      "code": "pages.capability_denied",
+      "severity": "error",
+      "message": "\"contents.*\" can never be granted to a page. Only Swift and automation sessions can hold it.",
+      "file": "bdk.toml",
+      "line": 5
+    },
+    {
+      "code": "pages.capability_denied",
+      "severity": "error",
+      "message": "\"automation.run\" can never be granted to a page. Only Swift and automation sessions can hold it.",
+      "file": "bdk.toml",
+      "line": 5
+    },
+    {
+      "code": "pages.capability_denied",
+      "severity": "error",
+      "message": "\"devtools.open\" can never be granted to a page. Only Swift and automation sessions can hold it.",
+      "file": "bdk.toml",
+      "line": 5
+    },
+    {
+      "code": "pages.capability_denied",
+      "severity": "error",
+      "message": "\"cookies.values\" can never be granted to a page. Only Swift and automation sessions can hold it.",
+      "file": "bdk.toml",
+      "line": 5
+    }
+  ]
+}

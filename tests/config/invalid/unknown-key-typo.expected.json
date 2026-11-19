@@ -1,0 +1,11 @@
+{
+  "diagnostics": [
+    {
+      "code": "config.unknown_key",
+      "severity": "error",
+      "message": "Unknown key \"browser.internal_schem\". Did you mean \"browser.internal_scheme\"?",
+      "file": "bdk.toml",
+      "line": 3
+    }
+  ]
+}
