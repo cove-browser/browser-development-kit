@@ -36,6 +36,13 @@ if [[ -d "$app" ]]; then chmod -R u+w "$app"; fi
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$product" "$app/Contents/MacOS/MinimalBrowser"
+# swift build stamps the deployment target (14.0) as the SDK the binary was linked against, and macOS picks the
+# window design from that: an old SDK gets the old traffic lights and chrome. Record the SDK it was really built
+# with, as Xcode does. The deployment target is unchanged.
+sdk="$(xcrun --sdk macosx --show-sdk-version)"
+minos="$(vtool -show-build "$app/Contents/MacOS/MinimalBrowser" | awk '/minos/ {print $2; exit}')"
+vtool -set-build-version macos "$minos" "$sdk" -replace -output "$app/Contents/MacOS/MinimalBrowser" \
+  "$app/Contents/MacOS/MinimalBrowser"
 cp "$project/Info.plist" "$app/Contents/Info.plist"
 cp "$project/bdk.resolved.json" "$app/Contents/Resources/bdk.resolved.json"
 # The executable links the framework only when it was built against the real runtime.
