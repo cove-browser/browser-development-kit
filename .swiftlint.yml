@@ -23,8 +23,18 @@ disabled_rules:
   - switch_case_alignment
   - sorted_imports
   - multiple_closures_with_trailing_closure
+  # Flags String(decoding:as:), which is the non-optional conversion it recommends elsewhere.
+  - optional_data_string_conversion
 opt_in_rules:
   - force_unwrapping
   - explicit_init
   - empty_count
   - unused_import
+
+# swift-api.md names `ID` types and the `ui` domain, and nests Navigation.Entry two deep.
+identifier_name:
+  excluded: [id, ui]
+type_name:
+  excluded: [ID]
+nesting:
+  type_level: 2

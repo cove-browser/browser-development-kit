@@ -7,11 +7,14 @@
     "build": {
       "executor": "nx:run-commands",
       "cache": true,
-      "options": { "command": "swift build --package-path packages/swift" },
+      "options": { "command": "swift build" },
       "inputs": [
         "default",
         "nativeToolchain",
+        "{workspaceRoot}/Package.swift",
         "{workspaceRoot}/packages/core/include/**/*",
+        "{workspaceRoot}/packages/core/stub/**/*",
+        "{workspaceRoot}/packages/core/generated/**/*",
         { "dependentTasksOutputFiles": "**/runtime.json", "transitive": false },
         { "fileset": "{workspaceRoot}/.bdk/runtime.json" }
       ],
@@ -20,11 +23,14 @@
     "test": {
       "executor": "nx:run-commands",
       "cache": true,
-      "options": { "command": "swift test --package-path packages/swift" },
+      "options": { "command": "swift test" },
       "inputs": [
         "default",
         "nativeToolchain",
+        "{workspaceRoot}/Package.swift",
         "{workspaceRoot}/packages/core/include/**/*",
+        "{workspaceRoot}/packages/core/stub/**/*",
+        "{workspaceRoot}/packages/core/generated/**/*",
         { "dependentTasksOutputFiles": "**/runtime.json", "transitive": false },
         { "fileset": "{workspaceRoot}/.bdk/runtime.json" }
       ]
@@ -40,17 +46,17 @@
       "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "swift format lint --strict --recursive packages/swift/Sources packages/swift/Tests packages/swift/Package.swift",
-          "swiftlint lint --strict --config .swiftlint.yml packages/swift"
+          "swift format lint --strict --recursive packages/swift/Sources packages/swift/Tests Package.swift",
+          "swiftlint lint --strict --config .swiftlint.yml packages/swift Package.swift"
         ],
         "parallel": false
       },
-      "inputs": ["default", "lintConfig", "nativeToolchain"]
+      "inputs": ["default", "lintConfig", "nativeToolchain", "{workspaceRoot}/Package.swift"]
     },
     "format": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "swift format --in-place --recursive packages/swift/Sources packages/swift/Tests packages/swift/Package.swift"
+        "command": "swift format --in-place --recursive packages/swift/Sources packages/swift/Tests Package.swift"
       }
     }
   }
