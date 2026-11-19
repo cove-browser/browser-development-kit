@@ -8,7 +8,7 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
 | Path | Contents |
 |---|---|
 | `include/bdk/*.h` | Public headers: plain C, `extern "C"` guards, `BDK_EXPORT`, no platform header, no platform type |
-| `interface/` | Interface definitions (JSON, T-ABI-03). Empty for now; every `*.json` here goes into the hash |
+| `interface/` | Interface definitions (JSON, T-ABI-03): one `<namespace>.json` per namespace, `policy.json`, and the identifier registry `ids.json`. Every `*.json` here goes into the hash |
 | `stub/` | In-memory runtime, C++23, no exceptions, no platform code. Test hooks in `stub/bdk_stub.h` are not ABI |
 | `tests/` | Conformance suite in C11, written against `bdk/bdk.h` and `tests/harness.h` only |
 | `cmake/abi-hash.cmake`, `generated/` | Hash generator and checker; the recorded hash |
@@ -65,8 +65,11 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
     Completing twice fails with `ui.requestCompleted`.
 12. `bdk_native_handle_t` and `bdk_native_kind_t` live in `bdk_base.h` (c-abi.md puts them in section 5.4) because the
     start configuration needs them.
-13. Event kinds, runtime event kinds, surface numbers and security/visibility values in `bdk_ids.h` are hand-assigned
-    until T-ABI-03 generates the file. Surface numbers follow the order of the ui-requests.md table.
+13. `include/bdk/bdk_ids.h` is generated (T-ABI-03) from `interface/*.json` and the registry `interface/ids.json`; do
+    not edit it. Error domains and codes, runtime and contents event kinds, event flags, audio, security and visibility
+    values and surface numbers are `constants` in `interface/abi.json`, with the values they had when the file was
+    written by hand. Surface numbers follow the order of the ui-requests.md table. See "Interface definitions and
+    identifiers".
 
 ### Named in c-abi.md and not declared (nothing states their shape)
 
@@ -74,6 +77,37 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
 `bdk_window_set_anchor_provider`, `_set_request_handler`, `bdk_window_for_contents`, `_contents`, `_active_contents`;
 `bdk_session_run`, `bdk_task_*`, `bdk_automation_endpoint_*`, `bdk_automation_subscribe_audit`;
 `bdk_crash_reports_*`, `bdk_netlog_*`. Interface definition validation and generated identifiers are T-ABI-03.
+
+## Interface definitions and identifiers
+
+The format is c-abi.md section 7. The generator, validator and tests are in `packages/js/codegen`; nothing in this
+chain needs Chromium.
+
+| File in `interface/` | Role |
+|---|---|
+| `<namespace>.json` | One namespace: `types`, `commands`, `events` and, for the ABI's own identifier families, `constants`. The file name must equal `namespace` |
+| `policy.json` | `neverForPages` and `neverForSessions`: capability names or `namespace.*` patterns. A command whose `callers` include `page` cannot use one on the first list; one that includes `session` cannot use one on the second |
+| `ids.json` | The registry: every identifier ever assigned, retired ones included. Generated; keep it under version control |
+
+`constants` is the section for identifiers that are not commands (c-abi.md is silent on it). Each entry is a group:
+`{ "group", "kind": "string" | "enum" | "flags", "prefix": "BDK_X_", "comment", "values": { "NAME": value } }`, which
+becomes `#define BDK_X_NAME <value>` (strings quoted, enums `Nu`, flags `0xNu` with a single bit each). Values are
+stated in the definition. The group named `surfaces` is also the set of surface names a command's `raises` may use, in
+lower case. Commands and events get `BDK_COMMAND_<NAME>` and `BDK_EVENT_<NAME>` (`history.deleteAll` becomes
+`HISTORY_DELETE_ALL`) with an identifier the registry assigns: the next integer above every identifier ever assigned,
+starting at 1. No command or event is defined yet: services.md is still a placeholder catalogue, and the broker is M3
+(T-SVC-01).
+
+Rules the registry enforces: a new name gets a new identifier; a removed name stays in `ids.json` marked `retired` and
+its identifier is never given to another name; a retired name cannot be defined again; a constant whose value differs
+from the registry is a renumbering and fails; so does a new constant that takes a value already in the registry.
+
+To add an identifier: edit the definition, run `pnpm exec nx run js-codegen:codegen` (rewrites `ids.json` and
+`bdk_ids.h`), run `cmake -DMODE=generate -P packages/core/cmake/abi-hash.cmake` (the definitions are hashed), and
+commit all of it. `pnpm exec nx run js-codegen:codegen-check` fails when the committed outputs are stale; `js-codegen:test`
+and the `abi-linux` job run the same check. To remove one, delete it from the definition and regenerate. Do not edit
+`ids.json` by hand except to resolve a merge: two branches that add identifiers conflict there, and the fix is to keep
+both sides and re-run the generator, which fails if two names ended up with one identifier.
 
 ## The ABI hash
 
