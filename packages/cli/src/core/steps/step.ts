@@ -1,4 +1,4 @@
-import type { ParsedArgs } from "../args.js";
+import type { ParsedArgs, StepFlag } from "../args.js";
 import type { Context } from "../context.js";
 import type { Diagnostic } from "../diagnostics.js";
 import type { ExitCodeValue } from "../exit-codes.js";
@@ -21,6 +21,6 @@ export interface StepResult {
 export interface Step {
   name: string;
   /** Flags this step reads besides the global ones. */
-  flags: readonly "out"[];
+  flags: readonly StepFlag[];
   run(input: StepInput): Promise<StepResult>;
 }

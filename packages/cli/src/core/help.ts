@@ -3,7 +3,8 @@ export function helpText(steps: readonly string[]): string {
   return `bdk: the Browser Development Kit command line tool
 
 Usage:
-  bdk build <step>... [--out <file>]
+  bdk build config [--out <file>]
+  bdk build sign --bundle <App.app> --identity <name|-> [--team <id>] [--entitlements <file>]
   bdk --help | --version
 
 Commands:
@@ -16,6 +17,10 @@ Options:
   --diagnostics <form>    Print diagnostics as "human" or "xcode" (file:line: error: message).
                           Default: "xcode" inside an Xcode build, otherwise "human"
   --out <file>            For \`build config\`: where to write bdk.resolved.json
+  --bundle, --identity, --team, --entitlements
+                          For \`build sign\`. In an Xcode build they default to CODESIGNING_FOLDER_PATH,
+                          EXPANDED_CODE_SIGN_IDENTITY, DEVELOPMENT_TEAM and CODE_SIGN_ENTITLEMENTS.
+                          BDK_SKIP_SIGNING=1 skips the step
   -h, --help              Show this help
   -V, --version           Show the version
 

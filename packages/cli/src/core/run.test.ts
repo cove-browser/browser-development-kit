@@ -95,6 +95,7 @@ describe("bdk build config", () => {
         name: "fake",
         isIdeBuild: () => false,
         bundleFacts: () => Promise.resolve({ infoPlist: { CFBundleName: "App" } }),
+        sign: () => Promise.resolve({ diagnostics: [], signed: [] }),
       },
       resolveConfig: (options) => {
         seen = options;
@@ -221,6 +222,7 @@ const ideAwarePlatform: Platform = {
   name: "fake-ide",
   isIdeBuild: (env) => env.XCODE_VERSION_ACTUAL !== undefined,
   bundleFacts: () => Promise.resolve(undefined),
+  sign: () => Promise.resolve({ diagnostics: [], signed: [] }),
 };
 
 describe("diagnostic form selection", () => {

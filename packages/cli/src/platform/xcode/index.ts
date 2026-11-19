@@ -5,6 +5,8 @@ import { promisify } from "node:util";
 import type { BundleFacts } from "../../core/config/index.js";
 import { CliError, ExitCode } from "../../core/exit-codes.js";
 import type { Platform } from "../platform.js";
+import { signBundle } from "./sign.js";
+import { runTool, type ToolRunner } from "./tools.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -70,10 +72,14 @@ async function readPlist(file: string, toJson: PlistToJson): Promise<Record<stri
 }
 
 /** The macOS platform module: the Xcode build environment and the property lists it names. */
-export function createXcodePlatform(toJson: PlistToJson = plutilToJson): Platform {
+export function createXcodePlatform(
+  toJson: PlistToJson = plutilToJson,
+  runner: ToolRunner = runTool,
+): Platform {
   return {
     name: "xcode",
     isIdeBuild: (env) => env.XCODE_VERSION_ACTUAL !== undefined,
+    sign: (request) => signBundle(request, runner),
     async bundleFacts(env, projectDir) {
       const base = env.SRCROOT ?? projectDir;
       const facts: BundleFacts = {};

@@ -1,4 +1,4 @@
-import { type ParsedArgs, parseCliArgs } from "./args.js";
+import { type ParsedArgs, parseCliArgs, STEP_FLAGS } from "./args.js";
 import type { Context } from "./context.js";
 import type { Diagnostic } from "./diagnostics.js";
 import { type DiagnosticFormat, formatDiagnostics } from "./diagnostics-format.js";
@@ -57,8 +57,11 @@ function selectSteps(args: ParsedArgs): Step[] {
     if (step === undefined) throw usageError(`Unknown build step "${name}". Steps: ${known}.`);
     return step;
   });
-  if (args.out !== undefined && !chosen.some((s) => s.flags.includes("out"))) {
-    throw usageError("--out applies to `bdk build config` only.");
+  for (const flag of STEP_FLAGS) {
+    if (args[flag] !== undefined && !chosen.some((s) => s.flags.includes(flag))) {
+      const owners = BUILD_STEPS.filter((s) => s.flags.includes(flag)).map((s) => s.name);
+      throw usageError(`--${flag} applies to \`bdk build ${owners.join("`, `bdk build ")}\` only.`);
+    }
   }
   return chosen;
 }
