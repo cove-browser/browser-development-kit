@@ -9,5 +9,7 @@ build/
 coverage/
 graph.json
 .DS_Store
+# resolved from bdk.toml by the build
+apps/**/bdk.resolved.json
 # generated bindings are produced by the codegen targets
 packages/js/protocol/src/generated/
