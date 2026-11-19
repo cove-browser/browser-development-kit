@@ -108,7 +108,7 @@ Exit criteria: the multi-page sample survives a renderer crash and an applicatio
 | T-PKG-04 | Partly: a zipped xcframework of the framework keeps its symlinks through a SwiftPM path binary target. The https download path needs a published runtime. | [feasibility.md](feasibility.md) section 7 |
 | T-SWF-05 | Done on the stub: two pages in one window; launch and relaunch-restore tests pass. Nothing renders. | `apps/examples/minimal-browser/README.md` |
 | T-ABI-04, T-ADP-05, T-ADP-07, T-MAC-03, T-MAC-05, T-PKG-02, T-CHR-12 | Open, blocked on M0 and G0 | — |
-| T-PKG-02 identity, renderer-crash recovery, private-profile separation | Open: need the real runtime; the ABI has no process-gone event yet | — |
+| Exit criteria: renderer-crash recovery, private-profile separation | Open: need the real runtime; the ABI has no process-gone event yet | — |
 
 ### M3 — Browser services and default UI
 
