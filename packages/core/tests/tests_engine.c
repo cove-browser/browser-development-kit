@@ -18,6 +18,14 @@ void bdk_harness_engine_key(bdk_contents_t contents, unsigned short key_code,
 int bdk_harness_engine_compose(bdk_contents_t contents, const char* marked, const char* text);
 int bdk_harness_engine_window_is_key(bdk_contents_t contents);
 int bdk_harness_engine_accessibility_text(bdk_contents_t contents, char* out, size_t n);
+/* From harness_engine.mm: an application window registered with the runtime (returns its index,
+   or -1), its page views added to it or removed from it, and the window unregistered and closed;
+   and how many NSWindows the application has. */
+int bdk_harness_engine_window_open(bdk_runtime_t rt);
+void bdk_harness_engine_window_attach(int window, bdk_contents_t contents);
+void bdk_harness_engine_window_detach(bdk_contents_t contents);
+void bdk_harness_engine_window_close(int window);
+size_t bdk_harness_engine_app_window_count(void);
 /* From harness_engine.mm: while set, a new runtime keeps the persistent profiles of the last one.
  */
 extern int bdk_harness_engine_keep_profiles;
@@ -40,6 +48,8 @@ typedef struct {
 } ui_log_t;
 
 static ui_log_t g_new_windows, g_menus, g_fullscreen;
+/* The profile start_with_page opened. */
+static bdk_profile_t g_page_profile;
 
 static bdk_ui_response_t record(void* ctx, const bdk_ui_request_info_t* info) {
     ui_log_t* log = (ui_log_t*)ctx;
@@ -79,7 +89,8 @@ static bdk_contents_t start_with_page(void) {
     REQUIRE(bdk_ui_set_handler(t_runtime, BDK_SURFACE_FULLSCREEN, record, &g_fullscreen, NULL,
                                &err) == BDK_OK);
     t_freeze();
-    bdk_contents_t c = t_new_contents(t_new_profile("Engine"));
+    g_page_profile = t_new_profile("Engine");
+    bdk_contents_t c = t_new_contents(g_page_profile);
     REQUIRE(bdk_contents_load(c, S(OPENER), &err) == BDK_OK);
     t_pump();
     return c;
@@ -439,6 +450,190 @@ static void test_engine_the_accessibility_tree_exposes_page_content(void) {
     bdk_harness_engine_show(c, 0);
 }
 
+/* ---- host contexts (T-ADP-01 to T-ADP-03) ---- */
+
+static bdk_testing_tab_info_t tab_info_of(bdk_contents_t c) {
+    bdk_testing_tab_info_t info;
+    memset(&info, 0, sizeof info);
+    info.struct_size = sizeof info;
+    REQUIRE(bdk_testing_tab_info(c, &info) == BDK_OK);
+    return info;
+}
+
+/* A runtime with the engine's UI handlers, and two pages of one profile that have loaded the
+   opener page. */
+static void start_with_two_pages(bdk_contents_t* a, bdk_contents_t* b) {
+    reset_logs();
+    *a = start_with_page();
+    bdk_error_t err = 0;
+    *b = t_new_contents(g_page_profile);
+    REQUIRE(bdk_contents_load(*b, S(OPENER), &err) == BDK_OK);
+    t_pump();
+}
+
+static void test_engine_a_new_page_is_a_tab_of_a_parking_context(void) {
+    reset_logs();
+    t_start_frozen();
+    size_t windows = bdk_harness_engine_app_window_count();
+    bdk_profile_t profile = t_new_profile("Parked");
+    bdk_contents_t first = t_new_contents(profile);
+    t_pump();
+    bdk_testing_tab_info_t info = tab_info_of(first);
+    CHECK(info.is_tab);
+    CHECK(info.parking);
+    CHECK(!info.has_native_window);
+    CHECK(info.tab_id > 0);
+    CHECK(info.context_id > 0);
+    CHECK(info.tab_count == 1);
+    CHECK(bdk_testing_host_context_count() == 1);
+    /* No Chrome window of its own is shown, and the application gained no window. */
+    CHECK(bdk_testing_chrome_window_count() == 0);
+    CHECK(bdk_harness_engine_app_window_count() == windows);
+    /* A second page of the profile is a second tab of the same context; a page of another profile
+       has a parking context of its own. */
+    bdk_contents_t second = t_new_contents(profile);
+    bdk_contents_t elsewhere = t_new_contents(t_new_profile("Elsewhere"));
+    bdk_testing_tab_info_t a = tab_info_of(first), b = tab_info_of(second),
+                           e = tab_info_of(elsewhere);
+    CHECK(a.parking && b.parking && e.parking);
+    CHECK(a.context_id == b.context_id);
+    CHECK(a.tab_id != b.tab_id);
+    CHECK(a.tab_count == 2);
+    CHECK(e.context_id != a.context_id);
+    CHECK(bdk_testing_host_context_count() == 2);
+    CHECK(bdk_testing_chrome_window_count() == 0);
+}
+
+static void test_engine_attaching_a_page_to_a_registered_window_moves_it_into_its_context(void) {
+    reset_logs();
+    bdk_contents_t c = start_with_page();
+    bdk_testing_tab_info_t parked = tab_info_of(c);
+    REQUIRE(parked.parking);
+    int window = bdk_harness_engine_window_open(t_runtime);
+    REQUIRE(window >= 0);
+    bdk_harness_engine_window_attach(window, c);
+    bdk_testing_tab_info_t placed = tab_info_of(c);
+    CHECK(placed.is_tab);
+    CHECK(!placed.parking);
+    CHECK(placed.has_native_window);
+    CHECK(placed.context_id != parked.context_id);
+    CHECK(placed.tab_id == parked.tab_id);
+    CHECK(placed.tab_count == 1);
+    /* The move did not reload the page. */
+    char title[256];
+    title_of(c, title, sizeof title);
+    CHECK(strcmp(title, OPENER) == 0);
+    CHECK(bdk_testing_chrome_window_count() == 0);
+    bdk_harness_engine_window_close(window);
+}
+
+static void test_engine_moving_a_page_between_windows_keeps_its_tab_history_and_renderer(void) {
+    reset_logs();
+    bdk_contents_t c = start_with_page();
+    bdk_error_t err = 0;
+    REQUIRE(bdk_contents_load(c, S("https://bdk.test/second"), &err) == BDK_OK);
+    t_pump();
+    run_script(c, "window.bdkMarker = 42", 0);
+    bdk_testing_tab_info_t parked = tab_info_of(c);
+    int first = bdk_harness_engine_window_open(t_runtime);
+    int second = bdk_harness_engine_window_open(t_runtime);
+    REQUIRE(first >= 0 && second >= 0);
+    bdk_harness_engine_window_attach(first, c);
+    bdk_testing_tab_info_t in_first = tab_info_of(c);
+    bdk_harness_engine_window_attach(second, c);
+    bdk_testing_tab_info_t in_second = tab_info_of(c);
+    CHECK(in_first.is_tab && !in_first.parking);
+    CHECK(in_second.is_tab && !in_second.parking);
+    CHECK(in_first.context_id != in_second.context_id);
+    CHECK(in_first.context_id != parked.context_id);
+    CHECK(in_first.tab_id == parked.tab_id);
+    CHECK(in_second.tab_id == parked.tab_id);
+    CHECK(in_second.tab_count == 1);
+    /* History and the page's own state came along: the renderer was never replaced. */
+    bdk_buffer_t entries = 0;
+    REQUIRE(bdk_contents_entries(c, &entries, &err) == BDK_OK);
+    char text[512];
+    t_buffer_text(entries, text, sizeof text);
+    CHECK(strstr(text, "\"current\":1") != NULL);
+    CHECK(strstr(text, OPENER) != NULL);
+    bdk_release(entries);
+    run_script(c, "document.title = 'marker:' + window.bdkMarker", 0);
+    CHECK(wait_for_title(c, "marker:42"));
+    /* And back again. */
+    bdk_harness_engine_window_attach(first, c);
+    bdk_testing_tab_info_t back = tab_info_of(c);
+    CHECK(back.context_id == in_first.context_id);
+    CHECK(back.tab_id == parked.tab_id);
+    CHECK(bdk_testing_chrome_window_count() == 0);
+    bdk_harness_engine_window_close(first);
+    bdk_harness_engine_window_close(second);
+}
+
+static void test_engine_a_detached_page_stays_a_background_tab_of_its_last_window(void) {
+    bdk_contents_t a, b;
+    start_with_two_pages(&a, &b);
+    int window = bdk_harness_engine_window_open(t_runtime);
+    REQUIRE(window >= 0);
+    bdk_harness_engine_window_attach(window, a);
+    bdk_testing_tab_info_t first = tab_info_of(a);
+    bdk_harness_engine_window_detach(a);
+    bdk_testing_tab_info_t detached = tab_info_of(a);
+    /* No view in any window: the page is still a tab of the window it was last in. */
+    CHECK(detached.is_tab);
+    CHECK(!detached.parking);
+    CHECK(detached.context_id == first.context_id);
+    CHECK(detached.tab_id == first.tab_id);
+    CHECK(bdk_testing_chrome_window_count() == 0);
+    bdk_harness_engine_window_close(window);
+}
+
+static void test_engine_closing_a_window_parks_its_pages(void) {
+    bdk_contents_t a, b;
+    start_with_two_pages(&a, &b);
+    int window = bdk_harness_engine_window_open(t_runtime);
+    REQUIRE(window >= 0);
+    bdk_harness_engine_window_attach(window, a);
+    bdk_testing_tab_info_t placed = tab_info_of(a);
+    REQUIRE(!placed.parking);
+    size_t contexts = bdk_testing_host_context_count();
+    bdk_harness_engine_window_close(window);
+    bdk_testing_tab_info_t parked = tab_info_of(a);
+    CHECK(parked.is_tab);
+    CHECK(parked.parking);
+    CHECK(parked.tab_id == placed.tab_id);
+    /* The window's context closed; the page's own state is intact. */
+    CHECK(bdk_testing_host_context_count() == contexts - 1);
+    char title[256];
+    title_of(a, title, sizeof title);
+    CHECK(strcmp(title, OPENER) == 0);
+    CHECK(bdk_testing_chrome_window_count() == 0);
+}
+
+static void test_engine_focusing_a_page_activates_its_tab_and_destroying_it_closes_the_tab(void) {
+    bdk_contents_t a, b;
+    start_with_two_pages(&a, &b);
+    int window = bdk_harness_engine_window_open(t_runtime);
+    REQUIRE(window >= 0);
+    bdk_harness_engine_window_attach(window, a);
+    bdk_harness_engine_window_attach(window, b);
+    CHECK(tab_info_of(a).context_id == tab_info_of(b).context_id);
+    CHECK(tab_info_of(a).tab_count == 2);
+    REQUIRE(bdk_contents_focus(b) == BDK_OK);
+    t_pump();
+    CHECK(tab_info_of(b).active);
+    CHECK(!tab_info_of(a).active);
+    REQUIRE(bdk_contents_focus(a) == BDK_OK);
+    t_pump();
+    CHECK(tab_info_of(a).active);
+    CHECK(!tab_info_of(b).active);
+    /* Destroying a page closes its tab. */
+    REQUIRE(bdk_contents_destroy(a) == BDK_OK);
+    t_pump();
+    CHECK(tab_info_of(b).tab_count == 1);
+    CHECK(bdk_testing_chrome_window_count() == 0);
+    bdk_harness_engine_window_close(window);
+}
+
 /* ---- codecs (decision D7, T-CHR-12) ---- */
 
 /* The runtime is built with Chromium's open codecs only: no bundled H.264, AAC or HEVC decoder
@@ -560,6 +755,17 @@ const t_test_t t_engine_tests[] = {
      test_engine_an_input_method_composes_text_in_the_page},
     {"engine_the_accessibility_tree_exposes_page_content",
      test_engine_the_accessibility_tree_exposes_page_content},
+    {"engine_a_new_page_is_a_tab_of_a_parking_context",
+     test_engine_a_new_page_is_a_tab_of_a_parking_context},
+    {"engine_attaching_a_page_to_a_registered_window_moves_it_into_its_context",
+     test_engine_attaching_a_page_to_a_registered_window_moves_it_into_its_context},
+    {"engine_moving_a_page_between_windows_keeps_its_tab_history_and_renderer",
+     test_engine_moving_a_page_between_windows_keeps_its_tab_history_and_renderer},
+    {"engine_a_detached_page_stays_a_background_tab_of_its_last_window",
+     test_engine_a_detached_page_stays_a_background_tab_of_its_last_window},
+    {"engine_closing_a_window_parks_its_pages", test_engine_closing_a_window_parks_its_pages},
+    {"engine_focusing_a_page_activates_its_tab_and_destroying_it_closes_the_tab",
+     test_engine_focusing_a_page_activates_its_tab_and_destroying_it_closes_the_tab},
     {"engine_only_open_codecs_are_offered", test_engine_only_open_codecs_are_offered},
     {"engine_session_state_restores_chromium_history_into_a_new_page",
      test_engine_session_state_restores_chromium_history_into_a_new_page},
