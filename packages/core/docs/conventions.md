@@ -61,9 +61,13 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
    callbacks yet because their signatures are not specified.
 10. Application command, event and page-route names must start with `app.` (`config.nameNotApp`). Duplicates fail
     with `config.duplicateName` (not in the swift-api error table).
-11. A completion named `"grant"` is treated as granting and needs a gesture event (`ui.gestureRequired`). c-abi.md
-    does not say which completion names grant; the real list comes from the per-surface interface definitions.
-    Completing twice fails with `ui.requestCompleted`.
+11. Which completions grant is the `grants` column of the surface table in `runtime/ui_router.cc`, from
+    ui-requests.md section 5: `grant` (permissions, and on every surface), `keep` (downloads), `save` (passwords,
+    autofill), `accept` (autofill suggestions), `proceed` (interstitials), `select` (device choosers), `share` (screen
+    capture), `open` (external protocols). A granting completion needs a gesture event of kind `BDK_NATIVE_NSEVENT`
+    (`ui.gestureRequired`). Completing twice fails with `ui.requestCompleted`. Other completion names are not
+    validated per surface until the per-surface interface definitions exist; the router adds only the rules in
+    "The UI request router" below.
 12. `bdk_native_handle_t` and `bdk_native_kind_t` live in `bdk_base.h` (c-abi.md puts them in section 5.4) because the
     start configuration needs them.
 13. `include/bdk/bdk_ids.h` is generated (T-ABI-03) from `interface/*.json` and the registry `interface/ids.json`; do
@@ -71,6 +75,30 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
     values and surface numbers are `constants` in `interface/abi.json`, with the values they had when the file was
     written by hand. Surface numbers follow the order of the ui-requests.md table. See "Interface definitions and
     identifiers".
+
+14. A surface's mode comes from `surfaces` in the resolved configuration. A surface that is not listed is `default`
+    (the resolver lists them all). `[ui] default_browser_surfaces` is already folded into the listed modes by the
+    resolver, so the core never reads it.
+
+### The UI request router
+
+`runtime/ui_router.cc` (T-UIR-01) is the one place that decides what happens to a request. The backend raises it with
+`raise_ui_request(rt, request)` and learns the outcome from `request->on_finish`, called once, on a later task.
+
+| Question | Decision |
+|---|---|
+| Where are the modes validated? | `bdk_runtime_start` reads `surfaces` before the backend starts. A mode the surface does not allow is `ui.surfaceMode`, an unknown surface `ui.surfaceUnknown`, a value that is not a mode `config.resolvedInvalid`. packages/cli validates the same table from its schema first (`ui.surface_mode`); `units.test.ts` fails when the schema and the table in `ui_router.cc` disagree. The surface table (name, id, allowed modes, granting completions) is the core's source of truth for the runtime, the schema for the CLI. |
+| `custom` and no handler | A `custom` surface with no handler fails `bdk_runtime_freeze_registrations` with `ui.handlerMissing` (naming every such surface); the runtime stays unfrozen so a handler can be added. configuration.md says "before start"; handlers are registered after `bdk_runtime_start` and before the freeze, so the freeze is where it can be checked. |
+| `disabled` | The request is finished as `UiOutcome::kDisabled` (stub and harness: `BDK_STUB_UI_DISABLED`, `BDK_HARNESS_UI_DISABLED`, 6) on a later task, with no handler called and no queue slot taken. The backend denies or cancels and makes the web or extension API report unavailable; `ui_surface_available(rt, surface)` answers that question before a request is raised. A handler registered on a disabled surface is ignored and released at shutdown as usual. |
+| `default`, no handler | `kDefaulted`: the backend shows its default presenter. A handler's `BDK_UI_USE_DEFAULT` and `bdk_ui_use_default` give the same outcome. |
+| `reject` | `kRejected`: the backend denies or cancels. A handler answer that is not one of the three responses is also `kRejected`, the safe reading. |
+| Interstitials (`certificate_errors`, `reputation_warnings`) | Only `go_back` and `proceed` complete them (`ui.completionNotAllowed`). `proceed` needs a gesture and a payload with `"isOverridable":true`; a request that does not say is not overridable (`ui.notOverridable`). `reject` and a dropped request finish as `kCompleted` with `go_back`, so the raiser never has to decide what an unsafe reject means. A withdrawal stays `kWithdrawn`. They cannot be disabled (`ui.surfaceMode`). |
+| Subsets | A `grant` on `permissions` may name `kinds` in its arguments; each must be in the request's `kinds` array (`ui.widensRequest`). A request that names no kinds offers nothing to name. No `kinds` argument means everything asked. |
+| Queueing | Requests of one surface for one page (`contents`, 0 is its own page) reach the handler one at a time; the next is delivered, on a later task, after the previous one finishes by any route (completed, default, reject, released, withdrawn). A request withdrawn while waiting is never delivered. The default presenter path finishes at once, so it never holds the queue; the engine queues its own presenters. |
+| Notices | A request with no `on_finish` (a notice to a custom presenter, such as leaving fullscreen) is delivered at once and never queued. |
+| Dropped | An uncompleted request released by the application finishes `kCancelled`, never granted. |
+| Gesture kind | The core checks that the gesture is an `NSEVENT`. That it is recent and went to a window of this application is for the backend that has windows (Phase 2). |
+| Extension surfaces | `[extensions.ui]` is not read by the core before M5. |
 
 ### Named in c-abi.md and not declared (nothing states their shape)
 

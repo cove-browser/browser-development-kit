@@ -47,7 +47,7 @@ public protocol BDKUIRequest: AnyObject, Sendable {
 | Withdrawal | Chromium can withdraw a request: the page navigated, the page closed, the request was superseded. `cancellation` fires and the application dismisses its UI. Completing a withdrawn request is a no-op. |
 | Dropped requests | A request the application took and released without completing is cancelled. It is never granted. |
 | Page moves | If the page moves to another window while a request is open, the request stays valid and `window` changes. BDK closes its own default presenters before a move and re-presents after. |
-| Queueing | Chromium queues requests of the same kind for the same page. The handler sees them one at a time. |
+| Queueing | Chromium queues requests of the same kind for the same page. The handler sees them one at a time: the next is delivered after the previous is completed, used by default, rejected, released or withdrawn. A request withdrawn while it waits is never delivered. Requests that are notices (nothing to answer, such as leaving fullscreen) are delivered at once. |
 | Hidden pages | A request from a page that is not visible is still delivered. The application may defer showing it; the default presenters defer until the page is shown. |
 
 ## 3. Rules no configuration or handler can override
@@ -56,11 +56,11 @@ From `architecture.md` section 7 and invariant 6.
 
 | Rule | How it is enforced |
 |---|---|
-| A security interstitial cannot be disabled, auto-dismissed or skipped | The interstitial surfaces accept `default` and `custom` only. A custom presenter gets a "proceed" completion only where Chromium's own page offers one, and never for errors Chromium treats as non-overridable. |
-| A permission, an extension install, a credential fill or a dangerous download cannot be granted without a user gesture | The granting completion takes the `NSEvent` that confirmed it. BDK checks that it is a recent mouse-up or key-down delivered to a window of this application. |
+| A security interstitial cannot be disabled, auto-dismissed or skipped | The interstitial surfaces accept `default` and `custom` only; the runtime refuses a configuration that says otherwise (`ui.surfaceMode`). They are completed by `go_back` or `proceed` and nothing else. `proceed` needs a gesture and a request whose `isOverridable` is true, and a request that does not say is not overridable (`ui.notOverridable`). `.reject`, a dropped request and a released one all complete as `go_back`. |
+| A permission, an extension install, a credential fill or a dangerous download cannot be granted without a user gesture | The granting completion takes the `NSEvent` that confirmed it. The core refuses a granting completion with no `NSEvent` (`ui.gestureRequired`); the engine also checks that it is a recent mouse-up or key-down delivered to a window of this application. The granting completion of each surface is named in section 5 (`grant`, `keep`, `save`, `accept` for suggestions, `proceed`, `select`, `share`, `open`). |
 | A custom presenter is given the same facts the default shows | Requests carry the origin, the permission text, the risk text and the extension's permission warnings. A grant from a presenter that did not read them is still a grant, so review handlers accordingly. |
-| `disabled` never means allowed | A disabled surface denies. |
-| A handler cannot widen what was asked | Completions accept a subset of what the request asked for. |
+| `disabled` never means allowed | A disabled surface denies. The request finishes as disabled with no handler called, and the web or extension API behind the surface reports itself unavailable. |
+| A handler cannot widen what was asked | Completions accept a subset of what the request asked for. A permission `grant` that names a kind the request did not ask for fails with `ui.widensRequest` and leaves the request open. |
 | A page cannot answer its own request | Requests are delivered to Swift only. No internal-page capability and no automation capability completes a UI request. |
 
 About the gesture check: the application runs in the browser process and is trusted, so this is not a defence against the application. It stops accidental auto-grant in handler code and makes it structurally impossible for a page or an automation session to grant. That an `NSEvent` can be attested well enough for this is unverified.
