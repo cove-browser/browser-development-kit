@@ -1,0 +1,4 @@
+{
+  "neverForPages": ["contents.*", "automation.*", "devtools.*", "cookies.values"],
+  "neverForSessions": ["passwords.reveal"]
+}
