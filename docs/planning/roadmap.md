@@ -96,6 +96,20 @@ If a step fails:
 
 Exit criteria: the multi-page sample survives a renderer crash and an application relaunch. Private profiles keep cookies, cache and permissions separate.
 
+**Status, 2026-11-18: partly done; the exit criteria are not met.** The work that needs no Chromium build is done and tested against the stub runtime or the packaged Chromium 158 runtime. The engine-side tasks are blocked: they depend on M0 tasks T-ADP-01 to T-ADP-03 and T-MAC-01 and T-MAC-02, and on gate G0, none of which has run. No Chromium build was started for M2.
+
+| Task | Status | Where it is recorded |
+|---|---|---|
+| T-ABI-03 | Done: validator, identifier registry, generated `bdk_ids.h` with unchanged names and values, check in CI. No commands or events yet; the broker is M3. | `packages/core/docs/conventions.md`; [sdk/c-abi.md](sdk/c-abi.md) section 7 |
+| T-SWF-01 to T-SWF-03 | Done against the stub. The SwiftPM manifest is now the repository root `Package.swift`. | `packages/swift/README.md` |
+| T-CFG-01, T-CFG-02 | Done: schema, fixtures in `tests/config`, resolver. Keys marked Added or Conditional are rejected until confirmed. | `packages/cli/src/core/config/README.md`; [sdk/configuration.md](sdk/configuration.md) |
+| T-CLI-05 | Done: one executable from `node --build-sea`, runs with no Node; artifact bundle works from a SwiftPM plugin. Not run from an Xcode run-script phase. | `packages/cli/README.md`; [sdk/cli.md](sdk/cli.md) section 2.3 |
+| T-PKG-03 | Signing step done; a re-signed runtime under a second identity launched headless and rendered. Ad hoc only: a real identity, notarization and Gatekeeper are not verified. | [sdk/cli.md](sdk/cli.md) section 5.1; [feasibility.md](feasibility.md) section 7 |
+| T-PKG-04 | Partly: a zipped xcframework of the framework keeps its symlinks through a SwiftPM path binary target. The https download path needs a published runtime. | [feasibility.md](feasibility.md) section 7 |
+| T-SWF-05 | Done on the stub: two pages in one window; launch and relaunch-restore tests pass. Nothing renders. | `apps/examples/minimal-browser/README.md` |
+| T-ABI-04, T-ADP-05, T-ADP-07, T-MAC-03, T-MAC-05, T-PKG-02, T-CHR-12 | Open, blocked on M0 and G0 | — |
+| T-PKG-02 identity, renderer-crash recovery, private-profile separation | Open: need the real runtime; the ABI has no process-gone event yet | — |
+
 ### M3 — Browser services and default UI
 
 | Work | Tasks | Acceptance |
