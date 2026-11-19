@@ -1,0 +1,89 @@
+name: integration
+
+on:
+  pull_request:
+    paths:
+      - "packages/swift/**"
+      - "packages/core/**"
+      - "chromium/**"
+      - "tests/**"
+  schedule:
+    # Nightly, 03:17 UTC.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integration-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration:
+    name: integration (macos)
+    runs-on: macos-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Install Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve the runtime recorded in chromium/pin.json
+        id: runtime
+        shell: bash
+        env:
+          # Outside the runtime store, so the runner's own temp directory is a clean, space-free BDK_HOME.
+          BDK_HOME: ${{ runner.temp }}/bdk
+        run: |
+          set -uo pipefail
+          # Null record: nothing is published yet, so a rebuild is needed.
+          if [ "$(node -p "require('./chromium/pin.json').runtime === null")" = "true" ]; then
+            msg="runtime rebuild needed: chromium/pin.json records no published runtime."
+            echo "$msg"
+            echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+            echo "state=rebuild" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # runtime.ts computes the source key for this checkout. When pin.json records a runtime for that key,
+          # it downloads the archive, checks SHA-256 and the manifest digest, and links the runtime under
+          # $BDK_HOME. Otherwise it exits 1 with "No runtime for source key" (tooling/src/runtime/resolver.ts).
+          set +e
+          output=$(pnpm exec tsx tooling/src/chromium/runtime.ts 2>&1)
+          status=$?
+          set -e
+          echo "$output"
+
+          if [ "$status" -eq 0 ]; then
+            echo "state=ready" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if printf '%s\n' "$output" | grep -q "No runtime for source key"; then
+            msg="runtime rebuild needed: the source key for this commit has no runtime published in chromium/pin.json."
+            echo "$msg"
+            echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+            echo "state=rebuild" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # A digest mismatch, a failed download or a damaged runtime is a failure, not a missing build.
+          echo "::error title=Runtime resolution failed::The published runtime could not be resolved and verified."
+          exit 1
+
+      - name: Run integration, extension and end-to-end tests
+        if: steps.runtime.outputs.state == 'ready'
+        env:
+          BDK_HOME: ${{ runner.temp }}/bdk
+        run: pnpm exec nx run-many -t test-integration test-extensions test-e2e

@@ -1,0 +1,7 @@
+include = ["**/*.toml"]
+exclude = ["node_modules/**", "docs/planning/experiments/**", "**/build/**", "**/.build/**"]
+
+[formatting]
+align_entries = false
+column_width = 100
+indent_string = "  "

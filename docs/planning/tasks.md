@@ -208,7 +208,7 @@ Load the probe unpacked with two pages A and B visible, B focused.
 
 | ID | Task | M | Size | Mode | Inputs | Outputs | Tests | Depends on |
 |---|---|---|---|---|---|---|---|---|
-| T-REP-01 | Root workspace: pnpm, Nx, project skeletons, root scripts | M1 | M | Prebuilt | Tooling document sections 2 to 4 | `package.json`, `.node-version`, `nx.json`, `pnpm-workspace.yaml`, `project.json` files | Root scripts run on a clean clone; a Node release other than the pinned one fails `pnpm setup` and names the pin; the project graph matches the table | None |
+| T-REP-01 | Root workspace: pnpm, Nx, project skeletons, root scripts | M1 | M | Prebuilt | Tooling document sections 2 to 4 | `package.json`, `.node-version`, `nx.json`, `pnpm-workspace.yaml`, `project.json` files | Root scripts run on a clean clone; a Node release other than the pinned one fails `pnpm run setup` and names the pin; the project graph matches the table | None |
 | T-REP-02 | Formatter and linter configurations and Lefthook | M1 | M | Prebuilt | Tooling document section 9 | Configurations; `lefthook.yml` | A badly formatted staged file is fixed; a staged secret is refused | T-REP-01 |
 | T-REP-03 | Pull-request workflow | M1 | M | Prebuilt | Tooling document section 10 | `pr.yml` | Affected checks run; actions pinned by SHA; default permissions read-only | T-REP-02 |
 | T-REP-04 | Integration workflow using the prebuilt runtime | M2 | M | Prebuilt | T-CHR-09 | `integration.yml` | Runtime is downloaded and its digest checked against the pin record; integration tests run; a change that alters the source key reports that a rebuild is needed and skips | T-CHR-09, T-SWF-02 |

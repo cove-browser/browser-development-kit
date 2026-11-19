@@ -1,0 +1,12 @@
+node_modules/
+.nx/
+.bdk/
+dist/
+build/
+.build/
+*.tsbuildinfo
+coverage/
+graph.json
+.DS_Store
+# generated bindings are produced by the codegen targets
+packages/js/protocol/src/generated/

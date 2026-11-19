@@ -1,0 +1,45 @@
+name: pr-title
+
+# pull_request_target runs with the base repository's secrets and token, so this workflow never checks out or runs
+# code from the pull request. It checks out the base branch and reads the title from the event payload only.
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  conventional-title:
+    name: conventional-title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the base branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Install Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies from the base branch
+        # --ignore-scripts: commitlint needs no install scripts, and nothing from the pull request is installed here.
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Check the pull request title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        # The title reaches the shell only through the environment, never through ${{ }} interpolation.
+        run: printf '%s\n' "$PR_TITLE" | pnpm exec commitlint

@@ -1,0 +1,62 @@
+{
+  "name": "tooling",
+  "root": "tooling",
+  "projectType": "library",
+  "targets": {
+    "setup": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "pnpm exec tsx tooling/src/setup.ts" }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": { "command": "pnpm exec tsc -p tooling/tsconfig.build.json" },
+      "inputs": ["default", { "externalDependencies": ["typescript"] }],
+      "outputs": ["{projectRoot}/dist"]
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": { "command": "pnpm exec vitest run --root tooling" },
+      "inputs": ["default", "{workspaceRoot}/.node-version", { "externalDependencies": ["vitest"] }]
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "pnpm exec biome check tooling package.json nx.json biome.json commitlint.config.mjs lefthook.yml pnpm-workspace.yaml tsconfig.base.json chromium/pin.json chromium/runtime-files.json",
+          "pnpm exec tsc -p tooling/tsconfig.json --noEmit",
+          "shellcheck tooling/*.sh",
+          "shfmt -d tooling/*.sh",
+          "taplo check",
+          "sh tooling/actionlint.sh"
+        ],
+        "parallel": false
+      },
+      "inputs": [
+        "default",
+        "lintConfig",
+        "nativeToolchain",
+        "{workspaceRoot}/.github/**/*",
+        "{workspaceRoot}/package.json",
+        "{workspaceRoot}/commitlint.config.mjs",
+        "{workspaceRoot}/lefthook.yml",
+        "{workspaceRoot}/pnpm-workspace.yaml",
+        "{workspaceRoot}/chromium/pin.json",
+        "{workspaceRoot}/chromium/runtime-files.json",
+        "{workspaceRoot}/**/*.toml",
+        { "externalDependencies": ["@biomejs/biome", "typescript"] }
+      ]
+    },
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "pnpm exec biome format --write tooling package.json nx.json biome.json commitlint.config.mjs lefthook.yml pnpm-workspace.yaml tsconfig.base.json chromium/pin.json chromium/runtime-files.json",
+          "shfmt -w tooling/*.sh",
+          "taplo format"
+        ],
+        "parallel": false
+      }
+    }
+  }
+}

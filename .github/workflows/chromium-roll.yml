@@ -1,0 +1,70 @@
+name: chromium-roll
+
+# Detects a newer Chromium stable, bumps chromium/pin.json on a chromium-roll/<version> branch, tries the patch
+# series with no build and opens or updates the one roll pull request (repository and tooling plan, section 6.1).
+# The script is tooling/src/roll/roll.ts; see tooling/README.md.
+#
+# Follow-up: pull requests and pushes made with the default GITHUB_TOKEN do not trigger other workflows, so
+# pr.yml and integration.yml will not run on the roll pull request. Until a GitHub App token or a personal
+# access token is stored as a repository secret and used in place of github.token below, close and reopen the
+# roll pull request (or push to its branch by hand) to start those checks. No such secret exists yet.
+
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Print the plan without pushing or calling the GitHub API for writes
+        type: boolean
+        default: false
+
+# Read-only by default. The roll job adds what it needs.
+permissions:
+  contents: read
+
+# Runs queue behind each other; a roll in progress is never cancelled half-way.
+concurrency:
+  group: chromium-roll
+  cancel-in-progress: false
+
+jobs:
+  roll:
+    name: roll
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          # The script pushes the roll branch with git, so the token stays in the git config.
+          persist-credentials: true
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        # The version comes from the packageManager field in package.json.
+
+      - name: Install Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Roll the Chromium pin
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [ "${DRY_RUN:-false}" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          pnpm exec tsx tooling/src/roll/roll.ts "${args[@]}"

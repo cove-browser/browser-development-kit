@@ -1,0 +1,10 @@
+# The BDK engine overlay. It is mounted at //bdk in the Chromium checkout by
+# `chromium:build` (see tooling/README.md) and linked into the Mac framework by
+# the first patch in chromium/patches.
+
+source_set("bdk") {
+  sources = [
+    "bdk_overlay.cc",
+    "bdk_overlay.h",
+  ]
+}

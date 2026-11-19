@@ -1,0 +1,114 @@
+/* BDK C ABI: identifiers. Section 7 says this header is generated from the interface definitions
+   (T-ABI-03). Until that generator exists it is written by hand and holds only identifiers that
+   c-abi.md names or that the skeleton needs. Identifiers are assigned once and never reused. */
+#ifndef BDK_IDS_H_
+#define BDK_IDS_H_
+
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* Error domains and codes (swift-api.md section 16). Strings, so an older binding can report a
+ * newer error. */
+#define BDK_DOMAIN_ABI "abi"
+#define BDK_DOMAIN_RUNTIME "runtime"
+#define BDK_DOMAIN_CONFIG "config"
+#define BDK_DOMAIN_PROFILE "profile"
+#define BDK_DOMAIN_CONTENTS "contents"
+#define BDK_DOMAIN_NAVIGATION "navigation"
+#define BDK_DOMAIN_BROKER "broker"
+#define BDK_DOMAIN_CAPABILITY "capability"
+#define BDK_DOMAIN_UI "ui"
+#define BDK_DOMAIN_PROVIDER "provider"
+#define BDK_DOMAIN_AUTOMATION "automation"
+#define BDK_DOMAIN_PLATFORM "platform"
+
+#define BDK_CODE_VERSION_MISMATCH "versionMismatch"
+#define BDK_CODE_HASH_MISMATCH "hashMismatch"
+#define BDK_CODE_ALREADY_STARTED "alreadyStarted"
+#define BDK_CODE_SHUTDOWN_IN_PROGRESS "shutdownInProgress"
+#define BDK_CODE_RESOLVED_INVALID "resolvedInvalid"
+#define BDK_CODE_REGISTRATION_AFTER_START "registrationAfterStart"
+#define BDK_CODE_NOT_FOUND "notFound"
+#define BDK_CODE_NAME_TAKEN "nameTaken"
+#define BDK_CODE_IS_PRIVATE "isPrivate"
+#define BDK_CODE_STALE "stale"
+#define BDK_CODE_NET_ERROR "netError"
+#define BDK_CODE_UNKNOWN_COMMAND "unknownCommand"
+#define BDK_CODE_INVALID_ARGUMENTS "invalidArguments"
+#define BDK_CODE_CANCELLED "cancelled"
+#define BDK_CODE_GESTURE_REQUIRED "gestureRequired"
+#define BDK_CODE_REQUEST_COMPLETED "requestCompleted"
+
+/* Runtime event kinds (bdk_runtime_event_cb). Provisional: c-abi.md names the callback but not its
+ * kinds. */
+#define BDK_RUNTIME_EVENT_REGISTRATIONS_FROZEN 1u
+#define BDK_RUNTIME_EVENT_PROFILE_OPENED 2u
+#define BDK_RUNTIME_EVENT_PROFILE_CLOSED 3u
+#define BDK_RUNTIME_EVENT_SHUTDOWN_STARTED 4u
+
+/* Contents event kinds (bdk_contents_event_t.kind). Provisional: c-abi.md says the kinds live here
+   without listing them. */
+#define BDK_CONTENTS_EVENT_NAVIGATION_STARTED 1u
+#define BDK_CONTENTS_EVENT_NAVIGATION_COMMITTED 2u
+#define BDK_CONTENTS_EVENT_NAVIGATION_FAILED 3u
+#define BDK_CONTENTS_EVENT_LOAD_FINISHED 4u
+#define BDK_CONTENTS_EVENT_TITLE_CHANGED 5u
+#define BDK_CONTENTS_EVENT_FOCUS_CHANGED 6u
+#define BDK_CONTENTS_EVENT_CLOSED 7u
+
+/* bdk_contents_event_t.flags */
+#define BDK_EVENT_FLAG_MAIN_FRAME 0x1u
+#define BDK_EVENT_FLAG_SAME_DOCUMENT 0x2u
+#define BDK_EVENT_FLAG_USER_INITIATED 0x4u
+#define BDK_EVENT_FLAG_ERROR_PAGE 0x8u
+
+/* bdk_contents_state_t.audio flags */
+#define BDK_AUDIO_AUDIBLE 0x1u
+#define BDK_AUDIO_MUTED 0x2u
+
+/* bdk_contents_state_t.security, .visibility */
+#define BDK_SECURITY_UNKNOWN 0u
+#define BDK_SECURITY_NONE 1u
+#define BDK_SECURITY_SECURE 2u
+#define BDK_SECURITY_BROKEN 3u
+#define BDK_VISIBILITY_HIDDEN 0u
+#define BDK_VISIBILITY_VISIBLE 1u
+
+/* Profile kinds (bdk_profile_info JSON "kind"): "persistent" or "ephemeral". */
+
+/* UI surfaces (ui-requests.md section 4, in table order). Values are never reused. */
+#define BDK_SURFACE_PERMISSIONS 1u
+#define BDK_SURFACE_JAVASCRIPT_DIALOGS 2u
+#define BDK_SURFACE_HTTP_AUTH 3u
+#define BDK_SURFACE_CLIENT_CERTIFICATES 4u
+#define BDK_SURFACE_FILE_PICKERS 5u
+#define BDK_SURFACE_CONTEXT_MENUS 6u
+#define BDK_SURFACE_NEW_WINDOWS 7u
+#define BDK_SURFACE_DOWNLOADS 8u
+#define BDK_SURFACE_PASSWORDS 9u
+#define BDK_SURFACE_AUTOFILL 10u
+#define BDK_SURFACE_AUTOFILL_SUGGESTIONS 11u
+#define BDK_SURFACE_PRINTING 12u
+#define BDK_SURFACE_TRANSLATION 13u
+#define BDK_SURFACE_FIND 14u
+#define BDK_SURFACE_FULLSCREEN 15u
+#define BDK_SURFACE_EXCLUSIVE_ACCESS 16u
+#define BDK_SURFACE_NOTIFICATIONS 17u
+#define BDK_SURFACE_CERTIFICATE_ERRORS 18u
+#define BDK_SURFACE_REPUTATION_WARNINGS 19u
+#define BDK_SURFACE_DEVTOOLS 20u
+#define BDK_SURFACE_DEVICE_CHOOSERS 21u
+#define BDK_SURFACE_SCREEN_CAPTURE 22u
+#define BDK_SURFACE_WEBAUTHN 23u
+#define BDK_SURFACE_EXTERNAL_PROTOCOLS 24u
+
+/* Command and event identifiers: none yet. The first interface definitions arrive with T-ABI-03. */
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* BDK_IDS_H_ */

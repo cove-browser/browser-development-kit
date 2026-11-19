@@ -1,0 +1,3 @@
+# Chromium style. CI and hooks use the toolchain clang-format until the pinned
+# Chromium clang-format is wired in (see docs/planning/repository-and-tooling.md section 9).
+BasedOnStyle: Chromium

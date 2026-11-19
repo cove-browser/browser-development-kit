@@ -11,7 +11,9 @@ Date: 2026-11-14. This file records what was inspected, what was run, and what e
 | **Unverified** | Not inspected closely enough, or the evidence is secondary. |
 | **Disproven** | The evidence contradicts the assumption. |
 
-No Chromium build was made. Every statement about Chromium behaviour below comes from reading source, not from running it.
+No Chromium build was made for sections 1 to 8. Every statement about Chromium behaviour in them comes from reading source, not from running it.
+
+Update 2026-11-17: milestone M1 synced, patched, built, packaged and ran the pinned Chromium on the host below, and rehearsed a roll to the next tag. The results are in section 9, under "M1 on a real Chromium checkout".
 
 ## Summary
 
@@ -25,7 +27,7 @@ No Chromium build was made. Every statement about Chromium behaviour below comes
 | 6 | Service providers | Partially verified | Workable non-Google defaults exist for translation and geolocation. Reputation has a real protection gap that needs a product decision. |
 | 7 | Prebuilt packaging | Partially verified | One framework can serve many app identities with a short list of patches. Nested-helper signing in Xcode is unconfirmed. |
 | 8 | Nx multi-language | **Verified** | C++, Swift and TypeScript targets build, cache and invalidate correctly from root scripts. |
-| 9 | Worktrees and cache correctness | **Verified** (with dummy runtimes) | Shared immutable runtime, isolated outputs, exclusive locking and stale-cache detection all behave as designed. |
+| 9 | Worktrees and cache correctness | **Verified** (dummy runtimes in M0; a real Chromium checkout in M1) | Shared immutable runtime, isolated outputs, exclusive locking and stale-cache detection all behave as designed, and held on a real build. |
 | 10 | Arc-style reference scenario | Partially verified | Scoped. Two coupling problems are identified: one active tab per window, and upstream split view stops at two panes. |
 
 ## Environment and limits
@@ -475,7 +477,39 @@ Two results changed the design:
 - **Nx shares its local cache across all worktrees of a repository.** `wt-b` got a cache hit for a task only `wt-a` had run. Every input that distinguishes worktrees must therefore be declared, and the resolve task must not be cached. See case 10–12.
 - **The prototype key included the local toolchain.** That is wrong for consumers of a prebuilt runtime. The design now separates source identity from build identity; see [repository-and-tooling.md](repository-and-tooling.md) section 5.3.
 
-Limits: no real Chromium checkout, sync or build was involved. depot_tools' own cache locking, Siso state after cloning, and ccache on real Chromium compiles are untested. `lockf` is macOS and BSD; Linux needs `flock`.
+Limits of the fixture: no real Chromium checkout was involved. The M1 runs below cover that. `lockf` is macOS and BSD; Linux needs `flock`, which is still untested.
+
+### M1 on a real Chromium checkout
+
+**Status: verified on one machine.** Host as in the environment table, with depot_tools, Lefthook, gitleaks and the other tools installed in M1. `BDK_HOME` was `~/.bdk` on the internal disk. Commands are the `chromium:*` and `tooling/src/chromium/*` targets in the repository.
+
+| Case | Task | Observed |
+|---|---|---|
+| Managed checkout at the pin | T-CHR-01 | `src` at `158.0.8127.37` (`b8c2be851f62`), synced with `--no-history --shallow`: 40 GB, of which `out/release` is 8.6 GB. depot_tools is 866 MB |
+| Second `chromium:sync` of the managed checkout | T-CHR-01 | First measured at 130 s, after which the next build recompiled 44,819 files (all ccache hits, 12 to 13 minutes): gclient `--force` runs `git reset --hard HEAD` in every dependency, which recreated 466,465 files, and the sync reset `src` and re-applied the series. With both fixed (gclient gets `--force` only from `chromium:sync --force`; a checkout already at the pin plus the series is left as it is): 22 s, 9 files rewritten (hook outputs only), and the next build took 17 s, Ninja 6 s. The first sync was made by a one-off gclient script, so `chromium:sync` into an empty `BDK_HOME` is still untested |
+| Patch roll in place, `158.0.8127.37` to `.65` | T-CHR-10 | 28 patch releases. 504 files changed in `src`, and V8, Skia, ICU, ANGLE, PDFium, Dawn and LevelDB moved, so widely included headers changed. The build was incremental with the same compiler: 12,868 compiles, 12,785 of them ccache misses, 83 minutes. Rolling back to `.37` with the fixed sync: 41 s and 693 files rewritten, then 12,867 compiles, all ccache hits, 8 minutes |
+| `pnpm run setup` | T-REP-01 | Passed in 2.5 s: 13 tool checks, Lefthook hooks installed; runtime resolution skipped because `pin.runtime` is unset. The hooks then rejected a commit message without a type, caught a planted token with gitleaks, auto-formatted a staged file with Biome, and ran the affected lint on pre-push in 17 s |
+| Cold release build of `chrome` with the series and `//bdk` | T-CHR-02, T-CHR-04, T-CHR-05 | 10,669 s wall (2 h 58 min), 57,188 actions. ccache saw 47,180 compiles, all cacheable; the cache grew to about 4 GB. The first attempt failed at `verify_chrome_framework_order` because the overlay marker was not in `chrome/app/framework.order`; the patch now adds it, and the resumed build took 45 s |
+| Incremental rebuild, no change | T-CHR-05 | 17.5 s: patch check 3.2 s, overlay 0.0 s, `gn gen` 4.9 s, Ninja 6.3 s. `_bdk_overlay_marker` is exported by the framework |
+| Package | T-CHR-08 | Source key `a3c82d8de4cecdf1` in 7.6 s; runtime 717 MB; a headless run rendered a test page and reported Chromium 158.0.8127.37 |
+| Reproducibility check | T-CHR-09 | Re-packaging the same build gave the same manifest digest, in 27 s |
+| Resolve in two worktrees | T-CHR-09 | Same store directory, same inode |
+| Publish to a file backend, resolve into an empty `BDK_HOME` | T-REP-05 | Archive 198 MB (`tar.zst`), published in 10.5 s; downloaded, verified and unpacked in 2.8 s; the runtime ran. A tampered archive was refused before anything was unpacked |
+| Experiment checkout by APFS clone, `out/` excluded | T-CHR-07 | 262 s and about 1 GB of extra disk. The first `git status` in the clone took 123 s while Git rehashed its index |
+| ccache across the two checkouts | T-CHR-06 | Building `base` in the clone after the managed build: 2,059 of 2,059 compiles were hits. Settings: `CCACHE_NOHASHDIR=1`, no `CCACHE_BASEDIR`, and the relative paths Chromium's GN already emits. Ninja took 38 s |
+| Managed and experiment builds at once | T-CHR-07 | The managed `chrome` build ran from 01:01:07 to 01:01:26 inside the experiment build's 01:00:47 to 01:03:35. Both succeeded; each wrote only its own `out/` |
+| Siso state after cloning | T-CHR-07 | Not carried over: the clone excludes `out/`, where Siso keeps its state, so the first experiment build starts cold for Siso and warm for ccache |
+| Roll rehearsal to `159.0.8154.6` in the experiment | T-CHR-10 | **Passed.** The series applied without conflicts; sync took 552 s once gclient was given the pinned SHA. The release build of `chrome` succeeded and `_bdk_overlay_marker` is exported by the 159 framework (source key `f754baf256329e69`). Ninja ran 18,926 s wall, of which the Mac slept about 2 h 16 min, so about 3 h of building: the same as the cold 158 build. ccache: 47,282 compiles, 11,919 hits (25%), all from an earlier attempt at 159 that was stopped part-way; nothing was reused from 158, because 159 ships a newer clang (`llvmorg-24-init-17044` against `-14453`) and `CCACHE_COMPILERCHECK=content` treats that as a new compiler. Peak memory of the build processes, sampled every 2 s: 11.1 GB, of which Siso held about 2.7 GB; most of the time it was 5 to 6 GB |
+
+What changed because of these runs:
+
+- **gclient fetches everything when given a tag.** It skips its own fetch only when `--revision` is a SHA it already has. With a tag it ran a full `git fetch origin` of every branch, which took over 20 minutes and twice ended in an HTTP 502, once after 82 minutes. `chromium:sync` now fetches the pinned tag at depth 1 (under 4 minutes) and passes the SHA.
+- **Chrome's export list must name the overlay marker.** `verify_chrome_framework_order` rejects any exported symbol missing from `framework.order`.
+- **A packaged runtime must come from a verified build.** The build writes `out/<config>/bdk-build-identity.json` only after a successful, verified build, and packaging refuses an output directory without a matching stamp.
+- **A roll to a new milestone is a cold build; a roll within one is not.** ccache cannot help across a compiler change, so on this machine 158 to 159 cost about three hours of build time on top of the sync. Even with the same compiler most of the build would recompile: 24,484 of 143,491 C and C++ files changed between the two tags, 8,164 of them headers, 197 of those in `base/`, abseil or mojo. Within a release branch the compiler is fixed: `tools/clang/scripts/update.py` names the same `CLANG_REVISION` at `158.0.8127.0`, `.20`, `.37` and `.52`, and at `157.0.8103.0` and `.40`. So patch rolls are incremental, though not necessarily small: `.37` to `.65` recompiled 12,785 files in 83 minutes because several dependencies moved. A milestone roll could be made incremental on the day by building the new branch's beta tag ahead of time; that is not automated. Risk R3's roll effort should assume one cold build per milestone.
+- **APFS clones stop sharing once the tree moves.** After the roll to 159, the clone's checkout had diverged and free disk fell from 52 to 30 GiB. An experiment that changes the tag costs nearly a full checkout.
+
+Still not verified: a second machine resolving the published runtime, the integration workflow against it (`pin.runtime` is still unset, because nothing was published to GitHub), the GitHub-hosted checks, depot_tools' cache locking (the Git cache is not used with shallow syncs), and Linux.
 
 ---
 
@@ -521,7 +555,7 @@ Milestone M0's last step: on the first working build, a throwaway Swift window w
 
 | Item | Where it is handled |
 |---|---|
-| First real build: sizes, times, ccache behaviour | T-CHR-01 to T-CHR-07 |
+| First real build: sizes, times, ccache behaviour | Done in M1; see section 9 |
 | BDK window surviving `//chrome` without `BrowserView` | M0, T-ADP-01 to T-ADP-04 |
 | App-owned `NSApplication` with `//chrome` | M0, T-MAC-01 to T-MAC-03 |
 | Alias scheme end to end | M0, T-WUI-01 |

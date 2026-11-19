@@ -103,7 +103,7 @@ Notes:
 | Script | Backed by | Behaviour |
 |---|---|---|
 | `pnpm install` | pnpm | Installs JS dependencies. `pnpm-workspace.yaml` must list `nx` under `allowBuilds`, or pnpm 11 skips Nx's install script (observed in E8). |
-| `pnpm setup` | `nx run tooling:setup` | Checks toolchain versions, including Node against `.node-version`, installs Lefthook hooks, resolves the pinned runtime. Does not fetch Chromium. |
+| `pnpm run setup` | `nx run tooling:setup` | Checks toolchain versions, including Node against `.node-version`, installs Lefthook hooks, resolves the pinned runtime. Does not fetch Chromium. `run` is required: `pnpm setup` is a pnpm built-in and never reaches the script. |
 | `pnpm format` | `nx run-many -t format` | swift-format, clang-format, Biome, TOML formatter, shfmt. Writes changes. |
 | `pnpm lint` | `nx run-many -t lint` | SwiftLint, clang-tidy where configured, Biome, tsc `--noEmit`, schema checks, actionlint, ShellCheck. No writes. |
 | `pnpm test` | `nx run-many -t test` | Unit tests only. Uses the stub runtime, so no Chromium is needed. |

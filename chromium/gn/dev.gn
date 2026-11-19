@@ -1,0 +1,28 @@
+# BDK development preset, copied to out/dev/args.gn by chromium:build.
+# Every name below was checked against the sources at the pinned commit
+# (see chromium/gn/README.md for where each is declared).
+
+target_os = "mac"
+target_cpu = "arm64"
+
+# Optimised, not a component build (BDK links //bdk into the framework and
+# the framework hides non-exported symbols only when it is not a component
+# build), with DCHECKs on so engine mistakes fail loudly.
+is_debug = false
+is_component_build = false
+dcheck_always_on = true
+
+# Line tables only, enough for backtraces. Blink gets none to save disk.
+symbol_level = 1
+blink_symbol_level = 0
+
+chrome_pgo_phase = 0
+
+use_remoteexec = false
+cc_wrapper = "env CCACHE_SLOPPINESS=time_macros ccache"
+
+# Clang modules off: ccache cannot cache modular compiles ("Could not use
+# modules" for every C++ call on the first M158 build), which defeats the
+# shared compiler cache of repository-and-tooling.md 7.2. Declared in
+# build/config/c++/c++.gni; measured under T-CHR-06.
+use_clang_modules = false

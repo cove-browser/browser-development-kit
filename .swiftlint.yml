@@ -1,0 +1,30 @@
+# swift-format owns layout. SwiftLint keeps semantic rules only.
+included:
+  - packages/swift
+  - apps
+excluded:
+  - "**/.build"
+disabled_rules:
+  - line_length
+  - trailing_whitespace
+  - trailing_newline
+  - trailing_comma
+  - vertical_whitespace
+  - opening_brace
+  - statement_position
+  - colon
+  - comma
+  - indentation_width
+  - closing_brace
+  - leading_whitespace
+  - return_arrow_whitespace
+  - operator_whitespace
+  - control_statement
+  - switch_case_alignment
+  - sorted_imports
+  - multiple_closures_with_trailing_closure
+opt_in_rules:
+  - force_unwrapping
+  - explicit_init
+  - empty_count
+  - unused_import
