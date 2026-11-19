@@ -44,6 +44,8 @@ M4, M5, M6 and M7 can proceed in parallel once M3's broker and UI-request router
 
 ### M0 — Chromium integration prototype
 
+> **Status: skipped (decided 2026-11-18, by the product owner).** M0 was not run. Gate G0 is therefore not passed, and the assumptions below are untested. M2 starts without G0. Consequences: the MV3 probe, the BDK window replacing `BrowserView`, the app-owned `NSApplication`, the alias scheme and the two-window and off-screen decision (D1, still provisional) are first exercised during M2 and M3 instead of before M2. If one of them fails, the change in the table under G0 applies at that point, and M2 work that depended on it may need rework.
+
 Throwaway code is acceptable. The output is evidence and a decision, not a product. Use the newest stable tag; the evidence pin is `158.0.8127.37`.
 
 | Step | Work | Tasks | Acceptance |
