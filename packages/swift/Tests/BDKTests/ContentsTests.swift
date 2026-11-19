@@ -70,28 +70,6 @@ extension BDKStubTests {
             }
         }
 
-        @Test func aSecondLoadSupersedesTheFirst() async throws {
-            try await withProfile { _, profile in
-                let page = try profile.webContents.create()
-                let first = Task { @MainActor in try await page.navigate(to: example) }
-                await Task.yield()
-                try await page.navigate(to: other)
-                await expectError(.navigation, "superseded") { _ = try await first.value }
-                #expect(page.url == other)
-            }
-        }
-
-        @Test func stopAbortsALoad() async throws {
-            try await withProfile { _, profile in
-                let page = try profile.webContents.create()
-                let load = Task { @MainActor in try await page.navigate(to: example) }
-                await Task.yield()
-                try page.navigation.stop()
-                await expectError(.navigation, "aborted") { _ = try await load.value }
-                #expect(!page.isLoading)
-            }
-        }
-
         @Test func historyNavigation() async throws {
             try await withProfile { _, profile in
                 let page = try profile.webContents.create()
@@ -276,6 +254,43 @@ extension BDKStubTests {
             let events = EventReader(page.events)
             try action()
             _ = try await events.next { if case .navigationFinished = $0 { true } else { false } }
+        }
+    }
+
+    /// Loads caught in flight. Automatic pumping is paused so the stub cannot finish a load early.
+    @MainActor
+    @Suite("WebContents loads in flight")
+    struct LoadsInFlightTests {
+        @Test func aSecondLoadSupersedesTheFirst() async throws {
+            try await withProfile { runtime, profile in
+                let page = try profile.webContents.create()
+                // Paused, the stub cannot finish the first load before the second one starts. Main-actor
+                // jobs run in the order they were queued, so both loads have been issued after the wait.
+                let (first, second) = await runtime.stub.withAutomaticPumpingPaused {
+                    let first = Task { @MainActor in try await page.navigate(to: example) }
+                    let second = Task { @MainActor in try await page.navigate(to: other) }
+                    while !page.isLoading { await Task.yield() }
+                    await Task.yield()
+                    return (first, second)
+                }
+                _ = try await second.value
+                await expectError(.navigation, "superseded") { _ = try await first.value }
+                #expect(page.url == other)
+            }
+        }
+
+        @Test func stopAbortsALoad() async throws {
+            try await withProfile { runtime, profile in
+                let page = try profile.webContents.create()
+                let load = try await runtime.stub.withAutomaticPumpingPaused {
+                    let load = Task { @MainActor in try await page.navigate(to: example) }
+                    while !page.isLoading { await Task.yield() }
+                    try page.navigation.stop()
+                    return load
+                }
+                await expectError(.navigation, "aborted") { _ = try await load.value }
+                #expect(!page.isLoading)
+            }
         }
     }
 }

@@ -33,19 +33,25 @@ extension BDKRuntime {
 private enum StubDriver {
     private static var isPumpScheduled = false
     private static var timer: DispatchSourceTimer?
+    /// While above zero, neither the timer nor an ABI call pumps the stub.
+    static var pauses = 0
 
     static func install() {
         EventLoop.scheduler = { schedule() }
         guard timer == nil else { return }
         let source = DispatchSource.makeTimerSource(queue: .main)
         source.schedule(deadline: .now(), repeating: .milliseconds(5))
-        source.setEventHandler { MainActor.assumeIsolated { _ = bdk_stub_pump() } }
+        source.setEventHandler {
+            MainActor.assumeIsolated {
+                if pauses == 0 { _ = bdk_stub_pump() }
+            }
+        }
         source.resume()
         timer = source
     }
 
-    private static func schedule() {
-        guard !isPumpScheduled else { return }
+    static func schedule() {
+        guard pauses == 0, !isPumpScheduled else { return }
         isPumpScheduled = true
         DispatchQueue.main.async {
             MainActor.assumeIsolated {
@@ -84,6 +90,20 @@ public struct BDKStub {
     @discardableResult
     public func pump() -> Int {
         bdk_stub_pump()
+    }
+
+    /// Runs `body` with automatic pumping stopped, so a test can start work and act on it before
+    /// the stub advances it (a load that is still in flight when a second one starts, say). Nothing
+    /// queued runs until `body` returns, except through `pump()`; then pumping resumes.
+    public func withAutomaticPumpingPaused<Result>(
+        _ body: () async throws -> Result
+    ) async rethrows -> Result {
+        StubDriver.pauses += 1
+        defer {
+            StubDriver.pauses -= 1
+            StubDriver.schedule()
+        }
+        return try await body()
     }
 
     /// Scripts the outcome of every later navigation to `url`: it fails with `netError`, or

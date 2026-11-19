@@ -55,7 +55,9 @@ Pages and profiles dropped without `close()` are closed on deinit with a warning
 The stub has no event loop. `BDKTestSupport` installs a scheduler into an internal hook (`EventLoop` in `BDK`,
 `package` access, not public API) so that the stub is pumped from the main queue after every ABI call, plus a 5 ms
 timer for work posted with `bdk_post_to_ui_thread`. `await`ing a call in a `@MainActor` test therefore works.
-`runtime.stub.pump()` runs the queue synchronously when a test wants a deterministic point.
+`runtime.stub.pump()` runs the queue synchronously when a test wants a deterministic point. `runtime.stub.withAutomaticPumpingPaused { … }` stops the automatic pumping while its body runs,
+so a test can start a load and act on it (supersede it, stop it) before the stub finishes it; without the pause the
+5 ms timer can complete the load first.
 
 ## Differences from swift-api.md
 
