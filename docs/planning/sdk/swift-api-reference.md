@@ -507,7 +507,7 @@ Shortcuts, the menu bar and page cycling are the application's. Standard AppKit 
 | Member | Signature | Does |
 |---|---|---|
 | `BDKUIHandlers.<surface>` | `Surface<Request>`, one per surface (`permissions`, `javascriptDialogs`, `contextMenus`, `newWindows`, …) | Full list in [ui-requests.md](ui-requests.md) |
-| `Surface.setHandler(_:)` | `mutating func setHandler(_ handler: (@MainActor (Request) -> BDKUIResponse)?)` | Set or clear |
+| `Surface.setHandler(_:)` | `func setHandler(_ handler: (@MainActor (Request) -> BDKUIResponse)?) throws` | Set or clear. Throws `config.registrationAfterStart` for a surface that had no handler at start (T-SWF-04) |
 | `Surface.mode` | `SurfaceMode` (R) | From `bdk.toml`: `.default`, `.custom`, `.disabled` |
 
 | `BDKUIResponse` | Meaning |
