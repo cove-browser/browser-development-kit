@@ -8,6 +8,7 @@
    so pumping (a nested run of the run loop) lets Chromium work. Navigations never reach the
    network: every http and https load is served by the engine's test interceptor (bdk_testing.h). */
 #import <AppKit/AppKit.h>
+#import <objc/runtime.h>
 
 #include <cstdlib>
 #include <cstring>
@@ -176,6 +177,134 @@ void bdk_harness_engine_show(bdk_contents_t contents, int visible) {
         [window orderOut:nil];
     }
     bdk_harness_pump();
+}
+
+/* The window bdk_harness_engine_show made for the page, or nil. */
+static NSWindow* WindowOf(bdk_contents_t contents) {
+    bdk_native_handle_t view;
+    bdk_error_t error = 0;
+    if (bdk_contents_native_view(contents, &view, &error) != BDK_OK || !view.pointer)
+        return nil;
+    return ((__bridge NSView*)view.pointer).window;
+}
+
+void bdk_harness_engine_key(bdk_contents_t contents, unsigned short key_code,
+                            const char* characters, int command) {
+    NSWindow* window = WindowOf(contents);
+    if (!window)
+        return;
+    NSString* chars = [NSString stringWithUTF8String:characters];
+    for (NSEventType type : {NSEventTypeKeyDown, NSEventTypeKeyUp}) {
+        NSEvent* event = [NSEvent keyEventWithType:type
+                                          location:NSZeroPoint
+                                     modifierFlags:command ? NSEventModifierFlagCommand : 0
+                                         timestamp:[NSProcessInfo processInfo].systemUptime
+                                      windowNumber:window.windowNumber
+                                           context:nil
+                                        characters:chars
+                       charactersIgnoringModifiers:chars
+                                         isARepeat:NO
+                                           keyCode:key_code];
+        /* As the window server delivers it: key equivalents, then the first responder. */
+        [NSApp sendEvent:event];
+    }
+    bdk_harness_pump();
+}
+
+int bdk_harness_engine_window_is_key(bdk_contents_t contents) {
+    return WindowOf(contents).isKeyWindow ? 1 : 0;
+}
+
+int bdk_harness_engine_compose(bdk_contents_t contents, const char* marked, const char* text) {
+    NSWindow* window = WindowOf(contents);
+    id responder = window.firstResponder;
+    if (![responder conformsToProtocol:@protocol(NSTextInputClient)])
+        return 0;
+    /* An input method works inside -interpretKeyEvents: of each key-down: it marks text while
+       composing and inserts the result when the user commits. Stand in for one on the page's view
+       for two keys: "1" composes `marked`, "2" commits `text`. */
+    Class cls = [responder class];
+    SEL sel = @selector(interpretKeyEvents:);
+    Method method = class_getInstanceMethod(cls, sel);
+    IMP original = method_getImplementation(method);
+    NSString* m = [NSString stringWithUTF8String:marked];
+    NSString* t = [NSString stringWithUTF8String:text];
+    IMP ime = imp_implementationWithBlock(^(id view, NSArray<NSEvent*>* events) {
+      id<NSTextInputClient> client = view;
+      if ([events.firstObject.characters isEqualToString:@"1"]) {
+          [client setMarkedText:m
+                  selectedRange:NSMakeRange(m.length, 0)
+               replacementRange:NSMakeRange(NSNotFound, 0)];
+      } else {
+          [client insertText:t replacementRange:NSMakeRange(NSNotFound, 0)];
+      }
+    });
+    method_setImplementation(method, ime);
+    bdk_harness_engine_key(contents, 18 /* kVK_ANSI_1 */, "1", 0);
+    bdk_harness_engine_key(contents, 19 /* kVK_ANSI_2 */, "2", 0);
+    method_setImplementation(method, original);
+    imp_removeBlock(ime);
+    return 1;
+}
+
+static void CollectAccessibility(id element, int depth, NSMutableString* out, int* web_area) {
+    if (!element || depth > 60 || out.length > 4000)
+        return;
+    NSString* role = [element respondsToSelector:@selector(accessibilityRole)]
+                         ? [element accessibilityRole]
+                         : nil;
+    if ([role isEqualToString:@"AXWebArea"])
+        *web_area = 1;
+    if (getenv("BDK_TEST_TRACE"))
+        printf("    ax %*s%s %s\n", depth, "", role ? role.UTF8String : "-",
+               NSStringFromClass([element class]).UTF8String);
+    for (SEL sel : {
+             @selector(accessibilityValue), @selector(accessibilityTitle),
+                 @selector(accessibilityLabel)
+         }) {
+        if (![element respondsToSelector:sel])
+            continue;
+        id value = ((id (*)(id, SEL))[element methodForSelector:sel])(element, sel);
+        if ([value isKindOfClass:[NSString class]] && [value length]) {
+            [out appendString:value];
+            [out appendString:@"|"];
+        }
+    }
+    NSArray* children = [element respondsToSelector:@selector(accessibilityChildren)]
+                            ? [element accessibilityChildren]
+                            : nil;
+    /* A view that is not an accessibility element is ignored, and its descendants count as its
+       parent's children, as VoiceOver sees them. */
+    if ([element isKindOfClass:[NSView class]] && ![element isAccessibilityElement] &&
+        [element subviews].count)
+        children = [element subviews];
+    for (id child in children)
+        CollectAccessibility(child, depth + 1, out, web_area);
+}
+
+int bdk_harness_engine_accessibility_text(bdk_contents_t contents, char* out, size_t n) {
+    bdk_native_handle_t view;
+    bdk_error_t error = 0;
+    if (bdk_contents_native_view(contents, &view, &error) != BDK_OK || !view.pointer)
+        return 0;
+    /* What VoiceOver does when it starts: Chromium's application class turns page accessibility
+       on in response (BDKApplicationBase inherits it). */
+    static bool announced;
+    if (!announced) {
+        announced = true;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        [NSApp accessibilitySetValue:@YES forAttribute:@"AXEnhancedUserInterface"];
+#pragma clang diagnostic pop
+        /* Chromium waits two seconds for the setting to settle before turning accessibility on. */
+        bdk_testing_run_for(2.5);
+    }
+    NSMutableString* text = [NSMutableString string];
+    int web_area = 0;
+    NSView* page = (__bridge NSView*)view.pointer;
+    CollectAccessibility(page.window ? (id)page.window.contentView : (id)page, 0, text, &web_area);
+    snprintf(out, n, "%s", text.UTF8String);
+    return web_area;
 }
 
 } /* extern "C" */

@@ -9,6 +9,15 @@
 
 /* From harness_engine.mm: shows the page's view in a window of its own, or hides that window. */
 void bdk_harness_engine_show(bdk_contents_t contents, int visible);
+/* From harness_engine.mm: a key press delivered to the page's window as AppKit would, with Command
+   if `command`; an input method composing `marked` then committing `text` in the focused page; and
+   the text of the page's accessibility tree as VoiceOver reads it (returns whether a web area was
+   found). */
+void bdk_harness_engine_key(bdk_contents_t contents, unsigned short key_code,
+                            const char* characters, int command);
+int bdk_harness_engine_compose(bdk_contents_t contents, const char* marked, const char* text);
+int bdk_harness_engine_window_is_key(bdk_contents_t contents);
+int bdk_harness_engine_accessibility_text(bdk_contents_t contents, char* out, size_t n);
 /* From harness_engine.mm: while set, a new runtime keeps the persistent profiles of the last one.
  */
 extern int bdk_harness_engine_keep_profiles;
@@ -337,6 +346,99 @@ static void test_engine_showing_and_hiding_the_view_changes_visibility(void) {
     CHECK(st.visibility == BDK_VISIBILITY_HIDDEN);
 }
 
+/* ---- the host view: keys, input methods, accessibility (T-MAC-03) ---- */
+
+static int g_reserved_calls, g_unhandled_calls;
+static uint32_t g_unhandled_kind;
+
+static uint8_t reserve_command_k(void* ctx, bdk_native_handle_t key) {
+    (void)ctx;
+    ++g_reserved_calls;
+    return key.kind == BDK_NATIVE_NSEVENT ? 1 : 0;
+}
+static void note_unhandled(void* ctx, bdk_native_handle_t key) {
+    (void)ctx;
+    ++g_unhandled_calls;
+    g_unhandled_kind = key.kind;
+}
+
+/* A shortcut the page does not handle reaches the application's handler with the native event, and
+   a key the application reserves never reaches the page. */
+static void test_engine_keys_the_page_leaves_reach_the_application(void) {
+    reset_logs();
+    bdk_contents_t c = start_with_page();
+    bdk_harness_engine_show(c, 1);
+    REQUIRE(bdk_contents_focus(c) == BDK_OK);
+    run_script(c, "document.title='keys:';onkeydown=e=>{document.title+=e.key}", 0);
+    REQUIRE(wait_for_title(c, "keys:"));
+
+    g_unhandled_calls = 0;
+    bdk_contents_set_keyboard_handler(c, NULL, note_unhandled, NULL, NULL);
+    bdk_harness_engine_key(c, 38 /* kVK_ANSI_J */, "j", 1);
+    for (int i = 0; i < 20 && g_unhandled_calls == 0; ++i)
+        t_pump();
+    CHECK(g_unhandled_calls >= 1);
+    CHECK(g_unhandled_kind == BDK_NATIVE_NSEVENT);
+
+    g_reserved_calls = 0;
+    bdk_contents_set_keyboard_handler(c, reserve_command_k, note_unhandled, NULL, NULL);
+    bdk_harness_engine_key(c, 0 /* kVK_ANSI_A */, "a", 0);
+    CHECK(g_reserved_calls >= 1);
+    t_pump();
+    /* The page saw Command-J (it did not handle it) and never the reserved key. */
+    CHECK(wait_for_title(c, "keys:j"));
+    bdk_harness_engine_show(c, 0);
+}
+
+static void test_engine_an_input_method_composes_text_in_the_page(void) {
+    reset_logs();
+    bdk_contents_t c = start_with_page();
+    bdk_harness_engine_show(c, 1);
+    run_script(c,
+               "document.body.innerHTML='<input id=f>';document.getElementById('f').focus();"
+               "document.title='ready'",
+               0);
+    REQUIRE(wait_for_title(c, "ready"));
+    REQUIRE(bdk_contents_focus(c) == BDK_OK);
+    for (int i = 0; i < 5; ++i)
+        t_pump();
+    /* Typed keys reach the focused field in any window. */
+    bdk_harness_engine_key(c, 0 /* kVK_ANSI_A */, "a", 0);
+    run_script(c, "document.title='typed:'+document.getElementById('f').value", 0);
+    CHECK(wait_for_title(c, "typed:a"));
+    run_script(c, "document.getElementById('f').value=''", 0);
+    /* macOS runs input methods only in the key window, and Chromium engages one only there. A
+       process started from a terminal cannot make itself frontmost (cooperative activation), so
+       the composition is checked when the harness's window is key, and skipped otherwise. */
+    if (!bdk_harness_engine_window_is_key(c)) {
+        printf("    (input method skipped: the harness window is not key; run the harness as the "
+               "frontmost application)\n");
+        bdk_harness_engine_show(c, 0);
+        return;
+    }
+    REQUIRE(bdk_harness_engine_compose(c, "\xe3\x81\xab", "\xe6\x97\xa5\xe6\x9c\xac"));
+    run_script(c, "document.title='value:'+document.getElementById('f').value", 0);
+    CHECK(wait_for_title(c, "value:\xe6\x97\xa5\xe6\x9c\xac"));
+    bdk_harness_engine_show(c, 0);
+}
+
+static void test_engine_the_accessibility_tree_exposes_page_content(void) {
+    reset_logs();
+    bdk_contents_t c = start_with_page();
+    bdk_harness_engine_show(c, 1);
+    run_script(c, "document.body.innerHTML='<h1>Readable heading</h1><p>Spoken text</p>'", 0);
+    char text[2048];
+    int web_area = 0, found = 0;
+    for (int i = 0; i < 40 && !found; ++i) {
+        web_area = bdk_harness_engine_accessibility_text(c, text, sizeof text);
+        found = web_area && strstr(text, "Readable heading") && strstr(text, "Spoken text");
+        t_pump();
+    }
+    CHECK(web_area);
+    CHECK(found);
+    bdk_harness_engine_show(c, 0);
+}
+
 /* ---- Chromium's session state (T-ADP-07) and profile storage ---- */
 
 static void test_engine_session_state_restores_chromium_history_into_a_new_page(void) {
@@ -416,6 +518,12 @@ const t_test_t t_engine_tests[] = {
      test_engine_a_crashed_renderer_reports_renderer_gone},
     {"engine_showing_and_hiding_the_view_changes_visibility",
      test_engine_showing_and_hiding_the_view_changes_visibility},
+    {"engine_keys_the_page_leaves_reach_the_application",
+     test_engine_keys_the_page_leaves_reach_the_application},
+    {"engine_an_input_method_composes_text_in_the_page",
+     test_engine_an_input_method_composes_text_in_the_page},
+    {"engine_the_accessibility_tree_exposes_page_content",
+     test_engine_the_accessibility_tree_exposes_page_content},
     {"engine_session_state_restores_chromium_history_into_a_new_page",
      test_engine_session_state_restores_chromium_history_into_a_new_page},
     {"engine_persistent_profiles_outlive_the_runtime",
