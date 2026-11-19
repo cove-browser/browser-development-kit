@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BDK Patches <patches@bdk.invalid>
+Date: Thu, 19 Nov 2026 15:13:37 -0800
+Subject: [PATCH] bdk: accept a Browser whose window has no side panel UI
+ outside tests
+
+ReadAnythingSidePanelController::TabWillDetach() returns early for a
+Browser that has no SidePanelUI, and CHECK_IS_TEST()s that path unless
+the WebUI browser is enabled: upstream's "TODO(webium)" for a window with
+no views. A tab that is active in its tab strip reaches this when it is
+detached or closed, which BDK does constantly (a page moving between host
+contexts, a page destroyed). A Browser whose BrowserWindow comes from an
+embedder (see the previous patch) is the same supported configuration:
+it has no views and no side panel, by design. Treat it like the WebUI
+browser here.
+
+Used by: the BDK engine's host contexts (//bdk/engine/host_context.cc).
+---
+ .../ui/read_anything/read_anything_side_panel_controller.cc   | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/chrome/browser/ui/read_anything/read_anything_side_panel_controller.cc b/chrome/browser/ui/read_anything/read_anything_side_panel_controller.cc
+index c5931f88fde4297f4a564a6b5cc6942565bfaf09..42897770164eb819dd962f81fb7f9e1424075a47 100644
+--- a/chrome/browser/ui/read_anything/read_anything_side_panel_controller.cc
++++ b/chrome/browser/ui/read_anything/read_anything_side_panel_controller.cc
+@@ -9,6 +9,7 @@
+ 
+ #include "base/check_is_test.h"
+ #include "base/functional/bind.h"
++#include "chrome/browser/ui/browser_window/public/embedder_browser_window_factory.h"
+ #include "chrome/browser/ui/read_anything/read_anything_contents_wrapper.h"
+ #include "chrome/browser/ui/read_anything/read_anything_controller.h"
+ #include "chrome/browser/ui/read_anything/read_anything_enums.h"
+@@ -184,7 +185,8 @@ void ReadAnythingSidePanelController::TabWillDetach(
+   if (!side_panel_ui) {
+     // TODO(webium): create a SidePanelCoordinator for WebUIBrowser.
+     // This is a temporary solution to avoid a crash.
+-    if (!webui_browser::IsWebUIBrowserEnabled()) {
++    if (!webui_browser::IsWebUIBrowserEnabled() &&
++        !embedder_browser_window_factory::IsSet()) {
+       CHECK_IS_TEST();
+     }
+     return;  // IN-TEST
