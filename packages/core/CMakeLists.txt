@@ -145,9 +145,15 @@ if(BDK_ENGINE_FRAMEWORK AND APPLE)
   set(BDK_ENGINE_APP "${CMAKE_CURRENT_BINARY_DIR}/BDKEngineConformance.app")
   set(BDK_ENGINE_BINARY
       "${BDK_ENGINE_FRAMEWORK}/Chromium Framework.framework/Versions/Current/Chromium Framework")
+  # A packaged runtime carries normalised timestamps, so a newly selected one is no newer than the stamp. The
+  # copy therefore also depends on where BDK_ENGINE_FRAMEWORK resolves (.bdk/runtime links to the runtime's own
+  # directory); file(CONFIGURE) rewrites this file only when that changes.
+  file(REAL_PATH "${BDK_ENGINE_FRAMEWORK}" BDK_ENGINE_FRAMEWORK_REAL)
+  set(BDK_ENGINE_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/engine-framework.source")
+  file(CONFIGURE OUTPUT "${BDK_ENGINE_SOURCE}" CONTENT "${BDK_ENGINE_FRAMEWORK_REAL}\n")
   add_custom_command(
     OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/engine-framework.stamp"
-    DEPENDS "${BDK_ENGINE_BINARY}"
+    DEPENDS "${BDK_ENGINE_BINARY}" "${BDK_ENGINE_SOURCE}"
     COMMAND rm -rf "${BDK_ENGINE_APP}/Contents/Frameworks"
     COMMAND mkdir -p "${BDK_ENGINE_APP}/Contents/Frameworks"
     COMMAND cp -cR "${BDK_ENGINE_FRAMEWORK}/Chromium Framework.framework" "${BDK_ENGINE_APP}/Contents/Frameworks/"
