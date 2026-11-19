@@ -16,17 +16,44 @@
       "{workspaceRoot}/taplo.toml",
       "{workspaceRoot}/.editorconfig"
     ],
-    "nativeToolchain": [{ "runtime": "sh tooling/toolchain-id.sh" }]
+    "nativeToolchain": [
+      {
+        "runtime": "sh tooling/toolchain-id.sh"
+      }
+    ]
   },
   "targetDefaults": {
-    "build": { "cache": true, "inputs": ["default"] },
-    "test": { "cache": true, "inputs": ["default"] },
-    "codegen": { "cache": true, "inputs": ["default"] },
-    "lint": { "cache": true, "inputs": ["default", "lintConfig"] },
-    "format": { "cache": false },
-    "runtime": { "cache": false },
-    "sync": { "cache": false },
-    "package": { "cache": false },
-    "publish": { "cache": false }
-  }
+    "build": {
+      "cache": true,
+      "inputs": ["default"]
+    },
+    "test": {
+      "cache": true,
+      "inputs": ["default"]
+    },
+    "codegen": {
+      "cache": true,
+      "inputs": ["default"]
+    },
+    "lint": {
+      "cache": true,
+      "inputs": ["default", "lintConfig"]
+    },
+    "format": {
+      "cache": false
+    },
+    "runtime": {
+      "cache": false
+    },
+    "sync": {
+      "cache": false
+    },
+    "package": {
+      "cache": false
+    },
+    "publish": {
+      "cache": false
+    }
+  },
+  "analytics": true
 }
