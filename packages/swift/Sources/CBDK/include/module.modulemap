@@ -6,5 +6,6 @@ module CBDK {
 // The stub runtime's test hooks (packages/core/stub/bdk_stub.h). Only BDKTestSupport imports this module.
 module CBDKStub {
     header "../../../../core/stub/bdk_stub.h"
+    header "../../../../core/stub/bdk_stub_broker.h"
     export *
 }
