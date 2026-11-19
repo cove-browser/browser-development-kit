@@ -18,7 +18,7 @@ const PRIMITIVE_NAMES = [
   "kBytes",
   "kJson",
 ] as const;
-const VOID_REF = "{Prim::kVoid, 0, false, false}";
+const VOID_REF = "{0, Prim::kVoid, false, false}";
 
 function cString(text: string): string {
   return JSON.stringify(text);
@@ -31,8 +31,8 @@ function typeRef(expression: string, typeIndex: ReadonlyMap<string, number>): st
   const array = bare.endsWith("[]");
   const base = array ? bare.slice(0, -2) : bare;
   const prim = PRIMITIVES.indexOf(base);
-  if (prim >= 0) return `{Prim::${PRIMITIVE_NAMES[prim]}, 0, ${array}, ${optional}}`;
-  return `{Prim::kNamed, ${typeIndex.get(base)}, ${array}, ${optional}}`;
+  if (prim >= 0) return `{0, Prim::${PRIMITIVE_NAMES[prim]}, ${array}, ${optional}}`;
+  return `{${typeIndex.get(base)}, Prim::kNamed, ${array}, ${optional}}`;
 }
 
 function fieldArray(
@@ -59,15 +59,15 @@ function typeRow(
   const name = cString(type.name);
   if (type.kind === "struct") {
     const fields = fieldArray(`kTypeFields${index}`, type.fields, typeIndex, out);
-    return `{${name}, Kind::kStruct, ${fields}, ${type.fields.length}, nullptr, 0, ${VOID_REF}}`;
+    return `{${name}, ${fields}, ${type.fields.length}, nullptr, 0, ${VOID_REF}, Kind::kStruct}`;
   }
   if (type.kind === "enum") {
     out.push(`inline constexpr const char* kTypeValues${index}[] = {`);
     for (const value of type.values) out.push(`    ${cString(value)},`);
     out.push("};");
-    return `{${name}, Kind::kEnum, nullptr, 0, kTypeValues${index}, ${type.values.length}, ${VOID_REF}}`;
+    return `{${name}, nullptr, 0, kTypeValues${index}, ${type.values.length}, ${VOID_REF}, Kind::kEnum}`;
   }
-  return `{${name}, Kind::kAlias, nullptr, 0, nullptr, 0, ${typeRef(type.target, typeIndex)}}`;
+  return `{${name}, nullptr, 0, nullptr, 0, ${typeRef(type.target, typeIndex)}, Kind::kAlias}`;
 }
 
 function flagsOf(command: Command): string {
@@ -109,8 +109,8 @@ const HEAD = [
   "/* A type expression: a primitive, or the index of a type in kTypes; optionally an array; optionally",
   " * optional. */",
   "struct TypeRef {",
-  "    Prim prim;",
   "    uint16_t type;",
+  "    Prim prim;",
   "    bool array;",
   "    bool optional;",
   "};",
@@ -120,12 +120,12 @@ const HEAD = [
   "};",
   "struct TypeDef {",
   "    const char* name;",
-  "    Kind kind;",
   "    const Field* fields;",
   "    size_t field_count;",
   "    const char* const* values;",
   "    size_t value_count;",
   "    TypeRef alias;",
+  "    Kind kind;",
   "};",
   "",
   "constexpr uint8_t kCallerSwift = 1, kCallerPage = 2, kCallerSession = 4;",
@@ -134,21 +134,21 @@ const HEAD = [
   "                  kBinary = 32;",
   "",
   "struct CommandDef {",
-  "    uint32_t id;",
   "    const char* name;",
-  "    const char* capability; /* nullptr: none needed */",
-  "    uint8_t callers;        /* kCaller* bits */",
-  "    uint8_t profile;        /* kProfile* */",
-  "    uint8_t flags;          /* k* flags above */",
-  "    uint8_t raises;         /* BDK_SURFACE_* or 0 */",
+  "    const char* capability;        /* nullptr: none needed */",
   "    const char* authenticate_when; /* argument field that makes the call need authentication */",
   "    const Field* args;",
   "    size_t arg_count;",
+  "    uint32_t id;",
+  "    uint8_t callers; /* kCaller* bits */",
+  "    uint8_t profile; /* kProfile* */",
+  "    uint8_t flags;   /* k* flags above */",
+  "    uint8_t raises;  /* BDK_SURFACE_* or 0 */",
   "};",
   "struct EventDef {",
-  "    uint32_t id;",
   "    const char* name;",
   "    const char* capability;",
+  "    uint32_t id;",
   "};",
   "",
 ];
@@ -176,7 +176,7 @@ export function renderCommandTable(
   out.push("inline constexpr TypeDef kTypes[] = {");
   for (const row of typeRows) out.push(`    ${row},`);
   if (typeRows.length === 0) {
-    out.push(`    {nullptr, Kind::kAlias, nullptr, 0, nullptr, 0, ${VOID_REF}},`);
+    out.push(`    {nullptr, nullptr, 0, nullptr, 0, ${VOID_REF}, Kind::kAlias},`);
   }
   out.push("};", `inline constexpr size_t kTypeCount = ${typeRows.length};`, "");
 
@@ -191,12 +191,12 @@ export function renderCommandTable(
       command.authenticateWhen === undefined ? "nullptr" : cString(command.authenticateWhen);
     const capability = command.capability === undefined ? "nullptr" : cString(command.capability);
     const id = idOf(registry.commands, command.name);
-    return `{${id}u, ${cString(command.name)}, ${capability}, ${callers}, ${PROFILE_MODES[command.profile]}, ${flagsOf(command)}, ${raises}, ${when}, ${args}, ${command.args.length}}`;
+    return `{${cString(command.name)}, ${capability}, ${when}, ${args}, ${command.args.length}, ${id}u, ${callers}, ${PROFILE_MODES[command.profile]}, ${flagsOf(command)}, ${raises}}`;
   });
   out.push("", "inline constexpr CommandDef kCommands[] = {");
   for (const row of commandRows) out.push(`    ${row},`);
   if (commandRows.length === 0) {
-    out.push("    {0, nullptr, nullptr, 0, 0, 0, 0, nullptr, nullptr, 0},");
+    out.push("    {nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0},");
   }
   out.push("};", `inline constexpr size_t kCommandCount = ${commandRows.length};`, "");
 
@@ -206,9 +206,9 @@ export function renderCommandTable(
   out.push("inline constexpr EventDef kEvents[] = {");
   for (const event of events) {
     const id = idOf(registry.events, event.name);
-    out.push(`    {${id}u, ${cString(event.name)}, ${cString(event.capability)}},`);
+    out.push(`    {${cString(event.name)}, ${cString(event.capability)}, ${id}u},`);
   }
-  if (events.length === 0) out.push("    {0, nullptr, nullptr},");
+  if (events.length === 0) out.push("    {nullptr, nullptr, 0},");
   out.push("};", `inline constexpr size_t kEventCount = ${events.length};`, "");
 
   out.push(...patterns("kNeverForPages", policy.neverForPages));

@@ -23,20 +23,20 @@ describe("the broker tables", () => {
   it("lists every command with its identifier, capability, callers and marks", () => {
     const { table } = build(inputs());
     expect(table).toContain(
-      '{1u, "history.search", "history.read", 7, 2, kPaginated, 0, nullptr, kArgs0, 4},',
+      '{"history.search", "history.read", nullptr, kArgs0, 4, 1u, 7, 2, kPaginated, 0},',
     );
     expect(table).toContain(
-      '{2u, "history.deleteAll", "history.write", 7, 2, kGesture, 0, nullptr, nullptr, 0},',
+      '{"history.deleteAll", "history.write", nullptr, nullptr, 0, 2u, 7, 2, kGesture, 0},',
     );
-    expect(table).toContain('{1u, "history.visited", "history.read"},');
+    expect(table).toContain('{"history.visited", "history.read", 1u},');
   });
 
   it("describes argument fields and the types they name", () => {
     const { table } = build(inputs());
-    expect(table).toContain('{"text", {Prim::kString, 0, false, false}},');
-    expect(table).toContain('{"range", {Prim::kNamed, 1, false, true}},');
-    expect(table).toContain('{"HistoryEntry", Kind::kStruct, kTypeFields0, 3,');
-    expect(table).toContain('{"ChangeSource", Kind::kEnum, nullptr, 0, kTypeValues2, 2,');
+    expect(table).toContain('{"text", {0, Prim::kString, false, false}},');
+    expect(table).toContain('{"range", {1, Prim::kNamed, false, true}},');
+    expect(table).toContain('{"HistoryEntry", kTypeFields0, 3,');
+    expect(table).toContain('{"ChangeSource", nullptr, 0, kTypeValues2, 2,');
   });
 
   it("carries the policy lists", () => {
@@ -58,7 +58,7 @@ describe("the broker tables", () => {
       ...inputs(changed),
     });
     expect(table).toContain(
-      '{1u, "history.search", "history.read", 7, 2, kPaginated, 1, "text", kArgs0, 4},',
+      '{"history.search", "history.read", "text", kArgs0, 4, 1u, 7, 2, kPaginated, 1},',
     );
     expect(table).toContain("kGesture | kAuthentication");
   });

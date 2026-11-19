@@ -1,8 +1,11 @@
 /* Broker: parsing JSON arguments and checking them against the types of the interface definitions.
    Nothing here depends on a backend, so hosted CI tests it without Chromium. */
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <initializer_list>
+#include <string_view>
 
 #include "bdk_command_table.inc"
 #include "broker_internal.h"
@@ -15,22 +18,32 @@ constexpr int kMaxDepth = 64;
    everywhere. */
 constexpr double kMaxExactInteger = 9007199254740992.0;
 
+/* UTF-8 for a code point, by arithmetic only. */
 void append_utf8(std::string& out, uint32_t cp) {
-    if (cp < 0x80) {
-        out += static_cast<char>(cp);
-    } else if (cp < 0x800) {
-        out += static_cast<char>(0xC0 | (cp >> 6));
-        out += static_cast<char>(0x80 | (cp & 0x3F));
-    } else if (cp < 0x10000) {
-        out += static_cast<char>(0xE0 | (cp >> 12));
-        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
-        out += static_cast<char>(0x80 | (cp & 0x3F));
+    auto byte = [&out](uint32_t value) { out += static_cast<char>(value); };
+    if (cp < 128u) {
+        byte(cp);
+    } else if (cp < 2048u) {
+        byte(192u + cp / 64u);
+        byte(128u + cp % 64u);
+    } else if (cp < 65536u) {
+        byte(224u + cp / 4096u);
+        byte(128u + cp / 64u % 64u);
+        byte(128u + cp % 64u);
     } else {
-        out += static_cast<char>(0xF0 | (cp >> 18));
-        out += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
-        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
-        out += static_cast<char>(0x80 | (cp & 0x3F));
+        byte(240u + cp / 262144u);
+        byte(128u + cp / 4096u % 64u);
+        byte(128u + cp / 64u % 64u);
+        byte(128u + cp % 64u);
     }
+}
+
+/* Concatenates without the temporaries a chain of + makes. */
+std::string join(std::initializer_list<std::string_view> parts) {
+    std::string out;
+    for (std::string_view part : parts)
+        out.append(part);
+    return out;
 }
 
 /* Parses text that is already known to be JSON, so it checks only what it needs to stay in bounds.
@@ -50,16 +63,18 @@ struct Parser {
             return false;
         uint32_t v = 0;
         for (int k = 0; k < 4; ++k) {
-            char c = s[i++];
-            v <<= 4;
+            char c = s[i];
+            ++i;
+            uint32_t digit = 0;
             if (c >= '0' && c <= '9')
-                v |= static_cast<uint32_t>(c - '0');
+                digit = static_cast<uint32_t>(c - '0');
             else if (c >= 'a' && c <= 'f')
-                v |= static_cast<uint32_t>(c - 'a' + 10);
+                digit = static_cast<uint32_t>(c - 'a' + 10);
             else if (c >= 'A' && c <= 'F')
-                v |= static_cast<uint32_t>(c - 'A' + 10);
+                digit = static_cast<uint32_t>(c - 'A' + 10);
             else
                 return false;
+            v = v * 16u + digit;
         }
         *out = v;
         return true;
@@ -106,7 +121,7 @@ struct Parser {
                     i += 2;
                     uint32_t low = 0;
                     if (hex4(&low) && low >= 0xDC00 && low < 0xE000)
-                        cp = 0x10000 + ((cp - 0xD800) << 10) + (low - 0xDC00);
+                        cp = 65536u + (cp - 55296u) * 1024u + (low - 56320u);
                     else
                         i = save;
                 }
@@ -141,8 +156,9 @@ struct Parser {
                 if (!string(&key))
                     return false;
                 ws();
-                if (i >= s.size() || s[i++] != ':')
+                if (i >= s.size() || s[i] != ':')
                     return false;
+                ++i;
                 JsonValue member;
                 if (!value(&member, depth + 1))
                     return false;
@@ -255,41 +271,41 @@ std::string describe(const TypeRef& t) {
     std::string base;
     if (t.prim == Prim::kNamed) {
         const table::TypeDef& def = table::kTypes[t.type];
-        base = def.kind == Kind::kEnum     ? "one of the " + std::string(def.name) + " values"
-               : def.kind == Kind::kStruct ? "a " + std::string(def.name) + " object"
+        base = def.kind == Kind::kEnum     ? join({"one of the ", def.name, " values"})
+               : def.kind == Kind::kStruct ? join({"a ", def.name, " object"})
                                            : describe(def.alias);
     } else {
         base = describe_prim(t.prim);
     }
-    return t.array ? "an array of " + base : base;
+    return t.array ? join({"an array of ", base}) : base;
 }
 
 std::string check_value(const TypeRef& type, const JsonValue& v, const std::string& path,
                         bool element);
 
 std::string mismatch(const TypeRef& type, const std::string& path) {
-    return path + ": expected " + describe(type);
+    return join({path, ": expected ", describe(type)});
 }
 
 std::string check_struct(const table::TypeDef& def, const JsonValue& v, const std::string& path) {
     if (v.type != JsonValue::Type::kObject)
-        return path + ": expected a " + def.name + " object";
+        return join({path, ": expected a ", def.name, " object"});
     for (auto& [key, member] : v.members) {
         bool known = false;
         for (size_t k = 0; k < def.field_count; ++k)
             known = known || key == def.fields[k].name;
         if (!known)
-            return path + "." + key + ": unknown field";
+            return join({path, ".", key, ": unknown field"});
     }
     for (size_t k = 0; k < def.field_count; ++k) {
         const Field& f = def.fields[k];
         const JsonValue* m = v.find(f.name);
         if (!m) {
             if (!f.type.optional)
-                return path + "." + f.name + ": is required";
+                return join({path, ".", f.name, ": is required"});
             continue;
         }
-        std::string problem = check_value(f.type, *m, path + "." + f.name, false);
+        std::string problem = check_value(f.type, *m, join({path, ".", f.name}), false);
         if (!problem.empty())
             return problem;
     }
@@ -350,7 +366,7 @@ std::string check_value(const TypeRef& type, const JsonValue& v, const std::stri
         item.optional = false;
         for (size_t k = 0; k < v.items.size(); ++k) {
             std::string problem =
-                check_value(item, v.items[k], path + "[" + std::to_string(k) + "]", true);
+                check_value(item, v.items[k], join({path, "[", std::to_string(k), "]"}), true);
             if (!problem.empty())
                 return problem;
         }
@@ -380,6 +396,41 @@ bool json_parse(const std::string& text, JsonValue* out) {
     return p.i == text.size();
 }
 
+std::string json_serialize(const JsonValue& v) {
+    using T = JsonValue::Type;
+    switch (v.type) {
+    case T::kNull:
+        return "null";
+    case T::kBool:
+        return v.boolean ? "true" : "false";
+    case T::kNumber: {
+        char buf[40];
+        if (v.integral && std::fabs(v.number) <= kMaxExactInteger)
+            snprintf(buf, sizeof buf, "%lld", static_cast<long long>(v.number));
+        else
+            snprintf(buf, sizeof buf, "%.17g", v.number);
+        return buf;
+    }
+    case T::kString:
+        return "\"" + json_escape(v.text) + "\"";
+    case T::kArray: {
+        std::string out = "[";
+        for (size_t i = 0; i < v.items.size(); ++i)
+            out += (i ? "," : "") + json_serialize(v.items[i]);
+        return out + "]";
+    }
+    case T::kObject: {
+        std::string out = "{";
+        for (size_t i = 0; i < v.members.size(); ++i) {
+            out += (i ? ",\"" : "\"") + json_escape(v.members[i].first) +
+                   "\":" + json_serialize(v.members[i].second);
+        }
+        return out + "}";
+    }
+    }
+    return "null";
+}
+
 std::string check_arguments(const table::CommandDef& def, const JsonValue& arguments) {
     if (arguments.type != JsonValue::Type::kObject)
         return "arguments: expected an object";
@@ -388,17 +439,17 @@ std::string check_arguments(const table::CommandDef& def, const JsonValue& argum
         for (size_t k = 0; k < def.arg_count; ++k)
             known = known || key == def.args[k].name;
         if (!known)
-            return "arguments." + key + ": unknown field";
+            return join({"arguments.", key, ": unknown field"});
     }
     for (size_t k = 0; k < def.arg_count; ++k) {
         const Field& f = def.args[k];
         const JsonValue* m = arguments.find(f.name);
         if (!m) {
             if (!f.type.optional)
-                return std::string("arguments.") + f.name + ": is required";
+                return join({"arguments.", f.name, ": is required"});
             continue;
         }
-        std::string problem = check_value(f.type, *m, std::string("arguments.") + f.name, false);
+        std::string problem = check_value(f.type, *m, join({"arguments.", f.name}), false);
         if (!problem.empty())
             return problem;
     }

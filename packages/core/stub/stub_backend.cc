@@ -10,6 +10,7 @@
 #include "../runtime/core_internal.h"
 #include "bdk_abi_hash.h"
 #include "bdk_stub.h"
+#include "stub_services.h"
 
 using namespace bdkcore;
 
@@ -247,6 +248,7 @@ class StubBackend final : public Backend {
                        bdk_error_t*) override {
         S().scripts.clear();
         set_outcome(BDK_STUB_UI_NONE, 0, "", "");
+        bdkstub::services_reset();
         return BDK_OK;
     }
 
@@ -426,6 +428,14 @@ class StubBackend final : public Backend {
     }
 
     void UnregisterWindow(const Window&) override {}
+
+    void ExecuteCommand(Runtime& rt, const std::shared_ptr<BuiltinCall>& call) override {
+        bdkstub::services_execute(rt, call);
+    }
+
+    void Authenticate(Runtime&, const std::string&, std::function<void(bool)> done) override {
+        bdkstub::services_authenticate(std::move(done));
+    }
 };
 
 } // namespace

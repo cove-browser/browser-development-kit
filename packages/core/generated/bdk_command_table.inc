@@ -16,8 +16,8 @@ enum class Kind : uint8_t { kStruct, kEnum, kAlias };
 /* A type expression: a primitive, or the index of a type in kTypes; optionally an array; optionally
  * optional. */
 struct TypeRef {
-    Prim prim;
     uint16_t type;
+    Prim prim;
     bool array;
     bool optional;
 };
@@ -27,12 +27,12 @@ struct Field {
 };
 struct TypeDef {
     const char* name;
-    Kind kind;
     const Field* fields;
     size_t field_count;
     const char* const* values;
     size_t value_count;
     TypeRef alias;
+    Kind kind;
 };
 
 constexpr uint8_t kCallerSwift = 1, kCallerPage = 2, kCallerSession = 4;
@@ -41,94 +41,94 @@ constexpr uint8_t kGesture = 1, kAuthentication = 2, kPaginated = 4, kProgress =
                   kBinary = 32;
 
 struct CommandDef {
-    uint32_t id;
     const char* name;
-    const char* capability; /* nullptr: none needed */
-    uint8_t callers;        /* kCaller* bits */
-    uint8_t profile;        /* kProfile* */
-    uint8_t flags;          /* k* flags above */
-    uint8_t raises;         /* BDK_SURFACE_* or 0 */
+    const char* capability;        /* nullptr: none needed */
     const char* authenticate_when; /* argument field that makes the call need authentication */
     const Field* args;
     size_t arg_count;
+    uint32_t id;
+    uint8_t callers; /* kCaller* bits */
+    uint8_t profile; /* kProfile* */
+    uint8_t flags;   /* k* flags above */
+    uint8_t raises;  /* BDK_SURFACE_* or 0 */
 };
 struct EventDef {
-    uint32_t id;
     const char* name;
     const char* capability;
+    uint32_t id;
 };
 
 inline constexpr Field kTypeFields0[] = {
-    {"fullName", {Prim::kString, 0, false, true}},
-    {"organization", {Prim::kString, 0, false, true}},
-    {"street", {Prim::kString, 0, false, true}},
-    {"city", {Prim::kString, 0, false, true}},
-    {"region", {Prim::kString, 0, false, true}},
-    {"postalCode", {Prim::kString, 0, false, true}},
-    {"country", {Prim::kString, 0, false, true}},
-    {"phone", {Prim::kString, 0, false, true}},
-    {"email", {Prim::kString, 0, false, true}},
+    {"fullName", {0, Prim::kString, false, true}},
+    {"organization", {0, Prim::kString, false, true}},
+    {"street", {0, Prim::kString, false, true}},
+    {"city", {0, Prim::kString, false, true}},
+    {"region", {0, Prim::kString, false, true}},
+    {"postalCode", {0, Prim::kString, false, true}},
+    {"country", {0, Prim::kString, false, true}},
+    {"phone", {0, Prim::kString, false, true}},
+    {"email", {0, Prim::kString, false, true}},
 };
 inline constexpr Field kTypeFields1[] = {
-    {"id", {Prim::kString, 0, false, false}},
-    {"fields", {Prim::kNamed, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
+    {"fields", {0, Prim::kNamed, false, false}},
 };
 inline constexpr Field kTypeFields2[] = {
-    {"id", {Prim::kString, 0, false, false}},
-    {"holder", {Prim::kString, 0, false, false}},
-    {"network", {Prim::kString, 0, false, false}},
-    {"lastFour", {Prim::kString, 0, false, false}},
-    {"expiryMonth", {Prim::kInt, 0, false, false}},
-    {"expiryYear", {Prim::kInt, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
+    {"holder", {0, Prim::kString, false, false}},
+    {"network", {0, Prim::kString, false, false}},
+    {"lastFour", {0, Prim::kString, false, false}},
+    {"expiryMonth", {0, Prim::kInt, false, false}},
+    {"expiryYear", {0, Prim::kInt, false, false}},
 };
 inline constexpr Field kTypeFields3[] = {
-    {"holder", {Prim::kString, 0, false, false}},
-    {"number", {Prim::kString, 0, false, false}},
-    {"expiryMonth", {Prim::kInt, 0, false, false}},
-    {"expiryYear", {Prim::kInt, 0, false, false}},
+    {"holder", {0, Prim::kString, false, false}},
+    {"number", {0, Prim::kString, false, false}},
+    {"expiryMonth", {0, Prim::kInt, false, false}},
+    {"expiryYear", {0, Prim::kInt, false, false}},
 };
 inline constexpr Field kTypeFields4[] = {
-    {"holder", {Prim::kString, 0, false, true}},
-    {"number", {Prim::kString, 0, false, true}},
-    {"expiryMonth", {Prim::kInt, 0, false, true}},
-    {"expiryYear", {Prim::kInt, 0, false, true}},
+    {"holder", {0, Prim::kString, false, true}},
+    {"number", {0, Prim::kString, false, true}},
+    {"expiryMonth", {0, Prim::kInt, false, true}},
+    {"expiryYear", {0, Prim::kInt, false, true}},
 };
 inline constexpr Field kTypeFields5[] = {
-    {"id", {Prim::kString, 0, false, false}},
-    {"parentId", {Prim::kString, 0, false, true}},
-    {"index", {Prim::kInt, 0, false, false}},
-    {"title", {Prim::kString, 0, false, false}},
-    {"url", {Prim::kUrl, 0, false, true}},
-    {"isFolder", {Prim::kBool, 0, false, false}},
-    {"dateAdded", {Prim::kTimestamp, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
+    {"parentId", {0, Prim::kString, false, true}},
+    {"index", {0, Prim::kInt, false, false}},
+    {"title", {0, Prim::kString, false, false}},
+    {"url", {0, Prim::kUrl, false, true}},
+    {"isFolder", {0, Prim::kBool, false, false}},
+    {"dateAdded", {0, Prim::kTimestamp, false, false}},
 };
 inline constexpr Field kTypeFields6[] = {
-    {"node", {Prim::kNamed, 5, false, false}},
-    {"children", {Prim::kNamed, 6, true, false}},
+    {"node", {5, Prim::kNamed, false, false}},
+    {"children", {6, Prim::kNamed, true, false}},
 };
 inline constexpr Field kTypeFields7[] = {
-    {"site", {Prim::kString, 0, false, false}},
-    {"cookieCount", {Prim::kInt, 0, false, false}},
-    {"storageBytes", {Prim::kInt, 0, false, false}},
+    {"site", {0, Prim::kString, false, false}},
+    {"cookieCount", {0, Prim::kInt, false, false}},
+    {"storageBytes", {0, Prim::kInt, false, false}},
 };
 inline constexpr Field kTypeFields8[] = {
-    {"name", {Prim::kString, 0, false, false}},
-    {"domain", {Prim::kString, 0, false, false}},
-    {"path", {Prim::kString, 0, false, false}},
-    {"expires", {Prim::kTimestamp, 0, false, true}},
-    {"secure", {Prim::kBool, 0, false, false}},
-    {"httpOnly", {Prim::kBool, 0, false, false}},
-    {"sameSite", {Prim::kString, 0, false, true}},
+    {"name", {0, Prim::kString, false, false}},
+    {"domain", {0, Prim::kString, false, false}},
+    {"path", {0, Prim::kString, false, false}},
+    {"expires", {0, Prim::kTimestamp, false, true}},
+    {"secure", {0, Prim::kBool, false, false}},
+    {"httpOnly", {0, Prim::kBool, false, false}},
+    {"sameSite", {0, Prim::kString, false, true}},
 };
 inline constexpr Field kTypeFields9[] = {
-    {"name", {Prim::kString, 0, false, false}},
-    {"value", {Prim::kString, 0, false, false}},
-    {"domain", {Prim::kString, 0, false, false}},
-    {"path", {Prim::kString, 0, false, false}},
-    {"expires", {Prim::kTimestamp, 0, false, true}},
-    {"secure", {Prim::kBool, 0, false, true}},
-    {"httpOnly", {Prim::kBool, 0, false, true}},
-    {"sameSite", {Prim::kString, 0, false, true}},
+    {"name", {0, Prim::kString, false, false}},
+    {"value", {0, Prim::kString, false, false}},
+    {"domain", {0, Prim::kString, false, false}},
+    {"path", {0, Prim::kString, false, false}},
+    {"expires", {0, Prim::kTimestamp, false, true}},
+    {"secure", {0, Prim::kBool, false, true}},
+    {"httpOnly", {0, Prim::kBool, false, true}},
+    {"sameSite", {0, Prim::kString, false, true}},
 };
 inline constexpr const char* kTypeValues10[] = {
     "inProgress",
@@ -138,47 +138,47 @@ inline constexpr const char* kTypeValues10[] = {
     "interrupted",
 };
 inline constexpr Field kTypeFields11[] = {
-    {"id", {Prim::kString, 0, false, false}},
-    {"url", {Prim::kUrl, 0, false, false}},
-    {"path", {Prim::kString, 0, false, true}},
-    {"state", {Prim::kNamed, 10, false, false}},
-    {"receivedBytes", {Prim::kInt, 0, false, false}},
-    {"totalBytes", {Prim::kInt, 0, false, false}},
-    {"bytesPerSecond", {Prim::kInt, 0, false, true}},
-    {"danger", {Prim::kString, 0, false, true}},
-    {"mimeType", {Prim::kString, 0, false, true}},
-    {"startTime", {Prim::kTimestamp, 0, false, false}},
-    {"endTime", {Prim::kTimestamp, 0, false, true}},
+    {"id", {0, Prim::kString, false, false}},
+    {"url", {0, Prim::kUrl, false, false}},
+    {"path", {0, Prim::kString, false, true}},
+    {"state", {10, Prim::kNamed, false, false}},
+    {"receivedBytes", {0, Prim::kInt, false, false}},
+    {"totalBytes", {0, Prim::kInt, false, false}},
+    {"bytesPerSecond", {0, Prim::kInt, false, true}},
+    {"danger", {0, Prim::kString, false, true}},
+    {"mimeType", {0, Prim::kString, false, true}},
+    {"startTime", {0, Prim::kTimestamp, false, false}},
+    {"endTime", {0, Prim::kTimestamp, false, true}},
 };
 inline constexpr Field kTypeFields12[] = {
-    {"url", {Prim::kUrl, 0, false, false}},
-    {"title", {Prim::kString, 0, false, false}},
-    {"lastVisit", {Prim::kTimestamp, 0, false, false}},
-    {"visitCount", {Prim::kInt, 0, false, false}},
-    {"typedCount", {Prim::kInt, 0, false, false}},
+    {"url", {0, Prim::kUrl, false, false}},
+    {"title", {0, Prim::kString, false, false}},
+    {"lastVisit", {0, Prim::kTimestamp, false, false}},
+    {"visitCount", {0, Prim::kInt, false, false}},
+    {"typedCount", {0, Prim::kInt, false, false}},
 };
 inline constexpr Field kTypeFields13[] = {
-    {"start", {Prim::kTimestamp, 0, false, true}},
-    {"end", {Prim::kTimestamp, 0, false, true}},
+    {"start", {0, Prim::kTimestamp, false, true}},
+    {"end", {0, Prim::kTimestamp, false, true}},
 };
 inline constexpr Field kTypeFields14[] = {
-    {"time", {Prim::kTimestamp, 0, false, false}},
-    {"transition", {Prim::kString, 0, false, false}},
-    {"referrer", {Prim::kUrl, 0, false, true}},
+    {"time", {0, Prim::kTimestamp, false, false}},
+    {"transition", {0, Prim::kString, false, false}},
+    {"referrer", {0, Prim::kUrl, false, true}},
 };
 inline constexpr Field kTypeFields15[] = {
-    {"id", {Prim::kString, 0, false, false}},
-    {"origin", {Prim::kUrl, 0, false, false}},
-    {"username", {Prim::kString, 0, false, false}},
-    {"created", {Prim::kTimestamp, 0, false, false}},
-    {"lastUsed", {Prim::kTimestamp, 0, false, true}},
+    {"id", {0, Prim::kString, false, false}},
+    {"origin", {0, Prim::kUrl, false, false}},
+    {"username", {0, Prim::kString, false, false}},
+    {"created", {0, Prim::kTimestamp, false, false}},
+    {"lastUsed", {0, Prim::kTimestamp, false, true}},
 };
 inline constexpr Field kTypeFields16[] = {
-    {"id", {Prim::kString, 0, false, false}},
-    {"origin", {Prim::kUrl, 0, false, false}},
-    {"username", {Prim::kString, 0, false, false}},
-    {"flagged", {Prim::kTimestamp, 0, false, false}},
-    {"dismissed", {Prim::kBool, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
+    {"origin", {0, Prim::kUrl, false, false}},
+    {"username", {0, Prim::kString, false, false}},
+    {"flagged", {0, Prim::kTimestamp, false, false}},
+    {"dismissed", {0, Prim::kBool, false, false}},
 };
 inline constexpr const char* kTypeValues17[] = {
     "added",
@@ -197,19 +197,19 @@ inline constexpr const char* kTypeValues19[] = {
     "embargo",
 };
 inline constexpr Field kTypeFields20[] = {
-    {"kind", {Prim::kString, 0, false, false}},
-    {"allowed", {Prim::kNamed, 18, true, false}},
-    {"default", {Prim::kNamed, 18, false, false}},
+    {"kind", {0, Prim::kString, false, false}},
+    {"allowed", {18, Prim::kNamed, true, false}},
+    {"default", {18, Prim::kNamed, false, false}},
 };
 inline constexpr Field kTypeFields21[] = {
-    {"kind", {Prim::kString, 0, false, false}},
-    {"value", {Prim::kNamed, 18, false, false}},
-    {"source", {Prim::kNamed, 19, false, false}},
+    {"kind", {0, Prim::kString, false, false}},
+    {"value", {18, Prim::kNamed, false, false}},
+    {"source", {19, Prim::kNamed, false, false}},
 };
 inline constexpr Field kTypeFields22[] = {
-    {"origin", {Prim::kUrl, 0, false, false}},
-    {"value", {Prim::kNamed, 18, false, false}},
-    {"source", {Prim::kNamed, 19, false, false}},
+    {"origin", {0, Prim::kUrl, false, false}},
+    {"value", {18, Prim::kNamed, false, false}},
+    {"source", {19, Prim::kNamed, false, false}},
 };
 inline constexpr const char* kTypeValues23[] = {
     "history",
@@ -222,22 +222,22 @@ inline constexpr const char* kTypeValues23[] = {
     "hostedAppData",
 };
 inline constexpr Field kTypeFields24[] = {
-    {"type", {Prim::kNamed, 23, false, false}},
-    {"items", {Prim::kInt, 0, false, false}},
-    {"bytes", {Prim::kInt, 0, false, true}},
+    {"type", {23, Prim::kNamed, false, false}},
+    {"items", {0, Prim::kInt, false, false}},
+    {"bytes", {0, Prim::kInt, false, true}},
 };
 inline constexpr Field kTypeFields25[] = {
-    {"id", {Prim::kString, 0, false, false}},
-    {"name", {Prim::kString, 0, false, false}},
-    {"lastUsed", {Prim::kTimestamp, 0, false, true}},
-    {"isPrivate", {Prim::kBool, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
+    {"name", {0, Prim::kString, false, false}},
+    {"lastUsed", {0, Prim::kTimestamp, false, true}},
+    {"isPrivate", {0, Prim::kBool, false, false}},
 };
 inline constexpr Field kTypeFields26[] = {
-    {"bdkVersion", {Prim::kString, 0, false, false}},
-    {"chromiumVersion", {Prim::kString, 0, false, false}},
-    {"browserName", {Prim::kString, 0, false, false}},
-    {"internalScheme", {Prim::kString, 0, false, false}},
-    {"platform", {Prim::kString, 0, false, false}},
+    {"bdkVersion", {0, Prim::kString, false, false}},
+    {"chromiumVersion", {0, Prim::kString, false, false}},
+    {"browserName", {0, Prim::kString, false, false}},
+    {"internalScheme", {0, Prim::kString, false, false}},
+    {"platform", {0, Prim::kString, false, false}},
 };
 inline constexpr const char* kTypeValues27[] = {
     "swift",
@@ -245,10 +245,10 @@ inline constexpr const char* kTypeValues27[] = {
     "session",
 };
 inline constexpr Field kTypeFields28[] = {
-    {"kind", {Prim::kNamed, 27, false, false}},
-    {"name", {Prim::kString, 0, false, false}},
-    {"profile", {Prim::kString, 0, false, true}},
-    {"capabilities", {Prim::kString, 0, true, false}},
+    {"kind", {27, Prim::kNamed, false, false}},
+    {"name", {0, Prim::kString, false, false}},
+    {"profile", {0, Prim::kString, false, true}},
+    {"capabilities", {0, Prim::kString, true, false}},
 };
 inline constexpr const char* kTypeValues29[] = {
     "user",
@@ -266,418 +266,418 @@ inline constexpr const char* kTypeValues31[] = {
     "user",
 };
 inline constexpr Field kTypeFields32[] = {
-    {"key", {Prim::kString, 0, false, false}},
-    {"type", {Prim::kString, 0, false, false}},
-    {"default", {Prim::kJson, 0, false, false}},
-    {"value", {Prim::kJson, 0, false, false}},
-    {"allowed", {Prim::kJson, 0, false, true}},
-    {"scope", {Prim::kNamed, 30, false, false}},
-    {"source", {Prim::kNamed, 31, false, false}},
-    {"locked", {Prim::kBool, 0, false, false}},
+    {"key", {0, Prim::kString, false, false}},
+    {"type", {0, Prim::kString, false, false}},
+    {"default", {0, Prim::kJson, false, false}},
+    {"value", {0, Prim::kJson, false, false}},
+    {"allowed", {0, Prim::kJson, false, true}},
+    {"scope", {30, Prim::kNamed, false, false}},
+    {"source", {31, Prim::kNamed, false, false}},
+    {"locked", {0, Prim::kBool, false, false}},
 };
 inline constexpr Field kTypeFields33[] = {
-    {"isDefault", {Prim::kBool, 0, false, false}},
-    {"canBeDefault", {Prim::kBool, 0, false, false}},
+    {"isDefault", {0, Prim::kBool, false, false}},
+    {"canBeDefault", {0, Prim::kBool, false, false}},
 };
 inline constexpr TypeDef kTypes[] = {
-    {"AddressFields", Kind::kStruct, kTypeFields0, 9, nullptr, 0, {Prim::kVoid, 0, false, false}},
-    {"AddressInfo", Kind::kStruct, kTypeFields1, 2, nullptr, 0, {Prim::kVoid, 0, false, false}},
-    {"CardInfo", Kind::kStruct, kTypeFields2, 6, nullptr, 0, {Prim::kVoid, 0, false, false}},
-    {"CardInput", Kind::kStruct, kTypeFields3, 4, nullptr, 0, {Prim::kVoid, 0, false, false}},
-    {"CardUpdate", Kind::kStruct, kTypeFields4, 4, nullptr, 0, {Prim::kVoid, 0, false, false}},
-    {"BookmarkNode", Kind::kStruct, kTypeFields5, 7, nullptr, 0, {Prim::kVoid, 0, false, false}},
-    {"BookmarkTree", Kind::kStruct, kTypeFields6, 2, nullptr, 0, {Prim::kVoid, 0, false, false}},
-    {"SiteData", Kind::kStruct, kTypeFields7, 3, nullptr, 0, {Prim::kVoid, 0, false, false}},
-    {"CookieInfo", Kind::kStruct, kTypeFields8, 7, nullptr, 0, {Prim::kVoid, 0, false, false}},
-    {"CookieValue", Kind::kStruct, kTypeFields9, 8, nullptr, 0, {Prim::kVoid, 0, false, false}},
-    {"DownloadState", Kind::kEnum, nullptr, 0, kTypeValues10, 5, {Prim::kVoid, 0, false, false}},
-    {"DownloadItem", Kind::kStruct, kTypeFields11, 11, nullptr, 0, {Prim::kVoid, 0, false, false}},
-    {"HistoryEntry", Kind::kStruct, kTypeFields12, 5, nullptr, 0, {Prim::kVoid, 0, false, false}},
-    {"TimeRange", Kind::kStruct, kTypeFields13, 2, nullptr, 0, {Prim::kVoid, 0, false, false}},
-    {"HistoryVisit", Kind::kStruct, kTypeFields14, 3, nullptr, 0, {Prim::kVoid, 0, false, false}},
-    {"PasswordInfo", Kind::kStruct, kTypeFields15, 5, nullptr, 0, {Prim::kVoid, 0, false, false}},
-    {"PasswordIssue", Kind::kStruct, kTypeFields16, 5, nullptr, 0, {Prim::kVoid, 0, false, false}},
-    {"PasswordChange", Kind::kEnum, nullptr, 0, kTypeValues17, 3, {Prim::kVoid, 0, false, false}},
-    {"PermissionValue", Kind::kEnum, nullptr, 0, kTypeValues18, 3, {Prim::kVoid, 0, false, false}},
-    {"PermissionSource", Kind::kEnum, nullptr, 0, kTypeValues19, 4, {Prim::kVoid, 0, false, false}},
-    {"PermissionKindInfo", Kind::kStruct, kTypeFields20, 3, nullptr, 0, {Prim::kVoid, 0, false, false}},
-    {"PermissionSetting", Kind::kStruct, kTypeFields21, 3, nullptr, 0, {Prim::kVoid, 0, false, false}},
-    {"PermissionException", Kind::kStruct, kTypeFields22, 3, nullptr, 0, {Prim::kVoid, 0, false, false}},
-    {"PrivacyDataType", Kind::kEnum, nullptr, 0, kTypeValues23, 8, {Prim::kVoid, 0, false, false}},
-    {"PrivacyEstimate", Kind::kStruct, kTypeFields24, 3, nullptr, 0, {Prim::kVoid, 0, false, false}},
-    {"ProfileInfo", Kind::kStruct, kTypeFields25, 4, nullptr, 0, {Prim::kVoid, 0, false, false}},
-    {"RuntimeInfo", Kind::kStruct, kTypeFields26, 5, nullptr, 0, {Prim::kVoid, 0, false, false}},
-    {"CallerKind", Kind::kEnum, nullptr, 0, kTypeValues27, 3, {Prim::kVoid, 0, false, false}},
-    {"CallerInfo", Kind::kStruct, kTypeFields28, 4, nullptr, 0, {Prim::kVoid, 0, false, false}},
-    {"ChangeSource", Kind::kEnum, nullptr, 0, kTypeValues29, 5, {Prim::kVoid, 0, false, false}},
-    {"SettingScope", Kind::kEnum, nullptr, 0, kTypeValues30, 2, {Prim::kVoid, 0, false, false}},
-    {"SettingSource", Kind::kEnum, nullptr, 0, kTypeValues31, 2, {Prim::kVoid, 0, false, false}},
-    {"SettingInfo", Kind::kStruct, kTypeFields32, 8, nullptr, 0, {Prim::kVoid, 0, false, false}},
-    {"DefaultBrowserStatus", Kind::kStruct, kTypeFields33, 2, nullptr, 0, {Prim::kVoid, 0, false, false}},
+    {"AddressFields", kTypeFields0, 9, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"AddressInfo", kTypeFields1, 2, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"CardInfo", kTypeFields2, 6, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"CardInput", kTypeFields3, 4, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"CardUpdate", kTypeFields4, 4, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"BookmarkNode", kTypeFields5, 7, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"BookmarkTree", kTypeFields6, 2, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"SiteData", kTypeFields7, 3, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"CookieInfo", kTypeFields8, 7, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"CookieValue", kTypeFields9, 8, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"DownloadState", nullptr, 0, kTypeValues10, 5, {0, Prim::kVoid, false, false}, Kind::kEnum},
+    {"DownloadItem", kTypeFields11, 11, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"HistoryEntry", kTypeFields12, 5, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"TimeRange", kTypeFields13, 2, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"HistoryVisit", kTypeFields14, 3, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"PasswordInfo", kTypeFields15, 5, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"PasswordIssue", kTypeFields16, 5, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"PasswordChange", nullptr, 0, kTypeValues17, 3, {0, Prim::kVoid, false, false}, Kind::kEnum},
+    {"PermissionValue", nullptr, 0, kTypeValues18, 3, {0, Prim::kVoid, false, false}, Kind::kEnum},
+    {"PermissionSource", nullptr, 0, kTypeValues19, 4, {0, Prim::kVoid, false, false}, Kind::kEnum},
+    {"PermissionKindInfo", kTypeFields20, 3, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"PermissionSetting", kTypeFields21, 3, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"PermissionException", kTypeFields22, 3, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"PrivacyDataType", nullptr, 0, kTypeValues23, 8, {0, Prim::kVoid, false, false}, Kind::kEnum},
+    {"PrivacyEstimate", kTypeFields24, 3, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"ProfileInfo", kTypeFields25, 4, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"RuntimeInfo", kTypeFields26, 5, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"CallerKind", nullptr, 0, kTypeValues27, 3, {0, Prim::kVoid, false, false}, Kind::kEnum},
+    {"CallerInfo", kTypeFields28, 4, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"ChangeSource", nullptr, 0, kTypeValues29, 5, {0, Prim::kVoid, false, false}, Kind::kEnum},
+    {"SettingScope", nullptr, 0, kTypeValues30, 2, {0, Prim::kVoid, false, false}, Kind::kEnum},
+    {"SettingSource", nullptr, 0, kTypeValues31, 2, {0, Prim::kVoid, false, false}, Kind::kEnum},
+    {"SettingInfo", kTypeFields32, 8, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"DefaultBrowserStatus", kTypeFields33, 2, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
 };
 inline constexpr size_t kTypeCount = 34;
 
 inline constexpr Field kArgs1[] = {
-    {"fields", {Prim::kNamed, 0, false, false}},
+    {"fields", {0, Prim::kNamed, false, false}},
 };
 inline constexpr Field kArgs2[] = {
-    {"id", {Prim::kString, 0, false, false}},
-    {"fields", {Prim::kNamed, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
+    {"fields", {0, Prim::kNamed, false, false}},
 };
 inline constexpr Field kArgs3[] = {
-    {"id", {Prim::kString, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs5[] = {
-    {"card", {Prim::kNamed, 3, false, false}},
+    {"card", {3, Prim::kNamed, false, false}},
 };
 inline constexpr Field kArgs6[] = {
-    {"id", {Prim::kString, 0, false, false}},
-    {"card", {Prim::kNamed, 4, false, false}},
+    {"id", {0, Prim::kString, false, false}},
+    {"card", {4, Prim::kNamed, false, false}},
 };
 inline constexpr Field kArgs7[] = {
-    {"id", {Prim::kString, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs8[] = {
-    {"id", {Prim::kString, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs10[] = {
-    {"id", {Prim::kString, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs11[] = {
-    {"id", {Prim::kString, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs12[] = {
-    {"id", {Prim::kString, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs13[] = {
-    {"query", {Prim::kString, 0, false, false}},
-    {"limit", {Prim::kInt, 0, false, true}},
+    {"query", {0, Prim::kString, false, false}},
+    {"limit", {0, Prim::kInt, false, true}},
 };
 inline constexpr Field kArgs14[] = {
-    {"url", {Prim::kUrl, 0, false, false}},
+    {"url", {0, Prim::kUrl, false, false}},
 };
 inline constexpr Field kArgs15[] = {
-    {"parentId", {Prim::kString, 0, false, false}},
-    {"index", {Prim::kInt, 0, false, true}},
-    {"title", {Prim::kString, 0, false, false}},
-    {"url", {Prim::kUrl, 0, false, false}},
+    {"parentId", {0, Prim::kString, false, false}},
+    {"index", {0, Prim::kInt, false, true}},
+    {"title", {0, Prim::kString, false, false}},
+    {"url", {0, Prim::kUrl, false, false}},
 };
 inline constexpr Field kArgs16[] = {
-    {"parentId", {Prim::kString, 0, false, false}},
-    {"index", {Prim::kInt, 0, false, true}},
-    {"title", {Prim::kString, 0, false, false}},
+    {"parentId", {0, Prim::kString, false, false}},
+    {"index", {0, Prim::kInt, false, true}},
+    {"title", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs17[] = {
-    {"id", {Prim::kString, 0, false, false}},
-    {"title", {Prim::kString, 0, false, true}},
-    {"url", {Prim::kUrl, 0, false, true}},
+    {"id", {0, Prim::kString, false, false}},
+    {"title", {0, Prim::kString, false, true}},
+    {"url", {0, Prim::kUrl, false, true}},
 };
 inline constexpr Field kArgs18[] = {
-    {"id", {Prim::kString, 0, false, false}},
-    {"parentId", {Prim::kString, 0, false, false}},
-    {"index", {Prim::kInt, 0, false, true}},
+    {"id", {0, Prim::kString, false, false}},
+    {"parentId", {0, Prim::kString, false, false}},
+    {"index", {0, Prim::kInt, false, true}},
 };
 inline constexpr Field kArgs19[] = {
-    {"id", {Prim::kString, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs20[] = {
-    {"path", {Prim::kString, 0, false, false}},
+    {"path", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs21[] = {
-    {"path", {Prim::kString, 0, false, false}},
+    {"path", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs22[] = {
-    {"limit", {Prim::kInt, 0, false, true}},
-    {"cursor", {Prim::kString, 0, false, true}},
+    {"limit", {0, Prim::kInt, false, true}},
+    {"cursor", {0, Prim::kString, false, true}},
 };
 inline constexpr Field kArgs23[] = {
-    {"site", {Prim::kString, 0, false, false}},
+    {"site", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs24[] = {
-    {"site", {Prim::kString, 0, false, false}},
+    {"site", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs25[] = {
-    {"cookie", {Prim::kNamed, 9, false, false}},
+    {"cookie", {9, Prim::kNamed, false, false}},
 };
 inline constexpr Field kArgs26[] = {
-    {"name", {Prim::kString, 0, false, false}},
-    {"domain", {Prim::kString, 0, false, false}},
-    {"path", {Prim::kString, 0, false, false}},
+    {"name", {0, Prim::kString, false, false}},
+    {"domain", {0, Prim::kString, false, false}},
+    {"path", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs27[] = {
-    {"site", {Prim::kString, 0, false, false}},
+    {"site", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs28[] = {
-    {"state", {Prim::kNamed, 10, false, true}},
-    {"text", {Prim::kString, 0, false, true}},
-    {"limit", {Prim::kInt, 0, false, true}},
-    {"cursor", {Prim::kString, 0, false, true}},
+    {"state", {10, Prim::kNamed, false, true}},
+    {"text", {0, Prim::kString, false, true}},
+    {"limit", {0, Prim::kInt, false, true}},
+    {"cursor", {0, Prim::kString, false, true}},
 };
 inline constexpr Field kArgs29[] = {
-    {"id", {Prim::kString, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs30[] = {
-    {"url", {Prim::kUrl, 0, false, false}},
-    {"path", {Prim::kString, 0, false, true}},
+    {"url", {0, Prim::kUrl, false, false}},
+    {"path", {0, Prim::kString, false, true}},
 };
 inline constexpr Field kArgs31[] = {
-    {"id", {Prim::kString, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs32[] = {
-    {"id", {Prim::kString, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs33[] = {
-    {"id", {Prim::kString, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs34[] = {
-    {"id", {Prim::kString, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs35[] = {
-    {"id", {Prim::kString, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs36[] = {
-    {"id", {Prim::kString, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs37[] = {
-    {"id", {Prim::kString, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs38[] = {
-    {"id", {Prim::kString, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs40[] = {
-    {"text", {Prim::kString, 0, false, true}},
-    {"range", {Prim::kNamed, 13, false, true}},
-    {"limit", {Prim::kInt, 0, false, true}},
-    {"cursor", {Prim::kString, 0, false, true}},
+    {"text", {0, Prim::kString, false, true}},
+    {"range", {13, Prim::kNamed, false, true}},
+    {"limit", {0, Prim::kInt, false, true}},
+    {"cursor", {0, Prim::kString, false, true}},
 };
 inline constexpr Field kArgs41[] = {
-    {"url", {Prim::kUrl, 0, false, false}},
+    {"url", {0, Prim::kUrl, false, false}},
 };
 inline constexpr Field kArgs42[] = {
-    {"url", {Prim::kUrl, 0, false, false}},
-    {"title", {Prim::kString, 0, false, true}},
-    {"time", {Prim::kTimestamp, 0, false, true}},
-    {"transition", {Prim::kString, 0, false, true}},
+    {"url", {0, Prim::kUrl, false, false}},
+    {"title", {0, Prim::kString, false, true}},
+    {"time", {0, Prim::kTimestamp, false, true}},
+    {"transition", {0, Prim::kString, false, true}},
 };
 inline constexpr Field kArgs43[] = {
-    {"urls", {Prim::kUrl, 0, true, false}},
+    {"urls", {0, Prim::kUrl, true, false}},
 };
 inline constexpr Field kArgs44[] = {
-    {"range", {Prim::kNamed, 13, false, false}},
+    {"range", {13, Prim::kNamed, false, false}},
 };
 inline constexpr Field kArgs47[] = {
-    {"origin", {Prim::kUrl, 0, false, false}},
+    {"origin", {0, Prim::kUrl, false, false}},
 };
 inline constexpr Field kArgs48[] = {
-    {"id", {Prim::kString, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs49[] = {
-    {"origin", {Prim::kUrl, 0, false, false}},
-    {"username", {Prim::kString, 0, false, false}},
-    {"password", {Prim::kString, 0, false, false}},
+    {"origin", {0, Prim::kUrl, false, false}},
+    {"username", {0, Prim::kString, false, false}},
+    {"password", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs50[] = {
-    {"id", {Prim::kString, 0, false, false}},
-    {"username", {Prim::kString, 0, false, true}},
-    {"password", {Prim::kString, 0, false, true}},
+    {"id", {0, Prim::kString, false, false}},
+    {"username", {0, Prim::kString, false, true}},
+    {"password", {0, Prim::kString, false, true}},
 };
 inline constexpr Field kArgs51[] = {
-    {"id", {Prim::kString, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs53[] = {
-    {"origin", {Prim::kUrl, 0, false, false}},
+    {"origin", {0, Prim::kUrl, false, false}},
 };
 inline constexpr Field kArgs54[] = {
-    {"path", {Prim::kString, 0, false, false}},
+    {"path", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs55[] = {
-    {"path", {Prim::kString, 0, false, false}},
+    {"path", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs58[] = {
-    {"id", {Prim::kString, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs59[] = {
-    {"id", {Prim::kString, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs61[] = {
-    {"origin", {Prim::kUrl, 0, false, false}},
-    {"kind", {Prim::kString, 0, false, false}},
+    {"origin", {0, Prim::kUrl, false, false}},
+    {"kind", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs62[] = {
-    {"origin", {Prim::kUrl, 0, false, false}},
+    {"origin", {0, Prim::kUrl, false, false}},
 };
 inline constexpr Field kArgs63[] = {
-    {"kind", {Prim::kString, 0, false, false}},
+    {"kind", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs64[] = {
-    {"origin", {Prim::kUrl, 0, false, false}},
-    {"kind", {Prim::kString, 0, false, false}},
-    {"value", {Prim::kNamed, 18, false, false}},
+    {"origin", {0, Prim::kUrl, false, false}},
+    {"kind", {0, Prim::kString, false, false}},
+    {"value", {18, Prim::kNamed, false, false}},
 };
 inline constexpr Field kArgs65[] = {
-    {"origin", {Prim::kUrl, 0, false, false}},
-    {"kind", {Prim::kString, 0, false, true}},
+    {"origin", {0, Prim::kUrl, false, false}},
+    {"kind", {0, Prim::kString, false, true}},
 };
 inline constexpr Field kArgs66[] = {
-    {"kind", {Prim::kString, 0, false, false}},
+    {"kind", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs67[] = {
-    {"kind", {Prim::kString, 0, false, false}},
-    {"value", {Prim::kNamed, 18, false, false}},
+    {"kind", {0, Prim::kString, false, false}},
+    {"value", {18, Prim::kNamed, false, false}},
 };
 inline constexpr Field kArgs69[] = {
-    {"host", {Prim::kString, 0, false, false}},
+    {"host", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs70[] = {
-    {"types", {Prim::kNamed, 23, true, false}},
-    {"range", {Prim::kNamed, 13, false, true}},
-    {"origins", {Prim::kUrl, 0, true, true}},
+    {"types", {23, Prim::kNamed, true, false}},
+    {"range", {13, Prim::kNamed, false, true}},
+    {"origins", {0, Prim::kUrl, true, true}},
 };
 inline constexpr Field kArgs71[] = {
-    {"types", {Prim::kNamed, 23, true, false}},
-    {"range", {Prim::kNamed, 13, false, true}},
-    {"origins", {Prim::kUrl, 0, true, true}},
+    {"types", {23, Prim::kNamed, true, false}},
+    {"range", {13, Prim::kNamed, false, true}},
+    {"origins", {0, Prim::kUrl, true, true}},
 };
 inline constexpr Field kArgs74[] = {
-    {"name", {Prim::kString, 0, false, false}},
+    {"name", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs75[] = {
-    {"id", {Prim::kString, 0, false, false}},
-    {"name", {Prim::kString, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
+    {"name", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs76[] = {
-    {"id", {Prim::kString, 0, false, false}},
+    {"id", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs79[] = {
-    {"key", {Prim::kString, 0, false, false}},
+    {"key", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs80[] = {
-    {"keys", {Prim::kString, 0, true, false}},
+    {"keys", {0, Prim::kString, true, false}},
 };
 inline constexpr Field kArgs81[] = {
-    {"key", {Prim::kString, 0, false, false}},
+    {"key", {0, Prim::kString, false, false}},
 };
 inline constexpr Field kArgs82[] = {
-    {"key", {Prim::kString, 0, false, false}},
-    {"value", {Prim::kJson, 0, false, false}},
+    {"key", {0, Prim::kString, false, false}},
+    {"value", {0, Prim::kJson, false, false}},
 };
 inline constexpr Field kArgs83[] = {
-    {"key", {Prim::kString, 0, false, false}},
+    {"key", {0, Prim::kString, false, false}},
 };
 
 inline constexpr CommandDef kCommands[] = {
-    {1u, "autofill.addresses.list", "autofill.read", 7, 2, 0, 0, nullptr, nullptr, 0},
-    {2u, "autofill.addresses.add", "autofill.manage", 7, 2, 0, 0, nullptr, kArgs1, 1},
-    {3u, "autofill.addresses.update", "autofill.manage", 7, 2, 0, 0, nullptr, kArgs2, 2},
-    {4u, "autofill.addresses.remove", "autofill.manage", 7, 2, 0, 0, nullptr, kArgs3, 1},
-    {5u, "autofill.cards.list", "autofill.read", 7, 2, 0, 0, nullptr, nullptr, 0},
-    {6u, "autofill.cards.add", "autofill.manage", 7, 2, 0, 0, nullptr, kArgs5, 1},
-    {7u, "autofill.cards.update", "autofill.manage", 7, 2, 0, 0, nullptr, kArgs6, 2},
-    {8u, "autofill.cards.remove", "autofill.manage", 7, 2, 0, 0, nullptr, kArgs7, 1},
-    {9u, "autofill.cards.reveal", "passwords.reveal", 3, 2, kAuthentication, 0, nullptr, kArgs8, 1},
-    {10u, "bookmarks.roots", "bookmarks.read", 7, 2, 0, 0, nullptr, nullptr, 0},
-    {11u, "bookmarks.get", "bookmarks.read", 7, 2, 0, 0, nullptr, kArgs10, 1},
-    {12u, "bookmarks.children", "bookmarks.read", 7, 2, 0, 0, nullptr, kArgs11, 1},
-    {13u, "bookmarks.subtree", "bookmarks.read", 7, 2, 0, 0, nullptr, kArgs12, 1},
-    {14u, "bookmarks.search", "bookmarks.read", 7, 2, 0, 0, nullptr, kArgs13, 2},
-    {15u, "bookmarks.forUrl", "bookmarks.read", 7, 2, 0, 0, nullptr, kArgs14, 1},
-    {16u, "bookmarks.create", "bookmarks.write", 7, 2, 0, 0, nullptr, kArgs15, 4},
-    {17u, "bookmarks.createFolder", "bookmarks.write", 7, 2, 0, 0, nullptr, kArgs16, 3},
-    {18u, "bookmarks.update", "bookmarks.write", 7, 2, 0, 0, nullptr, kArgs17, 3},
-    {19u, "bookmarks.move", "bookmarks.write", 7, 2, 0, 0, nullptr, kArgs18, 3},
-    {20u, "bookmarks.remove", "bookmarks.write", 7, 2, 0, 0, nullptr, kArgs19, 1},
-    {21u, "bookmarks.import", "bookmarks.write", 7, 2, kProgress, 0, nullptr, kArgs20, 1},
-    {22u, "bookmarks.export", "bookmarks.read", 7, 2, 0, 0, nullptr, kArgs21, 1},
-    {23u, "cookies.sites", "cookies.read", 7, 2, kPaginated, 0, nullptr, kArgs22, 2},
-    {24u, "cookies.list", "cookies.read", 7, 2, 0, 0, nullptr, kArgs23, 1},
-    {25u, "cookies.getValues", "cookies.values", 5, 2, 0, 0, nullptr, kArgs24, 1},
-    {26u, "cookies.set", "cookies.values", 5, 2, 0, 0, nullptr, kArgs25, 1},
-    {27u, "cookies.remove", "cookies.manage", 7, 2, 0, 0, nullptr, kArgs26, 3},
-    {28u, "cookies.removeSiteData", "cookies.manage", 7, 2, 0, 0, nullptr, kArgs27, 1},
-    {29u, "downloads.list", "downloads.read", 7, 2, kPaginated, 0, nullptr, kArgs28, 4},
-    {30u, "downloads.get", "downloads.read", 7, 2, 0, 0, nullptr, kArgs29, 1},
-    {31u, "downloads.start", "downloads.manage", 7, 2, 0, 8, nullptr, kArgs30, 2},
-    {32u, "downloads.pause", "downloads.manage", 7, 2, 0, 0, nullptr, kArgs31, 1},
-    {33u, "downloads.resume", "downloads.manage", 7, 2, 0, 0, nullptr, kArgs32, 1},
-    {34u, "downloads.cancel", "downloads.manage", 7, 2, 0, 0, nullptr, kArgs33, 1},
-    {35u, "downloads.retry", "downloads.manage", 7, 2, 0, 0, nullptr, kArgs34, 1},
-    {36u, "downloads.remove", "downloads.manage", 7, 2, 0, 0, nullptr, kArgs35, 1},
-    {37u, "downloads.deleteFile", "downloads.manage", 7, 2, kGesture, 0, nullptr, kArgs36, 1},
-    {38u, "downloads.open", "downloads.manage", 7, 2, kGesture, 0, nullptr, kArgs37, 1},
-    {39u, "downloads.reveal", "downloads.manage", 7, 2, 0, 0, nullptr, kArgs38, 1},
-    {40u, "downloads.clear", "downloads.manage", 7, 2, 0, 0, nullptr, nullptr, 0},
-    {41u, "history.search", "history.read", 7, 2, kPaginated, 0, nullptr, kArgs40, 4},
-    {42u, "history.visits", "history.read", 7, 2, 0, 0, nullptr, kArgs41, 1},
-    {43u, "history.add", "history.write", 7, 2, 0, 0, nullptr, kArgs42, 4},
-    {44u, "history.deleteUrls", "history.write", 7, 2, 0, 0, nullptr, kArgs43, 1},
-    {45u, "history.deleteRange", "history.write", 7, 2, 0, 0, nullptr, kArgs44, 1},
-    {46u, "history.deleteAll", "history.write", 7, 2, kGesture, 0, nullptr, nullptr, 0},
-    {47u, "passwords.list", "passwords.read", 7, 2, 0, 0, nullptr, nullptr, 0},
-    {48u, "passwords.forOrigin", "passwords.read", 7, 2, 0, 0, nullptr, kArgs47, 1},
-    {49u, "passwords.reveal", "passwords.reveal", 3, 2, kAuthentication, 0, nullptr, kArgs48, 1},
-    {50u, "passwords.add", "passwords.manage", 7, 2, 0, 0, nullptr, kArgs49, 3},
-    {51u, "passwords.update", "passwords.manage", 7, 2, 0, 0, "password", kArgs50, 3},
-    {52u, "passwords.remove", "passwords.manage", 7, 2, 0, 0, nullptr, kArgs51, 1},
-    {53u, "passwords.neverSaved", "passwords.read", 7, 2, 0, 0, nullptr, nullptr, 0},
-    {54u, "passwords.removeNeverSaved", "passwords.manage", 7, 2, 0, 0, nullptr, kArgs53, 1},
-    {55u, "passwords.export", "passwords.reveal", 3, 2, kGesture | kAuthentication, 0, nullptr, kArgs54, 1},
-    {56u, "passwords.import", "passwords.manage", 7, 2, kProgress, 0, nullptr, kArgs55, 1},
-    {57u, "passwords.check", "passwords.manage", 7, 2, kAuthentication | kProgress, 0, nullptr, nullptr, 0},
-    {58u, "passwords.issues", "passwords.read", 7, 2, 0, 0, nullptr, nullptr, 0},
-    {59u, "passwords.dismissIssue", "passwords.manage", 7, 2, 0, 0, nullptr, kArgs58, 1},
-    {60u, "passwords.restoreIssue", "passwords.manage", 7, 2, 0, 0, nullptr, kArgs59, 1},
-    {61u, "permissions.kinds", "permissions.read", 7, 2, 0, 0, nullptr, nullptr, 0},
-    {62u, "permissions.get", "permissions.read", 7, 2, 0, 0, nullptr, kArgs61, 2},
-    {63u, "permissions.forOrigin", "permissions.read", 7, 2, 0, 0, nullptr, kArgs62, 1},
-    {64u, "permissions.exceptions", "permissions.read", 7, 2, 0, 0, nullptr, kArgs63, 1},
-    {65u, "permissions.set", "permissions.manage", 7, 2, 0, 0, nullptr, kArgs64, 3},
-    {66u, "permissions.reset", "permissions.manage", 7, 2, 0, 0, nullptr, kArgs65, 2},
-    {67u, "permissions.getDefault", "permissions.read", 7, 2, 0, 0, nullptr, kArgs66, 1},
-    {68u, "permissions.setDefault", "permissions.manage", 7, 2, 0, 0, nullptr, kArgs67, 2},
-    {69u, "permissions.certificateExceptions", "permissions.read", 7, 2, 0, 0, nullptr, nullptr, 0},
-    {70u, "permissions.revokeCertificateException", "permissions.manage", 7, 2, 0, 0, nullptr, kArgs69, 1},
-    {71u, "privacy.clear", "privacy.clear", 7, 2, kGesture | kProgress, 0, nullptr, kArgs70, 3},
-    {72u, "privacy.estimate", "privacy.clear", 7, 2, 0, 0, nullptr, kArgs71, 3},
-    {73u, "profiles.list", "profiles.read", 7, 0, 0, 0, nullptr, nullptr, 0},
-    {74u, "profiles.current", "profiles.read", 7, 2, 0, 0, nullptr, nullptr, 0},
-    {75u, "profiles.create", "profiles.manage", 7, 0, 0, 0, nullptr, kArgs74, 1},
-    {76u, "profiles.rename", "profiles.manage", 7, 0, 0, 0, nullptr, kArgs75, 2},
-    {77u, "profiles.delete", "profiles.manage", 7, 0, kGesture, 0, nullptr, kArgs76, 1},
-    {78u, "runtime.info", "runtime.read", 7, 0, 0, 0, nullptr, nullptr, 0},
-    {79u, "runtime.caller", nullptr, 7, 0, 0, 0, nullptr, nullptr, 0},
-    {80u, "settings.get", "settings.read", 7, 1, 0, 0, nullptr, kArgs79, 1},
-    {81u, "settings.getMany", "settings.read", 7, 1, 0, 0, nullptr, kArgs80, 1},
-    {82u, "settings.describe", "settings.read", 7, 1, 0, 0, nullptr, kArgs81, 1},
-    {83u, "settings.set", "settings.write", 7, 1, 0, 0, nullptr, kArgs82, 2},
-    {84u, "settings.reset", "settings.write", 7, 1, 0, 0, nullptr, kArgs83, 1},
-    {85u, "system.defaultBrowser.status", "system.default-browser", 7, 0, 0, 0, nullptr, nullptr, 0},
-    {86u, "system.defaultBrowser.request", "system.default-browser", 7, 0, kGesture, 0, nullptr, nullptr, 0},
+    {"autofill.addresses.list", "autofill.read", nullptr, nullptr, 0, 1u, 7, 2, 0, 0},
+    {"autofill.addresses.add", "autofill.manage", nullptr, kArgs1, 1, 2u, 7, 2, 0, 0},
+    {"autofill.addresses.update", "autofill.manage", nullptr, kArgs2, 2, 3u, 7, 2, 0, 0},
+    {"autofill.addresses.remove", "autofill.manage", nullptr, kArgs3, 1, 4u, 7, 2, 0, 0},
+    {"autofill.cards.list", "autofill.read", nullptr, nullptr, 0, 5u, 7, 2, 0, 0},
+    {"autofill.cards.add", "autofill.manage", nullptr, kArgs5, 1, 6u, 7, 2, 0, 0},
+    {"autofill.cards.update", "autofill.manage", nullptr, kArgs6, 2, 7u, 7, 2, 0, 0},
+    {"autofill.cards.remove", "autofill.manage", nullptr, kArgs7, 1, 8u, 7, 2, 0, 0},
+    {"autofill.cards.reveal", "passwords.reveal", nullptr, kArgs8, 1, 9u, 3, 2, kAuthentication, 0},
+    {"bookmarks.roots", "bookmarks.read", nullptr, nullptr, 0, 10u, 7, 2, 0, 0},
+    {"bookmarks.get", "bookmarks.read", nullptr, kArgs10, 1, 11u, 7, 2, 0, 0},
+    {"bookmarks.children", "bookmarks.read", nullptr, kArgs11, 1, 12u, 7, 2, 0, 0},
+    {"bookmarks.subtree", "bookmarks.read", nullptr, kArgs12, 1, 13u, 7, 2, 0, 0},
+    {"bookmarks.search", "bookmarks.read", nullptr, kArgs13, 2, 14u, 7, 2, 0, 0},
+    {"bookmarks.forUrl", "bookmarks.read", nullptr, kArgs14, 1, 15u, 7, 2, 0, 0},
+    {"bookmarks.create", "bookmarks.write", nullptr, kArgs15, 4, 16u, 7, 2, 0, 0},
+    {"bookmarks.createFolder", "bookmarks.write", nullptr, kArgs16, 3, 17u, 7, 2, 0, 0},
+    {"bookmarks.update", "bookmarks.write", nullptr, kArgs17, 3, 18u, 7, 2, 0, 0},
+    {"bookmarks.move", "bookmarks.write", nullptr, kArgs18, 3, 19u, 7, 2, 0, 0},
+    {"bookmarks.remove", "bookmarks.write", nullptr, kArgs19, 1, 20u, 7, 2, 0, 0},
+    {"bookmarks.import", "bookmarks.write", nullptr, kArgs20, 1, 21u, 7, 2, kProgress, 0},
+    {"bookmarks.export", "bookmarks.read", nullptr, kArgs21, 1, 22u, 7, 2, 0, 0},
+    {"cookies.sites", "cookies.read", nullptr, kArgs22, 2, 23u, 7, 2, kPaginated, 0},
+    {"cookies.list", "cookies.read", nullptr, kArgs23, 1, 24u, 7, 2, 0, 0},
+    {"cookies.getValues", "cookies.values", nullptr, kArgs24, 1, 25u, 5, 2, 0, 0},
+    {"cookies.set", "cookies.values", nullptr, kArgs25, 1, 26u, 5, 2, 0, 0},
+    {"cookies.remove", "cookies.manage", nullptr, kArgs26, 3, 27u, 7, 2, 0, 0},
+    {"cookies.removeSiteData", "cookies.manage", nullptr, kArgs27, 1, 28u, 7, 2, 0, 0},
+    {"downloads.list", "downloads.read", nullptr, kArgs28, 4, 29u, 7, 2, kPaginated, 0},
+    {"downloads.get", "downloads.read", nullptr, kArgs29, 1, 30u, 7, 2, 0, 0},
+    {"downloads.start", "downloads.manage", nullptr, kArgs30, 2, 31u, 7, 2, 0, 8},
+    {"downloads.pause", "downloads.manage", nullptr, kArgs31, 1, 32u, 7, 2, 0, 0},
+    {"downloads.resume", "downloads.manage", nullptr, kArgs32, 1, 33u, 7, 2, 0, 0},
+    {"downloads.cancel", "downloads.manage", nullptr, kArgs33, 1, 34u, 7, 2, 0, 0},
+    {"downloads.retry", "downloads.manage", nullptr, kArgs34, 1, 35u, 7, 2, 0, 0},
+    {"downloads.remove", "downloads.manage", nullptr, kArgs35, 1, 36u, 7, 2, 0, 0},
+    {"downloads.deleteFile", "downloads.manage", nullptr, kArgs36, 1, 37u, 7, 2, kGesture, 0},
+    {"downloads.open", "downloads.manage", nullptr, kArgs37, 1, 38u, 7, 2, kGesture, 0},
+    {"downloads.reveal", "downloads.manage", nullptr, kArgs38, 1, 39u, 7, 2, 0, 0},
+    {"downloads.clear", "downloads.manage", nullptr, nullptr, 0, 40u, 7, 2, 0, 0},
+    {"history.search", "history.read", nullptr, kArgs40, 4, 41u, 7, 2, kPaginated, 0},
+    {"history.visits", "history.read", nullptr, kArgs41, 1, 42u, 7, 2, 0, 0},
+    {"history.add", "history.write", nullptr, kArgs42, 4, 43u, 7, 2, 0, 0},
+    {"history.deleteUrls", "history.write", nullptr, kArgs43, 1, 44u, 7, 2, 0, 0},
+    {"history.deleteRange", "history.write", nullptr, kArgs44, 1, 45u, 7, 2, 0, 0},
+    {"history.deleteAll", "history.write", nullptr, nullptr, 0, 46u, 7, 2, kGesture, 0},
+    {"passwords.list", "passwords.read", nullptr, nullptr, 0, 47u, 7, 2, 0, 0},
+    {"passwords.forOrigin", "passwords.read", nullptr, kArgs47, 1, 48u, 7, 2, 0, 0},
+    {"passwords.reveal", "passwords.reveal", nullptr, kArgs48, 1, 49u, 3, 2, kAuthentication, 0},
+    {"passwords.add", "passwords.manage", nullptr, kArgs49, 3, 50u, 7, 2, 0, 0},
+    {"passwords.update", "passwords.manage", "password", kArgs50, 3, 51u, 7, 2, 0, 0},
+    {"passwords.remove", "passwords.manage", nullptr, kArgs51, 1, 52u, 7, 2, 0, 0},
+    {"passwords.neverSaved", "passwords.read", nullptr, nullptr, 0, 53u, 7, 2, 0, 0},
+    {"passwords.removeNeverSaved", "passwords.manage", nullptr, kArgs53, 1, 54u, 7, 2, 0, 0},
+    {"passwords.export", "passwords.reveal", nullptr, kArgs54, 1, 55u, 3, 2, kGesture | kAuthentication, 0},
+    {"passwords.import", "passwords.manage", nullptr, kArgs55, 1, 56u, 7, 2, kProgress, 0},
+    {"passwords.check", "passwords.manage", nullptr, nullptr, 0, 57u, 7, 2, kAuthentication | kProgress, 0},
+    {"passwords.issues", "passwords.read", nullptr, nullptr, 0, 58u, 7, 2, 0, 0},
+    {"passwords.dismissIssue", "passwords.manage", nullptr, kArgs58, 1, 59u, 7, 2, 0, 0},
+    {"passwords.restoreIssue", "passwords.manage", nullptr, kArgs59, 1, 60u, 7, 2, 0, 0},
+    {"permissions.kinds", "permissions.read", nullptr, nullptr, 0, 61u, 7, 2, 0, 0},
+    {"permissions.get", "permissions.read", nullptr, kArgs61, 2, 62u, 7, 2, 0, 0},
+    {"permissions.forOrigin", "permissions.read", nullptr, kArgs62, 1, 63u, 7, 2, 0, 0},
+    {"permissions.exceptions", "permissions.read", nullptr, kArgs63, 1, 64u, 7, 2, 0, 0},
+    {"permissions.set", "permissions.manage", nullptr, kArgs64, 3, 65u, 7, 2, 0, 0},
+    {"permissions.reset", "permissions.manage", nullptr, kArgs65, 2, 66u, 7, 2, 0, 0},
+    {"permissions.getDefault", "permissions.read", nullptr, kArgs66, 1, 67u, 7, 2, 0, 0},
+    {"permissions.setDefault", "permissions.manage", nullptr, kArgs67, 2, 68u, 7, 2, 0, 0},
+    {"permissions.certificateExceptions", "permissions.read", nullptr, nullptr, 0, 69u, 7, 2, 0, 0},
+    {"permissions.revokeCertificateException", "permissions.manage", nullptr, kArgs69, 1, 70u, 7, 2, 0, 0},
+    {"privacy.clear", "privacy.clear", nullptr, kArgs70, 3, 71u, 7, 2, kGesture | kProgress, 0},
+    {"privacy.estimate", "privacy.clear", nullptr, kArgs71, 3, 72u, 7, 2, 0, 0},
+    {"profiles.list", "profiles.read", nullptr, nullptr, 0, 73u, 7, 0, 0, 0},
+    {"profiles.current", "profiles.read", nullptr, nullptr, 0, 74u, 7, 2, 0, 0},
+    {"profiles.create", "profiles.manage", nullptr, kArgs74, 1, 75u, 7, 0, 0, 0},
+    {"profiles.rename", "profiles.manage", nullptr, kArgs75, 2, 76u, 7, 0, 0, 0},
+    {"profiles.delete", "profiles.manage", nullptr, kArgs76, 1, 77u, 7, 0, kGesture, 0},
+    {"runtime.info", "runtime.read", nullptr, nullptr, 0, 78u, 7, 0, 0, 0},
+    {"runtime.caller", nullptr, nullptr, nullptr, 0, 79u, 7, 0, 0, 0},
+    {"settings.get", "settings.read", nullptr, kArgs79, 1, 80u, 7, 1, 0, 0},
+    {"settings.getMany", "settings.read", nullptr, kArgs80, 1, 81u, 7, 1, 0, 0},
+    {"settings.describe", "settings.read", nullptr, kArgs81, 1, 82u, 7, 1, 0, 0},
+    {"settings.set", "settings.write", nullptr, kArgs82, 2, 83u, 7, 1, 0, 0},
+    {"settings.reset", "settings.write", nullptr, kArgs83, 1, 84u, 7, 1, 0, 0},
+    {"system.defaultBrowser.status", "system.default-browser", nullptr, nullptr, 0, 85u, 7, 0, 0, 0},
+    {"system.defaultBrowser.request", "system.default-browser", nullptr, nullptr, 0, 86u, 7, 0, kGesture, 0},
 };
 inline constexpr size_t kCommandCount = 86;
 
 inline constexpr EventDef kEvents[] = {
-    {1u, "autofill.changed", "autofill.read"},
-    {2u, "bookmarks.created", "bookmarks.read"},
-    {3u, "bookmarks.changed", "bookmarks.read"},
-    {4u, "bookmarks.moved", "bookmarks.read"},
-    {5u, "bookmarks.removed", "bookmarks.read"},
-    {6u, "bookmarks.reordered", "bookmarks.read"},
-    {7u, "cookies.changed", "cookies.values"},
-    {8u, "downloads.created", "downloads.read"},
-    {9u, "downloads.updated", "downloads.read"},
-    {10u, "downloads.completed", "downloads.read"},
-    {11u, "downloads.interrupted", "downloads.read"},
-    {12u, "downloads.removed", "downloads.read"},
-    {13u, "history.visited", "history.read"},
-    {14u, "history.removed", "history.read"},
-    {15u, "passwords.changed", "passwords.read"},
-    {16u, "passwords.issuesChanged", "passwords.read"},
-    {17u, "permissions.changed", "permissions.read"},
-    {18u, "privacy.cleared", "privacy.clear"},
-    {19u, "profiles.created", "profiles.read"},
-    {20u, "profiles.renamed", "profiles.read"},
-    {21u, "profiles.deleted", "profiles.read"},
-    {22u, "settings.changed", "settings.read"},
+    {"autofill.changed", "autofill.read", 1u},
+    {"bookmarks.created", "bookmarks.read", 2u},
+    {"bookmarks.changed", "bookmarks.read", 3u},
+    {"bookmarks.moved", "bookmarks.read", 4u},
+    {"bookmarks.removed", "bookmarks.read", 5u},
+    {"bookmarks.reordered", "bookmarks.read", 6u},
+    {"cookies.changed", "cookies.values", 7u},
+    {"downloads.created", "downloads.read", 8u},
+    {"downloads.updated", "downloads.read", 9u},
+    {"downloads.completed", "downloads.read", 10u},
+    {"downloads.interrupted", "downloads.read", 11u},
+    {"downloads.removed", "downloads.read", 12u},
+    {"history.visited", "history.read", 13u},
+    {"history.removed", "history.read", 14u},
+    {"passwords.changed", "passwords.read", 15u},
+    {"passwords.issuesChanged", "passwords.read", 16u},
+    {"permissions.changed", "permissions.read", 17u},
+    {"privacy.cleared", "privacy.clear", 18u},
+    {"profiles.created", "profiles.read", 19u},
+    {"profiles.renamed", "profiles.read", 20u},
+    {"profiles.deleted", "profiles.read", 21u},
+    {"settings.changed", "settings.read", 22u},
 };
 inline constexpr size_t kEventCount = 22;
 

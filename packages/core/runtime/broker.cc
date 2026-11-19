@@ -513,7 +513,7 @@ void Backend::ExecuteCommand(Runtime&, const std::shared_ptr<BuiltinCall>& call)
 }
 
 void Backend::Authenticate(Runtime&, const std::string&, std::function<void(bool)> done) {
-    post([done] { done(false); });
+    post([done = std::move(done)] { done(false); });
 }
 
 } // namespace bdkcore

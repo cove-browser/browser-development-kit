@@ -27,7 +27,7 @@ struct CommandDef;
 /* Arguments and results are each capped at this many bytes of JSON (services.md section 2:
    "a few megabytes"). A larger payload is broker.payloadTooLarge. Binary data travels outside the
    JSON value and is not counted. */
-constexpr size_t kMaxPayloadBytes = 4u * 1024u * 1024u;
+constexpr size_t kMaxPayloadBytes = size_t{4} * 1024 * 1024;
 
 /* Who is calling. The host (Swift, through the C ABI) has full authority. A page and a session
    carry a capability set and a scope; their transports arrive in M4 and M7, and until then only the
@@ -149,6 +149,9 @@ struct JsonValue {
 
 /* Parses text that valid_json() accepted. */
 bool json_parse(const std::string& text, JsonValue* out);
+
+/* Writes a parsed value back as JSON text. Numbers are written in their shortest exact form. */
+std::string json_serialize(const JsonValue& value);
 
 /* Checks parsed arguments against a built-in command's argument types. Empty when they match;
    otherwise a message naming the first problem and where it is. */
