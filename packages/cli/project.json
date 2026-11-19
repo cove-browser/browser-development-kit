@@ -40,7 +40,8 @@
       "options": {
         "commands": [
           "pnpm exec biome check {projectRoot}",
-          "pnpm exec tsc -p {projectRoot}/tsconfig.json --noEmit"
+          "pnpm exec tsc -p {projectRoot}/tsconfig.json --noEmit",
+          "pnpm exec tsc -p {projectRoot}/scripts/tsconfig.json --noEmit"
         ],
         "parallel": false
       }
@@ -55,8 +56,16 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "echo 'cli:package: not implemented until M2 (T-CLI-05, Rolldown + node --build-sea)'"
-      }
+        "command": "pnpm exec tsx {projectRoot}/scripts/package.ts"
+      },
+      "inputs": [
+        "default",
+        "{workspaceRoot}/.node-version",
+        {
+          "externalDependencies": ["rolldown"]
+        }
+      ],
+      "outputs": ["{projectRoot}/dist/bdk", "{projectRoot}/dist/bdk.artifactbundle"]
     }
   }
 }
