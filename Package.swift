@@ -30,9 +30,15 @@ let package = Package(
             dependencies: ["CBDK"],
             path: "packages/swift/Sources/BDK"
         ),
+        // The stub's BDKApplicationBase, a plain NSApplication subclass. The real runtime exports its own.
+        .target(
+            name: "BDKStubApplication",
+            dependencies: ["CBDK"],
+            path: "packages/swift/Sources/BDKStubApplication"
+        ),
         .target(
             name: "BDKTestSupport",
-            dependencies: ["BDK", "CBDK", "BDKStubRuntime"],
+            dependencies: ["BDK", "CBDK", "BDKStubRuntime", "BDKStubApplication"],
             path: "packages/swift/Sources/BDKTestSupport"
         ),
         .testTarget(

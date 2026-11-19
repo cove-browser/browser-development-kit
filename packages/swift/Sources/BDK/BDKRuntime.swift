@@ -179,11 +179,16 @@ public final class BDKRuntime {
         EventLoop.kick()
     }
 
-    /// For `applicationShouldTerminate`: returns `.terminateLater`, shuts down, then replies.
+    /// For `applicationShouldTerminate`: cancels this attempt, shuts the runtime down, then asks the
+    /// application to terminate again; the second call returns `.terminateNow`.
+    ///
+    /// It does not use `.terminateLater`: AppKit then waits for the reply in a modal run loop nested inside
+    /// Chromium's, and Chromium cannot stop until that loop returns. `applicationShouldTerminate` therefore
+    /// runs twice; work that must happen once should check `BDKRuntime.isRunning`.
     public func terminate(replyingTo application: NSApplication) -> NSApplication.TerminateReply {
         guard state == .running else { return .terminateNow }
-        terminate { application.reply(toApplicationShouldTerminate: true) }
-        return .terminateLater
+        terminate { application.terminate(nil) }
+        return .terminateCancel
     }
 
     package func terminate(completion: @escaping @MainActor () -> Void) {

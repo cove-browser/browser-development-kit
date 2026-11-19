@@ -200,7 +200,9 @@ extension BDKStubTests {
 
         @Test func applicationClassIsOpenAndSubclassable() {
             #expect(CustomApplication.superclass() === BDKApplication.self)
-            #expect(BDKApplication.superclass() === NSApplication.self)
+            // The runtime's base class sits in between; with the stub it is a plain NSApplication subclass.
+            #expect(BDKApplication.superclass() === BDKApplicationBase.self)
+            #expect(BDKApplicationBase.superclass() === NSApplication.self)
         }
     }
 
