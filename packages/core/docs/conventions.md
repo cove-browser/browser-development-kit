@@ -9,10 +9,10 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
 |---|---|
 | `include/bdk/*.h` | Public headers: plain C, `extern "C"` guards, `BDK_EXPORT`, no platform header, no platform type |
 | `interface/` | Interface definitions (JSON, T-ABI-03): one `<namespace>.json` per namespace, `policy.json`, and the identifier registry `ids.json`. Every `*.json` here goes into the hash |
-| `runtime/` | The runtime core, C++23, no exceptions, no platform code: handles, errors, calls, subscriptions, broker, UI requests and every ABI function's checks. What a page does is behind the `Backend` interface in `runtime/core_internal.h` |
+| `runtime/` | The runtime core, C++23, no exceptions, no platform code: handles, errors, calls, subscriptions, broker (`broker.cc`, `broker_args.cc`, `broker_internal.h`), UI requests and every ABI function's checks. What a page does is behind the `Backend` interface in `runtime/core_internal.h` |
 | `stub/` | The stub's in-memory backend and its task queue. Test hooks in `stub/bdk_stub.h` are not ABI |
 | `tests/` | Conformance suite in C11, written against `bdk/bdk.h` and `tests/harness.h` only |
-| `cmake/abi-hash.cmake`, `generated/` | Hash generator and checker; the recorded hash |
+| `cmake/abi-hash.cmake`, `generated/` | Hash generator and checker; the recorded hash. Also `bdk_command_table.inc`, generated from `interface/` (not part of the hash: its inputs are) |
 
 ## Rules (c-abi.md section 2, as implemented)
 
@@ -96,19 +96,92 @@ becomes `#define BDK_X_NAME <value>` (strings quoted, enums `Nu`, flags `0xNu` w
 stated in the definition. The group named `surfaces` is also the set of surface names a command's `raises` may use, in
 lower case. Commands and events get `BDK_COMMAND_<NAME>` and `BDK_EVENT_<NAME>` (`history.deleteAll` becomes
 `HISTORY_DELETE_ALL`) with an identifier the registry assigns: the next integer above every identifier ever assigned,
-starting at 1. No command or event is defined yet: services.md is still a placeholder catalogue, and the broker is M3
-(T-SVC-01).
+starting at 1. The M3 namespaces are defined (runtime, profiles, settings, history, bookmarks, downloads, permissions,
+cookies, privacy, passwords, autofill, system); the rest of the services.md catalogue arrives with its milestone.
 
 Rules the registry enforces: a new name gets a new identifier; a removed name stays in `ids.json` marked `retired` and
 its identifier is never given to another name; a retired name cannot be defined again; a constant whose value differs
 from the registry is a renumbering and fails; so does a new constant that takes a value already in the registry.
 
-To add an identifier: edit the definition, run `pnpm exec nx run js-codegen:codegen` (rewrites `ids.json` and
-`bdk_ids.h`), run `cmake -DMODE=generate -P packages/core/cmake/abi-hash.cmake` (the definitions are hashed), and
+To add an identifier: edit the definition, run `pnpm exec nx run js-codegen:codegen` (rewrites `ids.json`,
+`bdk_ids.h` and `generated/bdk_command_table.inc`, the tables the broker reads), run `cmake -DMODE=generate -P packages/core/cmake/abi-hash.cmake` (the definitions are hashed), and
 commit all of it. `pnpm exec nx run js-codegen:codegen-check` fails when the committed outputs are stale; `js-codegen:test`
 and the `abi-linux` job run the same check. To remove one, delete it from the definition and regenerate. Do not edit
 `ids.json` by hand except to resolve a merge: two branches that add identifiers conflict there, and the fix is to keep
 both sides and re-run the generator, which fails if two names ended up with one identifier.
+
+## The broker
+
+Specification: services.md sections 1 to 5 and architecture.md section 9. Task T-SVC-01. The core does every check
+once, in `runtime/broker.cc`; a backend implements the work behind `Backend::ExecuteCommand`.
+
+Decisions taken where the specification was silent (2026-11-19):
+
+1. One pipeline for every command. A call is looked up by name or identifier (built-in commands, from the generated
+   tables, then registered `app.` commands by name), and then checked in the order of services.md section 2: caller
+   identity, capability, scope, gesture or authentication, argument validation, the service. A command that does not
+   exist is `broker.unknownCommand` before anything else. Each refusal delivers its result later, never from the
+   call that caused it, and a refused call never reaches the service.
+2. Callers. The host (Swift, through the C ABI) has full authority: no capability, scope or gesture check. An internal
+   page and an automation session are `Caller` objects (`broker_internal.h`) with a capability set, and a scope: a
+   page's profile and no pages; a session's profiles and pages. Their transports arrive in M4 and M7; until then the
+   stub's test hooks (`stub/bdk_stub_broker.h`, through `tests/harness_broker.h`) are the only way to make one. Calls
+   from one caller start in the order sent.
+3. Capability. A built-in command lists the callers it admits (`callers`) and the capability it needs; either missing is
+   `capability.denied`. An application command needs the capability named like itself (`app.tabs.open`) or a prefix
+   pattern (`app.tabs.*`, which covers every name under the prefix and nothing else). A grant is checked when the
+   caller is created: no wildcard outside `app.<prefix>.*`, nothing on the policy's never-for-pages or
+   never-for-sessions list. Capability names the interface does not define are accepted, because the capability table
+   is generated from the commands and events defined so far. `runtime.caller` needs none.
+4. Scope. A page may name only its own profile (any other is `capability.outOfScope`) and no page. A session may name
+   only profiles and pages in its scope, and with exactly one profile in scope that profile is the default. A
+   command with profile `required` and no profile resolved is `broker.invalidArguments`; one with `none` is not given
+   a profile. A handle that went stale between the call and its dispatch is `profile.notFound` or `contents.stale`.
+5. Gesture and authentication. A page's call to a command with `requires: ["gesture"]` needs the gesture the
+   transport reports (`capability.gestureRequired`); a session holds the capability and needs no gesture; the host
+   never does. Authentication is asked of the operating system whoever calls, through `Backend::Authenticate`, before
+   the arguments are checked, and refusing it is `capability.reauthenticationFailed`. `authenticateWhen` names an
+   argument that makes the call need authentication only when it is present (`passwords.update` with a new password,
+   services.md 5.9). A call cancelled while the user is being asked stops there.
+6. Arguments. They are one JSON object that matches the command's `args` exactly: every non-optional field present
+   and of its type, no unknown field (also inside structs), `null` only for an optional field, enums by name.
+   `int` is an integer written without fraction or exponent, at most 2^53 in magnitude; `timestamp` is an `int` of
+   milliseconds since 1970-01-01T00:00:00Z; `bytes` is a base64 string; `json` is any value. A paginated command's
+   `limit` is at least 1. A failure is `broker.invalidArguments` and names the field. Application commands are checked
+   only for being JSON.
+7. Limits. Arguments and results are each at most 4 MiB (4194304 bytes) of JSON; more is `broker.payloadTooLarge`
+   (checked after the capability, on the arguments; on the result when the service answers). Binary data is outside
+   the JSON value and not counted. A command with a `void` result answers JSON `null`.
+8. Cancellation. `bdk_call_cancel`, a revoked caller (`broker_revoke_caller`) and runtime shutdown each cancel the
+   call: `broker.cancelled` is delivered, and the service is told to stop through the `CommandControl` it was given
+   (`OnCancel`, `cancelled()`). Whatever the service answers afterwards is ignored. A call cancelled before it starts
+   never reaches the service. Revoking a caller also refuses its later calls (`capability.denied`).
+9. Progress. A command marked `progress` may report fraction and message through `CommandControl::Progress`
+   (clamped to 0 to 1); a command not marked ignores it. Progress is delivered before the result, in order.
+10. Streams. The `stream` mark is carried in the definition; the ABI has one result per call, so how partial results
+    cross it is not settled. No M3 command streams.
+11. The service. `Backend::ExecuteCommand(Runtime&, shared_ptr<BuiltinCall>)` receives the command, its validated
+    arguments, the resolved profile and page, and the caller; it answers through `call->control` exactly once, on the UI
+    thread, now or later. The default answers `broker.notImplemented`, so the engine need not change until it
+    implements a command. `Backend::Authenticate` defaults to refusing.
+12. The stub. `stub/stub_services.cc` implements, in memory and per profile id: `runtime.info`, `profiles.list` and
+    `current`, `settings.get`, `getMany`, `set`, `reset`, history (`add`, `search` with an offset cursor, `visits`,
+    `deleteUrls`, `deleteRange`, `deleteAll`), bookmarks (`roots`, `get`, `children`, `create`, `createFolder`, `remove`,
+    `search`, `forUrl`), `downloads.list` and `get` (empty), `permissions.get`, `set`, `reset`, `getDefault`,
+    `setDefault`, `cookies.sites` (empty), `privacy.clear` (clears history; reports progress), `passwords.add`, `list`,
+    `forOrigin`, `reveal`, `update`, `remove`, `autofill.addresses.add`, `list`, `remove` and
+    `system.defaultBrowser.status`. Everything else answers `broker.notImplemented`. It is the reference for result
+    shapes, not for Chromium's behaviour. `runtime.caller` is answered by the core itself.
+13. The conformance tests that need an internal caller or the stub's services check `bdk_harness_broker_hooks()` and are
+    skipped by a runtime that answers 0 (`tests/harness_broker_unsupported.c`, linked by the engine harness). The
+    tests that need neither (unknown commands, application commands, host calls) run everywhere.
+14. Error codes added to the `codes` constants: `denied`, `outOfScope`, `reauthenticationFailed`, `payloadTooLarge`,
+    `notImplemented` (the first four are in the swift-api.md table; `notImplemented` is new, domain `broker`).
+    `gestureRequired` is reused in domain `capability`.
+
+Not done here: subscribing to events (the capability check of services.md section 7, scope and back-pressure), the
+`translation`, `search`, `favicons`, `extensions`, `contents`, `scripts` and `debug` namespaces, and the Swift and
+TypeScript wrappers generated from the definitions.
 
 ## The ABI hash
 
@@ -137,7 +210,9 @@ abi_hash_update` does the same).
 ## Running the suite against another runtime
 
 Implement `tests/harness.h` for the runtime (pump the UI thread, run a function on another thread, script a
-navigation, raise and withdraw a UI request, simulate a key), then configure with
+navigation, raise and withdraw a UI request, simulate a key) and, if it has the broker test hooks,
+`tests/harness_broker.h` (otherwise link `tests/harness_broker_unsupported.c`, which skips those tests), then
+configure with
 `-DBDK_RUNTIME_LIBRARY=<library> -DBDK_HARNESS_SOURCES=<harness.cc>`. `bdk_conformance --list` and `--run <name>`
 select tests.
 
