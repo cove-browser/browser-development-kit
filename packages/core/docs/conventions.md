@@ -9,14 +9,15 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
 |---|---|
 | `include/bdk/*.h` | Public headers: plain C, `extern "C"` guards, `BDK_EXPORT`, no platform header, no platform type |
 | `interface/` | Interface definitions (JSON, T-ABI-03): one `<namespace>.json` per namespace, `policy.json`, and the identifier registry `ids.json`. Every `*.json` here goes into the hash |
-| `stub/` | In-memory runtime, C++23, no exceptions, no platform code. Test hooks in `stub/bdk_stub.h` are not ABI |
+| `runtime/` | The runtime core, C++23, no exceptions, no platform code: handles, errors, calls, subscriptions, broker, UI requests and every ABI function's checks. What a page does is behind the `Backend` interface in `runtime/core_internal.h` |
+| `stub/` | The stub's in-memory backend and its task queue. Test hooks in `stub/bdk_stub.h` are not ABI |
 | `tests/` | Conformance suite in C11, written against `bdk/bdk.h` and `tests/harness.h` only |
 | `cmake/abi-hash.cmake`, `generated/` | Hash generator and checker; the recorded hash |
 
 ## Rules (c-abi.md section 2, as implemented)
 
 * Handles are 64-bit identifiers. The stub packs type tag, generation and index. Zero is never valid; a stale or
-  mistyped handle returns `BDK_ERR_STALE_HANDLE` and touches nothing. Do not rely on the packing: only the stub
+  mistyped handle returns `BDK_ERR_STALE_HANDLE` and touches nothing. Do not rely on the packing: only the runtime core
   does it.
 * Every struct passed by pointer starts with `size_t struct_size`. The callee reads or writes only the bytes
   declared and treats missing fields as zero. A `struct_size` smaller than `sizeof(size_t)` is

@@ -1,16 +1,18 @@
-/* Stub runtime: profiles, WebContents, views, windows, UI requests and the test hooks. */
+/* Runtime core: profiles, WebContents, views, windows and UI requests. The checks and the
+   bookkeeping are here; what a page does is the backend's. */
 #include <algorithm>
-#include <climits>
 #include <cstdint>
-#include <cstdio>
-#include <cstdlib>
 #include <cstring>
 
-#include "stub_internal.h"
+#include "core_internal.h"
 
-using namespace bdkstub;
+using namespace bdkcore;
 
-namespace bdkstub {
+namespace bdkcore {
+
+std::shared_ptr<Contents> contents_of(bdk_contents_t h) {
+    return get<Contents>(h, T_CONTENTS);
+}
 
 void close_profile(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Profile>& p) {
     for (auto& c : std::vector<std::shared_ptr<Contents>>(rt->contents)) {
@@ -20,6 +22,7 @@ void close_profile(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Pro
     p->open = false;
     table_free(p->handle);
     p->handle = 0;
+    backend().CloseProfile(*rt, *p);
     if (p->ephemeral) {
         rt->profiles.erase(std::remove(rt->profiles.begin(), rt->profiles.end(), p),
                            rt->profiles.end());
@@ -31,15 +34,16 @@ void close_profile(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Pro
 void destroy_contents(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Contents>& c) {
     withdraw_contents_requests(rt, c->handle);
     c->dead = true;
-    if (c->nav)
-        c->nav->cancelled = true;
     for (auto& s : c->subs)
         deactivate(s);
     release_later(c->key_ctx, c->key_rel);
     c->key_rel = nullptr;
+    c->key_reserve = nullptr;
+    c->key_unhandled = nullptr;
     table_free(c->handle);
     rt->contents.erase(std::remove(rt->contents.begin(), rt->contents.end(), c),
                        rt->contents.end());
+    backend().DestroyContents(*rt, *c);
 }
 
 void emit_contents_event_now(const std::shared_ptr<Contents>& c, uint32_t kind,
@@ -66,19 +70,108 @@ void emit_contents_event_now(const std::shared_ptr<Contents>& c, uint32_t kind,
                   c->subs.end());
 }
 
-} // namespace bdkstub
+void emit_contents_event(const std::shared_ptr<Contents>& c, uint32_t kind, const std::string& url,
+                         const std::string& detail, int32_t net_error, uint32_t flags) {
+    post([c, kind, url, detail, net_error, flags] {
+        emit_contents_event_now(c, kind, url, detail, net_error, flags);
+    });
+}
+
+bool reserve_key(Contents& c, bdk_native_handle_t key_event) {
+    return c.key_reserve && c.key_reserve(c.key_ctx, key_event) != 0;
+}
+
+void report_unhandled_key(Contents& c, bdk_native_handle_t key_event) {
+    if (c.key_unhandled)
+        c.key_unhandled(c.key_ctx, key_event);
+}
+
+void release_withdrawn(Request& r) {
+    release_later(r.wctx, r.wrel);
+    r.wctx = nullptr;
+    r.wrel = nullptr;
+}
+
+namespace {
+
+void finish_request(Request& r, UiOutcome outcome, const std::string& completion = "",
+                    const std::string& args = "") {
+    r.finished = true;
+    release_withdrawn(r);
+    if (r.on_finish) {
+        auto on_finish = std::move(r.on_finish);
+        r.on_finish = nullptr;
+        on_finish(outcome, completion, args);
+    }
+}
+
+} // namespace
+
+/* contents 0 withdraws every unfinished request. The withdrawn callback runs only here, then the
+   release. */
+void withdraw_contents_requests(const std::shared_ptr<Runtime>& rt, bdk_contents_t contents) {
+    for (auto& r : std::vector<std::shared_ptr<Request>>(rt->requests)) {
+        if (r->finished || (contents && r->contents != contents))
+            continue;
+        if (r->withdrawn) {
+            void (*cb)(void*) = r->withdrawn;
+            void* ctx = r->wctx;
+            post([cb, ctx] { cb(ctx); });
+        }
+        finish_request(*r, UiOutcome::kWithdrawn);
+    }
+}
+
+std::shared_ptr<Request> raise_ui_request(const std::shared_ptr<Runtime>& rt,
+                                          std::shared_ptr<Request> r) {
+    if (!r->profile && r->contents) {
+        auto c = contents_of(r->contents);
+        r->profile = c && c->profile ? c->profile->handle : 0;
+    }
+    r->handle = table_make(T_REQUEST, r);
+    rt->requests.erase(std::remove_if(rt->requests.begin(), rt->requests.end(),
+                                      [](const std::shared_ptr<Request>& q) {
+                                          return q->finished && table_type(q->handle) == T_NONE;
+                                      }),
+                       rt->requests.end());
+    rt->requests.push_back(r);
+    post([rt, r] {
+        if (rt->shutting || r->finished)
+            return;
+        auto it = rt->ui_handlers.find(r->surface);
+        if (it == rt->ui_handlers.end()) {
+            finish_request(*r, UiOutcome::kDefaulted);
+            return;
+        }
+        bdk_ui_request_info_t info;
+        memset(&info, 0, sizeof info);
+        info.struct_size = sizeof info;
+        info.request = r->handle;
+        info.surface = r->surface;
+        info.contents = r->contents;
+        info.window = r->window;
+        info.profile = r->profile;
+        info.payload_json = view(r->payload);
+        memcpy(info.anchor, r->anchor, sizeof info.anchor);
+        info.secure_view = r->secure_view;
+        bdk_ui_response_t resp = it->second.cb(it->second.ctx, &info);
+        r->delivered = true;
+        if (resp == BDK_UI_USE_DEFAULT && !r->finished) {
+            finish_request(*r, UiOutcome::kDefaulted);
+        } else if (resp == BDK_UI_REJECT && !r->finished) {
+            finish_request(*r, UiOutcome::kRejected);
+        }
+    });
+    return r;
+}
+
+} // namespace bdkcore
 
 namespace {
 
 std::string profile_json(const Profile& p) {
     return "{\"id\":\"" + json_escape(p.id) + "\",\"name\":\"" + json_escape(p.name) +
            "\",\"kind\":\"" + (p.ephemeral ? "ephemeral" : "persistent") + "\",\"parent\":null}";
-}
-
-bdk_buffer_t make_buffer(const std::string& data) {
-    auto b = std::make_shared<Buf>();
-    b->data = data;
-    return table_make(T_BUFFER, b);
 }
 
 bool name_taken(const Runtime& rt, const std::string& name, const Profile* except) {
@@ -124,102 +217,17 @@ bool plausible_url(const std::string& u) {
     return u.find(':') != std::string::npos && u.find_first_of(" \t\r\n") == std::string::npos;
 }
 
-void emit_later(const std::shared_ptr<Contents>& c, uint32_t kind, const std::string& url,
-                const std::string& detail, int32_t net_error, uint32_t flags) {
-    post([c, kind, url, detail, net_error, flags] {
-        emit_contents_event_now(c, kind, url, detail, net_error, flags);
-    });
-}
-
-constexpr int32_t kErrAborted = -3;
-constexpr uint32_t kMainFrame = BDK_EVENT_FLAG_MAIN_FRAME;
-
-void cancel_nav(const std::shared_ptr<Contents>& c, const char* why) {
-    if (!c->nav)
-        return;
-    c->nav->cancelled = true;
-    c->nav.reset();
-    c->loading = false;
-    std::string url =
-        c->current >= 0 ? c->entries[static_cast<size_t>(c->current)].url : "about:blank";
-    emit_later(c, BDK_CONTENTS_EVENT_NAVIGATION_FAILED, url,
-               std::string("{\"code\":\"") + why + "\"}", kErrAborted, kMainFrame);
-}
-
-/* target_index -1: a new entry. Otherwise history navigation (or reload) to that entry. */
-void begin_nav(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Contents>& c,
-               const std::string& url, int target_index) {
-    cancel_nav(c, "superseded");
-    auto nav = std::make_shared<Nav>();
-    c->nav = nav;
-    c->loading = true;
-    c->progress = 0.1;
-    uint32_t flags = kMainFrame | BDK_EVENT_FLAG_USER_INITIATED;
-    emit_later(c, BDK_CONTENTS_EVENT_NAVIGATION_STARTED, url, "{}", 0, flags);
-    post([rt, c, nav, url, target_index, flags] {
-        if (nav->cancelled || c->dead)
-            return;
-        int32_t net_error = 0;
-        std::string title = url;
-        auto it = rt->scripts.find(url);
-        if (it != rt->scripts.end()) {
-            net_error = it->second.first;
-            if (!it->second.second.empty())
-                title = it->second.second;
-        }
-        if (net_error != 0) {
-            c->nav.reset();
-            c->loading = false;
-            c->progress = 1.0;
-            emit_contents_event_now(c, BDK_CONTENTS_EVENT_NAVIGATION_FAILED, url,
-                                    "{\"code\":\"netError\"}", net_error,
-                                    flags | BDK_EVENT_FLAG_ERROR_PAGE);
-            return;
-        }
-        if (target_index < 0) {
-            c->entries.resize(static_cast<size_t>(c->current) + 1);
-            c->entries.push_back(Entry{url, title});
-            c->current = static_cast<int>(c->entries.size()) - 1;
-        } else {
-            c->current = target_index;
-            c->entries[static_cast<size_t>(target_index)].title = title;
-        }
-        c->progress = 0.8;
-        emit_contents_event_now(c, BDK_CONTENTS_EVENT_NAVIGATION_COMMITTED, url, "{}", 0, flags);
-        emit_contents_event_now(c, BDK_CONTENTS_EVENT_TITLE_CHANGED, url,
-                                "{\"title\":\"" + json_escape(title) + "\"}", 0, kMainFrame);
-        post([c, nav, url, flags] {
-            if (nav->cancelled || c->dead)
-                return;
-            c->nav.reset();
-            c->loading = false;
-            c->progress = 1.0;
-            emit_contents_event_now(c, BDK_CONTENTS_EVENT_LOAD_FINISHED, url, "{}", 0, flags);
-        });
-    });
-}
-
-bdk_status_t nav_to_index(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Contents>& c,
-                          int index, bdk_error_t*) {
-    if (index < 0 || index >= static_cast<int>(c->entries.size()))
+bdk_status_t nav_to_index(const std::shared_ptr<Contents>& c, int64_t index, bdk_error_t* err) {
+    int current = -1;
+    std::vector<Entry> entries;
+    backend().Entries(*c, &current, &entries);
+    if (index < 0 || index >= static_cast<int64_t>(entries.size()))
         return BDK_ERR_INVALID_ARGUMENT;
-    begin_nav(rt, c, c->entries[static_cast<size_t>(index)].url, index);
-    return BDK_OK;
+    return backend().GoToIndex(c, static_cast<int>(index), err);
 }
 
 bool granting(const std::string& completion) {
     return completion == "grant";
-}
-
-void set_outcome(const std::shared_ptr<Runtime>& rt, const Request& r, uint32_t kind,
-                 const std::string& completion, const std::string& args) {
-    bdk_stub_ui_outcome_t& o = rt->outcome;
-    memset(&o, 0, sizeof o);
-    o.struct_size = sizeof o;
-    o.kind = kind;
-    o.surface = r.surface;
-    snprintf(o.completion, sizeof o.completion, "%s", completion.c_str());
-    snprintf(o.arguments_json, sizeof o.arguments_json, "%s", args.c_str());
 }
 
 std::shared_ptr<Request> request_of(bdk_request_t h, std::shared_ptr<Runtime>* rt) {
@@ -229,124 +237,7 @@ std::shared_ptr<Request> request_of(bdk_request_t h, std::shared_ptr<Runtime>* r
     return r;
 }
 
-enum class ParseState : uint8_t { kOk, kTooNew, kMalformed };
-
-/* A bounds-checked cursor over the serialised session state. Nothing here relies on a terminator or
-   on arithmetic that can overflow: every length is compared against the bytes that remain. */
-struct StateCursor {
-    const char* p;
-    size_t n;
-    size_t pos = 0;
-    size_t remaining() const {
-        return n - pos;
-    }
-    bool expect(char ch) {
-        if (pos >= n || p[pos] != ch)
-            return false;
-        ++pos;
-        return true;
-    }
-    /* Decimal digits only (no sign, no space); false on no digits or a value above UINT64_MAX. */
-    bool uint(uint64_t* out) {
-        size_t start = pos;
-        uint64_t v = 0;
-        while (pos < n && p[pos] >= '0' && p[pos] <= '9') {
-            uint64_t d = static_cast<uint64_t>(p[pos] - '0');
-            if (v > (UINT64_MAX - d) / 10)
-                return false;
-            v = v * 10 + d;
-            ++pos;
-        }
-        *out = v;
-        return pos != start;
-    }
-};
-
-ParseState parse_session_state(const char* data, size_t length, long* current_out,
-                               std::vector<Entry>* entries_out) {
-    static const char kMagic[] = "BDKSTUB";
-    const size_t magic = sizeof kMagic - 1;
-    StateCursor cur{data, length};
-    if (length < magic || memcmp(data, kMagic, magic) != 0)
-        return ParseState::kMalformed;
-    cur.pos = magic;
-    size_t version_start = cur.pos;
-    while (cur.pos < cur.n && data[cur.pos] >= '0' && data[cur.pos] <= '9')
-        ++cur.pos;
-    if (cur.pos == version_start)
-        return ParseState::kMalformed;
-    if (!(cur.pos - version_start == 1 && data[version_start] == '1'))
-        return ParseState::kTooNew;
-    if (!cur.expect(' '))
-        return ParseState::kMalformed;
-
-    /* current is -1 or an index; count is the number of entries. */
-    bool no_current = cur.expect('-');
-    uint64_t current = 0, count = 0;
-    if (no_current) {
-        if (!cur.expect('1'))
-            return ParseState::kMalformed;
-    } else if (!cur.uint(&current)) {
-        return ParseState::kMalformed;
-    }
-    if (!cur.expect(' ') || !cur.uint(&count) || !cur.expect('\n'))
-        return ParseState::kMalformed;
-    /* Each entry takes at least "0 0\n\n" (5 bytes), which bounds the count by the input. */
-    if (count > cur.remaining() / 5 || count > static_cast<uint64_t>(INT_MAX))
-        return ParseState::kMalformed;
-    if (!no_current && current >= count)
-        return ParseState::kMalformed;
-
-    std::vector<Entry> entries;
-    for (uint64_t i = 0; i < count; ++i) {
-        uint64_t ul = 0, tl = 0;
-        if (!cur.uint(&ul) || !cur.expect(' ') || !cur.uint(&tl) || !cur.expect('\n'))
-            return ParseState::kMalformed;
-        size_t left = cur.remaining();
-        if (ul > left || tl > left - static_cast<size_t>(ul))
-            return ParseState::kMalformed;
-        size_t u = static_cast<size_t>(ul), t = static_cast<size_t>(tl);
-        if (left - u - t < 1 || data[cur.pos + u + t] != '\n')
-            return ParseState::kMalformed;
-        entries.push_back(
-            Entry{std::string(data + cur.pos, u), std::string(data + cur.pos + u, t)});
-        cur.pos += u + t + 1;
-    }
-    if (cur.pos != cur.n) /* trailing bytes */
-        return ParseState::kMalformed;
-    *current_out = no_current ? -1 : static_cast<long>(current);
-    *entries_out = std::move(entries);
-    return ParseState::kOk;
-}
-
 } // namespace
-
-namespace bdkstub {
-
-void release_withdrawn(Request& r) {
-    release_later(r.wctx, r.wrel);
-    r.wctx = nullptr;
-    r.wrel = nullptr;
-}
-
-/* contents 0 withdraws every unfinished request. The withdrawn callback runs only here, then the
-   release. */
-void withdraw_contents_requests(const std::shared_ptr<Runtime>& rt, bdk_contents_t contents) {
-    for (auto& r : std::vector<std::shared_ptr<Request>>(rt->requests)) {
-        if (r->finished || (contents && r->contents != contents))
-            continue;
-        r->finished = true;
-        set_outcome(rt, *r, BDK_STUB_UI_WITHDRAWN, "", "");
-        if (r->withdrawn) {
-            void (*cb)(void*) = r->withdrawn;
-            void* ctx = r->wctx;
-            post([cb, ctx] { cb(ctx); });
-        }
-        release_withdrawn(*r);
-    }
-}
-
-} // namespace bdkstub
 
 extern "C" {
 
@@ -397,6 +288,7 @@ BDK_EXPORT bdk_call_t bdk_profile_create(bdk_runtime_t h, bdk_string_t name, bdk
             p->id = "profile-" + std::to_string(rt->next_id++);
             p->name = n;
             rt->profiles.push_back(p);
+            backend().ProfilesChanged(*rt);
             log_line(rt, 1, "profile created: " + p->id);
             finish_call(call, nullptr, nullptr, "", "{\"id\":\"" + json_escape(p->id) + "\"}");
         }
@@ -417,16 +309,29 @@ BDK_EXPORT bdk_call_t bdk_profile_open(bdk_runtime_t h, bdk_string_t id, bdk_pro
     if (!p || p->ephemeral) {
         finish_call(call, BDK_DOMAIN_PROFILE, BDK_CODE_NOT_FOUND, "no profile '" + str(id) + "'",
                     "");
-    } else if (p->open) {
-        finish_call(call, BDK_DOMAIN_PROFILE, "inUse", "the profile is already open", "");
-    } else {
-        p->open = true;
-        p->handle = table_make(T_PROFILE, p);
-        *out = p->handle;
-        emit_runtime_event(rt, BDK_RUNTIME_EVENT_PROFILE_OPENED,
-                           "{\"id\":\"" + json_escape(p->id) + "\"}");
-        finish_call(call, nullptr, nullptr, "", profile_json(*p));
+        return call->handle;
     }
+    if (p->open) {
+        finish_call(call, BDK_DOMAIN_PROFILE, "inUse", "the profile is already open", "");
+        return call->handle;
+    }
+    p->open = true;
+    p->handle = table_make(T_PROFILE, p);
+    *out = p->handle;
+    backend().OpenProfile(*rt, p,
+                          [rt, p, call](const std::string& code, const std::string& message) {
+                              if (!code.empty()) {
+                                  /* The handle goes before the failure is reported. */
+                                  p->open = false;
+                                  table_free(p->handle);
+                                  p->handle = 0;
+                                  finish_call(call, BDK_DOMAIN_PROFILE, code.c_str(), message, "");
+                                  return;
+                              }
+                              emit_runtime_event(rt, BDK_RUNTIME_EVENT_PROFILE_OPENED,
+                                                 "{\"id\":\"" + json_escape(p->id) + "\"}");
+                              finish_call(call, nullptr, nullptr, "", profile_json(*p));
+                          });
     return call->handle;
 }
 
@@ -444,6 +349,8 @@ BDK_EXPORT bdk_status_t bdk_profile_open_private(bdk_runtime_t h, bdk_profile_t*
     p->id = "ephemeral:" + std::to_string(rt->next_id++);
     p->name = "Private";
     p->ephemeral = true;
+    if (bdk_status_t s = backend().OpenPrivateProfile(*rt, *p, err))
+        return s;
     p->open = true;
     p->handle = table_make(T_PROFILE, p);
     rt->profiles.push_back(p);
@@ -482,6 +389,7 @@ BDK_EXPORT bdk_status_t bdk_profile_rename(bdk_profile_t h, bdk_string_t name, b
         return fail(err, BDK_DOMAIN_PROFILE, BDK_CODE_NAME_TAKEN,
                     "a profile named '" + str(name) + "' exists");
     p->name = str(name);
+    backend().ProfilesChanged(*rt);
     return BDK_OK;
 }
 
@@ -506,7 +414,14 @@ BDK_EXPORT bdk_call_t bdk_profile_delete(bdk_runtime_t h, bdk_string_t id, bdk_r
         } else {
             rt->profiles.erase(std::remove(rt->profiles.begin(), rt->profiles.end(), p),
                                rt->profiles.end());
-            finish_call(call, nullptr, nullptr, "", "{}");
+            backend().ProfilesChanged(*rt);
+            backend().DeleteProfile(
+                *rt, *p, [call](const std::string& code, const std::string& message) {
+                    if (!code.empty())
+                        finish_call(call, BDK_DOMAIN_PROFILE, code.c_str(), message, "");
+                    else
+                        finish_call(call, nullptr, nullptr, "", "{}");
+                });
         }
     });
     return call->handle;
@@ -554,10 +469,12 @@ BDK_EXPORT bdk_status_t bdk_contents_create(bdk_runtime_t h, const bdk_contents_
     c->rt = rt;
     c->profile = std::move(p);
     c->handle = table_make(T_CONTENTS, c);
+    if (bdk_status_t s = backend().CreateContents(*rt, c, url, err)) {
+        table_free(c->handle);
+        return s;
+    }
     rt->contents.push_back(c);
     *out = c->handle;
-    if (!url.empty())
-        begin_nav(rt, c, url, -1);
     return BDK_OK;
 }
 
@@ -568,11 +485,10 @@ BDK_EXPORT bdk_status_t bdk_contents_close(bdk_contents_t h, bdk_error_t* err) {
         return st;
     if (c->closed)
         return BDK_OK;
-    cancel_nav(c, "aborted");
     c->closed = true;
     if (auto rt = c->rt.lock())
         withdraw_contents_requests(rt, c->handle);
-    emit_later(c, BDK_CONTENTS_EVENT_CLOSED, "", "{}", 0, 0);
+    backend().CloseContents(c);
     return BDK_OK;
 }
 
@@ -591,21 +507,23 @@ BDK_EXPORT bdk_status_t bdk_contents_load(bdk_contents_t h, bdk_string_t url, bd
     auto c = open_contents_for(h, err, &st);
     if (!c)
         return st;
-    auto rt = c->rt.lock();
     if (!string_ok(url) || !plausible_url(str(url)))
         return BDK_ERR_INVALID_ARGUMENT;
-    begin_nav(rt, c, str(url), -1);
-    return BDK_OK;
+    return backend().Load(c, str(url), err);
 }
 
-BDK_EXPORT bdk_status_t bdk_contents_reload(bdk_contents_t h, uint8_t, bdk_error_t* err) {
+BDK_EXPORT bdk_status_t bdk_contents_reload(bdk_contents_t h, uint8_t bypass_cache,
+                                            bdk_error_t* err) {
     bdk_status_t st;
     auto c = open_contents_for(h, err, &st);
     if (!c)
         return st;
-    if (c->current < 0)
+    int current = -1;
+    std::vector<Entry> entries;
+    backend().Entries(*c, &current, &entries);
+    if (current < 0)
         return fail(err, BDK_DOMAIN_NAVIGATION, "aborted", "there is nothing to reload");
-    return nav_to_index(c->rt.lock(), c, c->current, err);
+    return backend().Reload(c, bypass_cache != 0, err);
 }
 
 BDK_EXPORT bdk_status_t bdk_contents_stop(bdk_contents_t h, bdk_error_t* err) {
@@ -613,7 +531,7 @@ BDK_EXPORT bdk_status_t bdk_contents_stop(bdk_contents_t h, bdk_error_t* err) {
     auto c = open_contents_for(h, err, &st);
     if (!c)
         return st;
-    cancel_nav(c, "aborted");
+    backend().Stop(c);
     return BDK_OK;
 }
 
@@ -625,10 +543,10 @@ BDK_EXPORT bdk_status_t bdk_contents_go_to_offset(bdk_contents_t h, int32_t offs
         return st;
     if (offset == 0)
         return BDK_ERR_INVALID_ARGUMENT;
-    const int64_t target = static_cast<int64_t>(c->current) + static_cast<int64_t>(offset);
-    if (target < 0 || target >= static_cast<int64_t>(c->entries.size()))
-        return BDK_ERR_INVALID_ARGUMENT;
-    return nav_to_index(c->rt.lock(), c, static_cast<int>(target), err);
+    int current = -1;
+    std::vector<Entry> entries;
+    backend().Entries(*c, &current, &entries);
+    return nav_to_index(c, static_cast<int64_t>(current) + static_cast<int64_t>(offset), err);
 }
 
 BDK_EXPORT bdk_status_t bdk_contents_go_to_index(bdk_contents_t h, int32_t index,
@@ -637,7 +555,7 @@ BDK_EXPORT bdk_status_t bdk_contents_go_to_index(bdk_contents_t h, int32_t index
     auto c = open_contents_for(h, err, &st);
     if (!c)
         return st;
-    return nav_to_index(c->rt.lock(), c, index, err);
+    return nav_to_index(c, index, err);
 }
 
 BDK_EXPORT bdk_status_t bdk_contents_entries(bdk_contents_t h, bdk_buffer_t* out,
@@ -648,10 +566,13 @@ BDK_EXPORT bdk_status_t bdk_contents_entries(bdk_contents_t h, bdk_buffer_t* out
         return st;
     if (!out)
         return BDK_ERR_INVALID_ARGUMENT;
-    std::string json = "{\"current\":" + std::to_string(c->current) + ",\"entries\":[";
-    for (size_t i = 0; i < c->entries.size(); ++i) {
-        json += (i ? "," : "") + std::string("{\"url\":\"") + json_escape(c->entries[i].url) +
-                "\",\"title\":\"" + json_escape(c->entries[i].title) + "\"}";
+    int current = -1;
+    std::vector<Entry> entries;
+    backend().Entries(*c, &current, &entries);
+    std::string json = "{\"current\":" + std::to_string(current) + ",\"entries\":[";
+    for (size_t i = 0; i < entries.size(); ++i) {
+        json += (i ? "," : "") + std::string("{\"url\":\"") + json_escape(entries[i].url) +
+                "\",\"title\":\"" + json_escape(entries[i].title) + "\"}";
     }
     *out = make_buffer(json + "]}");
     return BDK_OK;
@@ -665,28 +586,23 @@ BDK_EXPORT bdk_status_t bdk_contents_state(bdk_contents_t h, bdk_contents_state_
         return st;
     if (!inout || inout->struct_size < sizeof(size_t))
         return BDK_ERR_INVALID_ARGUMENT;
-    bool has = c->current >= 0;
-    c->url_buf = has ? c->entries[static_cast<size_t>(c->current)].url : "about:blank";
-    c->title_buf = has ? c->entries[static_cast<size_t>(c->current)].title : "";
+    ContentsState state;
+    backend().State(*c, &state);
+    c->url_buf = state.url;
+    c->title_buf = state.title;
     bdk_contents_state_t full;
     memset(&full, 0, sizeof full);
     full.struct_size = inout->struct_size < sizeof full ? inout->struct_size : sizeof full;
     full.url = view(c->url_buf);
     full.title = view(c->title_buf);
-    full.loading = c->loading ? 1 : 0;
-    full.progress = c->progress;
-    if (c->url_buf.compare(0, 8, "https://") == 0) {
-        full.security = BDK_SECURITY_SECURE;
-    } else if (c->url_buf.compare(0, 7, "http://") == 0) {
-        full.security = BDK_SECURITY_NONE;
-    } else {
-        full.security = BDK_SECURITY_UNKNOWN;
-    }
-    full.audio = c->muted ? BDK_AUDIO_MUTED : 0;
+    full.loading = state.loading ? 1 : 0;
+    full.progress = state.progress;
+    full.security = state.security;
+    full.audio = state.audio;
     full.capture = 0;
-    full.visibility = BDK_VISIBILITY_VISIBLE;
-    full.focused = c->focused ? 1 : 0;
-    full.zoom = c->zoom;
+    full.visibility = state.visibility;
+    full.focused = state.focused ? 1 : 0;
+    full.zoom = state.zoom;
     size_t declared = inout->struct_size;
     /* Only the bytes the caller declared are written; struct_size itself is left as the caller set
      * it. */
@@ -704,13 +620,7 @@ BDK_EXPORT bdk_status_t bdk_contents_session_state(bdk_contents_t h, bdk_buffer_
         return st;
     if (!out)
         return BDK_ERR_INVALID_ARGUMENT;
-    std::string s =
-        "BDKSTUB1 " + std::to_string(c->current) + " " + std::to_string(c->entries.size()) + "\n";
-    for (auto& e : c->entries) {
-        s += std::to_string(e.url.size()) + " " + std::to_string(e.title.size()) + "\n" + e.url +
-             e.title + "\n";
-    }
-    *out = make_buffer(s);
+    *out = make_buffer(backend().SessionState(*c));
     return BDK_OK;
 }
 
@@ -722,22 +632,7 @@ BDK_EXPORT bdk_status_t bdk_contents_restore(bdk_contents_t h, bdk_bytes_t state
         return st;
     if (!state.data || state.length == 0)
         return BDK_ERR_INVALID_ARGUMENT;
-    std::vector<Entry> entries;
-    long current = -1;
-    switch (parse_session_state(reinterpret_cast<const char*>(state.data), state.length, &current,
-                                &entries)) {
-    case ParseState::kOk:
-        break;
-    case ParseState::kTooNew:
-        return fail(err, BDK_DOMAIN_CONTENTS, "stateTooNew",
-                    "the session state is from a newer format");
-    case ParseState::kMalformed:
-        return BDK_ERR_INVALID_ARGUMENT;
-    }
-    cancel_nav(c, "aborted");
-    c->entries = std::move(entries);
-    c->current = static_cast<int>(current);
-    return BDK_OK;
+    return backend().Restore(c, state, err);
 }
 
 BDK_EXPORT bdk_status_t bdk_contents_set_muted(bdk_contents_t h, uint8_t muted, bdk_error_t* err) {
@@ -745,8 +640,7 @@ BDK_EXPORT bdk_status_t bdk_contents_set_muted(bdk_contents_t h, uint8_t muted, 
     auto c = open_contents_for(h, err, &st);
     if (!c)
         return st;
-    c->muted = muted != 0;
-    return BDK_OK;
+    return backend().SetMuted(*c, muted != 0, err);
 }
 
 BDK_EXPORT bdk_status_t bdk_contents_set_zoom(bdk_contents_t h, double zoom, bdk_error_t* err) {
@@ -756,8 +650,7 @@ BDK_EXPORT bdk_status_t bdk_contents_set_zoom(bdk_contents_t h, double zoom, bdk
         return st;
     if (!(zoom > 0.0))
         return BDK_ERR_INVALID_ARGUMENT;
-    c->zoom = zoom;
-    return BDK_OK;
+    return backend().SetZoom(*c, zoom, err);
 }
 
 BDK_EXPORT bdk_status_t bdk_contents_set_user_agent(bdk_contents_t h, bdk_string_t ua,
@@ -768,8 +661,7 @@ BDK_EXPORT bdk_status_t bdk_contents_set_user_agent(bdk_contents_t h, bdk_string
         return st;
     if (!string_ok(ua))
         return BDK_ERR_INVALID_ARGUMENT;
-    c->user_agent = str(ua);
-    return BDK_OK;
+    return backend().SetUserAgent(*c, str(ua), err);
 }
 
 BDK_EXPORT bdk_status_t bdk_contents_discard(bdk_contents_t h, bdk_error_t* err) {
@@ -777,8 +669,7 @@ BDK_EXPORT bdk_status_t bdk_contents_discard(bdk_contents_t h, bdk_error_t* err)
     auto c = open_contents_for(h, err, &st);
     if (!c)
         return st;
-    c->discarded = true; /* the handle stays valid */
-    return BDK_OK;
+    return backend().Discard(*c, err); /* the handle stays valid */
 }
 
 BDK_EXPORT bdk_status_t bdk_contents_set_auto_discardable(bdk_contents_t h, uint8_t discardable,
@@ -787,8 +678,7 @@ BDK_EXPORT bdk_status_t bdk_contents_set_auto_discardable(bdk_contents_t h, uint
     auto c = open_contents_for(h, err, &st);
     if (!c)
         return st;
-    c->auto_discardable = discardable != 0;
-    return BDK_OK;
+    return backend().SetAutoDiscardable(*c, discardable != 0, err);
 }
 
 BDK_EXPORT bdk_subscription_t bdk_contents_subscribe(bdk_contents_t h, bdk_contents_event_cb cb,
@@ -817,7 +707,7 @@ BDK_EXPORT bdk_status_t bdk_contents_native_view(bdk_contents_t h, bdk_native_ha
     if (!out)
         return BDK_ERR_INVALID_ARGUMENT;
     memset(out, 0, sizeof *out);
-    return fail(err, BDK_DOMAIN_PLATFORM, "unsupported", "the stub runtime has no native views");
+    return backend().NativeView(*c, out, err);
 }
 
 BDK_EXPORT bdk_status_t bdk_contents_focus(bdk_contents_t h) {
@@ -826,17 +716,7 @@ BDK_EXPORT bdk_status_t bdk_contents_focus(bdk_contents_t h) {
     auto rt = c ? c->rt.lock() : nullptr;
     if (!c || !rt)
         return st != BDK_OK ? st : BDK_ERR_STALE_HANDLE;
-    for (auto& o : rt->contents) {
-        if (o != c && o->focused) {
-            o->focused = false;
-            emit_later(o, BDK_CONTENTS_EVENT_FOCUS_CHANGED, "", "{\"focused\":false}", 0, 0);
-        }
-    }
-    if (!c->focused) {
-        c->focused = true;
-        emit_later(c, BDK_CONTENTS_EVENT_FOCUS_CHANGED, "", "{\"focused\":true}", 0, 0);
-    }
-    return BDK_OK;
+    return backend().Focus(*rt, c);
 }
 
 BDK_EXPORT void bdk_contents_set_keyboard_handler(bdk_contents_t h, bdk_key_reserve_cb reserve,
@@ -855,20 +735,6 @@ BDK_EXPORT void bdk_contents_set_keyboard_handler(bdk_contents_t h, bdk_key_rese
     c->key_rel = rel;
 }
 
-BDK_EXPORT bdk_status_t bdk_stub_simulate_key(bdk_contents_t h, bdk_native_handle_t ev,
-                                              uint8_t* out_reserved) {
-    bdk_status_t st;
-    auto c = contents_for(h, nullptr, &st);
-    if (!c)
-        return st;
-    uint8_t reserved = c->key_reserve ? c->key_reserve(c->key_ctx, ev) : 0;
-    if (!reserved && c->key_unhandled)
-        c->key_unhandled(c->key_ctx, ev);
-    if (out_reserved)
-        *out_reserved = reserved;
-    return BDK_OK;
-}
-
 /* ---- bdk_window.h ---- */
 
 BDK_EXPORT bdk_status_t bdk_window_register(bdk_runtime_t h, bdk_native_handle_t native,
@@ -884,6 +750,8 @@ BDK_EXPORT bdk_status_t bdk_window_register(bdk_runtime_t h, bdk_native_handle_t
     auto w = std::make_shared<Window>();
     w->kind = kind;
     w->native = native;
+    if (bdk_status_t s = backend().RegisterWindow(*rt, *w, err))
+        return s;
     *out = table_make(T_WINDOW, w);
     return BDK_OK;
 }
@@ -892,9 +760,11 @@ BDK_EXPORT bdk_status_t bdk_window_unregister(bdk_window_t h, bdk_error_t* err) 
     clear_out(err);
     if (bdk_status_t s = check_thread())
         return s;
-    if (!get<Window>(h, T_WINDOW))
+    auto w = get<Window>(h, T_WINDOW);
+    if (!w)
         return BDK_ERR_STALE_HANDLE;
     table_free(h);
+    backend().UnregisterWindow(*w);
     return BDK_OK;
 }
 
@@ -940,9 +810,7 @@ BDK_EXPORT bdk_status_t bdk_ui_complete(bdk_request_t h, bdk_string_t completion
     if (granting(c) && gesture.kind == 0)
         return fail(err, BDK_DOMAIN_UI, BDK_CODE_GESTURE_REQUIRED,
                     "a granting completion needs the gesture event");
-    r->finished = true;
-    release_withdrawn(*r);
-    set_outcome(rt, *r, BDK_STUB_UI_COMPLETED, c, a);
+    finish_request(*r, UiOutcome::kCompleted, c, a);
     return BDK_OK;
 }
 
@@ -957,9 +825,7 @@ BDK_EXPORT bdk_status_t bdk_ui_use_default(bdk_request_t h, bdk_error_t* err) {
     if (r->finished)
         return fail(err, BDK_DOMAIN_UI, BDK_CODE_REQUEST_COMPLETED,
                     "the request is already completed");
-    r->finished = true;
-    release_withdrawn(*r);
-    set_outcome(rt, *r, BDK_STUB_UI_DEFAULTED, "", "");
+    finish_request(*r, UiOutcome::kDefaulted);
     return BDK_OK;
 }
 
@@ -983,100 +849,9 @@ BDK_EXPORT void bdk_ui_request_release(bdk_request_t h) {
     auto r = request_of(h, &rt);
     if (!r || !rt)
         return;
-    if (!r->finished) {
-        r->finished = true;
-        release_withdrawn(*r);
-        set_outcome(rt, *r, BDK_STUB_UI_CANCELLED, "", "");
-    }
+    if (!r->finished)
+        finish_request(*r, UiOutcome::kCancelled);
     table_free(h);
-}
-
-/* ---- bdk_stub.h test hooks ---- */
-
-BDK_EXPORT bdk_status_t bdk_stub_script_navigation(bdk_runtime_t h, bdk_string_t url,
-                                                   const bdk_stub_navigation_script_t* script) {
-    if (bdk_status_t s = check_thread())
-        return s;
-    auto rt = runtime_of(h);
-    if (!rt)
-        return BDK_ERR_STALE_HANDLE;
-    if (!script || script->struct_size < sizeof *script || !string_ok(url) ||
-        !string_ok(script->title))
-        return BDK_ERR_INVALID_ARGUMENT;
-    rt->scripts[str(url)] = std::make_pair(script->net_error, str(script->title));
-    return BDK_OK;
-}
-
-BDK_EXPORT bdk_status_t bdk_stub_raise_ui_request(bdk_runtime_t h, uint32_t surface,
-                                                  bdk_contents_t contents, bdk_string_t payload) {
-    if (bdk_status_t s = check_thread())
-        return s;
-    auto rt = runtime_of(h);
-    if (!rt)
-        return BDK_ERR_STALE_HANDLE;
-    auto c = contents ? get<Contents>(contents, T_CONTENTS) : nullptr;
-    if ((contents && !c) || !string_ok(payload))
-        return BDK_ERR_INVALID_ARGUMENT;
-    auto r = std::make_shared<Request>();
-    r->surface = surface;
-    r->contents = contents;
-    r->profile = c && c->profile ? c->profile->handle : 0;
-    r->payload = str(payload);
-    r->handle = table_make(T_REQUEST, r);
-    rt->requests.push_back(r);
-    set_outcome(rt, *r, BDK_STUB_UI_NONE, "", "");
-    post([rt, r] {
-        if (rt->shutting || r->finished)
-            return;
-        auto it = rt->ui_handlers.find(r->surface);
-        if (it == rt->ui_handlers.end()) {
-            r->finished = true;
-            set_outcome(rt, *r, BDK_STUB_UI_DEFAULTED, "", "");
-            return;
-        }
-        bdk_ui_request_info_t info;
-        memset(&info, 0, sizeof info);
-        info.struct_size = sizeof info;
-        info.request = r->handle;
-        info.surface = r->surface;
-        info.contents = r->contents;
-        info.profile = r->profile;
-        info.payload_json = view(r->payload);
-        bdk_ui_response_t resp = it->second.cb(it->second.ctx, &info);
-        r->delivered = true;
-        if (resp == BDK_UI_USE_DEFAULT && !r->finished) {
-            r->finished = true;
-            release_withdrawn(*r);
-            set_outcome(rt, *r, BDK_STUB_UI_DEFAULTED, "", "");
-        } else if (resp == BDK_UI_REJECT && !r->finished) {
-            r->finished = true;
-            release_withdrawn(*r);
-            set_outcome(rt, *r, BDK_STUB_UI_REJECTED, "", "");
-        }
-    });
-    return BDK_OK;
-}
-
-BDK_EXPORT bdk_status_t bdk_stub_withdraw_ui_requests(bdk_runtime_t h) {
-    if (bdk_status_t s = check_thread())
-        return s;
-    auto rt = runtime_of(h);
-    if (!rt)
-        return BDK_ERR_STALE_HANDLE;
-    withdraw_contents_requests(rt, 0);
-    return BDK_OK;
-}
-
-BDK_EXPORT bdk_status_t bdk_stub_last_ui_outcome(bdk_runtime_t h, bdk_stub_ui_outcome_t* out) {
-    if (bdk_status_t s = check_thread())
-        return s;
-    auto rt = runtime_of(h);
-    if (!rt)
-        return BDK_ERR_STALE_HANDLE;
-    if (!out)
-        return BDK_ERR_INVALID_ARGUMENT;
-    *out = rt->outcome;
-    return BDK_OK;
 }
 
 } /* extern "C" */

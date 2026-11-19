@@ -15,15 +15,15 @@ let package = Package(
         // The public C headers and the generated ABI hash, reached through symlinks into packages/core. The
         // runtime itself arrives as a binary target (T-PKG-04).
         .target(name: "CBDK", path: "packages/swift/Sources/CBDK", publicHeadersPath: "include"),
-        // The in-memory runtime, compiled from packages/core/stub. Swift reaches its test hooks through the
-        // CBDKStub module declared next to CBDK.
+        // The in-memory runtime: the runtime core (packages/core/runtime) with the stub's backend
+        // (packages/core/stub). Swift reaches its test hooks through the CBDKStub module declared next to CBDK.
         .target(
             name: "BDKStubRuntime",
             dependencies: ["CBDK"],
-            path: "packages/core/stub",
-            exclude: ["stub_internal.h", "bdk_stub.h"],
-            sources: ["stub_core.cc", "stub_host.cc"],
-            publicHeadersPath: "."
+            path: "packages/core",
+            sources: ["runtime/core.cc", "runtime/core_host.cc", "stub/stub_backend.cc"],
+            publicHeadersPath: "stub",
+            cxxSettings: [.headerSearchPath("runtime"), .headerSearchPath("generated")]
         ),
         .target(
             name: "BDK",

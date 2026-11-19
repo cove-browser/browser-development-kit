@@ -1,18 +1,17 @@
-/* Stub runtime: infrastructure, base types, runtime lifecycle, broker. */
+/* Runtime core: infrastructure, base types, runtime lifecycle, broker. */
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstring>
-#include <deque>
 #include <mutex>
 #include <thread>
 
 #include "bdk_abi_hash.h"
-#include "stub_internal.h"
+#include "core_internal.h"
 
-using namespace bdkstub;
+using namespace bdkcore;
 
-namespace bdkstub {
+namespace bdkcore {
 namespace {
 
 struct Slot {
@@ -21,12 +20,11 @@ struct Slot {
     std::shared_ptr<void> obj;
 };
 
-/* Everything except the task queue and the UI-thread identity is touched on the UI thread only. */
+/* Everything except the UI-thread identity is touched on the UI thread only. */
 struct Globals {
     std::vector<Slot> slots;
     std::vector<uint32_t> free_list;
     std::mutex mutex;
-    std::deque<std::function<void()>> queue;
     bool ui_set = false;
     std::thread::id ui;
     std::shared_ptr<Runtime> runtime;
@@ -99,9 +97,7 @@ bool table_free(bdk_handle_t h) {
 }
 
 void post(std::function<void()> fn) {
-    Globals& g = G();
-    std::lock_guard<std::mutex> lock(g.mutex);
-    g.queue.push_back(std::move(fn));
+    backend().Post(std::move(fn));
 }
 
 void release_later(void* ctx, bdk_release_cb rel) {
@@ -341,6 +337,12 @@ bdk_error_t make_error(const std::string& domain, const std::string& code,
     return table_make(T_ERROR, e);
 }
 
+bdk_buffer_t make_buffer(const std::string& data) {
+    auto b = std::make_shared<Buf>();
+    b->data = data;
+    return table_make(T_BUFFER, b);
+}
+
 void clear_out(bdk_error_t* out) {
     if (out)
         *out = 0;
@@ -436,7 +438,7 @@ void deactivate(const std::shared_ptr<Sub>& s) {
     release_later(s->ctx, s->rel);
 }
 
-} // namespace bdkstub
+} // namespace bdkcore
 
 /* ---- bdk_base.h ---- */
 
@@ -522,11 +524,8 @@ BDK_EXPORT BDK_ANY_THREAD bdk_string_t bdk_abi_hash(void) {
 }
 
 BDK_EXPORT BDK_ANY_THREAD bdk_string_t bdk_runtime_manifest_json(void) {
-    static const std::string manifest =
-        std::string("{\"bdk\":\"0.0.0-stub\",\"chromium\":null,\"digest\":null,"
-                    "\"abiVersion\":") +
-        std::to_string(BDK_ABI_VERSION) + ",\"abiHash\":\"" BDK_ABI_HASH "\"}";
-    return view(manifest);
+    static const std::string* manifest = new std::string(backend().ManifestJson());
+    return view(*manifest);
 }
 
 /* ---- bdk_runtime.h ---- */
@@ -574,12 +573,17 @@ BDK_EXPORT bdk_status_t bdk_runtime_start(const bdk_start_config_t* config, bdk_
     }
 
     auto rt = std::make_shared<Runtime>();
-    rt->handle = table_make(T_RUNTIME, rt);
     {
         std::lock_guard<std::mutex> lock(g.mutex);
         g.ui_set = true;
         g.ui = std::this_thread::get_id();
     }
+    if (bdk_status_t s = backend().Start(*rt, c, resolved, out_error)) {
+        std::lock_guard<std::mutex> lock(g.mutex);
+        g.ui_set = false;
+        return s;
+    }
+    rt->handle = table_make(T_RUNTIME, rt);
     g.runtime = rt;
     *out = rt->handle;
     return BDK_OK;
@@ -607,11 +611,10 @@ BDK_EXPORT bdk_call_t bdk_runtime_shutdown(bdk_runtime_t h, bdk_result_cb cb, vo
     }
     for (auto& c : rt->contents) {
         c->dead = true;
-        if (c->nav)
-            c->nav->cancelled = true;
         for (auto& s : c->subs)
             deactivate(s);
         release_later(c->key_ctx, c->key_rel);
+        c->key_rel = nullptr;
     }
     for (auto& s : rt->subs)
         deactivate(s);
@@ -650,18 +653,21 @@ BDK_EXPORT bdk_call_t bdk_runtime_shutdown(bdk_runtime_t h, bdk_result_cb cb, vo
         }
     }
 
+    /* The backend stops after every release queued above has run. */
     post([rt, call] {
-        Globals& g2 = G();
-        g2.runtime.reset();
-        {
-            std::lock_guard<std::mutex> lock(g2.mutex);
-            g2.ui_set = false;
-        }
-        table_free(call->handle);
-        call->done = true;
-        call->cb(call->ctx, 0, view(std::string("{}")), 0);
-        if (call->rel)
-            call->rel(call->ctx);
+        backend().Shutdown(*rt, [rt, call] {
+            Globals& g2 = G();
+            g2.runtime.reset();
+            {
+                std::lock_guard<std::mutex> lock(g2.mutex);
+                g2.ui_set = false;
+            }
+            table_free(call->handle);
+            call->done = true;
+            call->cb(call->ctx, 0, view(std::string("{}")), 0);
+            if (call->rel)
+                call->rel(call->ctx);
+        });
     });
     return call->handle;
 }
@@ -711,26 +717,6 @@ BDK_EXPORT void bdk_unsubscribe(bdk_subscription_t h) {
 BDK_EXPORT BDK_ANY_THREAD void bdk_post_to_ui_thread(void (*fn)(void*), void* ctx) {
     if (fn)
         post([fn, ctx] { fn(ctx); });
-}
-
-BDK_EXPORT size_t bdk_stub_pump(void) {
-    if (check_thread() != BDK_OK)
-        return 0;
-    Globals& g = G();
-    size_t n = 0;
-    for (;;) {
-        std::function<void()> fn;
-        {
-            std::lock_guard<std::mutex> lock(g.mutex);
-            if (g.queue.empty())
-                break;
-            fn = std::move(g.queue.front());
-            g.queue.pop_front();
-        }
-        fn();
-        ++n;
-    }
-    return n;
 }
 
 /* ---- bdk_broker.h ---- */

@@ -13,7 +13,7 @@ the root. Sources stay here; the targets point into `packages/swift` and `packag
 | Target | Path | Contents |
 |---|---|---|
 | `CBDK` | `Sources/CBDK` | The C module Swift imports: the headers in `packages/core/include/bdk` and `packages/core/generated/bdk_abi_hash.h`, reached through two symlinks in `include/`. `BDK_ABI_VERSION` and `BDK_ABI_HASH` are read from them, never copied. The `CBDKStub` module in the same module map exposes `packages/core/stub/bdk_stub.h`. |
-| `BDKStubRuntime` | `packages/core/stub` | The in-memory runtime, compiled from the stub's sources as C++ (no sources modified). It is not a dependency of `BDK`. |
+| `BDKStubRuntime` | `packages/core` | The in-memory runtime: the runtime core (`runtime/`) and the stub backend (`stub/`), compiled as C++. It is not a dependency of `BDK`. |
 | `BDK` | `Sources/BDK` | The SDK. Depends only on `CBDK`. |
 | `BDKTestSupport` | `Sources/BDKTestSupport` | `BDKRuntime.startStub`, the stub's controls (`runtime.stub`) and the driver that pumps the stub. Depends on `BDK` and `BDKStubRuntime`. |
 | `BDKTests` | `Tests/BDKTests` | Swift Testing suites. All suites are nested in one serialized suite, because the runtime is process-wide. |

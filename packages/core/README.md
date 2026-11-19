@@ -1,6 +1,6 @@
 # core
 
-The BDK C ABI: public headers (`include/bdk`), the in-memory stub runtime (`stub`), the runtime-independent
+The BDK C ABI: public headers (`include/bdk`), the runtime core shared by every runtime (`runtime`), the in-memory stub backend (`stub`), the runtime-independent
 conformance suite (`tests`) and the ABI hash tooling (`cmake/abi-hash.cmake`, `generated`).
 The interface definitions (`interface`) and the generated `include/bdk/bdk_ids.h` are described in the conventions.
 Read [docs/conventions.md](docs/conventions.md) first.

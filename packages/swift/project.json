@@ -14,6 +14,7 @@
         "{workspaceRoot}/Package.swift",
         "{workspaceRoot}/packages/core/include/**/*",
         "{workspaceRoot}/packages/core/stub/**/*",
+        "{workspaceRoot}/packages/core/runtime/**/*",
         "{workspaceRoot}/packages/core/generated/**/*",
         { "dependentTasksOutputFiles": "**/runtime.json", "transitive": false },
         { "fileset": "{workspaceRoot}/.bdk/runtime.json" }
@@ -30,6 +31,7 @@
         "{workspaceRoot}/Package.swift",
         "{workspaceRoot}/packages/core/include/**/*",
         "{workspaceRoot}/packages/core/stub/**/*",
+        "{workspaceRoot}/packages/core/runtime/**/*",
         "{workspaceRoot}/packages/core/generated/**/*",
         { "dependentTasksOutputFiles": "**/runtime.json", "transitive": false },
         { "fileset": "{workspaceRoot}/.bdk/runtime.json" }

@@ -78,10 +78,11 @@ add_custom_target(bdk_abi_hash_check ALL
 
 # --- The stub runtime ---------------------------------------------------------------------------------------
 
-add_library(bdk_stub STATIC stub/stub_core.cc stub/stub_host.cc)
+# The runtime core (runtime/) is shared with the Chromium engine; the stub supplies its in-memory backend.
+add_library(bdk_stub STATIC runtime/core.cc runtime/core_host.cc stub/stub_backend.cc)
 target_include_directories(bdk_stub
   PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/stub"
-  PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/generated")
+  PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/runtime" "${CMAKE_CURRENT_SOURCE_DIR}/generated")
 target_link_libraries(bdk_stub PUBLIC bdk_headers)
 set_target_properties(bdk_stub PROPERTIES CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
 # No exception may cross the ABI; the stub is built without them.
