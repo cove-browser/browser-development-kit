@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 export interface AbiInfo {
@@ -72,4 +72,37 @@ export async function assertAbiHashCurrent(repoRoot: string): Promise<void> {
       },
     );
   });
+}
+
+/**
+ * The symbols the runtime framework must export: every `BDK_EXPORT` function declared in
+ * `packages/core/include/bdk/*.h`, and the Objective-C classes declared in
+ * `packages/core/include/bdk_mac/*.h`, in Mach-O spelling (leading underscore), sorted. The
+ * framework hides everything its export list does not name, so a function missing from the
+ * `chromium/patches` export list links in the engine but is invisible to applications.
+ */
+export function abiExports(repoRoot: string): string[] {
+  const include = join(repoRoot, "packages", "core", "include");
+  const names = new Set<string>();
+  const headers = (dir: string) =>
+    existsSync(dir)
+      ? readdirSync(dir)
+          .filter((f) => f.endsWith(".h"))
+          .map((f) => readFileSync(join(dir, f), "utf8"))
+      : [];
+  for (const text of headers(join(include, "bdk"))) {
+    const code = text.replace(/\/\*[\s\S]*?\*\//g, "");
+    for (const m of code.matchAll(/\bBDK_EXPORT\b[^;{]*?\b(bdk_[a-z0-9_]+)\s*\(/g)) {
+      if (m[1] !== undefined) names.add(`_${m[1]}`);
+    }
+  }
+  for (const text of headers(join(include, "bdk_mac"))) {
+    for (const m of text.matchAll(/^@interface\s+([A-Za-z_][A-Za-z0-9_]*)\s*:/gm)) {
+      if (m[1] !== undefined) {
+        names.add(`_OBJC_CLASS_$_${m[1]}`);
+        names.add(`_OBJC_METACLASS_$_${m[1]}`);
+      }
+    }
+  }
+  return [...names].sort();
 }

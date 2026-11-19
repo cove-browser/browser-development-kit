@@ -1,10 +1,88 @@
 # The BDK engine overlay. It is mounted at //bdk in the Chromium checkout by
-# `chromium:build` (see tooling/README.md) and linked into the Mac framework by
-# the first patch in chromium/patches.
+# `chromium:build` (see tooling/README.md), together with the runtime core and
+# the C ABI headers from packages/core under //bdk/core, and linked into the
+# Mac framework by the first patch in chromium/patches.
+
+config("core_config") {
+  include_dirs = [
+    "core/include",
+    "core/generated",
+    "core/runtime",
+  ]
+}
+
+# The runtime core shared with the stub runtime (packages/core/runtime). It is
+# BDK's portable C++, not Chromium code: it follows packages/core's own lint
+# and style, so Chromium's style checks do not apply to it.
+source_set("core") {
+  sources = [
+    "core/runtime/core.cc",
+    "core/runtime/core_host.cc",
+    "core/runtime/core_internal.h",
+  ]
+  public_configs = [ ":core_config" ]
+  configs -= [
+    "//build/config/clang:find_bad_constructs",
+    "//build/config/clang:unsafe_buffers",
+    "//build/config/compiler:chromium_code",
+  ]
+  configs += [ "//build/config/compiler:no_chromium_code" ]
+}
+
+# The core's structs hold plain pointers (it is not Chromium code); engine
+# files that include core_internal.h must not have the raw_ptr check applied to
+# them.
+config("core_raw_ptr_exclusion") {
+  cflags = [
+    "-Xclang",
+    "-plugin-arg-raw-ptr-plugin",
+    "-Xclang",
+    "raw-ptr-exclude-path=" + rebase_path("core/", root_build_dir),
+  ]
+}
 
 source_set("bdk") {
   sources = [
     "bdk_overlay.cc",
     "bdk_overlay.h",
   ]
+  if (is_mac) {
+    sources += [
+      "engine/application_mac.mm",
+      "engine/chromium_main.h",
+      "engine/chromium_main_mac.mm",
+      "engine/engine_backend.cc",
+      "engine/engine_contents.cc",
+      "engine/engine_contents.h",
+      "engine/host_view.h",
+      "engine/host_view_mac.mm",
+      "engine/identity.cc",
+      "engine/identity.h",
+      "engine/session_state.cc",
+      "engine/session_state.h",
+    ]
+    deps = [
+      ":core",
+      "//base",
+      "//chrome/app:branded_strings",
+      "//chrome/browser",
+      "//chrome/browser:chrome_browser_application_mac",
+      "//chrome/browser/lifetime",
+      "//chrome/browser/profiles:profile",
+      "//components/input",
+      "//components/keep_alive_registry",
+      "//components/os_crypt/common:keychain_password_mac",
+      "//components/sessions",
+      "//components/version_info",
+      "//content/public/app",
+      "//content/public/browser",
+      "//net",
+      "//third_party/blink/public/common",
+      "//ui/base",
+      "//ui/base/clipboard",
+      "//url",
+    ]
+    configs += [ ":core_raw_ptr_exclusion" ]
+    frameworks = [ "AppKit.framework" ]
+  }
 }

@@ -13,6 +13,7 @@ import {
 import { join, relative } from "node:path";
 import { parseArgs } from "node:util";
 import { git, run } from "../git.js";
+import { abiExports } from "../runtime/abi.js";
 import { computeSourceIdentity, sourceKey } from "../runtime/identity.js";
 import { BUILD_STAMP_NAME, clearBuildStamp, writeBuildStamp } from "../runtime/stamp.js";
 import {
@@ -194,14 +195,26 @@ export function findFrameworkBinaries(outDir: string): string[] {
  * table. GN has no view of the link result, and a `gn check` or `gn desc` only shows that the
  * dependency edge exists; `nm` on the product shows that the object really reached the binary.
  */
+export async function frameworkExports(
+  binary: string,
+  env: NodeJS.ProcessEnv,
+): Promise<Set<string>> {
+  const nm = process.env.BDK_NM ?? "nm";
+  const r = await run(nm, ["-gU", binary], { env });
+  if (r.code !== 0) throw new Error(`${nm} -gU ${binary} failed: ${r.stderr.trim()}`);
+  return new Set(
+    r.stdout
+      .split("\n")
+      .map((l) => l.trim().split(/\s+/).at(-1) ?? "")
+      .filter((x) => x !== ""),
+  );
+}
+
 export async function frameworkExportsMarker(
   binary: string,
   env: NodeJS.ProcessEnv,
 ): Promise<boolean> {
-  const nm = process.env.BDK_NM ?? "nm";
-  const r = await run(nm, ["-gU", binary], { env });
-  if (r.code !== 0) throw new Error(`${nm} -gU ${binary} failed: ${r.stderr.trim()}`);
-  return r.stdout.split("\n").some((l) => l.trim().endsWith(` ${OVERLAY_MARKER_SYMBOL}`));
+  return (await frameworkExports(binary, env)).has(OVERLAY_MARKER_SYMBOL);
 }
 
 export interface BuildOptions {
@@ -341,6 +354,16 @@ export async function buildCheckout(
     log(
       `verify: ${OVERLAY_MARKER_SYMBOL} is exported by ${relative(ctx.src, binaries[0] as string)}`,
     );
+    const wanted = abiExports(ctx.layout.repoRoot);
+    const exported = await frameworkExports(binaries[0] as string, env);
+    const missing = wanted.filter((x) => !exported.has(x));
+    if (missing.length > 0) {
+      throw new Error(
+        `The framework does not export ${missing.length} BDK ABI symbol(s): ${missing.join(", ")}. ` +
+          "Add them to chrome/app/framework.exports and framework.order in the export patch in chromium/patches.",
+      );
+    }
+    if (wanted.length > 0) log(`verify: all ${wanted.length} BDK ABI symbols are exported`);
   }
 
   // Only a verified build of the whole runtime may bless out/ for packaging. A partial build

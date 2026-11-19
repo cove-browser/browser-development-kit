@@ -352,6 +352,18 @@ describe("chromium:build", () => {
     );
   });
 
+  it("fails when an ABI function in the headers is not exported by the framework", async () => {
+    const { sb } = await sandboxWithPatch();
+    await cli("sync", [], sb);
+    writeFileSync(
+      join(sb.repo, "packages", "core", "include", "bdk", "bdk_new.h"),
+      "BDK_EXPORT int bdk_new_function(void);\n",
+    );
+    const r = await cli("build", [], sb);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toMatch(/does not export 1 BDK ABI symbol\(s\): _bdk_new_function/);
+  });
+
   it("fails if the marker symbol is not in the framework", async () => {
     const { sb } = await sandboxWithPatch();
     await cli("sync", [], sb);
