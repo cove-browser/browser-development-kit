@@ -49,8 +49,11 @@ source_set("bdk") {
   if (is_mac) {
     sources += [
       "engine/application_mac.mm",
+      "engine/bdk_testing.h",
       "engine/chromium_main.h",
       "engine/chromium_main_mac.mm",
+      "engine/content_browser_client.cc",
+      "engine/content_browser_client.h",
       "engine/engine_backend.cc",
       "engine/engine_contents.cc",
       "engine/engine_contents.h",
@@ -60,6 +63,8 @@ source_set("bdk") {
       "engine/identity.h",
       "engine/session_state.cc",
       "engine/session_state.h",
+      "engine/testing.cc",
+      "engine/testing.h",
     ]
     deps = [
       ":core",
@@ -76,7 +81,12 @@ source_set("bdk") {
       "//components/version_info",
       "//content/public/app",
       "//content/public/browser",
+      "//content/public/common",
+      "//mojo/public/cpp/bindings",
+      "//mojo/public/cpp/system",
       "//net",
+      "//services/network/public/cpp",
+      "//services/network/public/mojom",
       "//third_party/blink/public/common",
       "//ui/base",
       "//ui/base/clipboard",

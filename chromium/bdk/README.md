@@ -29,6 +29,8 @@ The overlay therefore reflects the worktree that is building.
 | `host_view.h`, `host_view_mac.mm` | The native view the application places. It holds the page's view, so the page can be replaced (restore, discard) without the application noticing; the default context menu and fullscreen presenters. The only engine file with AppKit types besides start-up. |
 | `session_state.{h,cc}` | Page history for the application to store: a BDK envelope (`BDKC`, version 1) around Chromium's session-restore records. |
 | `identity.{h,cc}` | The application's identity from `bdk.resolved.json`: data directory, Keychain item, product name (T-PKG-02). |
+| `content_browser_client.{h,cc}` | `BdkContentBrowserClient`, Chrome's browser client plus BDK's additions (the delegate supplies it through a patch). Today: the scripted-navigation interceptor. |
+| `bdk_testing.h`, `testing.{h,cc}` | Test hooks, exported but not ABI: scripted navigations served without the network, UI requests for the application's own handler, script with a user gesture, synthetic clicks, a run-loop slice that lets Chromium work from inside a task, and a pending-work count. Used by the engine conformance app (`packages/core`, `nx run core:test-engine`). None gives a page or a session anything. |
 
 Test and diagnostic switches, read from the environment of the application: `BDK_ENGINE_MOCK_KEYCHAIN=1`
 (Chromium's mock Keychain, so tests never prompt), `BDK_ENGINE_SWITCHES` (more Chromium switches, space
@@ -37,10 +39,11 @@ one process can start several runtimes; Chromium itself starts once per process)
 
 ## The patches it needs
 
-`chromium/patches` links `//bdk` into the framework, exports the C ABI and `BDKApplicationBase`
+`chromium/patches` links `//bdk` into the framework, exports the C ABI, `BDKApplicationBase` and the test hooks
 (`chromium:build` fails when the framework does not export every function the headers declare), lets the
 engine keep the content runner after start-up, leaves `NSApplication`'s delegate and menu to the
-application, and lets the application name its Keychain item. Each patch's message says why.
+application, lets the application name its Keychain item, and lets the engine supply its own
+`ChromeContentBrowserClient`. Each patch's message says why.
 
 `bdk_overlay_marker()` stays as the cheapest proof that `//bdk` is linked: `chromium:build` runs
 `nm -gU` on the built framework and fails if the symbol is absent.

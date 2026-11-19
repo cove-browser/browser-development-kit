@@ -35,6 +35,7 @@
 #include "bdk/engine/host_view.h"
 #include "bdk/engine/identity.h"
 #include "bdk/engine/session_state.h"
+#include "bdk/engine/testing.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/profiles/delete_profile_helper.h"
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
@@ -50,7 +51,6 @@
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
-#include "content/public/browser/render_widget_host_view.h"
 #include "content/public/browser/ssl_status.h"
 #include "content/public/browser/web_contents.h"
 #include "net/cert/cert_status_flags.h"
@@ -85,8 +85,13 @@ class EngineBackend final : public bdkcore::Backend {
  public:
   // bdkcore::Backend:
   void Post(std::function<void()> task) override {
-    auto run =
-        base::BindOnce([](std::function<void()> t) { t(); }, std::move(task));
+    NoteTaskPosted();
+    auto run = base::BindOnce(
+        [](std::function<void()> t) {
+          NoteTaskRun();
+          t();
+        },
+        std::move(task));
     if (chromium_tasks_.load()) {
       content::GetUIThreadTaskRunner({})->PostTask(FROM_HERE, std::move(run));
     } else {
@@ -306,9 +311,13 @@ class EngineBackend final : public bdkcore::Backend {
       return bdkcore::fail(out_error, BDK_DOMAIN_PROFILE, "notOpen",
                            "the profile is not loaded yet");
     }
+    // With its renderer from the start: a page can take focus and receive
+    // input before its first navigation, as the stub's pages can.
+    content::WebContents::CreateParams params(profile);
+    params.desired_renderer_state =
+        content::WebContents::CreateParams::kInitializeAndWarmupRendererProcess;
     c->data = std::make_unique<EngineContents>(
-        c, content::WebContents::Create(
-               content::WebContents::CreateParams(profile)));
+        c, content::WebContents::Create(params));
     if (!initial_url.empty()) {
       Page(*c).Load(initial_url);
     }
@@ -402,8 +411,8 @@ class EngineBackend final : public bdkcore::Backend {
     state->visibility = contents->GetVisibility() == content::Visibility::HIDDEN
                             ? BDK_VISIBILITY_HIDDEN
                             : BDK_VISIBILITY_VISIBLE;
-    content::RenderWidgetHostView* view = contents->GetRenderWidgetHostView();
-    state->focused = view && view->HasFocus();
+    // As the focus events report it, so state and events agree.
+    state->focused = page.focused();
     state->zoom = page.Zoom();
   }
 
@@ -499,6 +508,9 @@ class EngineBackend final : public bdkcore::Backend {
 
   void UnregisterWindow(const bdkcore::Window& window) override {}
 
+  // For bdk_testing_forget_profiles().
+  void ForgetProfiles() { registry_.profiles.clear(); }
+
  private:
   void ReleaseProfile(bdkcore::Profile& profile) {
     if (!profile.data) {
@@ -569,3 +581,11 @@ Backend& backend() {
 }
 
 }  // namespace bdkcore
+
+namespace bdk {
+
+void ForgetPersistentProfilesForTesting() {
+  static_cast<EngineBackend&>(bdkcore::backend()).ForgetProfiles();
+}
+
+}  // namespace bdk

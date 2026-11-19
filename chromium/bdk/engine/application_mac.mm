@@ -14,6 +14,7 @@
 #import <objc/runtime.h>
 
 #include "base/command_line.h"
+#include "base/feature_list.h"
 #import "chrome/browser/chrome_browser_application_mac.h"
 
 __attribute__((visibility("default")))
@@ -30,6 +31,23 @@ __attribute__((visibility("default")))
   if (!base::CommandLine::InitializedForCurrentProcess()) {
     base::CommandLine::Init(*_NSGetArgc(), *_NSGetArgv());
   }
+}
+
+// BrowserCrApplication's -finishLaunching reads a feature flag. An
+// application may start the runtime only after it finished launching (from
+// applicationDidFinishLaunching:), and a flag read before Chromium creates its
+// feature list fails Chromium's early-access check once it does. Without a
+// feature list yet, finish launching as NSApplication; Chromium's Sonoma
+// VoiceOver activation refinements then stay off for this run, and VoiceOver
+// activation works as before them.
+- (void)finishLaunching {
+  if (base::FeatureList::GetInstance()) {
+    [super finishLaunching];
+    return;
+  }
+  using Imp = void (*)(id, SEL);
+  reinterpret_cast<Imp>(
+      class_getMethodImplementation([NSApplication class], _cmd))(self, _cmd);
 }
 
 // BrowserCrApplication sends both of these to Chrome's AppController, which a

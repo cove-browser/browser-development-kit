@@ -212,8 +212,12 @@ void EngineContents::Discard() {
       ParseResult::kOk) {
     return;
   }
+  // A discarded page has no renderer until it loads again.
+  content::WebContents::CreateParams params(context);
+  params.desired_renderer_state =
+      content::WebContents::CreateParams::kNoRendererProcess;
   std::unique_ptr<content::WebContents> fresh =
-      content::WebContents::Create(content::WebContents::CreateParams(context));
+      content::WebContents::Create(params);
   if (!restored.entries.empty()) {
     fresh->GetController().Restore(
         restored.current, content::RestoreType::kRestored, &restored.entries);
@@ -231,6 +235,7 @@ void EngineContents::LoadIfDiscarded() {
 
 void EngineContents::Close() {
   // Runs the page's unload handlers; Chromium then calls CloseContents().
+  closing_ = true;
   web_contents_->ClosePage();
 }
 
@@ -375,6 +380,7 @@ void EngineContents::CloseContents(content::WebContents* source) {
     return;
   }
   close_reported_ = true;
+  closing_ = false;
   if (auto c = core()) {
     c->closed = true;
     if (auto rt = c->rt.lock()) {
@@ -536,7 +542,9 @@ void EngineContents::EnterFullscreenModeForTab(
   if (!rt || rt->shutting) {
     return;
   }
-  // Pending until the application answers: the page waits for the resize.
+  // Fullscreen while the application decides. Content has no asynchronous
+  // refusal (only CanEnterFullscreenModeForTab, which must answer at once),
+  // so a denial makes the page leave fullscreen again.
   SetFullscreen(true);
   auto request = std::make_shared<bdkcore::Request>();
   request->surface = BDK_SURFACE_FULLSCREEN;
@@ -549,11 +557,14 @@ void EngineContents::EnterFullscreenModeForTab(
   request->on_finish = [self](bdkcore::UiOutcome outcome,
                               const std::string& completion,
                               const std::string&) {
-    if (!self || !self->fullscreen_) {
+    if (!self) {
       return;
     }
+    if (!self->fullscreen_) {
+      return;  // the page already left fullscreen
+    }
     if (outcome == bdkcore::UiOutcome::kCompleted && completion == "allow") {
-      return;  // the application made the page fill the screen
+      return;  // the application makes the page fill the screen
     }
     if (outcome == bdkcore::UiOutcome::kDefaulted) {
       self->host_view_->SetWindowFullscreen(true);
@@ -622,6 +633,9 @@ void EngineContents::DidFinishNavigation(content::NavigationHandle* handle) {
     flags |= BDK_EVENT_FLAG_USER_INITIATED;
   }
   const std::string url = handle->GetURL().spec();
+  if (!handle->IsSameDocument()) {
+    last_navigation_failed_ = !handle->HasCommitted() || handle->IsErrorPage();
+  }
   if (handle->HasCommitted() && !handle->IsErrorPage()) {
     if (zoom_ != 1.0 && !handle->IsSameDocument()) {
       SetZoom(zoom_);
@@ -642,12 +656,18 @@ void EngineContents::DidFinishNavigation(content::NavigationHandle* handle) {
 }
 
 void EngineContents::DidStopLoading() {
+  // A failed navigation already ended with NAVIGATION_FAILED; the error page
+  // it shows is not a finished load of the page that was asked for.
+  if (last_navigation_failed_) {
+    return;
+  }
   Emit(BDK_CONTENTS_EVENT_LOAD_FINISHED,
        web_contents_->GetLastCommittedURL().spec(), "{}", 0, kMainFrame);
 }
 
 void EngineContents::TitleWasSet(content::NavigationEntry* entry) {
-  if (!entry ||
+  // The error page's title is not the page's.
+  if (!entry || last_navigation_failed_ ||
       entry != web_contents_->GetController().GetLastCommittedEntry()) {
     return;
   }
@@ -668,12 +688,14 @@ void EngineContents::PrimaryMainFrameRenderProcessGone(
 void EngineContents::OnWebContentsFocused(
     content::RenderWidgetHost* render_widget_host) {
   LoadIfDiscarded();
+  focused_ = true;
   Emit(BDK_CONTENTS_EVENT_FOCUS_CHANGED, "",
        Json(base::DictValue().Set("focused", true)), 0, 0);
 }
 
 void EngineContents::OnWebContentsLostFocus(
     content::RenderWidgetHost* render_widget_host) {
+  focused_ = false;
   Emit(BDK_CONTENTS_EVENT_FOCUS_CHANGED, "",
        Json(base::DictValue().Set("focused", false)), 0, 0);
 }

@@ -18,7 +18,7 @@ namespace {
 
 // "BDKC" then the format version. Version 1: entry count, current index,
 // then each entry as written by SerializedNavigationEntry::WriteToPickle.
-constexpr uint32_t kMagic = 0x43444b42;  // "BDKC" little-endian
+constexpr uint32_t kMagic = 0x434b4442;  // "BDKC" in memory (little-endian)
 constexpr int kVersion = 1;
 // The size limit Chromium's session service uses for one entry.
 constexpr int kMaxEntryBytes = 1024 * 1024;

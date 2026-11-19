@@ -62,6 +62,10 @@ class EngineContents : public bdkcore::BackendData,
   void SetZoom(double zoom);
   double Zoom();
   void SetUserAgent(const std::string& user_agent);
+  // Whether the page has focus, as the last focus event said.
+  bool focused() const { return focused_; }
+  // Between Close() and Chromium's CloseContents().
+  bool closing() const { return closing_; }
   void LoadIfDiscarded();
   bool auto_discardable() const { return auto_discardable_; }
   void set_auto_discardable(bool value) { auto_discardable_ = value; }
@@ -140,6 +144,10 @@ class EngineContents : public bdkcore::BackendData,
   bool discarded_ = false;
   bool fullscreen_ = false;
   bool close_reported_ = false;
+  bool focused_ = false;
+  bool closing_ = false;
+  // The last main-frame, cross-document navigation failed or showed an error.
+  bool last_navigation_failed_ = false;
   base::WeakPtrFactory<EngineContents> weak_factory_{this};
 };
 

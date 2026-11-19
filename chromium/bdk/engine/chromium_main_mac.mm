@@ -18,6 +18,7 @@
 #include "base/sampling_heap_profiler/poisson_allocation_sampler.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/time/time.h"
+#include "bdk/engine/content_browser_client.h"
 #include "chrome/app/chrome_main_delegate.h"
 #include "chrome/app/chrome_main_mac.h"
 #include "chrome/app/startup_timestamps.h"
@@ -60,6 +61,11 @@ class HostedMainDelegate : public ChromeMainDelegate {
       return exit_code;
     }
     return 0;
+  }
+
+  std::unique_ptr<ChromeContentBrowserClient> CreateChromeContentBrowserClient()
+      override {
+    return std::make_unique<BdkContentBrowserClient>();
   }
 
   content::BrowserMainRunner* browser_runner() { return browser_runner_.get(); }
@@ -191,14 +197,18 @@ bool StartChromium(const ChromiumStartOptions& options, std::string* error) {
   state.keep_alive = std::make_unique<ScopedKeepAlive>(
       KeepAliveOrigin::APP_CONTROLLER, KeepAliveRestartOption::DISABLED);
   state.running = true;
-  // A run loop block, not a main-queue block: the nested loop runs for the
-  // life of the browser, and while a main-queue block runs no other one can,
-  // so everything the application or the system posts to the main queue would
-  // wait for the browser to stop.
-  CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, ^{
-    RunBrowserLoop();
-  });
-  CFRunLoopWakeUp(CFRunLoopGetMain());
+  // A one-shot run-loop timer starts the nested loop. Not a main-queue block:
+  // while a main-queue block runs no other can, so everything posted to the
+  // main queue would wait for the browser to stop. Not a run-loop block
+  // either: CFRunLoop takes all pending blocks at once, so blocks queued with
+  // this one would wait the same way.
+  CFRunLoopTimerRef timer = CFRunLoopTimerCreateWithHandler(
+      kCFAllocatorDefault, CFAbsoluteTimeGetCurrent(), 0, 0, 0,
+      ^(CFRunLoopTimerRef) {
+        RunBrowserLoop();
+      });
+  CFRunLoopAddTimer(CFRunLoopGetMain(), timer, kCFRunLoopCommonModes);
+  CFRelease(timer);
   return true;
 }
 
