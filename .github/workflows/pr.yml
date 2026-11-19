@@ -261,20 +261,17 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Package the CLI
-        # packages/cli/project.json: cli:package is a stub until M2 (T-CLI-05) and exits 0 without producing anything.
+        # Bundles with Rolldown, builds the single executable with `node --build-sea`, signs it ad hoc on macOS.
         run: pnpm cli:package
 
       - name: Run the packaged executable with Node removed from PATH
         shell: bash
         run: |
           set -euo pipefail
-          # Where the packaged executable goes is decided with T-CLI-05. This is the path the smoke test expects.
-          exe="packages/cli/dist/bdk"
+          exe="$PWD/packages/cli/dist/bdk"
           if [ ! -x "$exe" ]; then
-            msg="No packaged CLI executable at $exe. cli:package is a stub until M2 (T-CLI-05), so the CLI smoke test is skipped. It is not a pass."
-            echo "::notice title=CLI smoke test skipped::$msg"
-            echo "$msg" >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+            echo "::error::cli:package did not produce $exe."
+            exit 1
           fi
 
           # PATH with every directory that holds a node binary removed.
@@ -290,6 +287,32 @@ jobs:
             exit 1
           fi
 
-          # --version is a placeholder for the smoke command that T-CLI-05 defines.
-          PATH="$clean_path" "$exe" --version
-          echo "The packaged CLI ran with no Node on PATH." >> "$GITHUB_STEP_SUMMARY"
+          expected="$(node -p "require('./packages/cli/package.json').version")"
+          actual="$(PATH="$clean_path" "$exe" --version)"
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::bdk --version printed '$actual', expected '$expected'."
+            exit 1
+          fi
+          PATH="$clean_path" "$exe" --help > /dev/null
+
+          # An unknown command is a usage error: exit code 2.
+          status=0
+          PATH="$clean_path" "$exe" no-such-command 2> /dev/null || status=$?
+          if [ "$status" -ne 2 ]; then
+            echo "::error::bdk no-such-command exited $status, expected 2."
+            exit 1
+          fi
+
+          # Outside a project, `bdk build config` finds no bdk.toml: exit code 1.
+          status=0
+          (cd "$(mktemp -d)" && PATH="$clean_path" "$exe" build config 2> /dev/null) || status=$?
+          if [ "$status" -ne 1 ]; then
+            echo "::error::bdk build config outside a project exited $status, expected 1."
+            exit 1
+          fi
+
+          if [ "$(uname -s)" = "Darwin" ]; then
+            test -f packages/cli/dist/bdk.artifactbundle/info.json
+            codesign --verify --verbose=2 "$exe"
+          fi
+          echo "The packaged CLI ran with no Node on PATH: --version, --help, exit codes 1 and 2." >> "$GITHUB_STEP_SUMMARY"

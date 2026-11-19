@@ -20,7 +20,7 @@ The spec proposes three commands and asks for the CLI to stay lean. `bdk build` 
 | Use | Which `bdk` |
 |---|---|
 | `bdk init`, before a project exists | A standalone binary from the BDK release, or a package manager formula that installs it |
-| Everything inside a project | The binary that ships with the BDK package the project resolved, so the CLI version always equals the SDK and runtime version. On macOS it is an executable in an artifact bundle of the Swift package (unverified; T-CLI-05). |
+| Everything inside a project | The binary that ships with the BDK package the project resolved, so the CLI version always equals the SDK and runtime version. On macOS it is an executable in an artifact bundle of the Swift package (verified with SwiftPM on 2026-11-18, not yet with Xcode; section 2.3). |
 
 A standalone `bdk` run inside a project re-executes the project's own copy. If it cannot find one, it says so and stops; it does not guess.
 
@@ -64,7 +64,7 @@ Nothing in the list needs Swift or links an Apple framework. The one piece of Sw
 
 ### 2.3 Producing the executable
 
-Facts are from each tool's documentation, read on 2026-11-16. Nothing was built.
+Facts are from each tool's documentation, read on 2026-11-16, before anything was built. The first build's results are at the end of this section.
 
 The JavaScript engine inside the CLI does not need to match Chromium's. The CLI is a separate build-time process that reads files and starts other tools. It never loads the runtime, and shares no code, bytecode or snapshot with it. Pages run in Chromium whatever built them, and the automation host's engine is a separate choice (T-AUT-01). The reasons to prefer one option below are about tooling, not about V8.
 
@@ -95,7 +95,7 @@ What it costs, compared with Bun: the executable cannot install packages, so a p
 
 Build steps: bundle `packages/cli` into one file (Rolldown, already in the plan), then run `node --build-sea` once per target on that target's CI runner, so code cache can stay on. The repository pins one Node 26 release in `.node-version` (read by fnm) and in `engines`; that release is also the runtime inside `bdk`. This is a requirement for building BDK, not for using it. v1 ships one executable, for macOS on Apple Silicon (decision D6); other targets are added with their platforms.
 
-Nothing here has been built. T-CLI-05 builds it in M2 and must show the following; the Vite check waits for pages, in T-CLI-04.
+T-CLI-05 builds it in M2 and must show the following; the Vite check waits for pages, in T-CLI-04. Results of the first build, run on 2026-11-18, are in the table and below it.
 
 | Test | Why |
 |---|---|
@@ -104,6 +104,17 @@ Nothing here has been built. T-CLI-05 builds it in M2 and must show the followin
 | `bdk build pages` loads the project's own Vite from `node_modules` with the embedded Node | The page build must not need a second Node of a matching version |
 | Templates and schemas are read from embedded assets on every target | The asset file system is new; plain named assets are the fallback |
 | The binary is signed and notarized in the BDK release and passes Gatekeeper | A standalone download must open without a warning |
+
+Results of the first build (`packages/cli`, `pnpm cli:package`), run on 2026-11-18 on macOS 27, Apple Silicon, Node 26.9.0, Rolldown 1.2.18:
+
+| Test | Result |
+|---|---|
+| No Node on the machine | Passed. With every directory that holds `node` removed from `PATH`, `bdk --version`, `--help`, and `build config` ran and returned their exit codes (0, 0, 1 outside a project; 2 for an unknown command). The `cli-smoke` job in `pr.yml` repeats this on both runners. |
+| Swift package artifact bundle | Passed for SwiftPM. `dist/bdk.artifactbundle/` (`info.json` schema version 1.0, artifact `bdk`, type `executable`, one variant for `arm64-apple-macosx`) was used as `.binaryTarget(path:)` in a throwaway package. A command plugin ran `bdk --version` and got `0.0.0`; a build-tool plugin ran it during `swift build` inside SwiftPM's sandbox. Not verified: an Xcode run-script phase, and Xcode's own build of the package. `xcodebuild` on the machine reported that CoreSimulator is out of date and found no scheme in the throwaway package, so Xcode's environment is only simulated (`XCODE_VERSION_ACTUAL`) in unit tests. |
+| Start-up time | `bdk --version`: median 36 to 39 ms over 50 runs (minimum 34 ms), against 33 ms for `node -e 0` on the same machine. `--help` and `build config` on a one-line project: 41 to 49 ms median. Three runs per Xcode build are about 0.15 s. The executable is 145 MB. Code cache was on. |
+| Embedded assets | Passed with plain named assets: every file under `packages/cli/assets/` is registered automatically, and `bdk build config` read the schema asset inside the executable (checked with a throwaway `bdk.schema.json`, removed again; the real schema is T-CFG-01). A missing asset gives `cli.asset_missing`, exit 3. The asset file system was not used. |
+| Signing | Ad hoc signing (`codesign --sign - --force`) works and the binary runs; Developer ID signing, notarization and Gatekeeper are not tested. |
+| Import rule | Passed: Biome `noRestrictedImports` for `src/core/**` rejects platform imports; a test proves it on fixtures. |
 
 If one of these fails on a point that Bun passes, Bun is the fallback (risk R31). Rules that keep that open:
 
