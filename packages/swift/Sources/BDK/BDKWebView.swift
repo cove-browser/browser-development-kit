@@ -129,17 +129,27 @@ public final class BDKWebView: NSView {
 }
 
 /// SwiftUI host of a page's view. Several containers may show the same page over time, but only one
-/// at a time: SwiftUI moves the one view.
-public struct BDKWebContentsView: NSViewRepresentable {
+/// at a time: SwiftUI moves the one view. Passing a different page replaces the view shown.
+public struct BDKWebContentsView: View {
     private let contents: BDKWebContents
 
     public init(_ contents: BDKWebContents) {
         self.contents = contents
     }
 
-    public func makeNSView(context: Context) -> BDKWebView {
-        contents.view
+    public var body: some View {
+        // Each page is its own SwiftUI identity, so a new page gets a new host instead of an update
+        // to the old page's view, which belongs to that page and cannot show another.
+        Host(contents: contents).id(contents.id)
     }
 
-    public func updateNSView(_ nsView: BDKWebView, context: Context) {}
+    private struct Host: NSViewRepresentable {
+        let contents: BDKWebContents
+
+        func makeNSView(context: Context) -> BDKWebView {
+            contents.view
+        }
+
+        func updateNSView(_ nsView: BDKWebView, context: Context) {}
+    }
 }

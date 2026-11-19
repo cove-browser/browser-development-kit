@@ -56,6 +56,8 @@ private enum StubDriver {
         DispatchQueue.main.async {
             MainActor.assumeIsolated {
                 isPumpScheduled = false
+                // Paused since this was queued: the resume schedules the pump again.
+                guard pauses == 0 else { return }
                 _ = bdk_stub_pump()
             }
         }

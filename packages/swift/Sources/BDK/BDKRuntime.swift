@@ -46,6 +46,8 @@ public final class BDKRuntime {
 
     package private(set) var handle: bdk_runtime_t
     private(set) var state = State.running
+    /// The shutdown in progress, which every later caller waits for.
+    private var shutdownTask: Task<Void, Never>?
     let windows = BDKWindows()
     private var liveContents: [UInt64: WeakBox<BDKWebContents>] = [:]
     private let broadcaster = EventBroadcaster<Event>()
@@ -162,21 +164,29 @@ public final class BDKRuntime {
 
     /// Shuts the runtime down. Every profile and page is stale as soon as this starts, a pending
     /// call completes with `broker.cancelled`, and event sequences end. Chromium cannot be
-    /// restarted in the same process.
+    /// restarted in the same process. A call made while a shutdown is in progress returns when that
+    /// shutdown has finished.
     public func shutdown() async {
+        if let shutdownTask { return await shutdownTask.value }
         guard state == .running else { return }
         state = .shuttingDown
         invalidateChildren()
-        // The shutdown result is "{}" or a rejection because the runtime is already gone; either
-        // way the runtime is stopped afterwards, so there is nothing to report.
-        _ = try? await abiAsync(.runtime) { context, result, release in
-            bdk_runtime_shutdown(handle, result, context, release)
+        let handle = handle
+        // Not cancelled with the caller: once started, the runtime stops either way.
+        let task = Task { @MainActor in
+            // The shutdown result is "{}" or a rejection because the runtime is already gone;
+            // either way the runtime is stopped afterwards, so there is nothing to report.
+            _ = try? await abiAsync(.runtime) { context, result, release in
+                bdk_runtime_shutdown(handle, result, context, release)
+            }
+            self.state = .stopped
+            self.handle = 0
+            if Self.current === self { Self.current = nil }
+            self.broadcaster.finish()
+            EventLoop.kick()
         }
-        state = .stopped
-        handle = 0
-        if Self.current === self { Self.current = nil }
-        broadcaster.finish()
-        EventLoop.kick()
+        shutdownTask = task
+        await task.value
     }
 
     /// For `applicationShouldTerminate`: cancels this attempt, shuts the runtime down, then asks the
@@ -186,8 +196,16 @@ public final class BDKRuntime {
     /// Chromium's, and Chromium cannot stop until that loop returns. `applicationShouldTerminate` therefore
     /// runs twice; work that must happen once should check `BDKRuntime.isRunning`.
     public func terminate(replyingTo application: NSApplication) -> NSApplication.TerminateReply {
-        guard state == .running else { return .terminateNow }
-        terminate { application.terminate(nil) }
+        terminateReply { application.terminate(nil) }
+    }
+
+    /// `.terminateNow` only once the runtime has stopped. Before that, including while a shutdown
+    /// is in progress, it cancels this attempt and calls `requestTermination` after the shutdown.
+    package func terminateReply(
+        _ requestTermination: @escaping @MainActor () -> Void
+    ) -> NSApplication.TerminateReply {
+        guard state != .stopped else { return .terminateNow }
+        terminate(completion: requestTermination)
         return .terminateCancel
     }
 

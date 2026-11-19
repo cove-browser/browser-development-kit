@@ -173,6 +173,34 @@ extension BDKStubTests {
             #expect(!BDKRuntime.isRunning)
         }
 
+        @Test func shutdownDuringShutdownWaitsForIt() async throws {
+            let runtime = try BDKRuntime.startStub()
+            let first = Task { @MainActor in await runtime.shutdown() }
+            while runtime.state == .running { await Task.yield() }
+            #expect(runtime.state == .shuttingDown)
+            await runtime.shutdown()
+            #expect(runtime.state == .stopped)
+            #expect(!BDKRuntime.isRunning)
+            await first.value
+        }
+
+        @Test func quitDuringShutdownWaitsForIt() async throws {
+            let runtime = try BDKRuntime.startStub()
+            let first = Task { @MainActor in await runtime.shutdown() }
+            while runtime.state == .running { await Task.yield() }
+            var stoppedWhenAskedAgain: Bool?
+            await withCheckedContinuation { continuation in
+                let reply = runtime.terminateReply {
+                    stoppedWhenAskedAgain = runtime.state == .stopped
+                    continuation.resume()
+                }
+                #expect(reply == .terminateCancel)
+            }
+            #expect(stoppedWhenAskedAgain == true)
+            #expect(runtime.terminateReply {} == .terminateNow)
+            await first.value
+        }
+
         @Test func loadsTheResolvedConfigurationFromABundle() throws {
             let directory = FileManager.default.temporaryDirectory
                 .appendingPathComponent("bdk-\(UUID().uuidString).bundle")

@@ -40,6 +40,17 @@ extension BDKStubTests {
             }
         }
 
+        @Test func savedFactoryKeepsItsProfile() async throws {
+            try await withStubRuntime { runtime in
+                // Nothing but the factory holds the profile.
+                let factory = try await runtime.profiles.open("Work").webContents
+                let page = try factory.create()
+                #expect(factory.all.map(\.id) == [page.id])
+                try factory.profile.close()
+                await expectError(.profile, "stale") { _ = try factory.create() }
+            }
+        }
+
         @Test func duplicateNameIsRefused() async throws {
             try await withStubRuntime { runtime in
                 _ = try await runtime.profiles.create(name: "Same")

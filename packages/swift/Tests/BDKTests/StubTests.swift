@@ -32,6 +32,21 @@ extension BDKStubTests {
             }
         }
 
+        @Test func aPumpQueuedBeforeAPauseWaitsForTheResume() async throws {
+            try await withProfile { runtime, profile in
+                // Creating the page queues its load and schedules a pump, before the pause starts.
+                let page = try profile.webContents.create(
+                    .init(initialURL: URL(string: "https://paused.test/")!))
+                let loadingWhilePaused = try await runtime.stub.withAutomaticPumpingPaused {
+                    try await Task.sleep(for: .milliseconds(30))
+                    return try page.state().isLoading
+                }
+                #expect(loadingWhilePaused)
+                runtime.stub.pump()
+                #expect(try !page.state().isLoading)
+            }
+        }
+
         @Test func scriptedNavigationAppliesToLaterLoads() async throws {
             try await withProfile { runtime, profile in
                 let url = URL(string: "https://scripted.test/")!

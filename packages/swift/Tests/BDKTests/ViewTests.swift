@@ -214,5 +214,22 @@ extension BDKStubTests {
                 #expect(page.view.isDescendant(of: host))
             }
         }
+
+        @Test func swiftUIShowsTheNewPageWhenThePageChanges() async throws {
+            try await withProfile { _, profile in
+                let first = try profile.webContents.create()
+                let second = try profile.webContents.create()
+                let host = NSHostingView(rootView: BDKWebContentsView(first))
+                let window = makeWindow()
+                window.contentView = host
+                host.frame = NSRect(x: 0, y: 0, width: 300, height: 200)
+                host.layoutSubtreeIfNeeded()
+                #expect(first.view.isDescendant(of: host))
+                host.rootView = BDKWebContentsView(second)
+                host.layoutSubtreeIfNeeded()
+                #expect(second.view.isDescendant(of: host))
+                #expect(!first.view.isDescendant(of: host))
+            }
+        }
     }
 }

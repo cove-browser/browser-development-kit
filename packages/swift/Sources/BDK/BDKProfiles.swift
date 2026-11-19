@@ -239,7 +239,7 @@ public final class BDKProfile: Identifiable {
 /// Creates and lists the pages of one profile.
 @MainActor
 public struct WebContentsFactory {
-    unowned let profile: BDKProfile
+    let profile: BDKProfile
 
     /// The live pages of the profile.
     public var all: [BDKWebContents] {
