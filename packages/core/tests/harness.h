@@ -51,6 +51,7 @@ bdk_status_t bdk_harness_withdraw_ui_requests(bdk_runtime_t);
 #define BDK_HARNESS_UI_REJECTED 3u
 #define BDK_HARNESS_UI_CANCELLED 4u
 #define BDK_HARNESS_UI_WITHDRAWN 5u
+#define BDK_HARNESS_UI_DISABLED 6u
 
 typedef struct bdk_harness_ui_outcome {
     uint32_t kind; /* what happened to the most recently raised request */

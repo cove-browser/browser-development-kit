@@ -39,6 +39,7 @@ BDK_EXPORT bdk_status_t bdk_stub_withdraw_ui_requests(bdk_runtime_t);
 #define BDK_STUB_UI_REJECTED 3u
 #define BDK_STUB_UI_CANCELLED 4u
 #define BDK_STUB_UI_WITHDRAWN 5u
+#define BDK_STUB_UI_DISABLED 6u /* the surface is disabled in the configuration */
 
 typedef struct bdk_stub_ui_outcome {
     size_t struct_size;

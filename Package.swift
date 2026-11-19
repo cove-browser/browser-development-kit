@@ -28,7 +28,10 @@ let package = Package(
                 "scripts", "tests",
                 "CMakeLists.txt", "README.md", "project.json", "generated/abi-hash.txt",
             ],
-            sources: ["runtime/core.cc", "runtime/core_host.cc", "stub/stub_backend.cc"],
+            sources: [
+                "runtime/core.cc", "runtime/core_host.cc", "runtime/ui_router.cc",
+                "stub/stub_backend.cc",
+            ],
             publicHeadersPath: "stub",
             cxxSettings: [.headerSearchPath("runtime"), .headerSearchPath("generated")]
         ),

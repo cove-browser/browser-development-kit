@@ -578,6 +578,8 @@ BDK_EXPORT bdk_status_t bdk_runtime_start(const bdk_start_config_t* config, bdk_
     }
 
     auto rt = std::make_shared<Runtime>();
+    if (bdk_status_t s = ui_configure(*rt, resolved, out_error))
+        return s;
     {
         std::lock_guard<std::mutex> lock(g.mutex);
         g.ui_set = true;
@@ -687,6 +689,8 @@ BDK_EXPORT bdk_status_t bdk_runtime_freeze_registrations(bdk_runtime_t h, bdk_er
     if (rt->frozen)
         return fail(out_error, BDK_DOMAIN_CONFIG, BDK_CODE_REGISTRATION_AFTER_START,
                     "the registrations are already frozen");
+    if (bdk_status_t s = ui_check_handlers(*rt, out_error))
+        return s;
     rt->frozen = true;
     emit_runtime_event(rt, BDK_RUNTIME_EVENT_REGISTRATIONS_FROZEN, "{}");
     log_line(rt, 1, "registrations frozen");

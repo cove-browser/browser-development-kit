@@ -7,16 +7,20 @@
 #ifndef BDK_CORE_INTERNAL_H_
 #define BDK_CORE_INTERNAL_H_
 
+#include <deque>
 #include <functional>
 #include <map>
 #include <memory>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "bdk/bdk.h"
 
 namespace bdkcore {
+
+struct Request;
 
 enum Type : uint8_t {
     T_NONE = 0,
@@ -140,7 +144,19 @@ enum class UiOutcome : uint8_t {
     kDefaulted = 2,
     kRejected = 3,
     kCancelled = 4,
-    kWithdrawn = 5
+    kWithdrawn = 5,
+    kDisabled =
+        6 /* the surface is disabled in the configuration: deny, report the API unavailable */
+};
+
+/* The configured mode of a surface (ui-requests.md section 4, configuration.md 3.6). */
+enum class UiMode : uint8_t { kDefault = 0, kCustom = 1, kDisabled = 2 };
+
+/* The requests of one kind for one page: Chromium queues them and the handler sees one at a time.
+ */
+struct UiQueue {
+    bool busy = false;
+    std::deque<std::shared_ptr<Request>> waiting;
 };
 
 struct Request {
@@ -153,6 +169,7 @@ struct Request {
     double anchor[4] = {0, 0, 0, 0};
     bdk_native_handle_t secure_view{};
     bool delivered = false, finished = false;
+    bool holds_slot = false; /* it is the one request of its kind and page the handler sees */
     void (*withdrawn)(void*) = nullptr;
     void* wctx = nullptr;
     bdk_release_cb wrel = nullptr;
@@ -185,6 +202,8 @@ struct Runtime {
     std::map<std::string, Owned> page_handlers, providers;
     std::map<std::string, std::string> provider_keys;
     std::map<uint32_t, UiHandler> ui_handlers;
+    std::map<uint32_t, UiMode> ui_modes; /* by surface; a surface not listed is kDefault */
+    std::map<std::pair<bdk_contents_t, uint32_t>, UiQueue> ui_queues;
     std::vector<std::shared_ptr<Request>> requests;
     bdk_log_cb log_cb = nullptr;
     void* log_ctx = nullptr;
@@ -317,10 +336,26 @@ void emit_contents_event(const std::shared_ptr<Contents>&, uint32_t kind, const 
 void emit_contents_event_now(const std::shared_ptr<Contents>&, uint32_t kind,
                              const std::string& url, const std::string& detail, int32_t net_error,
                              uint32_t flags);
-/* Raises a UI request: the handler for the surface is called later; with none, the request is
-   defaulted. on_finish gets the outcome exactly once. */
+/* Raises a UI request (ui_router.cc). The router decides by the surface's mode: disabled finishes
+   it as kDisabled with no handler called; otherwise the handler for the surface is called later,
+   one request of a kind per page at a time, and with no handler the request is defaulted (the
+   backend shows its default presenter). on_finish gets the outcome exactly once, always on a later
+   task. A request with no on_finish is a notice: it is delivered at once and never queued. */
 std::shared_ptr<Request> raise_ui_request(const std::shared_ptr<Runtime>&,
                                           std::shared_ptr<Request>);
+/* Reads [ui.surfaces] from the resolved configuration; fails with ui.surfaceUnknown or
+   ui.surfaceMode. Called by bdk_runtime_start before the backend starts. */
+bdk_status_t ui_configure(Runtime&, const std::string& resolved_config, bdk_error_t* out_error);
+/* Fails with ui.handlerMissing when a custom surface has no handler. Called at the freeze. */
+bdk_status_t ui_check_handlers(const Runtime&, bdk_error_t* out_error);
+/* False when the configuration disables the surface: the web or extension API behind it must
+   report itself unavailable instead of raising a request. */
+bool ui_surface_available(const Runtime&, uint32_t surface);
+/* bdk_ui_complete, bdk_ui_use_default and bdk_ui_request_release, after the handle checks. */
+bdk_status_t ui_complete(Request&, const std::string& completion, const std::string& arguments,
+                         bdk_native_handle_t gesture, bdk_error_t* out_error);
+bdk_status_t ui_use_default(Request&, bdk_error_t* out_error);
+void ui_release(Request&);
 /* The keyboard handler of the page: the reserve answer, and the unhandled report. */
 bool reserve_key(Contents&, bdk_native_handle_t key_event);
 void report_unhandled_key(Contents&, bdk_native_handle_t key_event);
