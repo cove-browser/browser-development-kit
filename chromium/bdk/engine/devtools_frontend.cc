@@ -98,6 +98,13 @@ DevToolsFrontend::DevToolsFrontend(content::WebContents* frontend,
 
 DevToolsFrontend::~DevToolsFrontend() = default;
 
+void DevToolsFrontend::SetFrontend(content::WebContents* frontend) {
+  frontend_ = frontend;
+  frontend_observer_.Follow(frontend);
+  attached_bindings_ = 0;
+  Attach();
+}
+
 DevToolsUIBindings* DevToolsFrontend::Bindings() {
   return DevToolsUIBindings::ForWebContents(frontend_);
 }

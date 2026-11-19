@@ -43,6 +43,9 @@ class DevToolsFrontend : public content::WebContentsObserver {
   ~DevToolsFrontend() override;
 
   content::WebContents* inspected() { return inspected_; }
+  // The front-end page replaced its WebContents (a discard or a restore):
+  // follow the new one, and attach its bindings once its front end commits.
+  void SetFrontend(content::WebContents* frontend);
   void Close() { close_.Run(); }
   void OpenInNewTab(const std::string& url);
 
@@ -54,6 +57,7 @@ class DevToolsFrontend : public content::WebContentsObserver {
   class FrontendObserver : public content::WebContentsObserver {
    public:
     FrontendObserver(content::WebContents* frontend, DevToolsFrontend* owner);
+    void Follow(content::WebContents* frontend) { Observe(frontend); }
     void DidFinishNavigation(content::NavigationHandle* handle) override;
 
    private:

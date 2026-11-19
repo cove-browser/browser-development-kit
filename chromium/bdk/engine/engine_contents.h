@@ -60,6 +60,9 @@ class EngineContents : public bdkcore::BackendData,
   void SetZoom(double zoom);
   double Zoom();
   void SetUserAgent(const std::string& user_agent);
+  // Mutes the page, including the WebContents a discard or restore puts in its
+  // place.
+  void SetMuted(bool muted);
   // Whether the page has focus, as the last focus event said.
   bool focused() const { return focused_; }
   // Between Close() and Chromium's CloseContents().
@@ -144,6 +147,7 @@ class EngineContents : public bdkcore::BackendData,
   // For a DevTools front-end page: the bindings to the page it inspects.
   std::unique_ptr<DevToolsFrontend> devtools_;
   std::string user_agent_;
+  bool muted_ = false;
   double zoom_ = 1.0;
   bool auto_discardable_ = true;
   bool discarded_ = false;

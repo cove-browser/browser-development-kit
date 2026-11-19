@@ -461,7 +461,7 @@ class EngineBackend final : public bdkcore::Backend {
   bdk_status_t SetMuted(Contents& c,
                         bool muted,
                         bdk_error_t* out_error) override {
-    Page(c).web_contents()->SetAudioMuted(muted);
+    Page(c).SetMuted(muted);
     return BDK_OK;
   }
 

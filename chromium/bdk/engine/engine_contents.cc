@@ -174,7 +174,17 @@ void EngineContents::Attach(
   std::unique_ptr<content::WebContents> old = std::move(web_contents_);
   web_contents_ = std::move(web_contents);
   web_contents_->SetDelegate(this);
+  // Settings that belong to the page, not to one WebContents, before it is
+  // shown or loads.
+  if (muted_) {
+    web_contents_->SetAudioMuted(true);
+  }
   Observe(web_contents_.get());
+  // A DevTools front end moves its bindings to the new front-end WebContents
+  // before the old one goes.
+  if (devtools_) {
+    devtools_->SetFrontend(web_contents_.get());
+  }
   host_view_->SetWebContents(web_contents_.get());
   if (!user_agent_.empty()) {
     SetUserAgent(user_agent_);
@@ -270,6 +280,11 @@ void EngineContents::SetUserAgent(const std::string& user_agent) {
     controller.GetEntryAtIndex(i)->SetIsOverridingUserAgent(
         !user_agent.empty());
   }
+}
+
+void EngineContents::SetMuted(bool muted) {
+  muted_ = muted;
+  web_contents_->SetAudioMuted(muted);
 }
 
 // content::WebContentsDelegate -----------------------------------------------
