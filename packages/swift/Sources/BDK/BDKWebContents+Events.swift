@@ -57,6 +57,11 @@ extension BDKWebContents {
         case titleChanged(String)
         case focusChanged(Bool)
         case closed
+        /// The page's renderer process ended (it crashed, was killed or ran out of memory). The page
+        /// shows nothing until it is reloaded or navigated; the application decides which.
+        case rendererGone(reason: String)
+        /// The page became visible or hidden: its view entered or left a visible window.
+        case visibilityChanged(Bool)
         /// A kind this version does not know, from a newer runtime.
         case unknown(kind: UInt32)
     }
@@ -100,6 +105,10 @@ extension BDKWebContents.Event {
             self = .focusChanged(detail?.bool("focused") ?? false)
         case BDK_CONTENTS_EVENT_CLOSED:
             self = .closed
+        case BDK_CONTENTS_EVENT_RENDERER_GONE:
+            self = .rendererGone(reason: detail?.string("reason") ?? "crashed")
+        case BDK_CONTENTS_EVENT_VISIBILITY_CHANGED:
+            self = .visibilityChanged(detail?.bool("visible") ?? false)
         default:
             self = .unknown(kind: event.kind)
         }

@@ -47,7 +47,9 @@
       { "name": "LOAD_FINISHED", "id": 4 },
       { "name": "TITLE_CHANGED", "id": 5 },
       { "name": "FOCUS_CHANGED", "id": 6 },
-      { "name": "CLOSED", "id": 7 }
+      { "name": "CLOSED", "id": 7 },
+      { "name": "RENDERER_GONE", "id": 8 },
+      { "name": "VISIBILITY_CHANGED", "id": 9 }
     ],
     "eventFlags": [
       { "name": "MAIN_FRAME", "id": 1 },
