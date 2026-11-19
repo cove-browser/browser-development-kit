@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
@@ -19,6 +20,7 @@ class Profile;
 namespace bdk {
 
 class DevToolsFrontend;
+class HostContext;
 class HostView;
 
 // What the engine keeps for a profile the application opened.
@@ -34,20 +36,41 @@ Profile* ProfileOf(const bdkcore::Contents& contents);
 // One page: its WebContents, its host view, and the translation of
 // Chromium's observer and delegate calls into BDK events and UI requests.
 // Owned by the core's Contents (as its backend data); it refers back to it
-// weakly.
+// weakly. The WebContents is a tab of a host context (host_context.h), and its
+// tab model owns it. BDK's delegate serves the page in every context: after a
+// move the engine sets it again, because the Browser takes the delegate
+// when it takes the tab.
 class EngineContents : public bdkcore::BackendData,
                        public content::WebContentsDelegate,
                        public content::WebContentsObserver {
  public:
-  // Takes `web_contents` (created by the engine or by Chromium for a popup).
+  // Takes `web_contents` (created by the engine or by Chromium for a popup) as
+  // a tab of the parking context of the page's profile, which must be able to
+  // host one (HostContexts::CanHost).
   EngineContents(const std::shared_ptr<bdkcore::Contents>& contents,
                  std::unique_ptr<content::WebContents> web_contents);
   ~EngineContents() override;
 
   static EngineContents* From(const bdkcore::Contents& contents);
 
-  content::WebContents* web_contents() { return web_contents_.get(); }
+  content::WebContents* web_contents() { return web_contents_; }
   HostView& host_view() { return *host_view_; }
+
+  // Every page of the engine, in creation order.
+  static const std::vector<EngineContents*>& All();
+
+  // Moves the page's tab into `context`. A page with a focus keeps being the
+  // active tab of the context it moves into.
+  void MoveTo(HostContext& context);
+  // Moves the page to the parking context of its profile.
+  void Park();
+  // Moves the page into the context of the registered window its host view is
+  // in, if there is one. A page in no registered window stays where it is.
+  void Reconcile();
+  // Whether the page is a tab of a context of `window`.
+  bool IsInWindow(const bdkcore::Window* window);
+  // Focuses the page and makes its tab the active tab of its context.
+  void Focus();
 
   void Load(const std::string& url);
   // Replaces the WebContents with one restored from `state`, keeping the
@@ -122,7 +145,12 @@ class EngineContents : public bdkcore::BackendData,
             const std::string& detail,
             int32_t net_error,
             uint32_t flags);
+  // Makes `web_contents` the page's WebContents: its first, as a tab of the
+  // parking context, or a replacement in the same tab.
   void Attach(std::unique_ptr<content::WebContents> web_contents);
+  // The host view moved into or out of a window; the page follows later.
+  void OnHostViewWindowChanged();
+  void ActivateTab();
   // Opens undocked DevTools for this page in a page of its own, through a
   // new-window request of kind "devTools".
   void OpenDevTools();
@@ -143,7 +171,8 @@ class EngineContents : public bdkcore::BackendData,
 
   std::weak_ptr<bdkcore::Contents> core_;
   std::unique_ptr<HostView> host_view_;
-  std::unique_ptr<content::WebContents> web_contents_;
+  // Owned by its tab model, in a host context.
+  raw_ptr<content::WebContents> web_contents_ = nullptr;
   // For a DevTools front-end page: the bindings to the page it inspects.
   std::unique_ptr<DevToolsFrontend> devtools_;
   std::string user_agent_;
@@ -155,6 +184,7 @@ class EngineContents : public bdkcore::BackendData,
   bool close_reported_ = false;
   bool focused_ = false;
   bool closing_ = false;
+  bool reconcile_pending_ = false;
   // The last main-frame, cross-document navigation failed or showed an error.
   bool last_navigation_failed_ = false;
   base::WeakPtrFactory<EngineContents> weak_factory_{this};

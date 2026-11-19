@@ -4,6 +4,7 @@
 
 #include "bdk/engine/engine_contents.h"
 
+#include <algorithm>
 #include <array>
 #include <utility>
 #include <vector>
@@ -12,14 +13,17 @@
 #include "base/functional/bind.h"
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
+#include "base/no_destructor.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/values.h"
 #include "bdk/engine/devtools_frontend.h"
+#include "bdk/engine/host_context.h"
 #include "bdk/engine/host_view.h"
 #include "bdk/engine/identity.h"
 #include "bdk/engine/session_state.h"
+#include "bdk/engine/testing.h"
 #include "chrome/browser/profiles/profile.h"
 #include "components/input/native_web_keyboard_event.h"
 #include "content/public/browser/context_menu_params.h"
@@ -49,6 +53,11 @@ namespace bdk {
 namespace {
 
 constexpr uint32_t kMainFrame = BDK_EVENT_FLAG_MAIN_FRAME;
+
+std::vector<EngineContents*>& Registry() {
+  static base::NoDestructor<std::vector<EngineContents*>> registry;
+  return *registry;
+}
 
 std::string Json(const base::DictValue& dict) {
   return base::WriteJson(dict).value_or("{}");
@@ -146,10 +155,14 @@ EngineContents::EngineContents(
     const std::shared_ptr<bdkcore::Contents>& contents,
     std::unique_ptr<content::WebContents> web_contents)
     : core_(contents), host_view_(HostView::Create()) {
+  Registry().push_back(this);
+  host_view_->SetWindowChangedCallback(base::BindRepeating(
+      &EngineContents::OnHostViewWindowChanged, weak_factory_.GetWeakPtr()));
   Attach(std::move(web_contents));
 }
 
 EngineContents::~EngineContents() {
+  std::erase(Registry(), this);
   // The bindings belong to the front end's WebUI, which goes with the page.
   devtools_.reset();
   Observe(nullptr);
@@ -158,7 +171,13 @@ EngineContents::~EngineContents() {
   }
   // The host view lets go of the page's view before the page goes.
   host_view_.reset();
-  web_contents_.reset();
+  if (web_contents_) {
+    // Nothing of ours refers to the page when its tab destroys it.
+    content::WebContents* contents = web_contents_.ExtractAsDangling();
+    if (HostContext* context = HostContexts::Get().ContextOf(contents)) {
+      context->Destroy(contents);
+    }
+  }
 }
 
 // static
@@ -166,30 +185,112 @@ EngineContents* EngineContents::From(const bdkcore::Contents& contents) {
   return static_cast<EngineContents*>(contents.data.get());
 }
 
+// static
+const std::vector<EngineContents*>& EngineContents::All() {
+  return Registry();
+}
+
 void EngineContents::Attach(
     std::unique_ptr<content::WebContents> web_contents) {
+  content::WebContents* fresh = web_contents.get();
+  std::unique_ptr<content::WebContents> old;
   if (web_contents_) {
     web_contents_->SetDelegate(nullptr);
+    // The page keeps its tab; the tab model swaps the contents.
+    old = HostContexts::Get()
+              .ContextOf(web_contents_)
+              ->Replace(web_contents_, std::move(web_contents));
+  } else {
+    // A new page is a background tab of its profile's parking context: no
+    // window of Chromium's is shown, and no registered window yet holds it.
+    HostContexts::Get()
+        .Parking(ProfileOf(*core()))
+        .Add(std::move(web_contents));
   }
-  std::unique_ptr<content::WebContents> old = std::move(web_contents_);
-  web_contents_ = std::move(web_contents);
+  web_contents_ = fresh;
+  // The Browser took the delegate with the tab.
   web_contents_->SetDelegate(this);
   // Settings that belong to the page, not to one WebContents, before it is
   // shown or loads.
   if (muted_) {
     web_contents_->SetAudioMuted(true);
   }
-  Observe(web_contents_.get());
+  Observe(web_contents_);
   // A DevTools front end moves its bindings to the new front-end WebContents
   // before the old one goes.
   if (devtools_) {
-    devtools_->SetFrontend(web_contents_.get());
+    devtools_->SetFrontend(web_contents_);
   }
-  host_view_->SetWebContents(web_contents_.get());
+  host_view_->SetWebContents(web_contents_);
   if (!user_agent_.empty()) {
     SetUserAgent(user_agent_);
   }
   // `old` goes after the host view shows the new page.
+}
+
+void EngineContents::MoveTo(HostContext& context) {
+  HostContext* from = HostContexts::Get().ContextOf(web_contents_);
+  if (from == &context) {
+    return;
+  }
+  HostContexts::Get().Move(web_contents_, context);
+  // The Browser took the delegate with the tab.
+  web_contents_->SetDelegate(this);
+  if (focused_) {
+    ActivateTab();
+  }
+}
+
+void EngineContents::Park() {
+  MoveTo(HostContexts::Get().Parking(ProfileOf(*core())));
+}
+
+void EngineContents::Reconcile() {
+  const bdk_native_handle_t native = host_view_->Window();
+  const bdkcore::Window* window = HostContexts::Get().FindWindow(native);
+  if (!window) {
+    // In no registered window: the page stays where it is, a background tab
+    // of its last context.
+    return;
+  }
+  MoveTo(HostContexts::Get().ForWindow(window, native, ProfileOf(*core())));
+}
+
+bool EngineContents::IsInWindow(const bdkcore::Window* window) {
+  HostContext* context = HostContexts::Get().ContextOf(web_contents_);
+  return context && context->window() == window;
+}
+
+void EngineContents::OnHostViewWindowChanged() {
+  if (reconcile_pending_) {
+    return;
+  }
+  reconcile_pending_ = true;
+  // Not from inside the application's own call (a view added to its window).
+  NoteTaskPosted();
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce(
+                     [](base::WeakPtr<EngineContents> self) {
+                       NoteTaskRun();
+                       if (self) {
+                         self->reconcile_pending_ = false;
+                         self->Reconcile();
+                       }
+                     },
+                     weak_factory_.GetWeakPtr()));
+}
+
+void EngineContents::Focus() {
+  LoadIfDiscarded();
+  web_contents_->Focus();
+  ActivateTab();
+}
+
+void EngineContents::ActivateTab() {
+  HostContext* context = HostContexts::Get().ContextOf(web_contents_);
+  if (context && !context->IsActive(web_contents_)) {
+    context->Activate(web_contents_);
+  }
 }
 
 void EngineContents::ReplaceWebContents(
@@ -344,7 +445,7 @@ EngineContents* EngineContents::RequestNewWindow(
     bool user_gesture) {
   std::shared_ptr<bdkcore::Contents> opener = core();
   std::shared_ptr<bdkcore::Runtime> rt = opener ? opener->rt.lock() : nullptr;
-  if (!rt || rt->shutting) {
+  if (!rt || rt->shutting || !HostContexts::CanHost(ProfileOf(*opener))) {
     return nullptr;
   }
   auto page = std::make_shared<bdkcore::Contents>();
@@ -750,6 +851,7 @@ void EngineContents::OnWebContentsFocused(
     content::RenderWidgetHost* render_widget_host) {
   LoadIfDiscarded();
   focused_ = true;
+  ActivateTab();
   Emit(BDK_CONTENTS_EVENT_FOCUS_CHANGED, "",
        Json(base::DictValue().Set("focused", true)), 0, 0);
 }
