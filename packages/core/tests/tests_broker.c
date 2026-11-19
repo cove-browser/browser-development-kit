@@ -1097,6 +1097,46 @@ static void test_history_is_paginated_with_an_opaque_cursor(void) {
     CHECK(strstr(cap.json, "b.example") == NULL && strstr(cap.json, "a.example") != NULL);
 }
 
+typedef struct {
+    int count;
+    char payload[256];
+} event_log_t;
+
+static void on_event(void* ctx, uint32_t id, bdk_string_t name, bdk_string_t payload) {
+    event_log_t* log = (event_log_t*)ctx;
+    (void)id;
+    (void)name;
+    ++log->count;
+    snprintf(log->payload, sizeof log->payload, "%.*s", (int)payload.length, payload.data);
+}
+
+/* A built-in event reaches the subscriptions for its name and profile, with the payload the
+   interface defines, and no others. */
+static void test_a_built_in_event_reaches_the_subscriptions_of_its_profile(void) {
+    t_start_frozen();
+    bdk_profile_t a = t_new_profile("EventsA");
+    bdk_profile_t b = t_new_profile("EventsB");
+    event_log_t for_a, for_b, for_all;
+    memset(&for_a, 0, sizeof for_a);
+    memset(&for_b, 0, sizeof for_b);
+    memset(&for_all, 0, sizeof for_all);
+    bdk_invoke_options_t oa = options_for(a, 0), ob = options_for(b, 0), none = options_for(0, 0);
+    REQUIRE(bdk_subscribe_named(t_runtime, S("history.visited"), S(""), &oa, on_event, &for_a,
+                                NULL) != 0);
+    REQUIRE(bdk_subscribe_named(t_runtime, S("history.visited"), S(""), &ob, on_event, &for_b,
+                                NULL) != 0);
+    REQUIRE(bdk_subscribe_named(t_runtime, S("history.visited"), S(""), &none, on_event, &for_all,
+                                NULL) != 0);
+    t_capture_t cap;
+    host_call("history.add", "{\"url\":\"https://events.example/\",\"title\":\"E\"}", a, &cap);
+    CHECK(!cap.has_error);
+    t_pump();
+    CHECK(for_a.count == 1 && for_all.count == 1 && for_b.count == 0);
+    CHECK(strstr(for_a.payload, "\"entry\"") != NULL &&
+          strstr(for_a.payload, "events.example") != NULL &&
+          strstr(for_a.payload, "\"source\"") != NULL);
+}
+
 static void test_bookmarks_nest_and_remove_with_their_contents(void) {
     NEED_HOOKS();
     t_start_frozen();
@@ -1212,6 +1252,8 @@ const t_test_t t_broker_tests[] = {
     {"broker.unimplemented_command_says_so", test_a_command_the_runtime_does_not_implement_says_so},
     {"services.settings_and_permissions_are_per_profile",
      test_settings_history_and_permissions_are_per_profile},
+    {"services.a_built_in_event_reaches_its_profile",
+     test_a_built_in_event_reaches_the_subscriptions_of_its_profile},
     {"services.history_is_paginated", test_history_is_paginated_with_an_opaque_cursor},
     {"services.bookmarks_nest", test_bookmarks_nest_and_remove_with_their_contents},
     {"services.listings_carry_no_secret", test_a_listing_never_carries_a_secret},

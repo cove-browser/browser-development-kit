@@ -59,6 +59,7 @@ struct Sub {
     bdk_event_cb ecb = nullptr;
     uint32_t event_id = 0;
     std::string event_name;
+    bdk_profile_t profile = 0; /* events of this profile only; 0 for every profile */
 };
 
 struct Call {

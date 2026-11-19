@@ -438,6 +438,28 @@ bdk_call_t broker_invoke_abi(bdk_runtime_t h, const std::string* name, uint32_t 
     return broker_submit(rt, host_caller(), ref, str(args), opts, false, cb, prog, ctx, rel);
 }
 
+bool emit_builtin_event(const std::shared_ptr<Runtime>& rt, const std::string& name,
+                        bdk_profile_t profile, const std::string& payload_json) {
+    uint32_t id = 0;
+    for (size_t i = 0; i < table::kEventCount; ++i) {
+        if (name == table::kEvents[i].name)
+            id = table::kEvents[i].id;
+    }
+    if (id == 0)
+        return false;
+    post([rt, name, id, profile, payload_json] {
+        auto subs = rt->subs;
+        for (auto& s : subs) {
+            if (!s->active || !s->ecb || (s->profile != 0 && s->profile != profile))
+                continue;
+            if ((!s->event_name.empty() && s->event_name == name) ||
+                (s->event_id != 0 && s->event_id == id))
+                s->ecb(s->ctx, id, view(name), view(payload_json));
+        }
+    });
+    return true;
+}
+
 void broker_revoke_caller(const std::shared_ptr<Caller>& caller) {
     caller->revoked = true;
     auto calls = std::move(caller->calls);

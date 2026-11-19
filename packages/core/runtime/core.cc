@@ -765,6 +765,7 @@ static bdk_subscription_t subscribe_impl(bdk_runtime_t h, uint32_t id, const std
     s->rel = rel;
     s->event_id = id;
     s->event_name = name;
+    s->profile = o ? o->profile : 0;
     s->handle = table_make(T_SUB, s);
     rt->subs.push_back(s);
     return s->handle;
