@@ -439,6 +439,42 @@ static void test_engine_the_accessibility_tree_exposes_page_content(void) {
     bdk_harness_engine_show(c, 0);
 }
 
+/* ---- codecs (decision D7, T-CHR-12) ---- */
+
+/* The runtime is built with Chromium's open codecs only: no bundled H.264, AAC or HEVC decoder
+   (D7 allows those only through the system's decoders, which T-CHR-12 records as not yet wired).
+   This pins what pages are told, so a build that starts bundling a proprietary decoder fails. */
+static void test_engine_only_open_codecs_are_offered(void) {
+    reset_logs();
+    bdk_contents_t c = start_with_page();
+    run_script(
+        c,
+        "const v=document.createElement('video'),a=document.createElement('audio');"
+        "const p=t=>v.canPlayType(t)||'no';"
+        "document.title=['vp9:'+p('video/webm; codecs=\"vp9\"'),"
+        "'av1:'+p('video/mp4; codecs=\"av01.0.05M.08\"'),"
+        "'opus:'+(a.canPlayType('audio/webm; codecs=\"opus\"')||'no'),"
+        "'h264:'+p('video/mp4; codecs=\"avc1.42E01E\"'),"
+        "'aac:'+(a.canPlayType('audio/mp4; codecs=\"mp4a.40.2\"')||'no'),"
+        "'hevc:'+p('video/mp4; codecs=\"hvc1.1.6.L93.B0\"'),"
+        "'mse-h264:'+MediaSource.isTypeSupported('video/mp4; codecs=\"avc1.42E01E\"')].join(' ')",
+        0);
+    char title[256];
+    for (int i = 0; i < 20; ++i) {
+        title_of(c, title, sizeof title);
+        if (strstr(title, "vp9:"))
+            break;
+        t_pump();
+    }
+    printf("    codecs: %s\n", title);
+    CHECK(strstr(title, "vp9:probably") != NULL);
+    CHECK(strstr(title, "opus:probably") != NULL);
+    CHECK(strstr(title, "h264:no") != NULL);
+    CHECK(strstr(title, "aac:no") != NULL);
+    CHECK(strstr(title, "hevc:no") != NULL);
+    CHECK(strstr(title, "mse-h264:false") != NULL);
+}
+
 /* ---- Chromium's session state (T-ADP-07) and profile storage ---- */
 
 static void test_engine_session_state_restores_chromium_history_into_a_new_page(void) {
@@ -524,6 +560,7 @@ const t_test_t t_engine_tests[] = {
      test_engine_an_input_method_composes_text_in_the_page},
     {"engine_the_accessibility_tree_exposes_page_content",
      test_engine_the_accessibility_tree_exposes_page_content},
+    {"engine_only_open_codecs_are_offered", test_engine_only_open_codecs_are_offered},
     {"engine_session_state_restores_chromium_history_into_a_new_page",
      test_engine_session_state_restores_chromium_history_into_a_new_page},
     {"engine_persistent_profiles_outlive_the_runtime",
