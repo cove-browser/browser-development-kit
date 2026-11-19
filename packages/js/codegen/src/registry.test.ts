@@ -23,9 +23,24 @@ function definitions(
   constants: ConstantGroup[] = [],
 ): Definitions {
   return {
-    commands: commands.map((name) => ({ name, capability: undefined, callers: ["swift"] })),
-    events: events.map((name) => ({ name })),
     constants,
+    types: [],
+    commands: commands.map((name) => ({
+      name,
+      capability: undefined,
+      callers: ["swift"],
+      profile: "none",
+      requires: [],
+      raises: undefined,
+      paginated: false,
+      progress: false,
+      stream: false,
+      binary: false,
+      authenticateWhen: undefined,
+      args: [],
+      result: "void",
+    })),
+    events: events.map((name) => ({ name, capability: "a.read" })),
   };
 }
 

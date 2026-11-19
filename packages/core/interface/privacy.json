@@ -1,0 +1,64 @@
+{
+  "namespace": "privacy",
+  "since": 1,
+  "types": {
+    "PrivacyDataType": {
+      "enum": [
+        "history",
+        "cookies",
+        "cache",
+        "downloads",
+        "passwords",
+        "autofill",
+        "siteSettings",
+        "hostedAppData"
+      ]
+    },
+    "PrivacyEstimate": {
+      "type": "PrivacyDataType",
+      "items": "int",
+      "bytes": "int?"
+    }
+  },
+  "commands": [
+    {
+      "name": "privacy.clear",
+      "capability": "privacy.clear",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "requires": ["gesture"],
+      "args": {
+        "types": "PrivacyDataType[]",
+        "range": "TimeRange?",
+        "origins": "url[]?"
+      },
+      "result": "void",
+      "progress": true
+    },
+    {
+      "name": "privacy.estimate",
+      "capability": "privacy.clear",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "types": "PrivacyDataType[]",
+        "range": "TimeRange?",
+        "origins": "url[]?"
+      },
+      "result": {
+        "estimates": "PrivacyEstimate[]"
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "privacy.cleared",
+      "capability": "privacy.clear",
+      "payload": {
+        "types": "PrivacyDataType[]",
+        "range": "TimeRange?",
+        "source": "ChangeSource"
+      }
+    }
+  ]
+}

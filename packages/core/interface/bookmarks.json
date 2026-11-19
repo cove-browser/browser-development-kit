@@ -1,0 +1,215 @@
+{
+  "namespace": "bookmarks",
+  "since": 1,
+  "types": {
+    "BookmarkNode": {
+      "id": "string",
+      "parentId": "string?",
+      "index": "int",
+      "title": "string",
+      "url": "url?",
+      "isFolder": "bool",
+      "dateAdded": "timestamp"
+    },
+    "BookmarkTree": {
+      "node": "BookmarkNode",
+      "children": "BookmarkTree[]"
+    }
+  },
+  "commands": [
+    {
+      "name": "bookmarks.roots",
+      "capability": "bookmarks.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {},
+      "result": {
+        "roots": "BookmarkNode[]"
+      }
+    },
+    {
+      "name": "bookmarks.get",
+      "capability": "bookmarks.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string"
+      },
+      "result": "BookmarkNode"
+    },
+    {
+      "name": "bookmarks.children",
+      "capability": "bookmarks.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string"
+      },
+      "result": {
+        "items": "BookmarkNode[]"
+      }
+    },
+    {
+      "name": "bookmarks.subtree",
+      "capability": "bookmarks.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string"
+      },
+      "result": "BookmarkTree"
+    },
+    {
+      "name": "bookmarks.search",
+      "capability": "bookmarks.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "query": "string",
+        "limit": "int?"
+      },
+      "result": {
+        "items": "BookmarkNode[]"
+      }
+    },
+    {
+      "name": "bookmarks.forUrl",
+      "capability": "bookmarks.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "url": "url"
+      },
+      "result": {
+        "items": "BookmarkNode[]"
+      }
+    },
+    {
+      "name": "bookmarks.create",
+      "capability": "bookmarks.write",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "parentId": "string",
+        "index": "int?",
+        "title": "string",
+        "url": "url"
+      },
+      "result": "BookmarkNode"
+    },
+    {
+      "name": "bookmarks.createFolder",
+      "capability": "bookmarks.write",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "parentId": "string",
+        "index": "int?",
+        "title": "string"
+      },
+      "result": "BookmarkNode"
+    },
+    {
+      "name": "bookmarks.update",
+      "capability": "bookmarks.write",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string",
+        "title": "string?",
+        "url": "url?"
+      },
+      "result": "BookmarkNode"
+    },
+    {
+      "name": "bookmarks.move",
+      "capability": "bookmarks.write",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string",
+        "parentId": "string",
+        "index": "int?"
+      },
+      "result": "BookmarkNode"
+    },
+    {
+      "name": "bookmarks.remove",
+      "capability": "bookmarks.write",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string"
+      },
+      "result": "void"
+    },
+    {
+      "name": "bookmarks.import",
+      "capability": "bookmarks.write",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "path": "string"
+      },
+      "result": {
+        "imported": "int"
+      },
+      "progress": true
+    },
+    {
+      "name": "bookmarks.export",
+      "capability": "bookmarks.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "path": "string"
+      },
+      "result": "void"
+    }
+  ],
+  "events": [
+    {
+      "name": "bookmarks.created",
+      "capability": "bookmarks.read",
+      "payload": {
+        "node": "BookmarkNode",
+        "source": "ChangeSource"
+      }
+    },
+    {
+      "name": "bookmarks.changed",
+      "capability": "bookmarks.read",
+      "payload": {
+        "node": "BookmarkNode",
+        "source": "ChangeSource"
+      }
+    },
+    {
+      "name": "bookmarks.moved",
+      "capability": "bookmarks.read",
+      "payload": {
+        "node": "BookmarkNode",
+        "oldParentId": "string",
+        "oldIndex": "int",
+        "source": "ChangeSource"
+      }
+    },
+    {
+      "name": "bookmarks.removed",
+      "capability": "bookmarks.read",
+      "payload": {
+        "id": "string",
+        "parentId": "string",
+        "source": "ChangeSource"
+      }
+    },
+    {
+      "name": "bookmarks.reordered",
+      "capability": "bookmarks.read",
+      "payload": {
+        "parentId": "string",
+        "source": "ChangeSource"
+      }
+    }
+  ]
+}

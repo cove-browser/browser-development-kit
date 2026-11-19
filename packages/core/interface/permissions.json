@@ -1,0 +1,152 @@
+{
+  "namespace": "permissions",
+  "since": 1,
+  "types": {
+    "PermissionValue": {
+      "enum": ["allow", "block", "ask"]
+    },
+    "PermissionSource": {
+      "enum": ["default", "user", "extension", "embargo"]
+    },
+    "PermissionKindInfo": {
+      "kind": "string",
+      "allowed": "PermissionValue[]",
+      "default": "PermissionValue"
+    },
+    "PermissionSetting": {
+      "kind": "string",
+      "value": "PermissionValue",
+      "source": "PermissionSource"
+    },
+    "PermissionException": {
+      "origin": "url",
+      "value": "PermissionValue",
+      "source": "PermissionSource"
+    }
+  },
+  "commands": [
+    {
+      "name": "permissions.kinds",
+      "capability": "permissions.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {},
+      "result": {
+        "kinds": "PermissionKindInfo[]"
+      }
+    },
+    {
+      "name": "permissions.get",
+      "capability": "permissions.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "origin": "url",
+        "kind": "string"
+      },
+      "result": "PermissionSetting"
+    },
+    {
+      "name": "permissions.forOrigin",
+      "capability": "permissions.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "origin": "url"
+      },
+      "result": {
+        "items": "PermissionSetting[]"
+      }
+    },
+    {
+      "name": "permissions.exceptions",
+      "capability": "permissions.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "kind": "string"
+      },
+      "result": {
+        "items": "PermissionException[]"
+      }
+    },
+    {
+      "name": "permissions.set",
+      "capability": "permissions.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "origin": "url",
+        "kind": "string",
+        "value": "PermissionValue"
+      },
+      "result": "void"
+    },
+    {
+      "name": "permissions.reset",
+      "capability": "permissions.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "origin": "url",
+        "kind": "string?"
+      },
+      "result": "void"
+    },
+    {
+      "name": "permissions.getDefault",
+      "capability": "permissions.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "kind": "string"
+      },
+      "result": {
+        "value": "PermissionValue"
+      }
+    },
+    {
+      "name": "permissions.setDefault",
+      "capability": "permissions.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "kind": "string",
+        "value": "PermissionValue"
+      },
+      "result": "void"
+    },
+    {
+      "name": "permissions.certificateExceptions",
+      "capability": "permissions.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {},
+      "result": {
+        "hosts": "string[]"
+      }
+    },
+    {
+      "name": "permissions.revokeCertificateException",
+      "capability": "permissions.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "host": "string"
+      },
+      "result": "void"
+    }
+  ],
+  "events": [
+    {
+      "name": "permissions.changed",
+      "capability": "permissions.read",
+      "payload": {
+        "origin": "url?",
+        "kind": "string",
+        "value": "PermissionValue?",
+        "source": "ChangeSource"
+      }
+    }
+  ]
+}

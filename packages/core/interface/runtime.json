@@ -1,0 +1,42 @@
+{
+  "namespace": "runtime",
+  "since": 1,
+  "types": {
+    "RuntimeInfo": {
+      "bdkVersion": "string",
+      "chromiumVersion": "string",
+      "browserName": "string",
+      "internalScheme": "string",
+      "platform": "string"
+    },
+    "CallerKind": {
+      "enum": ["swift", "page", "session"]
+    },
+    "CallerInfo": {
+      "kind": "CallerKind",
+      "name": "string",
+      "profile": "string?",
+      "capabilities": "string[]"
+    },
+    "ChangeSource": {
+      "enum": ["user", "application", "page", "session", "extension"]
+    }
+  },
+  "commands": [
+    {
+      "name": "runtime.info",
+      "capability": "runtime.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "none",
+      "args": {},
+      "result": "RuntimeInfo"
+    },
+    {
+      "name": "runtime.caller",
+      "callers": ["swift", "page", "session"],
+      "profile": "none",
+      "args": {},
+      "result": "CallerInfo"
+    }
+  ]
+}

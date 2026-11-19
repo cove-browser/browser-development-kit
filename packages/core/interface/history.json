@@ -1,0 +1,114 @@
+{
+  "namespace": "history",
+  "since": 1,
+  "types": {
+    "HistoryEntry": {
+      "url": "url",
+      "title": "string",
+      "lastVisit": "timestamp",
+      "visitCount": "int",
+      "typedCount": "int"
+    },
+    "TimeRange": {
+      "start": "timestamp?",
+      "end": "timestamp?"
+    },
+    "HistoryVisit": {
+      "time": "timestamp",
+      "transition": "string",
+      "referrer": "url?"
+    }
+  },
+  "commands": [
+    {
+      "name": "history.search",
+      "capability": "history.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "text": "string?",
+        "range": "TimeRange?",
+        "limit": "int?",
+        "cursor": "string?"
+      },
+      "result": {
+        "items": "HistoryEntry[]",
+        "nextCursor": "string?"
+      },
+      "paginated": true
+    },
+    {
+      "name": "history.visits",
+      "capability": "history.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "url": "url"
+      },
+      "result": {
+        "visits": "HistoryVisit[]"
+      }
+    },
+    {
+      "name": "history.add",
+      "capability": "history.write",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "url": "url",
+        "title": "string?",
+        "time": "timestamp?",
+        "transition": "string?"
+      },
+      "result": "void"
+    },
+    {
+      "name": "history.deleteUrls",
+      "capability": "history.write",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "urls": "url[]"
+      },
+      "result": "void"
+    },
+    {
+      "name": "history.deleteRange",
+      "capability": "history.write",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "range": "TimeRange"
+      },
+      "result": "void"
+    },
+    {
+      "name": "history.deleteAll",
+      "capability": "history.write",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "requires": ["gesture"],
+      "args": {},
+      "result": "void"
+    }
+  ],
+  "events": [
+    {
+      "name": "history.visited",
+      "capability": "history.read",
+      "payload": {
+        "entry": "HistoryEntry",
+        "source": "ChangeSource"
+      }
+    },
+    {
+      "name": "history.removed",
+      "capability": "history.read",
+      "payload": {
+        "urls": "url[]",
+        "all": "bool",
+        "source": "ChangeSource"
+      }
+    }
+  ]
+}

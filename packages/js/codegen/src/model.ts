@@ -35,18 +35,44 @@ export interface ConstantGroup {
   readonly values: ReadonlyArray<readonly [string, string | number]>;
 }
 
+/** One field of a struct, an argument list or a result: its name and its type expression. */
+export interface FieldDefinition {
+  readonly name: string;
+  readonly type: string;
+}
+
 export interface Command {
   readonly name: string;
   readonly capability: string | undefined;
   readonly callers: readonly Caller[];
+  readonly profile: ProfileMode;
+  readonly requires: readonly Requirement[];
+  /** Lower-case surface name, as in the `surfaces` constants group. */
+  readonly raises: string | undefined;
+  readonly paginated: boolean;
+  readonly progress: boolean;
+  readonly stream: boolean;
+  readonly binary: boolean;
+  /** An argument field that, when present, makes the call need authentication (services.md 2). */
+  readonly authenticateWhen: string | undefined;
+  readonly args: readonly FieldDefinition[];
+  /** A struct body, or a type expression (`void` included). */
+  readonly result: string | readonly FieldDefinition[];
 }
 
 export interface EventDefinition {
   readonly name: string;
+  readonly capability: string;
 }
+
+export type TypeDefinition =
+  | { readonly name: string; readonly kind: "struct"; readonly fields: readonly FieldDefinition[] }
+  | { readonly name: string; readonly kind: "enum"; readonly values: readonly string[] }
+  | { readonly name: string; readonly kind: "alias"; readonly target: string };
 
 export interface Definitions {
   readonly constants: readonly ConstantGroup[];
+  readonly types: readonly TypeDefinition[];
   readonly commands: readonly Command[];
   readonly events: readonly EventDefinition[];
 }
