@@ -1,0 +1,12 @@
+[browser]
+name = "Cove"
+
+[ui]
+default_browser_surfaces = false
+
+[ui.surfaces]
+find = "default"
+notifications = "disabled"
+
+[extensions.ui]
+devtools = "disabled"

@@ -1,0 +1,9 @@
+[browser]
+name = "Cove"
+
+[ui.surfaces]
+file_pickers = "hidden"
+downloads = true
+
+[extensions.ui]
+actions = "off"

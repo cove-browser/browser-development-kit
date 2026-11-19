@@ -1,0 +1,11 @@
+[browser]
+name = "Cove"
+
+[services.translation]
+provider = "bing"
+
+[services.reputation]
+provider = "default"
+
+[services.geolocation]
+provider = "gps"

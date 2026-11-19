@@ -1,0 +1,14 @@
+{
+  "infoPlist": {
+    "NSPrincipalClass": "BDKApplication",
+    "CFBundleShortVersionString": "1.2.0",
+    "CFBundleURLTypes": [
+      {
+        "CFBundleURLSchemes": ["http", "https"]
+      }
+    ]
+  },
+  "entitlements": {
+    "com.apple.security.device.camera": true
+  }
+}

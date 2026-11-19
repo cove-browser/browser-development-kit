@@ -1,0 +1,5 @@
+[browser]
+name = "Cove"
+
+[pages.capabilities.settings]
+allow = ["contents.read", "contents.*", "automation.run", "devtools.open", "cookies.values", "settings.read"]

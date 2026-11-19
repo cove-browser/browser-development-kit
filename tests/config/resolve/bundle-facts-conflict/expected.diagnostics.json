@@ -1,0 +1,23 @@
+{
+  "diagnostics": [
+    {
+      "code": "browser.scheme_conflict",
+      "severity": "error",
+      "message": "The internal scheme \"cove\" is also declared in Info.plist (CFBundleURLTypes).",
+      "file": "bdk.toml",
+      "line": 3
+    },
+    {
+      "code": "plist.app_sandbox",
+      "severity": "error",
+      "message": "The App Sandbox entitlement (com.apple.security.app-sandbox) is set on the application.",
+      "file": "entitlements"
+    },
+    {
+      "code": "plist.principal_class",
+      "severity": "error",
+      "message": "Info.plist has no NSPrincipalClass. It must be BDKApplication or a subclass.",
+      "file": "Info.plist"
+    }
+  ]
+}

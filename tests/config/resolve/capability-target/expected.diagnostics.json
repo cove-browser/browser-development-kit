@@ -1,0 +1,32 @@
+{
+  "diagnostics": [
+    {
+      "code": "pages.capability_target",
+      "severity": "error",
+      "message": "\"pages.capabilities.history\" grants capabilities to a route served in \"chromium\" mode. Only bundled pages can hold capabilities.",
+      "file": "bdk.toml",
+      "line": 10
+    },
+    {
+      "code": "pages.capability_target",
+      "severity": "error",
+      "message": "\"pages.capabilities.downloads\" grants capabilities to a route served in \"native\" mode. Only bundled pages can hold capabilities.",
+      "file": "bdk.toml",
+      "line": 13
+    },
+    {
+      "code": "pages.capability_target",
+      "severity": "error",
+      "message": "\"pages.capabilities.ghost\" grants capabilities to a route that does not exist.",
+      "file": "bdk.toml",
+      "line": 16
+    },
+    {
+      "code": "pages.capability_target",
+      "severity": "error",
+      "message": "\"pages.capabilities.prefs\" grants capabilities to an alias. An alias carries its target's capabilities.",
+      "file": "bdk.toml",
+      "line": 19
+    }
+  ]
+}

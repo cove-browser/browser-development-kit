@@ -1,0 +1,12 @@
+[browser]
+name = "Cove"
+
+[services.reputation]
+update_interval = "hourly"
+
+[services.translation]
+endpoint = "ftp://translate.example.test"
+bundled_languages = ["English"]
+
+[extensions.install]
+update_urls = 5

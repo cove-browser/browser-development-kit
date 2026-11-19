@@ -1,0 +1,12 @@
+[browser]
+name = "Cove"
+
+[pages.capabilities.settings]
+allow = [
+  "settings.read",
+  "settings.reed",
+  "search.*",
+  "*",
+  "app.",
+  "app.ok.*",
+]

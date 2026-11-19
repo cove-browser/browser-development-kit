@@ -1,0 +1,11 @@
+{
+  "diagnostics": [
+    {
+      "code": "config.required",
+      "severity": "error",
+      "message": "Missing required key \"browser\".",
+      "file": "bdk.toml",
+      "line": 1
+    }
+  ]
+}

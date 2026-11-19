@@ -1,0 +1,25 @@
+{
+  "diagnostics": [
+    {
+      "code": "config.type",
+      "severity": "error",
+      "message": "\"ui.surfaces.file_pickers\" must be one of \"default\", \"custom\", \"disabled\", found \"hidden\".",
+      "file": "bdk.toml",
+      "line": 5
+    },
+    {
+      "code": "config.type",
+      "severity": "error",
+      "message": "\"ui.surfaces.downloads\" must be one of \"default\", \"custom\", \"disabled\", found true.",
+      "file": "bdk.toml",
+      "line": 6
+    },
+    {
+      "code": "config.type",
+      "severity": "error",
+      "message": "\"extensions.ui.actions\" must be one of \"default\", \"custom\", \"disabled\", found \"off\".",
+      "file": "bdk.toml",
+      "line": 9
+    }
+  ]
+}

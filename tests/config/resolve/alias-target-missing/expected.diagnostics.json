@@ -1,0 +1,11 @@
+{
+  "diagnostics": [
+    {
+      "code": "pages.alias_target",
+      "severity": "error",
+      "message": "Alias \"prefs\" points at \"settingz\", which is not a page.",
+      "file": "bdk.toml",
+      "line": 5
+    }
+  ]
+}

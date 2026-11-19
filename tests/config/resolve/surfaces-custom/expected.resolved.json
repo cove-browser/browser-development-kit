@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "bdk_version": "0.0.0",
+  "config_digest": "sha256:473a2f71c6211a1fc6f47b6afa36de4c59a89979203aa59e4e1b3a7fbadb8538",
+  "browser": {
+    "name": "Cove",
+    "internal_scheme": "cove",
+    "logo": "app-icon",
+    "user_agent": {}
+  },
+  "storage": {
+    "directory": "Cove",
+    "keychain_item": "Cove Safe Storage"
+  },
+  "runtime": {
+    "mode": "prebuilt",
+    "downgrade": "refuse",
+    "snapshot_on_upgrade": true
+  },
+  "routes": {},
+  "aliases": {},
+  "surfaces": {
+    "permissions": "custom",
+    "javascript_dialogs": "custom",
+    "http_auth": "custom",
+    "file_pickers": "custom",
+    "context_menus": "custom",
+    "new_windows": "custom",
+    "downloads": "custom",
+    "passwords": "custom",
+    "autofill": "custom",
+    "printing": "custom",
+    "translation": "custom",
+    "find": "default",
+    "fullscreen": "custom",
+    "notifications": "disabled",
+    "certificate_errors": "custom",
+    "reputation_warnings": "custom",
+    "devtools": "custom"
+  },
+  "extensions": {
+    "enabled": true,
+    "install_policy": "reject_known_incompatible",
+    "allow_in_private": "user",
+    "install": {
+      "unpacked": true,
+      "crx": true,
+      "update_urls": "any",
+      "stores": []
+    },
+    "ui": {
+      "actions": "custom",
+      "popups": "custom",
+      "side_panels": "custom",
+      "context_menus": "custom",
+      "options_pages": "custom",
+      "devtools": "disabled"
+    },
+    "bundled": {}
+  },
+  "services": {
+    "translation": {
+      "provider": "default",
+      "models": "on-demand",
+      "bundled_languages": []
+    },
+    "reputation": {
+      "provider": "default",
+      "update_interval": "1h"
+    },
+    "geolocation": {
+      "provider": "system"
+    },
+    "credentials": {
+      "provider": "chromium"
+    },
+    "leak_check": {
+      "provider": "none"
+    }
+  },
+  "settings_defaults": {},
+  "automation": {
+    "enabled": false,
+    "scripts": {},
+    "external": {
+      "enabled": false
+    }
+  },
+  "devtools": {
+    "frontend": "default",
+    "protocol": true
+  },
+  "diagnostics": {
+    "crash_reports": "local",
+    "log_level": "warning"
+  },
+  "chromium_features": {
+    "enable": [],
+    "disable": []
+  }
+}

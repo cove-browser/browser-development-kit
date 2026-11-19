@@ -1,0 +1,8 @@
+[browser]
+name = 42
+
+[runtime]
+snapshot_on_upgrade = "yes"
+
+[pages]
+overrides = ["history"]

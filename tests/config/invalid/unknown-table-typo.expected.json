@@ -1,0 +1,11 @@
+{
+  "diagnostics": [
+    {
+      "code": "config.unknown_key",
+      "severity": "error",
+      "message": "Unknown key \"extension\". Did you mean \"extensions\"?",
+      "file": "bdk.toml",
+      "line": 4
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+[browser]
+name = "Wide"
+
+[services.translation]
+provider = "app"
+endpoint = "https://translate.example.test/v1"
+models = "bundled"
+bundled_languages = ["en", "de", "pt-BR"]
+
+[services.reputation]
+provider = "web-risk"
+update_interval = "30m"
+
+[services.geolocation]
+provider = "google"
+
+[extensions]
+enabled = false
+install_policy = "allow_all"
+allow_in_private = "never"
+
+[extensions.install]
+update_urls = ["https://updates.example.test/*"]
+stores = ["chrome-web-store"]
+
+[ui]
+default_browser_surfaces = false
+
+[ui.surfaces]
+permissions = "default"
+find = "custom"
+printing = "disabled"
+
+[devtools]
+frontend = "DevTools/frontend"
+overlay = "DevTools/overlay"
+protocol = false

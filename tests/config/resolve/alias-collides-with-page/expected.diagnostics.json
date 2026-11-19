@@ -1,0 +1,11 @@
+{
+  "diagnostics": [
+    {
+      "code": "pages.alias_collision",
+      "severity": "error",
+      "message": "Alias \"agents\" has the same name as a page.",
+      "file": "bdk.toml",
+      "line": 5
+    }
+  ]
+}

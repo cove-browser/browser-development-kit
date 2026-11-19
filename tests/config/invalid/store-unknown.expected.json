@@ -1,0 +1,11 @@
+{
+  "diagnostics": [
+    {
+      "code": "extensions.store_unknown",
+      "severity": "error",
+      "message": "\"extensions.install.stores\" names a store BDK does not ship: \"firefox-addons\". Valid stores are \"chrome-web-store\".",
+      "file": "bdk.toml",
+      "line": 5
+    }
+  ]
+}
