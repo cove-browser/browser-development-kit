@@ -332,11 +332,14 @@ static void test_a_withdrawn_handler_set_too_late_is_released(void) {
 /* ---- Surface modes, routing and the rules of ui-requests.md section 3 ---------------------- */
 
 static bdk_status_t start_with_surfaces(const char* surfaces, bdk_error_t* err) {
-    char resolved[1024];
-    snprintf(resolved, sizeof resolved, "{\"app\":{\"name\":\"conformance\"},\"surfaces\":%s}",
-             surfaces);
+    /* The harness's own resolved configuration (a runtime may need its fields), plus surfaces. */
     bdk_start_config_t c;
     t_fill_start_config(&c);
+    const bdk_string_t base = c.resolved_config_json;
+    REQUIRE(base.length > 1 && base.data[base.length - 1] == '}');
+    char resolved[2048];
+    snprintf(resolved, sizeof resolved, "%.*s%s\"surfaces\":%s}", (int)(base.length - 1), base.data,
+             base.length > 2 ? "," : "", surfaces);
     c.resolved_config_json = S(resolved);
     return bdk_runtime_start(&c, &t_runtime, err);
 }
