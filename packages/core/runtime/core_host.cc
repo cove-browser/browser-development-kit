@@ -136,11 +136,14 @@ std::shared_ptr<Request> raise_ui_request(const std::shared_ptr<Runtime>& rt,
                        rt->requests.end());
     rt->requests.push_back(r);
     post([rt, r] {
-        if (rt->shutting || r->finished)
+        if (rt->shutting)
             return;
         auto it = rt->ui_handlers.find(r->surface);
-        if (it == rt->ui_handlers.end()) {
-            finish_request(*r, UiOutcome::kDefaulted);
+        if (r->finished || it == rt->ui_handlers.end()) {
+            /* Never handed to the application, so nothing else will release the handle. */
+            if (!r->finished)
+                finish_request(*r, UiOutcome::kDefaulted);
+            table_free(r->handle);
             return;
         }
         bdk_ui_request_info_t info;
@@ -318,8 +321,21 @@ BDK_EXPORT bdk_call_t bdk_profile_open(bdk_runtime_t h, bdk_string_t id, bdk_pro
     p->open = true;
     p->handle = table_make(T_PROFILE, p);
     *out = p->handle;
+    /* A cancelled call is a failed one: the handle goes before the result is delivered. The
+       profile stays open, so no second open starts, until the backend has finished this one. */
+    call->on_cancel = [p] {
+        table_free(p->handle);
+        p->handle = 0;
+    };
     backend().OpenProfile(*rt, p,
                           [rt, p, call](const std::string& code, const std::string& message) {
+                              call->on_cancel = nullptr;
+                              if (call->cancelled) {
+                                  p->open = false;
+                                  if (code.empty())
+                                      backend().CloseProfile(*rt, *p);
+                                  return;
+                              }
                               if (!code.empty()) {
                                   /* The handle goes before the failure is reported. */
                                   p->open = false;

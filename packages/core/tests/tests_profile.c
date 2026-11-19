@@ -97,6 +97,24 @@ static void test_open_twice_and_delete_while_open_fail(void) {
     CHECK(strcmp(cap.json, "[]") == 0);
 }
 
+static void test_cancelled_open_releases_the_profile(void) {
+    t_start_frozen();
+    char id[64];
+    t_create_profile("Abandoned", id, sizeof id);
+    t_capture_t cap;
+    t_cap_init(&cap);
+    bdk_profile_t p = 0;
+    bdk_call_t call = bdk_profile_open(t_runtime, S(id), &p, t_on_result, &cap, t_on_release);
+    REQUIRE(call != 0);
+    CHECK(bdk_call_cancel(call) == BDK_OK);
+    t_pump();
+    CHECK(cap.results == 1 && cap.has_error && strcmp(cap.code, "cancelled") == 0);
+    bdk_error_t err = 0;
+    CHECK(bdk_profile_close(p, &err) == BDK_ERR_STALE_HANDLE); /* released with the failure */
+    bdk_profile_t again = t_open_profile(id);                  /* not left in use */
+    CHECK(bdk_profile_close(again, &err) == BDK_OK);
+}
+
 static void test_rename(void) {
     t_start_frozen();
     char id[64], other[64];
@@ -242,6 +260,7 @@ const t_test_t t_profile_tests[] = {
     {"profiles.open_never_creates", test_open_never_creates},
     {"profiles.duplicate_and_empty_names_fail", test_duplicate_name_and_empty_name_fail},
     {"profiles.open_twice_and_delete_while_open_fail", test_open_twice_and_delete_while_open_fail},
+    {"profiles.cancelled_open_releases_the_profile", test_cancelled_open_releases_the_profile},
     {"profiles.rename", test_rename},
     {"profiles.ephemeral_leaves_no_trace", test_ephemeral_profile_leaves_no_trace},
     {"profiles.ephemeral_profiles_are_independent", test_two_ephemeral_profiles_are_independent},

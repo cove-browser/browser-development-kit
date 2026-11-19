@@ -510,6 +510,11 @@ BDK_EXPORT bdk_status_t bdk_call_cancel(bdk_call_t h) {
         return BDK_ERR_STALE_HANDLE;
     if (!c->done) {
         c->cancelled = true;
+        if (c->on_cancel) {
+            auto on_cancel = std::move(c->on_cancel);
+            c->on_cancel = nullptr;
+            on_cancel();
+        }
         finish_call(c, BDK_DOMAIN_BROKER, BDK_CODE_CANCELLED, "the call was cancelled", "");
     }
     return BDK_OK;

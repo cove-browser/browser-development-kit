@@ -264,7 +264,8 @@ class StubBackend final : public Backend {
     void ProfilesChanged(Runtime&) override {}
 
     void OpenProfile(Runtime&, const std::shared_ptr<Profile>&, Done done) override {
-        done("", "");
+        /* Later, as Chromium's profile creation is, so a test can cancel an open in flight. */
+        post([done] { done("", ""); });
     }
 
     bdk_status_t OpenPrivateProfile(Runtime&, Profile&, bdk_error_t*) override {

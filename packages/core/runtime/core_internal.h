@@ -65,6 +65,9 @@ struct Call {
     bool done = false;
     bool delivered = false;
     bool cancelled = false;
+    /* Runs once, from bdk_call_cancel, before the cancelled result is delivered: undoes what the
+       call already handed out. */
+    std::function<void()> on_cancel;
 };
 
 struct CallCtx {
