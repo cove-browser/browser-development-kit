@@ -79,7 +79,8 @@ add_custom_target(bdk_abi_hash_check ALL
 # --- The stub runtime ---------------------------------------------------------------------------------------
 
 # The runtime core (runtime/) is shared with the Chromium engine; the stub supplies its in-memory backend.
-add_library(bdk_stub STATIC runtime/core.cc runtime/core_host.cc runtime/ui_router.cc stub/stub_backend.cc)
+add_library(bdk_stub STATIC runtime/core.cc runtime/core_host.cc runtime/ui_router.cc runtime/broker.cc
+  runtime/broker_args.cc stub/stub_backend.cc stub/stub_services.cc stub/stub_broker.cc)
 target_include_directories(bdk_stub
   PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/stub"
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/runtime" "${CMAKE_CURRENT_SOURCE_DIR}/generated")
@@ -100,15 +101,21 @@ target_link_libraries(bdk_stub PUBLIC Threads::Threads)
 set(BDK_RUNTIME_LIBRARY bdk_stub CACHE STRING "Library implementing the ABI under test")
 set(BDK_HARNESS_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/tests/harness_stub.cc"
     CACHE STRING "Sources implementing tests/harness.h for that library")
+# tests/harness_broker.h: the stub has its own; any other runtime lists its implementation in
+# BDK_HARNESS_SOURCES, or gets the one that skips the tests needing it.
+set(BDK_BROKER_HARNESS_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/tests/harness_broker_unsupported.c")
+if(BDK_RUNTIME_LIBRARY STREQUAL "bdk_stub")
+  set(BDK_BROKER_HARNESS_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/tests/harness_stub_broker.cc")
+endif()
 
 add_executable(bdk_conformance
   tests/test_support.c tests/tests_base.c tests/tests_runtime.c tests/tests_broker.c
   tests/tests_profile.c tests/tests_contents.c tests/tests_ui.c
-  ${BDK_HARNESS_SOURCES})
+  ${BDK_HARNESS_SOURCES} ${BDK_BROKER_HARNESS_SOURCES})
 target_include_directories(bdk_conformance PRIVATE tests)
 target_link_libraries(bdk_conformance PRIVATE bdk_headers ${BDK_RUNTIME_LIBRARY})
 if(BDK_RUNTIME_LIBRARY STREQUAL "bdk_stub")
-  target_include_directories(bdk_conformance PRIVATE stub) # only harness_stub.cc uses it
+  target_include_directories(bdk_conformance PRIVATE stub) # only the stub harness sources use it
 endif()
 add_dependencies(bdk_conformance bdk_header_check)
 add_test(NAME conformance COMMAND bdk_conformance)
@@ -128,7 +135,7 @@ if(BDK_ENGINE_FRAMEWORK AND APPLE)
   add_executable(bdk_engine_conformance MACOSX_BUNDLE
     tests/test_support.c tests/tests_base.c tests/tests_runtime.c tests/tests_broker.c
     tests/tests_profile.c tests/tests_contents.c tests/tests_ui.c tests/tests_engine.c
-    tests/harness_engine.mm)
+    tests/harness_engine.mm tests/harness_broker_unsupported.c)
   target_compile_definitions(bdk_engine_conformance PRIVATE BDK_HARNESS_OWNS_MAIN BDK_HARNESS_ENGINE_TESTS)
   target_include_directories(bdk_engine_conformance PRIVATE tests "${BDK_ENGINE_HOOKS}")
   target_link_libraries(bdk_engine_conformance PRIVATE bdk_headers)

@@ -1,0 +1,193 @@
+{
+  "namespace": "downloads",
+  "since": 1,
+  "types": {
+    "DownloadState": {
+      "enum": ["inProgress", "paused", "complete", "cancelled", "interrupted"]
+    },
+    "DownloadItem": {
+      "id": "string",
+      "url": "url",
+      "path": "string?",
+      "state": "DownloadState",
+      "receivedBytes": "int",
+      "totalBytes": "int",
+      "bytesPerSecond": "int?",
+      "danger": "string?",
+      "mimeType": "string?",
+      "startTime": "timestamp",
+      "endTime": "timestamp?"
+    }
+  },
+  "commands": [
+    {
+      "name": "downloads.list",
+      "capability": "downloads.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "state": "DownloadState?",
+        "text": "string?",
+        "limit": "int?",
+        "cursor": "string?"
+      },
+      "result": {
+        "items": "DownloadItem[]",
+        "nextCursor": "string?"
+      },
+      "paginated": true
+    },
+    {
+      "name": "downloads.get",
+      "capability": "downloads.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string"
+      },
+      "result": "DownloadItem"
+    },
+    {
+      "name": "downloads.start",
+      "capability": "downloads.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "raises": "downloads",
+      "args": {
+        "url": "url",
+        "path": "string?"
+      },
+      "result": "DownloadItem"
+    },
+    {
+      "name": "downloads.pause",
+      "capability": "downloads.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string"
+      },
+      "result": "void"
+    },
+    {
+      "name": "downloads.resume",
+      "capability": "downloads.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string"
+      },
+      "result": "void"
+    },
+    {
+      "name": "downloads.cancel",
+      "capability": "downloads.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string"
+      },
+      "result": "void"
+    },
+    {
+      "name": "downloads.retry",
+      "capability": "downloads.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string"
+      },
+      "result": "void"
+    },
+    {
+      "name": "downloads.remove",
+      "capability": "downloads.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string"
+      },
+      "result": "void"
+    },
+    {
+      "name": "downloads.deleteFile",
+      "capability": "downloads.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "requires": ["gesture"],
+      "args": {
+        "id": "string"
+      },
+      "result": "void"
+    },
+    {
+      "name": "downloads.open",
+      "capability": "downloads.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "requires": ["gesture"],
+      "args": {
+        "id": "string"
+      },
+      "result": "void"
+    },
+    {
+      "name": "downloads.reveal",
+      "capability": "downloads.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string"
+      },
+      "result": "void"
+    },
+    {
+      "name": "downloads.clear",
+      "capability": "downloads.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {},
+      "result": "void"
+    }
+  ],
+  "events": [
+    {
+      "name": "downloads.created",
+      "capability": "downloads.read",
+      "payload": {
+        "item": "DownloadItem",
+        "source": "ChangeSource"
+      }
+    },
+    {
+      "name": "downloads.updated",
+      "capability": "downloads.read",
+      "payload": {
+        "item": "DownloadItem"
+      }
+    },
+    {
+      "name": "downloads.completed",
+      "capability": "downloads.read",
+      "payload": {
+        "item": "DownloadItem"
+      }
+    },
+    {
+      "name": "downloads.interrupted",
+      "capability": "downloads.read",
+      "payload": {
+        "item": "DownloadItem",
+        "reason": "string?"
+      }
+    },
+    {
+      "name": "downloads.removed",
+      "capability": "downloads.read",
+      "payload": {
+        "id": "string",
+        "source": "ChangeSource"
+      }
+    }
+  ]
+}

@@ -343,7 +343,8 @@ Decisions taken in T-ABI-03 where this section was silent (2026-11-18). The impl
 - `raises` names a surface in lower case, from the `surfaces` constants group.
 - `constants` holds the identifier families of the ABI itself (error domains and codes, event kinds, flags, security and visibility values, surfaces) as groups with a macro prefix and explicit values. They generate `#define` lines in `bdk_ids.h` and are recorded in the registry like command identifiers.
 - `ids.json` is the registry of every identifier ever assigned. Commands and events are numbered from 1 in the order they first appear (files in name order). A removed name is marked `retired` and its identifier is not reused. The generated macros are `BDK_COMMAND_<NAME>` and `BDK_EVENT_<NAME>`.
-- No commands or events are defined yet. services.md gives names and capabilities but not argument and result types, and the broker that serves them is M3 (T-SVC-01).
+- The M3 namespaces are defined (T-SVC-01, 2026-11-19): runtime, profiles, settings, history, bookmarks, downloads, permissions, cookies, privacy, passwords, autofill, system, with the argument and result types services.md gives. The generator also writes `generated/bdk_command_table.inc`, the tables the broker reads (identifier, capability, callers, profile mode, marks, argument types, and the policy lists). A command key `authenticateWhen` names an argument that makes the call need authentication only when it is present (`passwords.update`). The checks the broker makes, the argument rules, the 4 MiB cap and the new error codes are in `packages/core/docs/conventions.md`, "The broker".
+- `bdk_invoke` has full authority and an identifier or a name finds a built-in command as well as an `app.` command. A `void` result is the JSON value `null`.
 
 ## 8. UI requests
 

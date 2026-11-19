@@ -1,0 +1,90 @@
+{
+  "namespace": "profiles",
+  "since": 1,
+  "types": {
+    "ProfileInfo": {
+      "id": "string",
+      "name": "string",
+      "lastUsed": "timestamp?",
+      "isPrivate": "bool"
+    }
+  },
+  "commands": [
+    {
+      "name": "profiles.list",
+      "capability": "profiles.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "none",
+      "args": {},
+      "result": {
+        "profiles": "ProfileInfo[]"
+      }
+    },
+    {
+      "name": "profiles.current",
+      "capability": "profiles.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {},
+      "result": "ProfileInfo"
+    },
+    {
+      "name": "profiles.create",
+      "capability": "profiles.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "none",
+      "args": {
+        "name": "string"
+      },
+      "result": "ProfileInfo"
+    },
+    {
+      "name": "profiles.rename",
+      "capability": "profiles.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "none",
+      "args": {
+        "id": "string",
+        "name": "string"
+      },
+      "result": "void"
+    },
+    {
+      "name": "profiles.delete",
+      "capability": "profiles.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "none",
+      "requires": ["gesture"],
+      "args": {
+        "id": "string"
+      },
+      "result": "void"
+    }
+  ],
+  "events": [
+    {
+      "name": "profiles.created",
+      "capability": "profiles.read",
+      "payload": {
+        "profile": "ProfileInfo",
+        "source": "ChangeSource"
+      }
+    },
+    {
+      "name": "profiles.renamed",
+      "capability": "profiles.read",
+      "payload": {
+        "profile": "ProfileInfo",
+        "source": "ChangeSource"
+      }
+    },
+    {
+      "name": "profiles.deleted",
+      "capability": "profiles.read",
+      "payload": {
+        "id": "string",
+        "source": "ChangeSource"
+      }
+    }
+  ]
+}

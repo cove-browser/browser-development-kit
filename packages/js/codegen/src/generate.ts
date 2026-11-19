@@ -1,5 +1,5 @@
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { renderHeader } from "./header.js";
 import { InterfaceError, type Issue } from "./issue.js";
 import {
@@ -9,6 +9,7 @@ import {
   reconcile,
   serializeRegistry,
 } from "./registry.js";
+import { renderCommandTable, TABLE_PATH } from "./table.js";
 import { parsePolicy, type SourceFile, validate } from "./validate.js";
 
 /** Files in the interface directory that are not namespace definitions. */
@@ -29,6 +30,7 @@ export interface Inputs {
 export interface Outputs {
   readonly registry: string;
   readonly header: string;
+  readonly table: string;
 }
 
 function parseJson(file: string, text: string): { json: unknown; issues: Issue[] } {
@@ -78,6 +80,7 @@ export function build(inputs: Inputs): Outputs {
   return {
     registry: serializeRegistry(reconciled.registry),
     header: renderHeader(validated.definitions, reconciled.registry),
+    table: renderCommandTable(validated.definitions, reconciled.registry, policy),
   };
 }
 
@@ -105,16 +108,18 @@ export function readInputs(coreDir: string): Inputs {
   };
 }
 
-/** Writes `ids.json` and `bdk_ids.h`, leaving a file untouched when its content would not change. */
+/** Writes `ids.json`, `bdk_ids.h` and the broker tables, leaving a file untouched when its content would not change. */
 export function generate(coreDir: string): string[] {
   const outputs = build(readInputs(coreDir));
   const targets = [
     [join(coreDir, "interface", REGISTRY_FILE), outputs.registry],
     [join(coreDir, HEADER_PATH), outputs.header],
+    [join(coreDir, TABLE_PATH), outputs.table],
   ] as const;
   const written: string[] = [];
   for (const [path, text] of targets) {
     if (readOptional(path) !== text) {
+      mkdirSync(dirname(path), { recursive: true });
       writeFileSync(path, text);
       written.push(path);
     }
@@ -131,6 +136,9 @@ export function check(coreDir: string): string[] {
   }
   if (readOptional(join(coreDir, HEADER_PATH)) !== outputs.header) {
     stale.push(`packages/core/${HEADER_PATH}`);
+  }
+  if (readOptional(join(coreDir, TABLE_PATH)) !== outputs.table) {
+    stale.push(`packages/core/${TABLE_PATH}`);
   }
   return stale;
 }

@@ -927,7 +927,7 @@ public struct BDKError: Error, Sendable {
 | `profile` | `notFound`, `inUse`, `nameTaken`, `isPrivate` |
 | `contents` | `stale`, `crashed`, `stateTooNew`, `internalPage` |
 | `navigation` | `aborted`, `superseded`, `blocked`, `handledNatively`, `netError` |
-| `broker` | `unknownCommand`, `invalidArguments`, `cancelled`, `timeout`, `payloadTooLarge` |
+| `broker` | `unknownCommand`, `invalidArguments`, `cancelled`, `timeout`, `payloadTooLarge`, `notImplemented` |
 | `capability` | `denied`, `gestureRequired`, `reauthenticationFailed`, `outOfScope` |
 | `extension` | `incompatible`, `sourceNotAllowed`, `notFound`, `surfaceDisabled`, `installCancelled` |
 | `provider` | `unavailable`, `unsupportedPair`, `modelDownloadFailed`, `remoteError` |

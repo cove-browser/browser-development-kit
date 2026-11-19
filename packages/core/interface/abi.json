@@ -42,7 +42,12 @@
         "INVALID_ARGUMENTS": "invalidArguments",
         "CANCELLED": "cancelled",
         "GESTURE_REQUIRED": "gestureRequired",
-        "REQUEST_COMPLETED": "requestCompleted"
+        "REQUEST_COMPLETED": "requestCompleted",
+        "DENIED": "denied",
+        "OUT_OF_SCOPE": "outOfScope",
+        "REAUTHENTICATION_FAILED": "reauthenticationFailed",
+        "PAYLOAD_TOO_LARGE": "payloadTooLarge",
+        "NOT_IMPLEMENTED": "notImplemented"
       }
     },
     {

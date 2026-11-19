@@ -37,6 +37,7 @@
       ],
       "outputs": [
         "{workspaceRoot}/packages/core/include/bdk/bdk_ids.h",
+        "{workspaceRoot}/packages/core/generated/bdk_command_table.inc",
         "{workspaceRoot}/packages/core/interface/ids.json"
       ]
     },

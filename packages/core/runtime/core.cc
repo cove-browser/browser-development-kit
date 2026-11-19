@@ -7,6 +7,7 @@
 #include <thread>
 
 #include "bdk_abi_hash.h"
+#include "broker_internal.h"
 #include "core_internal.h"
 
 using namespace bdkcore;
@@ -510,6 +511,7 @@ BDK_EXPORT bdk_status_t bdk_call_cancel(bdk_call_t h) {
         return BDK_ERR_STALE_HANDLE;
     if (!c->done) {
         c->cancelled = true;
+        run_on_stop(c);
         if (c->on_cancel) {
             auto on_cancel = std::move(c->on_cancel);
             c->on_cancel = nullptr;
@@ -613,6 +615,7 @@ BDK_EXPORT bdk_call_t bdk_runtime_shutdown(bdk_runtime_t h, bdk_result_cb cb, vo
         auto c = w.lock();
         if (c && c != call && !c->done) {
             c->cancelled = true;
+            run_on_stop(c);
             finish_call(c, BDK_DOMAIN_BROKER, BDK_CODE_CANCELLED, "the runtime shut down", "");
         }
     }
@@ -730,63 +733,10 @@ BDK_EXPORT BDK_ANY_THREAD void bdk_post_to_ui_thread(void (*fn)(void*), void* ct
 
 /* ---- bdk_broker.h ---- */
 
-static bool options_ok(const std::shared_ptr<Runtime>&, const bdk_invoke_options_t* o) {
-    if (!o)
-        return true;
-    if (o->struct_size < sizeof(size_t))
-        return false;
-    bdk_invoke_options_t full;
-    memset(&full, 0, sizeof full);
-    memcpy(&full, o, o->struct_size < sizeof full ? o->struct_size : sizeof full);
-    if (full.profile && !get<Profile>(full.profile, T_PROFILE))
-        return false;
-    if (full.contents && !get<Contents>(full.contents, T_CONTENTS))
-        return false;
-    return true;
-}
-
-static bdk_call_t invoke_impl(bdk_runtime_t h, const std::string* name, uint32_t id,
-                              bdk_string_t args, const bdk_invoke_options_t* opts, bdk_result_cb cb,
-                              bdk_progress_cb prog, void* ctx, bdk_release_cb rel) {
-    if (check_thread() != BDK_OK || !cb || !string_ok(args))
-        return 0;
-    auto rt = runtime_of(h);
-    if (!rt || !options_ok(rt, opts))
-        return 0;
-    auto call = new_call(rt, cb, prog, ctx, rel);
-    std::string cmd = name ? *name : std::string();
-    std::string input = str(args);
-    post([rt, call, cmd, id, name_given = name != nullptr, input] {
-        if (call->done)
-            return;
-        if (rt->shutting) {
-            finish_call(call, BDK_DOMAIN_BROKER, BDK_CODE_CANCELLED, "the runtime shut down", "");
-            return;
-        }
-        if (!valid_json(input)) {
-            finish_call(call, BDK_DOMAIN_BROKER, BDK_CODE_INVALID_ARGUMENTS,
-                        "the arguments are not valid JSON", "");
-            return;
-        }
-        auto it = name_given ? rt->commands.find(cmd) : rt->commands.end();
-        if (it == rt->commands.end()) {
-            std::string what = name_given ? "'" + cmd + "'" : "id " + std::to_string(id);
-            finish_call(call, BDK_DOMAIN_BROKER, BDK_CODE_UNKNOWN_COMMAND,
-                        "unknown command " + what, "");
-            return;
-        }
-        auto cc = std::make_shared<CallCtx>();
-        cc->call = call;
-        bdk_context_t ch = table_make(T_CONTEXT, cc);
-        it->second.cb(it->second.ctx, ch, view(input));
-    });
-    return call->handle;
-}
-
 BDK_EXPORT bdk_call_t bdk_invoke(bdk_runtime_t h, uint32_t command_id, bdk_string_t args,
                                  const bdk_invoke_options_t* o, bdk_result_cb cb,
                                  bdk_progress_cb prog, void* ctx, bdk_release_cb rel) {
-    return invoke_impl(h, nullptr, command_id, args, o, cb, prog, ctx, rel);
+    return broker_invoke_abi(h, nullptr, command_id, args, o, cb, prog, ctx, rel);
 }
 
 BDK_EXPORT bdk_call_t bdk_invoke_named(bdk_runtime_t h, bdk_string_t name, bdk_string_t args,
@@ -795,7 +745,7 @@ BDK_EXPORT bdk_call_t bdk_invoke_named(bdk_runtime_t h, bdk_string_t name, bdk_s
     if (!string_ok(name))
         return 0;
     std::string n = str(name);
-    return invoke_impl(h, &n, 0, args, o, cb, prog, ctx, rel);
+    return broker_invoke_abi(h, &n, 0, args, o, cb, prog, ctx, rel);
 }
 
 static bdk_subscription_t subscribe_impl(bdk_runtime_t h, uint32_t id, const std::string& name,
@@ -804,7 +754,7 @@ static bdk_subscription_t subscribe_impl(bdk_runtime_t h, uint32_t id, const std
     if (check_thread() != BDK_OK || !cb || !string_ok(filter))
         return 0;
     auto rt = runtime_of(h);
-    if (!rt || !options_ok(rt, o))
+    if (!rt || !invoke_options_ok(o))
         return 0;
     std::string f = str(filter);
     if (!f.empty() && !valid_json(f))
@@ -858,13 +808,7 @@ BDK_EXPORT void bdk_app_command_resolve(bdk_context_t h, bdk_string_t output) {
     if (!cc)
         return;
     table_free(h);
-    std::string out = str(output);
-    if (!valid_json(out)) {
-        finish_call(cc->call, BDK_DOMAIN_BROKER, BDK_CODE_INVALID_ARGUMENTS,
-                    "the command resolved with invalid JSON", "");
-        return;
-    }
-    finish_call(cc->call, nullptr, nullptr, "", out);
+    resolve_call(cc->call, str(output));
 }
 
 BDK_EXPORT void bdk_app_command_reject(bdk_context_t h, bdk_string_t domain, bdk_string_t code,

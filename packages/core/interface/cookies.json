@@ -1,0 +1,114 @@
+{
+  "namespace": "cookies",
+  "since": 1,
+  "types": {
+    "SiteData": {
+      "site": "string",
+      "cookieCount": "int",
+      "storageBytes": "int"
+    },
+    "CookieInfo": {
+      "name": "string",
+      "domain": "string",
+      "path": "string",
+      "expires": "timestamp?",
+      "secure": "bool",
+      "httpOnly": "bool",
+      "sameSite": "string?"
+    },
+    "CookieValue": {
+      "name": "string",
+      "value": "string",
+      "domain": "string",
+      "path": "string",
+      "expires": "timestamp?",
+      "secure": "bool?",
+      "httpOnly": "bool?",
+      "sameSite": "string?"
+    }
+  },
+  "commands": [
+    {
+      "name": "cookies.sites",
+      "capability": "cookies.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "limit": "int?",
+        "cursor": "string?"
+      },
+      "result": {
+        "items": "SiteData[]",
+        "nextCursor": "string?"
+      },
+      "paginated": true
+    },
+    {
+      "name": "cookies.list",
+      "capability": "cookies.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "site": "string"
+      },
+      "result": {
+        "items": "CookieInfo[]"
+      }
+    },
+    {
+      "name": "cookies.getValues",
+      "capability": "cookies.values",
+      "callers": ["swift", "session"],
+      "profile": "required",
+      "args": {
+        "site": "string"
+      },
+      "result": {
+        "items": "CookieValue[]"
+      }
+    },
+    {
+      "name": "cookies.set",
+      "capability": "cookies.values",
+      "callers": ["swift", "session"],
+      "profile": "required",
+      "args": {
+        "cookie": "CookieValue"
+      },
+      "result": "void"
+    },
+    {
+      "name": "cookies.remove",
+      "capability": "cookies.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "name": "string",
+        "domain": "string",
+        "path": "string"
+      },
+      "result": "void"
+    },
+    {
+      "name": "cookies.removeSiteData",
+      "capability": "cookies.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "site": "string"
+      },
+      "result": "void"
+    }
+  ],
+  "events": [
+    {
+      "name": "cookies.changed",
+      "capability": "cookies.values",
+      "payload": {
+        "cookie": "CookieValue",
+        "removed": "bool",
+        "source": "ChangeSource"
+      }
+    }
+  ]
+}

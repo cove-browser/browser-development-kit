@@ -2,7 +2,7 @@
 
 Status: proposal, 2026-11-15. The broker is defined in [../architecture.md](../architecture.md) section 9. This document lists how a call behaves, every capability, every command and event, and the settings catalogue. Names are placeholders; `settings.get`, `settings.set` and the capability names in the spec are kept. Status labels are in [README.md](README.md) section 2. Tasks: T-ABI-03, T-SVC-01 to T-SVC-06.
 
-The catalogue is the planned content of `packages/core/interface/`. The Swift wrappers, the TypeScript declarations, the stub runtime and the capability table are all generated from it, so a command exists in every surface or in none.
+The catalogue is the planned content of `packages/core/interface/`. The M3 namespaces are there (2026-11-19): where this document and the definitions differ, the definitions are what is built, and this file should be fixed. The Swift wrappers, the TypeScript declarations, the stub runtime and the capability table are all generated from it, so a command exists in every surface or in none.
 
 ## 1. One definition, three callers
 
@@ -20,13 +20,13 @@ Extensions and ordinary web pages are not callers. They never receive a broker i
 |---|---|
 | Request | A command name, one arguments object, and a call identifier. The profile is implied by the caller (section 3) unless the caller is Swift. |
 | Result | One value, or an error with domain, code, message and details |
-| Check order | Caller identity, then capability, then scope, then gesture or authentication requirement, then argument validation, then the service. A caller without the capability learns nothing about whether the arguments were valid. |
+| Check order | Caller identity, then capability, then scope, then gesture or authentication requirement, then argument validation, then the service. A caller without the capability learns nothing about whether the arguments were valid. Implemented in T-SVC-01; the details (the `capability` error codes, `authenticateWhen`, what a page's gesture is) are in `packages/core/docs/conventions.md`, "The broker". |
 | Unknown command | `broker.unknownCommand`. Never silently ignored. |
 | Cancellation | Every call can be cancelled. A cancelled call returns `broker.cancelled` and the service stops work where it can. |
 | Progress | A command marked "progress" reports fraction and message while it runs |
 | Streams | A command marked "stream" delivers a sequence of results until it completes or is cancelled |
 | Pagination | List commands take `limit` and `cursor` and return `items` and `nextCursor`. A cursor is opaque and valid only for the same arguments. |
-| Limits | Arguments and results are capped at a few megabytes each, exact figure set in T-SVC-01. Larger data, such as a screenshot, a PDF or an export, is a binary result outside the JSON value, or a file the caller names. |
+| Limits | Arguments and results are each capped at 4 MiB (4194304 bytes) of JSON, set in T-SVC-01; more is `broker.payloadTooLarge`. Larger data, such as a screenshot, a PDF or an export, is a binary result outside the JSON value, or a file the caller names. |
 | Ordering | Calls from one caller start in the order sent. Results arrive when ready. |
 | Timeouts | None imposed by the broker. The caller cancels. |
 | Teardown | When a page navigates or closes, or a session is revoked, its outstanding calls are cancelled and its subscriptions end. |
