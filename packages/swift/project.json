@@ -39,7 +39,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "echo 'swift:test-integration: not implemented until M2 (needs a published runtime)'"
+        "command": "echo 'swift:test-integration: no runtime implements the C ABI yet (T-ABI-04); the SDK is tested against the stub in swift:test'"
       }
     },
     "lint": {
