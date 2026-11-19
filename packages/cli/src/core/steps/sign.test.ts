@@ -51,6 +51,37 @@ describe("bdk build sign", () => {
     ]);
   });
 
+  it("refuses --offline with a real identity before signing anything", async () => {
+    const { dir } = await tempProject();
+    const requests: SignRequest[] = [];
+    const ctx = testContext({ cwd: dir, platform: signingPlatform(requests) });
+    const code = await run(
+      [
+        "build",
+        "sign",
+        "--offline",
+        "--bundle",
+        "A.app",
+        "--identity",
+        "Developer ID Application: X",
+      ],
+      ctx,
+    );
+    expect(code).toBe(2);
+    expect(requests).toEqual([]);
+    expect(ctx.err.join("")).toContain("--offline");
+  });
+
+  it("signs ad hoc with --offline, which needs no network", async () => {
+    const { dir } = await tempProject();
+    const requests: SignRequest[] = [];
+    const ctx = testContext({ cwd: dir, platform: signingPlatform(requests) });
+    expect(
+      await run(["build", "sign", "--offline", "--bundle", "A.app", "--identity", "-"], ctx),
+    ).toBe(0);
+    expect(requests).toHaveLength(1);
+  });
+
   it("takes everything from Xcode's build environment when no flags are given", async () => {
     const { dir } = await tempProject();
     const requests: SignRequest[] = [];

@@ -55,12 +55,14 @@ describe.skipIf(!packaged)("packaged executable (skipped when dist/bdk is absent
     expect(bdk(["frobnicate"]).status).toBe(2);
   });
 
-  it("reads the schema from the embedded assets (or reports it missing, exit 3)", async () => {
+  it("resolves a project with the embedded schema (or reports it missing, exit 3)", async () => {
     const project = await tempProject();
     const result = bdk(["build", "config"], project.dir);
     if (existsSync(join(cliRoot, "assets", "bdk.schema.json"))) {
-      // Whatever the resolver says about this bdk.toml, the schema was found inside the executable.
-      expect(result.stderr).not.toContain("cli.asset_missing");
+      expect(result).toMatchObject({ status: 0, stderr: "" });
+      const resolved = JSON.parse(readFileSync(join(project.dir, "bdk.resolved.json"), "utf8"));
+      expect(resolved).toMatchObject({ bdk_version: version, browser: { name: "Demo" } });
+      expect(resolved.config_digest).toMatch(/^sha256:[0-9a-f]{64}$/);
     } else {
       expect(result.status).toBe(3);
       expect(result.stderr).toContain("[cli.asset_missing]");

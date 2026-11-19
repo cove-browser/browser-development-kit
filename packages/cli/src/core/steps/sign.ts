@@ -41,6 +41,13 @@ export const signStep: Step = {
         "Pass --identity <name>, or --identity - for an ad hoc signature.",
       );
     }
+    // A real identity gets a secure timestamp, which comes from the signing authority's server.
+    if (args.offline && identity !== "-") {
+      throw usageError(
+        "`bdk build sign --offline` cannot sign with a real identity: its secure timestamp needs the network.",
+        "Drop --offline, or sign ad hoc with --identity - (no timestamp, not for distribution).",
+      );
+    }
     const team = args.team ?? ctx.env.DEVELOPMENT_TEAM;
     const entitlements =
       args.entitlements !== undefined

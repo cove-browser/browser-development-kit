@@ -4,7 +4,7 @@
  * capability grants. Swift registrations are applied by the application at run time and are
  * not part of this step.
  */
-import { existsSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { join, sep } from "node:path";
 import { checkRouteName, ROUTE_MODES } from "./checks.js";
 import { directoryDigest } from "./digest.js";
@@ -38,6 +38,60 @@ function isDirectory(path: string): boolean {
 
 function isFile(path: string): boolean {
   return existsSync(path) && statSync(path).isFile();
+}
+
+type LinkProblem = { path: string; kind: "outside" | "broken" | "loop" };
+
+/**
+ * The first link inside a page directory that the page cannot carry: one that leaves the project,
+ * points nowhere, or leads back to a directory it is already inside. The page directory itself
+ * was checked by the caller.
+ */
+function nestedLinkProblem(projectDir: string, path: string): LinkProblem | undefined {
+  const walk = (relative: string, ancestors: Set<string>): LinkProblem | undefined => {
+    for (const name of readdirSync(join(projectDir, relative)).sort(byCodeUnit)) {
+      const child = `${relative}/${name}`;
+      const absolute = join(projectDir, child);
+      if (lstatSync(absolute).isSymbolicLink()) {
+        if (!existsSync(absolute)) return { path: child, kind: "broken" };
+        if (!isInsideProject(projectDir, absolute)) return { path: child, kind: "outside" };
+      }
+      if (!isDirectory(absolute)) continue;
+      const real = realpathSync(absolute);
+      if (ancestors.has(real)) return { path: child, kind: "loop" };
+      const found = walk(child, new Set([...ancestors, real]));
+      if (found) return found;
+    }
+    return undefined;
+  };
+  // The page is inside the project and each directory above it, up to the project itself.
+  const segments = path.split("/");
+  const above = segments.map((_, i) => realpathSync(join(projectDir, ...segments.slice(0, i + 1))));
+  return walk(path, new Set([realpathSync(projectDir), ...above]));
+}
+
+/** Reports a link the page at `path` cannot carry; returns whether there was none. */
+function checkNestedLinks(projectDir: string, path: string, reporter: Reporter): boolean {
+  const problem = nestedLinkProblem(projectDir, path);
+  if (problem === undefined) return true;
+  if (problem.kind === "outside") {
+    reporter.errorAt(
+      "config.path_escape",
+      `"${problem.path}" resolves to a place outside the project.`,
+      problem.path,
+      "Remove the link, or copy what it points at into the page.",
+    );
+  } else {
+    reporter.errorAt(
+      "pages.bad_link",
+      problem.kind === "broken"
+        ? `"${problem.path}" is a link to nothing.`
+        : `"${problem.path}" links back to a directory it is inside.`,
+      problem.path,
+      "Remove the link, or replace it with the files it should contain.",
+    );
+  }
+  return false;
 }
 
 function bundled(projectDir: string, path: string, route: string): RouteEntry {
@@ -88,7 +142,9 @@ function discover(
         first,
         "Rename or remove all but one of the directories.",
       );
-    } else found[route] = bundled(projectDir, first, route);
+    } else if (checkNestedLinks(projectDir, first, reporter)) {
+      found[route] = bundled(projectDir, first, route);
+    }
   }
   return found;
 }
@@ -123,7 +179,9 @@ function applyOverrides(
         key,
         "Use a directory inside the project.",
       );
-    } else routes[route] = bundled(projectDir, path, route);
+    } else if (checkNestedLinks(projectDir, path, reporter)) {
+      routes[route] = bundled(projectDir, path, route);
+    }
   }
 }
 

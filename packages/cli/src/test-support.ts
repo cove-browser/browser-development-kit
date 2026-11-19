@@ -45,10 +45,13 @@ export async function tempDir(prefix = "bdk-cli-test-"): Promise<string> {
   return realpath(await mkdtemp(join(tmpdir(), prefix)));
 }
 
-/** A temporary project: a directory holding `bdk.toml`, plus an optional nested directory to start from. */
+/**
+ * A temporary project: a directory holding a valid minimal `bdk.toml`, plus an optional nested
+ * directory to start from.
+ */
 export async function tempProject(nested?: string): Promise<{ dir: string; start: string }> {
   const dir = await tempDir();
-  await writeFile(join(dir, "bdk.toml"), 'name = "demo"\n');
+  await writeFile(join(dir, "bdk.toml"), '[browser]\nname = "Demo"\n');
   const start = nested === undefined ? dir : join(dir, nested);
   await mkdir(start, { recursive: true });
   return { dir, start };

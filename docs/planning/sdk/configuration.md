@@ -598,6 +598,7 @@ Each has a stable code, used by fixtures in `tests/config/`. Messages name the f
 | `browser.scheme_conflict` | The scheme collides with one declared in `Info.plist` |
 | `browser.logo_invalid` | `logo` is not an SVG or PNG inside the project |
 | `pages.collision` | Two directories normalise to the same route |
+| `pages.bad_link` | A link inside a page directory points nowhere or back to a directory that contains it |
 | `pages.alias_collision` | An alias has the same name as a page |
 | `pages.alias_chain` | An alias points at an alias |
 | `pages.alias_target` | An alias points at nothing |
@@ -632,6 +633,7 @@ Dated 2026-11-18. The documents were silent on these points; the schema and reso
 - Surface names under `[ui.surfaces]` and `[extensions.ui]` that are not in the schema are `ui.surface_unknown`, except the S3 surfaces, which are the ordinary `config.unknown_key`. A mode the surface does not allow is `ui.surface_mode`; a value that is not a mode at all is `config.type`.
 - Provider values outside the listed enum are `services.provider_unknown`. The named providers documented as "after v1" are accepted by the schema.
 - Reserved names are the fixed list in 4.3 plus `chrome-error`, `chrome-search`, `chrome-untrusted`. The excluded routes of 4.4 (`signin`, `sign-in`, `sync-internals`, `feedback`, `whats-new`, `welcome`) are also `pages.reserved`.
+- Links inside a page directory are checked like the directory itself: one that leaves the project is `config.path_escape`, and one that points nowhere or back to a directory it is inside is `pages.bad_link` (a code added to the table above).
 - A directory under `Pages/` is a page only if it contains `index.html`; other directories are ignored. Directory names are split on case boundaries (`HTMLPage` is `html-page`); underscores and spaces are not converted, so they are `pages.name_invalid`.
 - Collisions between aliases and pages cover discovered pages, overrides and the standard and diagnostic routes. An alias of an alias, including itself or a cycle, is `pages.alias_chain` on each alias that points at an alias.
 - A capability grant for an alias, a built-in route, a `native` or `disabled` route, or a route that does not exist is `pages.capability_target`. A capability on a `contents.`, `automation.` or `devtools.` prefix, or one the services.md table marks as not granted to pages (`cookies.values`), is `pages.capability_denied`.

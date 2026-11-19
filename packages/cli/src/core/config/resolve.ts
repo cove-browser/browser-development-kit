@@ -57,9 +57,10 @@ function discoverScripts(
   directory: string,
   reporter: Reporter,
 ): Record<string, { path: string; digest: string }> {
-  const scripts: Record<string, { path: string; digest: string }> = {};
+  // A Map, not an object: a script may be called `__proto__`.
+  const scripts = new Map<string, { path: string; digest: string }>();
   const root = join(projectDir, directory);
-  if (!existsSync(root) || !statSync(root).isDirectory()) return scripts;
+  if (!existsSync(root) || !statSync(root).isDirectory()) return {};
   const owners = new Map<string, string[]>();
   for (const name of readdirSync(root).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))) {
     const match = /^(.+?)(?<!\.d)\.(ts|js)$/.exec(name);
@@ -83,21 +84,18 @@ function discoverScripts(
         "Remove the link, or copy the script into the project.",
       );
     } else {
-      scripts[script] = {
+      scripts.set(script, {
         path: `${directory}/${first}`,
         digest: fileDigest(join(root, first)),
-      };
+      });
     }
   }
-  return scripts;
+  // fromEntries defines own properties, so `__proto__` stays a key instead of a prototype.
+  return Object.fromEntries(scripts);
 }
 
 function sortedObject<T>(value: Record<string, T>): Record<string, T> {
-  const out: Record<string, T> = {};
-  for (const key of Object.keys(value).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))) {
-    out[key] = value[key] as T;
-  }
-  return out;
+  return Object.fromEntries(Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 }
 
 /** Checks `Info.plist` and entitlements facts the build step passes in. */

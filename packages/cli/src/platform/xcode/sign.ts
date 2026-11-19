@@ -62,6 +62,12 @@ async function readPlistJson(runner: ToolRunner, file: string): Promise<Record<s
   );
 }
 
+/** The framework's current version directory, or the framework itself when it is unversioned. */
+async function currentVersion(frameworkPath: string): Promise<string> {
+  const current = join(frameworkPath, "Versions", "Current");
+  return (await isDirectory(current)) ? await realpath(current) : frameworkPath;
+}
+
 /** Finds the runtime framework in the application and what is nested in it. */
 export async function discoverLayout(appPath: string, runner: ToolRunner): Promise<BundleLayout> {
   const infoPlist = join(appPath, "Contents", "Info.plist");
@@ -98,23 +104,33 @@ export async function discoverLayout(appPath: string, runner: ToolRunner): Promi
   }
 
   const frameworksDir = join(appPath, "Contents", "Frameworks");
-  const frameworks = (await readdir(frameworksDir).catch(() => [] as string[])).filter((name) =>
-    name.endsWith(".framework"),
-  );
-  if (frameworks.length !== 1) {
+  const frameworks = (await readdir(frameworksDir).catch(() => [] as string[]))
+    .filter((name) => name.endsWith(".framework"))
+    .sort();
+  // The application may embed other frameworks; the runtime is the one with helper applications.
+  const runtimes: { frameworkPath: string; versionDir: string }[] = [];
+  for (const name of frameworks) {
+    const frameworkPath = await realpath(join(frameworksDir, name));
+    const versionDir = await currentVersion(frameworkPath);
+    const helpers = await readdir(join(versionDir, "Helpers")).catch(() => [] as string[]);
+    if (helpers.some((n) => n.endsWith(".app"))) runtimes.push({ frameworkPath, versionDir });
+  }
+  if (runtimes.length !== 1) {
     throw projectError(
       "sign.no_runtime",
-      frameworks.length === 0
-        ? `${frameworksDir} holds no runtime framework.`
-        : `${frameworksDir} holds more than one framework: ${frameworks.join(", ")}.`,
+      runtimes.length === 0
+        ? `${frameworksDir} holds no runtime framework (one with helper applications in Helpers).`
+        : `${frameworksDir} holds more than one runtime framework: ${runtimes
+            .map((r) => basename(r.frameworkPath))
+            .join(", ")}.`,
       "Embed the runtime in Contents/Frameworks before signing; the application embeds exactly one.",
       frameworksDir,
     );
   }
-  const frameworkPath = await realpath(join(frameworksDir, frameworks[0] as string));
-  const versionDir = (await isDirectory(join(frameworkPath, "Versions", "Current")))
-    ? await realpath(join(frameworkPath, "Versions", "Current"))
-    : frameworkPath;
+  const { frameworkPath, versionDir } = runtimes[0] as {
+    frameworkPath: string;
+    versionDir: string;
+  };
 
   const helpersDir = join(versionDir, "Helpers");
   const librariesDir = join(versionDir, "Libraries");

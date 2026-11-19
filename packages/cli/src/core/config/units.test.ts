@@ -1,4 +1,12 @@
-import { cpSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -203,5 +211,92 @@ describe("byte stability", () => {
     } finally {
       rmSync(copy, { recursive: true, force: true });
     }
+  });
+});
+
+describe("links and names in project directories", () => {
+  async function withProject(
+    toml: string,
+    build: (dir: string) => void,
+    check: (result: Awaited<ReturnType<typeof resolveConfig>>) => void,
+  ): Promise<void> {
+    const outer = mkdtempSync(join(tmpdir(), "bdk-config-"));
+    const dir = join(outer, "project");
+    try {
+      mkdirSync(dir);
+      writeFileSync(join(dir, "bdk.toml"), toml);
+      build(dir);
+      check(await resolveConfig({ projectDir: dir, schema }));
+    } finally {
+      rmSync(outer, { recursive: true, force: true });
+    }
+  }
+
+  const page = (dir: string): string => {
+    const path = join(dir, "Pages", "Agents");
+    mkdirSync(path, { recursive: true });
+    writeFileSync(join(path, "index.html"), "<!doctype html>\n");
+    return path;
+  };
+
+  it("rejects a link inside a page that leaves the project", async () => {
+    await withProject(
+      '[browser]\nname = "Cove"\n',
+      (dir) => {
+        writeFileSync(join(dir, "..", "secret.txt"), "outside\n");
+        symlinkSync(join(dir, "..", "secret.txt"), join(page(dir), "secret.txt"));
+      },
+      (result) => {
+        expect(result.resolved).toBeUndefined();
+        expect(result.diagnostics.map((d) => [d.code, d.file])).toEqual([
+          ["config.path_escape", "Pages/Agents/secret.txt"],
+        ]);
+      },
+    );
+  });
+
+  it("rejects a link inside a page that leads back to a directory it is in", async () => {
+    await withProject(
+      '[browser]\nname = "Cove"\n',
+      (dir) => symlinkSync(join(dir, "Pages"), join(page(dir), "loop")),
+      (result) => {
+        expect(result.resolved).toBeUndefined();
+        expect(result.diagnostics.map((d) => [d.code, d.file])).toEqual([
+          ["pages.bad_link", "Pages/Agents/loop"],
+        ]);
+      },
+    );
+  });
+
+  it("accepts a link inside a page to another place in the project", async () => {
+    await withProject(
+      '[browser]\nname = "Cove"\n',
+      (dir) => {
+        mkdirSync(join(dir, "Shared"));
+        writeFileSync(join(dir, "Shared", "style.css"), "body {}\n");
+        symlinkSync(join(dir, "Shared"), join(page(dir), "shared"));
+      },
+      (result) => {
+        expect(result.diagnostics).toEqual([]);
+        expect(Object.keys(result.resolved?.routes as object)).toContain("agents");
+      },
+    );
+  });
+
+  it("keeps a script called __proto__", async () => {
+    await withProject(
+      '[browser]\nname = "Cove"\n\n[automation]\nenabled = true\n',
+      (dir) => {
+        mkdirSync(join(dir, "Automation"));
+        writeFileSync(join(dir, "Automation", "__proto__.js"), "export {};\n");
+        writeFileSync(join(dir, "Automation", "summarise.js"), "export {};\n");
+      },
+      (result) => {
+        expect(result.diagnostics).toEqual([]);
+        const automation = result.resolved?.automation as { scripts: object };
+        expect(Object.keys(automation.scripts)).toEqual(["__proto__", "summarise"]);
+        expect(serialiseResolved(result.resolved ?? {})).toContain('"__proto__": {');
+      },
+    );
   });
 });

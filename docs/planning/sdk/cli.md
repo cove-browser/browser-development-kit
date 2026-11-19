@@ -132,7 +132,7 @@ If one of these fails on a point that Bun passes, Bun is the fallback (risk R31)
 | Output | Human-readable on a terminal. `--json` prints one JSON document on standard output, for CI and editors. Diagnostics go to standard error. |
 | Diagnostics | Each has a stable code, a file and line where one exists, and a fix. In an Xcode build they are printed in the `file:line: error: message` form so Xcode shows them inline. |
 | Colour and prompts | Off when not on a terminal. Only `bdk init` asks questions, and every question has a flag that answers it (section 4.2). No command prompts in CI: a choice with a default takes it, and a choice with no default fails and names the flag. |
-| Network | Only `bdk init` (template and package resolution) and `bdk build runtime` (runtime download) use it. Both verify what they download against a digest. `--offline` makes them fail instead. |
+| Network | Only `bdk init` (template and package resolution) and `bdk build runtime` (runtime download) use it to download, and both verify what they download against a digest. `bdk build sign` with a real identity also reaches Apple's timestamp service through `codesign --timestamp`. `--offline` makes all three fail instead (signing ad hoc needs no network and still works). |
 | Telemetry | None |
 | Disk | No command reports disk usage or manages storage (tooling document, section 7) |
 
@@ -283,7 +283,7 @@ Why signing is BDK's step: Xcode's "Embed & Sign" is not expected to re-sign the
 | Framework | `<app id>.framework` (its `Info.plist` is rewritten) | None | None |
 | Application | `CFBundleIdentifier` | Full | The application's own file |
 
-This follows `parts.py:60-295` at the 158.0.8127.37 pin, except where noted. Order: identifier rewrites, libraries, loose executables, helpers, framework, application, then `codesign --verify --deep --strict` (a failure is exit 4). With a real identity `--timestamp` is added, and `--team` is checked against the signed application's `TeamIdentifier`. An application entitlement on the deny list (`app-sandbox` and the four `com.apple.security.cs.*` weakenings, in `core/signing/entitlements.ts`) is refused before anything is changed. The deny list is the implementation's choice from configuration.md section 6 and architecture.md section 16; it needs the product owner's confirmation.
+This follows `parts.py:60-295` at the 158.0.8127.37 pin, except where noted. Order: identifier rewrites, libraries, loose executables, helpers, framework, application, then `codesign --verify --deep --strict` (a failure is exit 4). With a real identity `--timestamp` is added (so `--offline` refuses a real identity, exit 2), and `--team` is checked against the signed application's `TeamIdentifier`. An application entitlement on the deny list (`app-sandbox` and the four `com.apple.security.cs.*` weakenings, in `core/signing/entitlements.ts`) is refused before anything is changed. The deny list is the implementation's choice from configuration.md section 6 and architecture.md section 16; it needs the product owner's confirmation.
 
 Run against a packaged runtime (`~/.bdk/runtimes/a3c82d8de4cecdf1/Chromium.app`, Chromium 158.0.8127.37, cloned with `ditto` into scratch space, the shared original untouched), made into a second application with `CFBundleIdentifier` `com.second.Browser`:
 

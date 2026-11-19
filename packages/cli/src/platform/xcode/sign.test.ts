@@ -77,6 +77,27 @@ describe("discoverLayout", () => {
     });
   });
 
+  it("finds the runtime among other embedded frameworks", async () => {
+    const { appPath } = await fakeApp();
+    const { mkdir } = await import("node:fs/promises");
+    const other = join(appPath, "Contents", "Frameworks", "Another.framework", "Versions", "A");
+    await mkdir(join(other, "Resources"), { recursive: true });
+    const layout = await discoverLayout(appPath, fakeRunner({}).runner);
+    expect(layout.frameworkPath.endsWith("Fake Framework.framework")).toBe(true);
+  });
+
+  it("fails with sign.no_runtime when the only framework has no helpers", async () => {
+    const dir = await tempDir();
+    const app = join(dir, "A.app");
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(join(app, "Contents", "Frameworks", "Another.framework", "Resources"), {
+      recursive: true,
+    });
+    await expect(discoverLayout(app, fakeRunner({}).runner)).rejects.toMatchObject({
+      diagnostic: { code: "sign.no_runtime" },
+    });
+  });
+
   it("fails with sign.bundle_missing for a path that is not a directory", async () => {
     await expect(discoverLayout("/nonexistent/A.app", fakeRunner({}).runner)).rejects.toMatchObject(
       {
