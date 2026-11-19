@@ -128,7 +128,7 @@ Estimated upstream patch footprint for this strategy: five to ten files, plus ne
 
 ### Not verified
 
-- Whether a BDK window with stubbed methods survives startup, session restore, DevTools, print preview and permission prompts without a null dereference in the 44 non-Views files that cast to `BrowserView`.
+- Whether a BDK window with stubbed methods survives startup, session restore, DevTools, print preview and permission prompts without a null dereference in the 44 non-Views files that cast to `BrowserView`. (2026-11-19, M3: it survives Browser creation, tab insertion, moves between contexts, activation, discard, restore, popups, DevTools and closing, as exercised by the engine scenarios; print preview, permission prompts, session restore of windows, translate and find are not yet run. The crashes found and their handling are in [amendments.md](amendments.md) section 2.13.)
 - Whether the Webium window is complete enough on macOS to copy from.
 - Whether every caller honours a hidden tab strip.
 

@@ -122,6 +122,9 @@ Exit criteria: the multi-page sample survives a renderer crash and an applicatio
 
 ### M3 — Browser services and default UI
 
+**Status, 2026-11-19: Phase 1 (host contexts, T-ADP-01 to T-ADP-03) is done; the services are not started.** Every page is a tab of a `Browser` host context: a parking context per profile and a context per registered window and profile, with a BDK `BrowserWindow` and no Chromium window shown. Attach, move between windows, detach, window close, focus and destroy go through the tab model, and the tab identifier, history and renderer survive a move. Recorded in [amendments.md](amendments.md) section 2.13 and `chromium/bdk/README.md`. The engine suite is 144 of 144 (`nx run core:test-engine`: the 138 of M2 plus six host-context scenarios). Not done: T-ADP-04 (the service smoke test) and the Chromium `browser_tests` audit of T-ADP-02; Phase 2 starts with forwarding Chrome's tab delegate calls and the location-bar anchor.
+
+
 | Work | Tasks | Acceptance |
 |---|---|---|
 | Broker | T-SVC-01, T-SVC-05 | Commands are defined once, checked per caller, cancellable. Application commands register from Swift. |
