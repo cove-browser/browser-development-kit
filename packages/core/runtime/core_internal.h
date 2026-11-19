@@ -42,6 +42,7 @@ struct Buf {
 
 struct Runtime;
 struct Contents;
+struct BuiltinCall; /* broker_internal.h */
 
 struct Sub {
     bool active = true;
@@ -68,7 +69,19 @@ struct Call {
     /* Runs once, from bdk_call_cancel, before the cancelled result is delivered: undoes what the
        call already handed out. */
     std::function<void()> on_cancel;
+    /* Runs once when the call is cancelled, or torn down with its caller or the runtime, before
+       the cancelled result is delivered: tells the service to stop. */
+    std::function<void()> on_stop;
 };
+
+/* Runs the call's on_stop, if it has one and has not run it yet. */
+inline void run_on_stop(const std::shared_ptr<Call>& c) {
+    if (c->on_stop) {
+        auto stop = std::move(c->on_stop);
+        c->on_stop = nullptr;
+        stop();
+    }
+}
 
 struct CallCtx {
     std::shared_ptr<Call> call;
@@ -259,6 +272,17 @@ class Backend {
     virtual bdk_status_t RegisterWindow(Runtime& rt, const Window& window,
                                         bdk_error_t* out_error) = 0;
     virtual void UnregisterWindow(const Window& window) = 0;
+
+    /* Built-in commands (interface/<namespace>.json). The core has already found the command and
+       checked the caller, the scope, the gesture and the arguments (broker_internal.h); the backend
+       only does the work and answers through call->control, now or later, on the UI thread, exactly
+       once. The default answers broker.notImplemented, so a backend implements commands one by one.
+     */
+    virtual void ExecuteCommand(Runtime& rt, const std::shared_ptr<BuiltinCall>& call);
+    /* Asks the user to authenticate with the operating system (a command marked A). done(true) if
+       they did. Runs on the UI thread, later. The default refuses. */
+    virtual void Authenticate(Runtime& rt, const std::string& reason,
+                              std::function<void(bool)> done);
 };
 
 /* The runtime that links the core defines this. */

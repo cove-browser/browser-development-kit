@@ -79,7 +79,8 @@ add_custom_target(bdk_abi_hash_check ALL
 # --- The stub runtime ---------------------------------------------------------------------------------------
 
 # The runtime core (runtime/) is shared with the Chromium engine; the stub supplies its in-memory backend.
-add_library(bdk_stub STATIC runtime/core.cc runtime/core_host.cc stub/stub_backend.cc)
+add_library(bdk_stub STATIC runtime/core.cc runtime/core_host.cc runtime/broker.cc runtime/broker_args.cc
+  stub/stub_backend.cc)
 target_include_directories(bdk_stub
   PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/stub"
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/runtime" "${CMAKE_CURRENT_SOURCE_DIR}/generated")
