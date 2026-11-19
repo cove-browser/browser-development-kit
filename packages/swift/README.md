@@ -1,7 +1,7 @@
 # swift
 
 The macOS SDK: a Swift layer over the C ABI in `packages/core`. Spec: `docs/planning/sdk/swift-api.md`. Tasks
-T-SWF-01 to T-SWF-04 and T-SVC-05 are implemented and tested against the in-memory stub runtime. Nothing here has run against
+T-SWF-01 to T-SWF-04, T-SVC-05 and the Swift wrappers of T-SVC-02, T-SVC-03, T-SVC-04 and T-SVC-06 are implemented and tested against the in-memory stub runtime. Nothing here has run against
 Chromium, and nothing in this package claims engine behaviour works: the real runtime arrives with T-PKG-04 and
 the engine tasks.
 
@@ -126,6 +126,41 @@ sorted keys, so equal input gives equal bytes. Each command entry is an interfac
 expressions as `packages/core/interface`. The extractor (T-JS-02, T-CLI-04) is a small executable target of the
 application that builds its configuration the same way and calls `write(to:)`; the generator reads the JSON.
 
+### Services
+
+The wrappers for the built-in commands (`history`, `bookmarks`, `downloads`, `settings`, `permissions`, `cookies`,
+`privacy`, `passwords`, `autofill`, `system`, `runtime`; tasks T-SVC-02 to T-SVC-06) are generated. `packages/js/codegen`
+writes `Sources/BDK/Generated/BDKServices.swift` from `packages/core/interface/*.json`; the file is committed and
+`nx run js-codegen:codegen-check` fails when it is stale. Do not edit it: change the definition, or the small naming
+table at the top of `packages/js/codegen/src/swift.ts`, and run `nx run js-codegen:codegen`. The hand-written part is
+`Sources/BDK/Services/BDKServiceScope.swift` (encoding, the call, the event merge) and the typed `settings` helpers.
+
+| Interface | Swift |
+|---|---|
+| Namespace, profile mode `required` | `struct BDKHistory` and so on, on `BDKProfile`: `profile.history` |
+| `optional` (`settings`) | on both: `profile.settings` and `runtime.settings` |
+| `none` (`runtime`, `system`) | on `BDKRuntime`: `runtime.about`, `runtime.system.defaultBrowser` |
+| `ns.group.method` | a nested service: `profile.autofill.cards.list()` |
+| `profiles` | not generated; `runtime.profiles` and `BDKProfile` use the ABI's profile functions |
+| Named type | `BDK` + name, `Codable`, `Sendable`, `Equatable`; enums are `String` enums |
+| `timestamp`, `url`, `json`, `bytes` | `Date` (milliseconds on the wire), `URL`, `BDKJSValue`, `Data` |
+| Command | `async throws` method; optional arguments default to `nil`; a first argument `id` or `key` has no label |
+| One-field result | the field itself (`history.visits` returns `[BDKHistoryVisit]`) |
+| Several-field result | a nested struct (`BDKHistory.SearchResult`) |
+| `progress` | an `onProgress:` parameter, called on the main actor before the result |
+| `gesture` | nothing: a gesture is a page's, and Swift needs none |
+| `authentication` | nothing in the signature: the OS prompt appears, a refusal throws `capability.reauthenticationFailed` |
+| Events of a namespace | `service.events`, an `AsyncStream` of the namespace's `Event` enum, subscribed when the property is read |
+
+Cancelling the task calls `bdk_call_cancel` and throws `broker.cancelled`. A command the runtime does not implement
+throws `broker.notImplemented`. A command whose `callers` leaves out `swift` gets no wrapper. The decisions and the
+places the wrappers differ from the examples in `swift-api.md` are in swift-api.md section 11.1.
+
+Against the stub, `BDKStub` also controls the services: `setAuthentication(.accept)` answers the operating system's
+prompt, `holdServices(true)` keeps commands running so a test can cancel them, and `serviceCount(_:)` reads what
+reached a service. The stub implements only some of the commands (conventions.md, "The broker", rule 12) and emits
+none of the service events, so the event streams are tested for decoding and lifetime, not delivery.
+
 ### Driving the stub
 
 The stub has no event loop. `BDKTestSupport` installs a scheduler into an internal hook (`EventLoop` in `BDK`,
@@ -165,7 +200,8 @@ so a test can start a load and act on it (supersede it, stop it) before the stub
 
 | Left out | Why | Task |
 |---|---|---|
-| Page registration, services, settings, providers on `BDKConfiguration` | The ABI declares `bdk_page_handler_register`, `bdk_app_setting_register` and `bdk_provider_register`; their Swift shape depends on the interface definitions | T-ABI-03, T-SVC-01 |
+| Page registration, application settings and providers on `BDKConfiguration`; wrappers for services with no definition yet (search, translation, extensions, favicons, top sites; page-scoped print and capture) | The ABI declares `bdk_page_handler_register`, `bdk_app_setting_register` and `bdk_provider_register`; the wrappers are generated, so each arrives with its definition | T-ABI-03, T-SWF-04, T-SVC-06 |
+| `BDKSettingKey<T>` typed keys; `BDKProfiles.events` for the `profiles.*` events | The keys need the setting registration; `profiles` is a native namespace | T-SVC-05, T-ABI-03 |
 | `BDKWindow`, anchors, window delegate, host contexts | `bdk_window_register` takes a window and a kind and nothing more yet; the other `bdk_window_*` functions are not declared | T-UIR-01, T-ADP-06 |
 | Page commands (`perform`, `canPerform`), find, capture, print, translation, scripting, user scripts | Not declared in the ABI | T-UIR-04, T-UIR-06, T-SVC-06, T-AUT-03 |
 | `BDKRuntime.contents` lookup by id, `BDKProfiles.events`, `ProfileDescriptor.lastUsed`, profile rename by id | Not in the ABI (a rename needs an open profile handle) | T-ABI-03 |

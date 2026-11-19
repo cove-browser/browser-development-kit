@@ -40,7 +40,7 @@ function definitions(
       args: [],
       result: "void",
     })),
-    events: events.map((name) => ({ name, capability: "a.read" })),
+    events: events.map((name) => ({ name, capability: "a.read", payload: [] })),
   };
 }
 

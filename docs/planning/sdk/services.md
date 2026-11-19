@@ -468,4 +468,6 @@ The spec excludes any built-in sync and says an application may build its own on
 | The capability table | The engine's broker and the `bdk.toml` schema |
 | Reference documentation | `apps/docs` |
 
+The Swift wrappers are generated, not written by hand (T-SVC-02 to T-SVC-06, decided 2026-11-19). `packages/js/codegen` (`src/swift.ts`) writes `packages/swift/Sources/BDK/Generated/BDKServices.swift`, which is committed; `nx run js-codegen:codegen-check` fails when a definition changed and the file did not, as it does for `bdk_ids.h` and the broker table. A command therefore exists in Swift when it is defined and `callers` includes `swift`. Swift-only naming (a method renamed, a label, a parameter order, the namespaces the SDK implements natively) is a small table at the top of `swift.ts`, never a second definition. The mapping rules are in `packages/swift/README.md`, "Services".
+
 A command that needs Chromium is implemented in `chromium/bdk`. Its argument validation, capability mapping and pagination logic live in `packages/core`, where hosted CI tests them without a Chromium build (tooling document 10.1).

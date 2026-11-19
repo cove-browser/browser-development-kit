@@ -9,6 +9,7 @@ import {
   reconcile,
   serializeRegistry,
 } from "./registry.js";
+import { renderSwiftServices, SWIFT_PATH, SWIFT_REPORT_PATH } from "./swift.js";
 import { renderCommandTable, TABLE_PATH } from "./table.js";
 import { parsePolicy, type SourceFile, validate } from "./validate.js";
 
@@ -31,6 +32,7 @@ export interface Outputs {
   readonly registry: string;
   readonly header: string;
   readonly table: string;
+  readonly swift: string;
 }
 
 function parseJson(file: string, text: string): { json: unknown; issues: Issue[] } {
@@ -81,6 +83,7 @@ export function build(inputs: Inputs): Outputs {
     registry: serializeRegistry(reconciled.registry),
     header: renderHeader(validated.definitions, reconciled.registry),
     table: renderCommandTable(validated.definitions, reconciled.registry, policy),
+    swift: renderSwiftServices(validated.definitions),
   };
 }
 
@@ -115,6 +118,7 @@ export function generate(coreDir: string): string[] {
     [join(coreDir, "interface", REGISTRY_FILE), outputs.registry],
     [join(coreDir, HEADER_PATH), outputs.header],
     [join(coreDir, TABLE_PATH), outputs.table],
+    [join(coreDir, SWIFT_PATH), outputs.swift],
   ] as const;
   const written: string[] = [];
   for (const [path, text] of targets) {
@@ -140,5 +144,6 @@ export function check(coreDir: string): string[] {
   if (readOptional(join(coreDir, TABLE_PATH)) !== outputs.table) {
     stale.push(`packages/core/${TABLE_PATH}`);
   }
+  if (readOptional(join(coreDir, SWIFT_PATH)) !== outputs.swift) stale.push(SWIFT_REPORT_PATH);
   return stale;
 }

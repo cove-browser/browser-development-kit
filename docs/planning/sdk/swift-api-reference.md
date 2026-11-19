@@ -531,18 +531,19 @@ Every command in [services.md](services.md) section 5 has a typed wrapper genera
 
 | Service | Examples from the spec | Events (AS) |
 |---|---|---|
-| `profile.history` | `search(_, in:, limit:) async throws`, `delete(urls:) async throws` | `.visited`, `.removed` |
-| `profile.bookmarks` | `root(.bar)`, `createFolder(_, in:)`, `create(url:, title:, in:, at:)`, `move(_, to:, at:)` (all `async throws`) | |
+| `profile.history` | `search(_, in:, limit:, cursor:) async throws -> SearchResult`, `delete(urls:) async throws` | `.visited`, `.removed` |
+| `profile.bookmarks` | `roots()`, `createFolder(_, in:, at:)`, `create(url:, title:, in:, at:)`, `move(_, to:, at:)` (all `async throws`) | `.created`, `.changed`, `.moved`, `.removed`, `.reordered` |
 | `profile.downloads` | `pause(id)` and the rest of the manage set | `.created`, `.updated`, `.completed`, `.interrupted`, `.removed` |
-| `profile.settings` | `get(.key)`, `set(.key, value)`, typed by key | |
-| `profile.permissions` | `set(.camera, for: origin, to: .block)` | |
-| `profile.privacy` | `clear([.history, .cookies, .cache], since: .lastHour)` | |
-| `profile.passwords` | `list()` (metadata only), `reveal(id)` (needs OS authentication) | |
+| `profile.settings`, `runtime.settings` | `get(_ key)`, `get(_ key, as:)`, `set(_ key, _ value)` (keys are strings until T-SVC-05) | `.changed` |
+| `profile.permissions` | `set(origin:, kind:, value:)` | `.changed` |
+| `profile.privacy` | `clear(types:, range:, origins:, onProgress:)` | `.cleared` |
+| `profile.passwords` | `list()` (metadata only), `reveal(_ id)` (needs OS authentication) | `.changed`, `.issuesChanged` |
 | `profile.search` (Added, S1) | `classify(_) -> .url(URL) \| .search(URL, engine)`, `suggestions(for:, in:)` | `suggestions` is AS of batches |
-| `runtime.system.defaultBrowser` | `status() async`, `request() async throws` (macOS asks the user) | |
+| `runtime.system.defaultBrowser` | `status() async throws`, `request() async throws` (macOS asks the user) | |
+| `runtime.about` | `info() async throws`, `caller() async throws` (`runtime.info`, `runtime.caller`) | |
 | `runtime.commands` | `invoke(_ name, _ input, profile:) async throws -> Output` | Generic entry point for commands with no wrapper, including `app.` commands |
 
-Swift calls are not capability-checked (`architecture.md` 9.1).
+Swift calls are not capability-checked (`architecture.md` 9.1). The rules the generator follows, and the places this table departs from [swift-api.md](swift-api.md) 11.1, are in swift-api.md 11.1 ("Settled in T-SVC-02 to T-SVC-06").
 
 ### 11.2 Provider registration (Plan, M6, T-PRV-01 to T-PRV-09)
 

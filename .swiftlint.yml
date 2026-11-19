@@ -4,6 +4,8 @@ included:
   - apps
 excluded:
   - "**/.build"
+  # Written by packages/js/codegen; swift-format skips it with an ignore marker.
+  - "**/Generated"
 disabled_rules:
   - line_length
   - trailing_whitespace

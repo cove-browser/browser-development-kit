@@ -63,6 +63,8 @@ export interface Command {
 export interface EventDefinition {
   readonly name: string;
   readonly capability: string;
+  /** A struct body, or a type expression. */
+  readonly payload: string | readonly FieldDefinition[];
 }
 
 export type TypeDefinition =

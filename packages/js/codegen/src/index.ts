@@ -11,6 +11,7 @@ export { renderHeader } from "./header.js";
 export { formatIssue, InterfaceError, type Issue } from "./issue.js";
 export type * from "./model.js";
 export { parseRegistry, type Registry, reconcile, serializeRegistry } from "./registry.js";
+export { NATIVE_NAMESPACES, renderSwiftServices, SWIFT_PATH } from "./swift.js";
 export { renderCommandTable, TABLE_PATH } from "./table.js";
 export { macroFragment, parsePolicy, validate } from "./validate.js";
 

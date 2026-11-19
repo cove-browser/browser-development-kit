@@ -672,6 +672,16 @@ let isDefault = await runtime.system.defaultBrowser.status()
 try await runtime.system.defaultBrowser.request()                  // macOS asks the user
 ```
 
+Settled in T-SVC-02 to T-SVC-06 (2026-11-19), against the stub: the wrappers are generated (services.md 9) and follow the interface definitions mechanically, with a few names from this section kept by a table in the generator.
+
+- A namespace is a `struct` (`BDKHistory`, `BDKBookmarks`, ...). Profile-scoped namespaces hang on `BDKProfile` (`profile.history`), application-scoped ones on `BDKRuntime`. `settings` has both: `profile.settings` and `runtime.settings` (the application's own store). `runtime.info` is `runtime.about.info()`, because `BDKRuntime.info` is the ABI version. `system.defaultBrowser.status` is `runtime.system.defaultBrowser.status()`; `autofill.cards.list` is `profile.autofill.cards.list()`.
+- `profiles.*` has no generated wrapper: `runtime.profiles` and `BDKProfile` use the ABI's own profile functions.
+- Named types carry the `BDK` prefix (`BDKHistoryEntry`, `BDKTimeRange`, `BDKPermissionValue`). `timestamp` is `Date` (milliseconds on the wire), `url` is `URL`, `json` is `BDKJSValue`, `bytes` is `Data`. Enums are `String` enums without a case for a value a newer runtime might add; one that does not decode fails the call with `runtime.malformedResult`.
+- A result with one field returns that field (`history.visits` returns `[BDKHistoryVisit]`, `passwords.reveal` returns `String`); one with several returns a nested struct (`BDKHistory.SearchResult`, with `items` and `nextCursor`). A paginated command takes `limit` and `cursor` and the caller loops.
+- Names that differ from the examples above: `history.search(_ text, in: range, limit:, cursor:)`, `history.delete(urls:)`, `bookmarks.roots()` (there is no `root(.bar)`), `bookmarks.create(url:, title:, in:, at:)`, `bookmarks.createFolder(_ title, in:, at:)`, `bookmarks.move(_ id, to:, at:)`, `settings.get(_ key) -> BDKJSValue` with `get(_ key, as: Value.self)` and `set(_ key, _ value)` for any `Codable` value (keys are strings; typed `BDKSettingKey` waits for T-SVC-05's setting registration), `permissions.set(origin:, kind:, value:)` (the kind is a string, not an enum), `privacy.clear(types:, range:, origins:, onProgress:)`, `passwords.reveal(_ id)`.
+- Marks. A command marked P takes `onProgress`. A command marked G (gesture) needs nothing from Swift: the gesture is a page's, and the host never needs one, so no `NSEvent` parameter exists. A command marked A (authentication) shows the operating system's prompt whoever calls; a refusal throws `capability.reauthenticationFailed`. Cancelling the Swift task cancels the call (`broker.cancelled`).
+- Events: `profile.history.events` is an `AsyncStream<BDKHistory.Event>`. Reading the property subscribes at once (unlike `BDKEventSequence`, which subscribes when iterated), so events after that point are delivered; the stream ends when it is dropped or the runtime shuts down.
+
 The generic entry point exists for commands a wrapper does not cover, including `app.` commands:
 
 ```swift

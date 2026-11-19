@@ -492,7 +492,11 @@ export function validate(files: readonly SourceFile[], context: ValidationContex
       else if (isObject(entry.payload)) checkFields(file, `${path}.payload`, entry.payload);
       else checkTypeExpression(file, `${path}.payload`, entry.payload, false);
       if (name !== undefined && eventCapability !== undefined)
-        events.push({ name, capability: eventCapability });
+        events.push({
+          name,
+          capability: eventCapability,
+          payload: isObject(entry.payload) ? fieldsOf(entry.payload) : String(entry.payload),
+        });
     });
   }
 
