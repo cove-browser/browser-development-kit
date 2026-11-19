@@ -215,6 +215,8 @@ The product owner asked for M0 to be skipped and M2 completed. What that changed
 | Conformance against the real runtime (T-ABI-04) through ordinary ABI calls | Through test hooks the engine exports (`chromium/bdk/engine/bdk_testing.h`, not ABI): scripted navigations without the network, UI requests raised for the application's handler, script with a user gesture, clicks. | The shipped framework carries the hooks. They act only as the application, on its own pages; no page or session can reach them. |
 | Undocked DevTools through Chrome's `DevToolsWindow` | Chrome's bundled front end in a BDK page with `DevToolsUIBindings`, raised as a new-window request of kind `devTools`. | Docked DevTools and `DevToolsWindow` features (docking, the eye dropper) are absent until a host context exists. |
 
+Notarization and a real Developer ID identity are not M2 work: they happen when a release is cut (T-PKG-06, M9), by the product owner's decision of 2026-11-19. T-PKG-03 is complete with ad hoc signing.
+
 Seven patches are in the series (`chromium/patches`); each message says why. Three behaviours of the suite moved towards Chromium's: a failed navigation commits an error page for its URL, a title event follows only a title change, and the stub's text session format is tested only against the stub.
 
 ## 3. Tasks and workflows
