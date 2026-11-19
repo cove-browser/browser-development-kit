@@ -409,7 +409,7 @@ bdk_status_t ui_check_handlers(const Runtime& rt, bdk_error_t* out_error) {
     }
     if (missing.empty())
         return BDK_OK;
-    return fail(out_error, BDK_DOMAIN_UI, "handlerMissing",
+    return fail(out_error, BDK_DOMAIN_CONFIG, "handlerMissing",
                 "custom UI surfaces need a handler before the freeze: " + missing);
 }
 

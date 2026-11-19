@@ -346,7 +346,7 @@ std::shared_ptr<Request> raise_ui_request(const std::shared_ptr<Runtime>&,
 /* Reads [ui.surfaces] from the resolved configuration; fails with ui.surfaceUnknown or
    ui.surfaceMode. Called by bdk_runtime_start before the backend starts. */
 bdk_status_t ui_configure(Runtime&, const std::string& resolved_config, bdk_error_t* out_error);
-/* Fails with ui.handlerMissing when a custom surface has no handler. Called at the freeze. */
+/* Fails with config.handlerMissing when a custom surface has no handler. Called at the freeze. */
 bdk_status_t ui_check_handlers(const Runtime&, bdk_error_t* out_error);
 /* False when the configuration disables the surface: the web or extension API behind it must
    report itself unavailable instead of raising a request. */

@@ -78,6 +78,7 @@ public struct BDKStub {
         case rejected
         case cancelled
         case withdrawn
+        case disabled
     }
 
     /// What happened to the most recently raised UI request.
@@ -151,6 +152,7 @@ public struct BDKStub {
                 BDK_STUB_UI_NONE: .none, BDK_STUB_UI_COMPLETED: .completed,
                 BDK_STUB_UI_DEFAULTED: .defaulted, BDK_STUB_UI_REJECTED: .rejected,
                 BDK_STUB_UI_CANCELLED: .cancelled, BDK_STUB_UI_WITHDRAWN: .withdrawn,
+                BDK_STUB_UI_DISABLED: .disabled,
             ]
             return UIOutcome(
                 kind: kinds[abi.kind] ?? .none, surface: abi.surface,

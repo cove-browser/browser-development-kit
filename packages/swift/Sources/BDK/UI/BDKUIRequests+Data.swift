@@ -252,7 +252,7 @@ public class BDKInterstitialRequest: BDKUIRequest {
 
     /// `.reject` and a dropped request mean this as well.
     public func goBack() {
-        try? submit("deny")
+        try? submit("go_back")
     }
 
     public func proceed(confirmedBy event: NSEvent) throws {
@@ -261,7 +261,7 @@ public class BDKInterstitialRequest: BDKUIRequest {
                 domain: .ui, code: "notOverridable",
                 message: "Chromium does not allow proceeding past this warning")
         }
-        try submit("grant", gesture: event)
+        try submit("proceed", gesture: event)
     }
 }
 

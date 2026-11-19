@@ -140,7 +140,7 @@ extension BDKStubTests {
                 #expect(request.error == "dateInvalid" && request.certificate.subject == "bad.test")
                 #expect(request.text.title == "Not private")
                 try request.proceed(confirmedBy: try confirmingEvent())
-                try fixture.expectOutcome(.completed, "grant", "{}")
+                try fixture.expectOutcome(.completed, "proceed", "{}")
 
                 request = try fixture.deliver(
                     CertificateErrorRequest.self, BDK_SURFACE_CERTIFICATE_ERRORS,
@@ -151,7 +151,7 @@ extension BDKStubTests {
                 }
                 #expect(!request.isCompleted)
                 request.goBack()
-                try fixture.expectOutcome(.completed, "deny", "{}")
+                try fixture.expectOutcome(.completed, "go_back", "{}")
 
                 let warning = try fixture.deliver(
                     ReputationWarningRequest.self, BDK_SURFACE_REPUTATION_WARNINGS,
@@ -159,7 +159,7 @@ extension BDKStubTests {
                 )
                 #expect(warning.verdict == .phishing)
                 try warning.proceed(confirmedBy: try confirmingEvent())
-                try fixture.expectOutcome(.completed, "grant", "{}")
+                try fixture.expectOutcome(.completed, "proceed", "{}")
             }
         }
 
@@ -167,6 +167,7 @@ extension BDKStubTests {
             try await withUIFixture { fixture in
                 let request = try fixture.deliver(BDKUIRequest.self, BDK_SURFACE_DOWNLOADS)
                 #expect(request is DownloadRequest)
+                request.useDefaultPresenter()
                 let dangerous = try fixture.deliver(
                     BDKUIRequest.self, BDK_SURFACE_DOWNLOADS, "{\"danger\":\"uncommon\"}")
                 #expect(dangerous is DangerousDownloadRequest)

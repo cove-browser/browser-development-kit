@@ -932,7 +932,7 @@ public struct BDKError: Error, Sendable {
 | `extension` | `incompatible`, `sourceNotAllowed`, `notFound`, `surfaceDisabled`, `installCancelled` |
 | `provider` | `unavailable`, `unsupportedPair`, `modelDownloadFailed`, `remoteError` |
 | `automation` | `disabled`, `hostGone`, `sessionRevoked`, `scriptNotFound`, `scriptFailed` |
-| `ui` | `requestCompleted`, `gestureRequired`, `surfaceDisabled` |
+| `ui` | `requestCompleted`, `gestureRequired`, `surfaceDisabled`, `surfaceMode`, `surfaceUnknown`, `completionNotAllowed`, `notOverridable`, `widensRequest` |
 | `devtools` | `disabled`, `protocolDisabled`, `alreadyAttached` |
 | `platform` | `keychainUnavailable`, `notDefaultBrowserCandidate` |
 

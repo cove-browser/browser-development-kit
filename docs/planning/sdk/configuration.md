@@ -173,7 +173,7 @@ One line per surface: `surface = "default" | "custom" | "disabled"`. Surface nam
 | Mode | A handler is | Behaviour |
 |---|---|---|
 | `default` | Optional | The handler, if any, sees each request and returns handled, use-default or reject. With no handler the default presenter shows it. |
-| `custom` | Required before the registration freeze | As `default`, but a surface with no handler when registrations are frozen fails the freeze with `ui.handlerMissing` (the runtime reads the resolved configuration at start, and handlers are registered after start and before the freeze). The default presenter is still available through use-default. |
+| `custom` | Required before the registration freeze | As `default`, but a surface with no handler when registrations are frozen fails the freeze with `config.handlerMissing` (the runtime reads the resolved configuration at start, and handlers are registered after start and before the freeze). The default presenter is still available through use-default. |
 | `disabled` | Ignored | The feature is unavailable. Requests are denied or cancelled, and the web or extension API behind them reports itself unavailable. Not allowed for surfaces marked "cannot be disabled". |
 
 ### 3.7 `[extensions]`
@@ -611,7 +611,7 @@ Each has a stable code, used by fixtures in `tests/config/`. Messages name the f
 | `pages.capability_target` | A grant for a route that is not a bundled page |
 | `automation.collision` | Two files in the automation directory have the same script name |
 | `ui.surface_unknown` | An unknown surface name |
-| `ui.surface_mode` | A mode the surface does not allow, such as `disabled` for interstitials. The runtime core checks the resolved file again at start and reports the same condition as `ui.surfaceMode` (and an unknown surface as `ui.surfaceUnknown`, a custom surface without a handler at the freeze as `ui.handlerMissing`) |
+| `ui.surface_mode` | A mode the surface does not allow, such as `disabled` for interstitials. The runtime core checks the resolved file again at start and reports the same condition as `ui.surfaceMode` (and an unknown surface as `ui.surfaceUnknown`, a custom surface without a handler at the freeze as `config.handlerMissing`) |
 | `extensions.store_unknown` | A store name BDK does not ship |
 | `extensions.bundled_invalid` | A bundled extension with no valid manifest |
 | `services.provider_unknown` | A provider name BDK does not ship |

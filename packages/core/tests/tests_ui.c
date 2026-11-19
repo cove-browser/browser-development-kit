@@ -460,7 +460,7 @@ static void test_a_custom_surface_needs_a_handler_before_the_freeze(void) {
     char message[160];
     bdk_string_t m = bdk_error_message(err);
     snprintf(message, sizeof message, "%.*s", (int)m.length, m.data);
-    CHECK(t_error_is(err, "ui", "handlerMissing"));
+    CHECK(t_error_is(err, "config", "handlerMissing"));
     CHECK(strstr(message, "permissions") != NULL && strstr(message, "find") == NULL);
     /* The failed freeze changed nothing: the handler can still be registered. */
     REQUIRE(bdk_ui_set_handler(t_runtime, BDK_SURFACE_PERMISSIONS, ui_handler, NULL, NULL, &err) ==

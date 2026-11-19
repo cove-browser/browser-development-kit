@@ -54,7 +54,7 @@ extension BDKStubTests {
                 for surface in BDKUISurface.allCases {
                     try fixture.raise(surface.rawValue)
                     #expect(try #require(fixture.box.request).isCompleted)
-                    try fixture.expectOutcome(.rejected)
+                    try expectNeverGranted(fixture, surface, otherwise: .rejected)
                 }
             }
         }
@@ -65,7 +65,7 @@ extension BDKStubTests {
                     try fixture.raise(surface.rawValue)
                     #expect(try #require(fixture.box.request).isCompleted == false)
                     fixture.box.request = nil
-                    try fixture.expectOutcome(.cancelled)
+                    try expectNeverGranted(fixture, surface, otherwise: .cancelled)
                 }
             }
         }
@@ -192,5 +192,50 @@ extension BDKStubTests {
                 #expect(runtime.ui.permissions.mode == .default)
             }
         }
+
+        @Test func aDisabledSurfaceNeverReachesItsHandler() async throws {
+            let box = UIBox()
+            let configuration = BDKConfiguration(
+                resolvedJSON: "{\"surfaces\":{\"notifications\":\"disabled\"}}")
+            try configuration.ui.notifications.setHandler { request in
+                box.request = request
+                return .handled
+            }
+            try await withStubRuntime(configuration) { runtime in
+                let profile = try await runtime.profiles.open("Disabled")
+                let page = try profile.webContents.create()
+                try runtime.stub.raiseUIRequest(surface: BDK_SURFACE_NOTIFICATIONS, on: page)
+                runtime.stub.pump()
+                #expect(box.request == nil)
+                #expect(try runtime.stub.lastUIOutcome.kind == .disabled)
+            }
+        }
+
+        @Test func aCustomSurfaceWithoutAHandlerFailsTheFreeze() async throws {
+            let configuration = BDKConfiguration(
+                resolvedJSON: "{\"surfaces\":{\"find\":\"custom\"}}")
+            try await withStubRuntime(configuration, freezingRegistrations: false) { runtime in
+                await expectError(.config, "handlerMissing") {
+                    try runtime.freezeRegistrations()
+                }
+                try runtime.ui.find.setHandler { _ in .useDefault }
+                try runtime.freezeRegistrations()
+            }
+        }
+    }
+}
+
+/// A rejected or dropped interstitial goes back, which the router reports as that completion; any
+/// other surface reports `otherwise`.
+@MainActor
+private func expectNeverGranted(
+    _ fixture: UIFixture, _ surface: BDKUISurface, otherwise kind: BDKStub.UIOutcomeKind,
+    sourceLocation: SourceLocation = #_sourceLocation
+) throws {
+    switch surface {
+    case .certificateErrors, .reputationWarnings:
+        try fixture.expectOutcome(.completed, "go_back", "{}", sourceLocation: sourceLocation)
+    default:
+        try fixture.expectOutcome(kind, sourceLocation: sourceLocation)
     }
 }
