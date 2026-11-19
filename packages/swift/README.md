@@ -87,7 +87,7 @@ so a test can start a load and act on it (supersede it, stop it) before the stub
 | `BDKWindow`, anchors, window delegate, host contexts | `bdk_window_register` takes a window and a kind and nothing more yet; the other `bdk_window_*` functions are not declared | T-UIR-01, T-ADP-06 |
 | Page commands (`perform`, `canPerform`), find, capture, print, translation, scripting, user scripts | Not declared in the ABI | T-UIR-04, T-UIR-06, T-SVC-06, T-AUT-03 |
 | `BDKRuntime.contents` lookup by id, `BDKProfiles.events`, `ProfileDescriptor.lastUsed`, profile rename by id | Not in the ABI (a rename needs an open profile handle) | T-ABI-03 |
-| `displayURL`, favicon, `capture`, `isCrashed`, `isDiscarded`, `isAutoDiscardable` getter, `isFullscreen`, opener, `extensionTabID`, `hoveredLinkChanged`, process-gone and discard events | `bdk_contents_state_t` and the event kinds do not carry them | T-ABI-03 |
+| `displayURL`, favicon, `capture`, `isCrashed`, `isDiscarded`, `isAutoDiscardable` getter, `isFullscreen`, opener, `extensionTabID`, `hoveredLinkChanged`, discard events (renderer loss is `.rendererGone`) | `bdk_contents_state_t` and the event kinds do not carry them | T-ABI-03 |
 | Navigation `LoadOptions`, `prune`, `deferInitialLoad`, `userAgent` and `isInitiallyMuted` creation options | Not in `bdk_contents_options_t` or `bdk_contents_load` | T-ABI-03 |
 | `RuntimeMode`, `bdkVersion`, `chromiumVersion`, `manifestDigest` in `BDKRuntime.Info` | Only `bdk_runtime_manifest_json` exists and its schema is not fixed | T-CHR-08 |
 | A Swift test target against the real runtime | The runtime needs an app bundle around it; the real runtime is tested from the minimal browser's end-to-end tests and the C engine suite (`nx run core:test-engine`) instead | — |
