@@ -15,7 +15,8 @@ the root. Sources stay here; the targets point into `packages/swift` and `packag
 | `CBDK` | `Sources/CBDK` | The C module Swift imports: the headers in `packages/core/include/bdk` and `packages/core/generated/bdk_abi_hash.h`, reached through two symlinks in `include/`. `BDK_ABI_VERSION` and `BDK_ABI_HASH` are read from them, never copied. The `CBDKStub` module in the same module map exposes `packages/core/stub/bdk_stub.h`. |
 | `BDKStubRuntime` | `packages/core` | The in-memory runtime: the runtime core (`runtime/`) and the stub backend (`stub/`), compiled as C++. It is not a dependency of `BDK`. |
 | `BDK` | `Sources/BDK` | The SDK. Depends only on `CBDK`. |
-| `BDKTestSupport` | `Sources/BDKTestSupport` | `BDKRuntime.startStub`, the stub's controls (`runtime.stub`) and the driver that pumps the stub. Depends on `BDK` and `BDKStubRuntime`. |
+| `BDKTestSupport` | `Sources/BDKTestSupport` | `BDKRuntime.startStub`, the stub's controls (`runtime.stub`) and the driver that pumps the stub. Depends on `BDK`, `BDKStubRuntime` and `BDKStubApplication`. |
+| `BDKStubApplication` | `Sources/BDKStubApplication` | The stub's `BDKApplicationBase` (`packages/core/include/bdk_mac/bdk_application.h`), a plain `NSApplication` subclass. The real runtime's framework exports its own. |
 | `BDKTests` | `Tests/BDKTests` | Swift Testing suites. All suites are nested in one serialized suite, because the runtime is process-wide. |
 
 `cxxLanguageStandard: .cxx2b` is C++23 (SwiftPM has no `.cxx23` yet). No `unsafeFlags` are used, so the package
@@ -37,7 +38,7 @@ session (a logged-in Mac or the hosted macOS runner).
 
 | Area | Types | Task |
 |---|---|---|
-| Application | `BDKApplication` (an `NSApplication` subclass; Chromium's protocol conformance and event routing arrive with T-MAC-01 and T-MAC-02) | T-SWF-01 |
+| Application | `BDKApplication`, a subclass of the runtime's `BDKApplicationBase`: Chromium's `BrowserCrApplication` with the real runtime (event routing, accessibility activation), `NSApplication` with the stub. `BDKRuntime.terminate(replyingTo:)` cancels the first quit, shuts down and quits again | T-SWF-01, T-MAC-02 |
 | ABI check | `BDKRuntime.start` passes the version and hash from the headers; a mismatch throws `BDKError` `abi.versionMismatch` or `abi.hashMismatch`, and the message and `details` name the host's and the runtime's values | T-SWF-01 |
 | Configuration | `BDKConfiguration` (resolved JSON, bundle URL, `LaunchOptions.userDataDirectory`), `load(from:)` reads `bdk.resolved.json` from a bundle. Route resolution is the CLI's job. | T-SWF-02 |
 | Runtime | `BDKRuntime`: `start`, `shared`, `isRunning`, `info`, `events`, `shutdown()`, `terminate(replyingTo:)`. `start` freezes the registrations. | T-SWF-02 |
@@ -89,5 +90,5 @@ so a test can start a load and act on it (supersede it, stop it) before the stub
 | `displayURL`, favicon, `capture`, `isCrashed`, `isDiscarded`, `isAutoDiscardable` getter, `isFullscreen`, opener, `extensionTabID`, `hoveredLinkChanged`, process-gone and discard events | `bdk_contents_state_t` and the event kinds do not carry them | T-ABI-03 |
 | Navigation `LoadOptions`, `prune`, `deferInitialLoad`, `userAgent` and `isInitiallyMuted` creation options | Not in `bdk_contents_options_t` or `bdk_contents_load` | T-ABI-03 |
 | `RuntimeMode`, `bdkVersion`, `chromiumVersion`, `manifestDigest` in `BDKRuntime.Info` | Only `bdk_runtime_manifest_json` exists and its schema is not fixed | T-CHR-08 |
-| Chromium application protocols and event routing in `BDKApplication`; the real native view; `@testable` conformance against the real runtime | Need the engine | T-MAC-01, T-MAC-02, T-MAC-03 |
+| A Swift test target against the real runtime | The runtime needs an app bundle around it; the real runtime is tested from the minimal browser's end-to-end tests and the C engine suite (`nx run core:test-engine`) instead | — |
 | The runtime as a binary target | | T-PKG-04 |

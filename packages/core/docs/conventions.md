@@ -146,3 +146,19 @@ select tests.
 No AppKit, Win32 or toolkit type appears; native objects cross only as `bdk_native_handle_t` (kinds exist for NSView,
 NSWindow, NSApplication, NSEvent, HWND, X11 and Wayland). The stub uses only the C++23 standard library and
 pthreads, and builds on macOS and Linux.
+
+## Running the suite against the engine
+
+`nx run core:test-engine` (`scripts/test-engine.sh`) builds `BDKEngineConformance.app` with CMake
+(`-DBDK_ENGINE_FRAMEWORK=<directory with Chromium Framework.framework>`, default the runtime at
+`.bdk/runtime`), embeds the framework and runs the suite plus `tests/tests_engine.c` in it. The harness
+(`tests/harness_engine.mm`) is an application, because the framework needs `NSApplication` and an app bundle;
+it drives the engine through `chromium/bdk/engine/bdk_testing.h`. Chromium starts once per process, so the
+harness keeps it between runtimes (`BDK_ENGINE_KEEP_CHROMIUM`), forgets persistent profiles at each start (the
+suite expects a new data directory) and serves every http(s) load from the engine's interceptor. It needs a
+logged-in Mac. Scenarios that need a key window (an input method's composition) are skipped, with a message,
+when macOS does not let the harness come to the front. `BDK_TEST_TRACE=1` prints every contents event.
+
+A harness implements four hooks besides pumping and acting as Chromium: `bdk_harness_prepare_start_config`,
+`bdk_harness_attach_view` (focus needs a window in a real runtime), `bdk_harness_session_format` (tests that
+craft the stub's text format run only for it) and `bdk_harness_newer_session_state`.
