@@ -467,4 +467,4 @@ When a `dev` branch starts producing beta releases, a build machine and a build 
 | Everything above on a real Chromium checkout and build | Unverified; tasks T-CHR-01 to T-CHR-07 |
 | Nx behaviour with concurrent runs writing very large outputs | Unverified, and avoided by design |
 | Linux and Windows equivalents of `lockf` and APFS clones | Unverified; `flock` and reflink copies are the expected equivalents |
-| A Node single executable of the CLI runs from a Swift package artifact bundle and an Xcode build phase | Unverified; T-CLI-05 |
+| A Node single executable of the CLI runs from a Swift package artifact bundle and an Xcode build phase | Verified for the executable, the artifact bundle under SwiftPM, no Node on `PATH` and start-up time (2026-11-18, [sdk/cli.md](sdk/cli.md) section 2.3). Not verified in an Xcode run-script phase. |
