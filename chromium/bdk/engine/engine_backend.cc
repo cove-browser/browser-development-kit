@@ -118,7 +118,7 @@ class EngineBackend final : public bdkcore::Backend {
       user_data_dir = app_data.Append(identity->storage_directory);
     }
     if (IsChromiumRunning()) {
-      if (user_data_dir != user_data_dir_) {
+      if (user_data_dir != requested_user_data_dir_) {
         return bdkcore::fail(
             out_error, BDK_DOMAIN_RUNTIME, "restartUnsupported",
             "Chromium already runs in this process with another data "
@@ -129,6 +129,11 @@ class EngineBackend final : public bdkcore::Backend {
         return bdkcore::fail(out_error, BDK_DOMAIN_RUNTIME, "noDataDirectory",
                              "cannot create " + user_data_dir.value());
       }
+      // Chromium compares profile paths with its own resolved user data
+      // directory: resolve symbolic links (/var is /private/var) and doubled
+      // separators now.
+      requested_user_data_dir_ = user_data_dir;
+      user_data_dir = base::MakeAbsoluteFilePath(user_data_dir);
       user_data_dir_ = user_data_dir;
       // The UI thread may not block once Chromium runs: read the registry now
       // and keep it in memory from here on.
@@ -499,12 +504,12 @@ class EngineBackend final : public bdkcore::Backend {
     if (!profile.data) {
       return;
     }
-    EngineProfile& data = ProfileData(profile);
-    if (profile.ephemeral && data.profile) {
-      ProfileDestroyer::DestroyOTRProfileWhenAppropriate(data.profile);
-    }
-    data.profile = nullptr;
+    // Let go of every pointer to the profile before Chromium may destroy it.
+    Profile* chromium_profile = ProfileData(profile).profile;
     profile.data.reset();
+    if (profile.ephemeral && chromium_profile) {
+      ProfileDestroyer::DestroyOTRProfileWhenAppropriate(chromium_profile);
+    }
   }
 
   struct Registry {
@@ -545,6 +550,8 @@ class EngineBackend final : public bdkcore::Backend {
 
   std::atomic<bool> chromium_tasks_{false};
   base::FilePath user_data_dir_;
+  // As the application gave it, before symbolic links are resolved.
+  base::FilePath requested_user_data_dir_;
   raw_ptr<Profile> base_profile_ = nullptr;
   scoped_refptr<base::SequencedTaskRunner> registry_writer_;
   Registry registry_;
