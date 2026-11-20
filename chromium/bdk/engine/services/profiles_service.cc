@@ -11,9 +11,9 @@
 #include <string>
 #include <utility>
 
-#include "base/json/json_reader.h"
 #include "base/no_destructor.h"
 #include "base/strings/string_number_conversions.h"
+#include "bdk/engine/json_util.h"
 #include "bdk/engine/services/events.h"
 #include "bdk/engine/services/services.h"
 #include "components/version_info/version_info.h"
@@ -171,8 +171,7 @@ void Delete(const std::shared_ptr<ServiceCall>& c) {
 }  // namespace
 
 void SetRuntimeInfo(const std::string& resolved_json) {
-  std::optional<base::DictValue> resolved = base::JSONReader::ReadDict(
-      resolved_json, base::JSON_PARSE_CHROMIUM_EXTENSIONS);
+  std::optional<base::DictValue> resolved = ParseJsonDict(resolved_json);
   if (!resolved) {
     return;
   }

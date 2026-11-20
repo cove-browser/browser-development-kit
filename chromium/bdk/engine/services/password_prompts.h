@@ -10,6 +10,7 @@
 
 #include "base/memory/weak_ptr.h"
 #include "bdk/core/runtime/core_internal.h"
+#include "bdk/engine/ui_request.h"
 #include "chrome/browser/ui/views/tab_dialogs_views.h"
 #include "content/public/browser/web_contents.h"
 
@@ -36,10 +37,7 @@ class BdkTabDialogs : public TabDialogsViews {
   // What the user (or the application on their behalf) chose.
   enum class Choice { kSave, kNotNow, kNever, kNoInteraction };
 
-  void Finished(bool is_update,
-                bdkcore::UiOutcome outcome,
-                const std::string& completion,
-                const std::string& arguments);
+  void Finished(bool is_update, const UiResult& result);
   // Gives the password manager the answer, if it still waits for one (the
   // page may have moved on while a sheet was open), and closes the bubble.
   void Apply(bool is_update, Choice choice);

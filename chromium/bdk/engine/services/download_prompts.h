@@ -25,11 +25,11 @@ namespace bdk {
 // Call once per profile, as soon as it is loaded and before it can download.
 void InstallDownloadPrompts(Profile* profile);
 
-// For tests (bdk_testing_control "downloads.ask"): makes every loaded profile
+// For tests (bdk_testing_command "downloads.ask"): makes every loaded profile
 // ask where to save, as the setting does.
 void AskWhereToSaveForTesting(bool ask);
 
-// For tests (bdk_testing_control "downloads.danger"): every download is
+// For tests (bdk_testing_command "downloads.danger"): every download is
 // determined as dangerous content.
 void ForceDangerousDownloadsForTesting(bool on);
 

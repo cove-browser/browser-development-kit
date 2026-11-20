@@ -13,8 +13,8 @@
 #include "base/values.h"
 #include "bdk/core/include/bdk/bdk_ids.h"
 #include "bdk/engine/engine_contents.h"
-#include "bdk/engine/services/native_presenter.h"
-#include "bdk/engine/services/ui_requests.h"
+#include "bdk/engine/ui_presenters.h"
+#include "bdk/engine/ui_request.h"
 #include "chrome/browser/ui/passwords/manage_passwords_ui_controller.h"
 #include "components/password_manager/core/browser/password_form.h"
 #include "components/password_manager/core/common/password_manager_ui.h"
@@ -51,7 +51,7 @@ BdkTabDialogs::~BdkTabDialogs() {
 void BdkTabDialogs::ShowManagePasswordsBubble(bool user_action) {
   content::WebContents* contents = contents_.get();
   ManagePasswordsUIController* controller = ControllerOf(contents);
-  EngineContents* page = FindEngineContents(contents);
+  EngineContents* page = EngineContents::FromWebContents(contents);
   if (!controller || !page) {
     return;
   }
@@ -76,14 +76,14 @@ void BdkTabDialogs::ShowManagePasswordsBubble(bool user_action) {
   controller->OnBubbleShown();
   base::WeakPtr<BdkTabDialogs> self = weak_factory_.GetWeakPtr();
   request_ = RaiseUiRequest(*page, BDK_SURFACE_PASSWORDS, payload,
-                            [self, is_update](bdkcore::UiOutcome outcome,
-                                              const std::string& completion,
-                                              const std::string& arguments) {
-                              if (self) {
-                                self->Finished(is_update, outcome, completion,
-                                               arguments);
-                              }
-                            });
+                            base::BindOnce(
+                                [](base::WeakPtr<BdkTabDialogs> self,
+                                   bool is_update, const UiResult& result) {
+                                  if (self) {
+                                    self->Finished(is_update, result);
+                                  }
+                                },
+                                self, is_update));
   if (!request_) {
     controller->OnNoInteraction();
     controller->OnBubbleHidden();
@@ -99,16 +99,13 @@ void BdkTabDialogs::HideManagePasswordsBubble() {
   }
 }
 
-void BdkTabDialogs::Finished(bool is_update,
-                             bdkcore::UiOutcome outcome,
-                             const std::string& completion,
-                             const std::string& arguments) {
+void BdkTabDialogs::Finished(bool is_update, const UiResult& result) {
   request_.reset();
-  switch (outcome) {
+  switch (result.outcome) {
     case bdkcore::UiOutcome::kCompleted:
-      if (completion == "grant") {
+      if (result.completion == "grant") {
         Apply(is_update, Choice::kSave);
-      } else if (ArgumentIsTrue(arguments, "never")) {
+      } else if (result.args.FindBool("never").value_or(false)) {
         Apply(is_update, Choice::kNever);
       } else {
         Apply(is_update, Choice::kNotNow);
@@ -117,7 +114,7 @@ void BdkTabDialogs::Finished(bool is_update,
     case bdkcore::UiOutcome::kDefaulted: {
       content::WebContents* contents = contents_.get();
       ManagePasswordsUIController* controller = ControllerOf(contents);
-      EngineContents* page = FindEngineContents(contents);
+      EngineContents* page = EngineContents::FromWebContents(contents);
       if (!controller || !page) {
         return;
       }
@@ -132,8 +129,8 @@ void BdkTabDialogs::Finished(bool is_update,
       if (!is_update) {
         alert.buttons.push_back({"never", "Never for this site"});
       }
-      PresentAlert(
-          "passwords", std::move(alert), WindowOfPage(*page),
+      UiPresenters::Get().ShowAlert(
+          "passwords", &page->host_view(), std::move(alert),
           base::BindOnce(
               [](base::WeakPtr<BdkTabDialogs> self, bool is_update, int index) {
                 if (!self) {

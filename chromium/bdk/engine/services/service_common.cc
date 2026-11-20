@@ -6,9 +6,9 @@
 
 #include <utility>
 
-#include "base/json/json_reader.h"
 #include "bdk/core/include/bdk/bdk_ids.h"
 #include "bdk/engine/engine_contents.h"
+#include "bdk/engine/json_util.h"
 
 namespace bdk {
 
@@ -20,17 +20,7 @@ Profile* ProfileOfCall(const bdkcore::BuiltinCall& call) {
 }
 
 base::DictValue ArgumentsOf(const bdkcore::BuiltinCall& call) {
-  std::optional<base::DictValue> dict = base::JSONReader::ReadDict(
-      call.arguments, base::JSON_PARSE_CHROMIUM_EXTENSIONS);
-  return dict ? std::move(*dict) : base::DictValue();
-}
-
-std::string ToJson(const base::DictValue& value) {
-  return base::WriteJson(value).value_or("{}");
-}
-
-std::string ToJson(const base::ListValue& value) {
-  return base::WriteJson(value).value_or("[]");
+  return ParseJsonDict(call.arguments).value_or(base::DictValue());
 }
 
 void RejectCall(const bdkcore::BuiltinCall& call,

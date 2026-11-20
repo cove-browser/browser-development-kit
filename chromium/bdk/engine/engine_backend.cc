@@ -20,7 +20,6 @@
 #include "base/files/file_util.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
-#include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
 #include "base/no_destructor.h"
 #include "base/path_service.h"
@@ -36,6 +35,7 @@
 #include "bdk/engine/host_context.h"
 #include "bdk/engine/host_view.h"
 #include "bdk/engine/identity.h"
+#include "bdk/engine/json_util.h"
 #include "bdk/engine/services/authentication.h"
 #include "bdk/engine/services/download_prompts.h"
 #include "bdk/engine/services/events.h"
@@ -214,14 +214,12 @@ class EngineBackend final : public bdkcore::Backend {
   }
 
   std::string ManifestJson() override {
-    return base::WriteJson(
-               base::DictValue()
-                   .Set("bdk", "0.0.0")
-                   .Set("chromium", version_info::GetVersionNumber())
-                   .Set("digest", base::Value())
-                   .Set("abiVersion", BDK_ABI_VERSION)
-                   .Set("abiHash", BDK_ABI_HASH))
-        .value_or("{}");
+    return ToJson(base::DictValue()
+                      .Set("bdk", "0.0.0")
+                      .Set("chromium", version_info::GetVersionNumber())
+                      .Set("digest", base::Value())
+                      .Set("abiVersion", BDK_ABI_VERSION)
+                      .Set("abiHash", BDK_ABI_HASH));
   }
 
   // Built-in commands, service by service (engine/services): passwords and
@@ -611,8 +609,7 @@ class EngineBackend final : public bdkcore::Backend {
                                 &text)) {
       return registry;
     }
-    std::optional<base::DictValue> dict =
-        base::JSONReader::ReadDict(text, base::JSON_PARSE_CHROMIUM_EXTENSIONS);
+    std::optional<base::DictValue> dict = ParseJsonDict(text);
     if (!dict) {
       return registry;
     }

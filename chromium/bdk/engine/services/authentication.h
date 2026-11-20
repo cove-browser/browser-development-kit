@@ -11,7 +11,7 @@
 
 namespace bdk {
 
-// What a test makes the operating system answer (testing_control.cc).
+// What a test makes the operating system answer (testing_commands.cc).
 enum class AuthenticationAnswer { kAsk, kAllow, kDeny };
 
 // Asks the user to authenticate with the operating system (Touch ID or the

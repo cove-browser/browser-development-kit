@@ -7,12 +7,13 @@
 #include <string>
 
 #include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/weak_ptr.h"
 #include "base/values.h"
 #include "bdk/core/include/bdk/bdk_ids.h"
 #include "bdk/engine/engine_contents.h"
-#include "bdk/engine/services/presenter_answers.h"
-#include "bdk/engine/services/ui_requests.h"
+#include "bdk/engine/ui_presenters.h"
+#include "bdk/engine/ui_request.h"
 #include "chrome/browser/printing/print_view_manager.h"
 #include "content/public/browser/web_contents.h"
 
@@ -26,8 +27,8 @@ void PrintWithSystemDialog(base::WeakPtr<content::WebContents> weak) {
   if (!contents) {
     return;
   }
-  if (std::optional<std::string> answer = TakePresenterAnswer("printing")) {
-    return;  // a test answered for the panel: none is opened
+  if (ScriptedPresent("printing", base::DictValue(), base::DoNothing())) {
+    return;  // a test scripted the panel: none is opened
   }
   if (auto* manager = printing::PrintViewManager::FromWebContents(contents)) {
     manager->BasicPrint(contents->GetPrimaryMainFrame());
@@ -37,7 +38,7 @@ void PrintWithSystemDialog(base::WeakPtr<content::WebContents> weak) {
 }  // namespace
 
 bool OnPrintRequested(content::WebContents* initiator, bool is_user_initiated) {
-  EngineContents* page = FindEngineContents(initiator);
+  EngineContents* page = EngineContents::FromWebContents(initiator);
   if (!page) {
     return false;
   }
@@ -46,18 +47,21 @@ bool OnPrintRequested(content::WebContents* initiator, bool is_user_initiated) {
   base::WeakPtr<content::WebContents> weak = initiator->GetWeakPtr();
   RaiseUiRequest(
       *page, BDK_SURFACE_PRINTING, payload,
-      [weak](bdkcore::UiOutcome outcome, const std::string& completion,
-             const std::string& arguments) {
-        if (outcome == bdkcore::UiOutcome::kDefaulted) {
-          PrintWithSystemDialog(weak);
-        } else if (outcome == bdkcore::UiOutcome::kCompleted &&
-                   completion == "accept" &&
-                   ArgumentString(arguments, "action") == "systemDialog") {
-          PrintWithSystemDialog(weak);
-        }
-        // Cancelled, rejected, dropped, disabled, and "savePDF" (the print
-        // to PDF command is the way to a file): nothing is printed.
-      });
+      base::BindOnce(
+          [](base::WeakPtr<content::WebContents> weak, const UiResult& result) {
+            const std::string* action = result.args.FindString("action");
+            if (result.outcome == bdkcore::UiOutcome::kDefaulted) {
+              PrintWithSystemDialog(weak);
+            } else if (result.outcome == bdkcore::UiOutcome::kCompleted &&
+                       result.completion == "accept" && action &&
+                       *action == "systemDialog") {
+              PrintWithSystemDialog(weak);
+            }
+            // Cancelled, rejected, dropped, disabled, and "savePDF" (the
+            // print to PDF command is the way to a file): nothing is
+            // printed.
+          },
+          weak));
   return true;
 }
 

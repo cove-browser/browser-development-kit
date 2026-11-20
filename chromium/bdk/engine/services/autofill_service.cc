@@ -15,6 +15,7 @@
 #include "base/time/time.h"
 #include "base/uuid.h"
 #include "bdk/core/include/bdk/bdk_ids.h"
+#include "bdk/engine/json_util.h"
 #include "bdk/engine/services/service_common.h"
 #include "chrome/browser/autofill/personal_data_manager_factory.h"
 #include "chrome/browser/browser_process.h"

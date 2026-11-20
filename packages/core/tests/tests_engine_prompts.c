@@ -3,7 +3,7 @@
    security interstitials (T-UIR-05). Built only into the engine conformance app
    (BDK_HARNESS_ENGINE_TESTS). Pages are served by the engine's test interceptor; what the operating
    system or a default presenter would ask the user is answered by the test hooks
-   (bdk_testing_control in bdk_testing.h). */
+   (bdk_testing_command in bdk_testing.h). */
 #include <netinet/in.h>
 #include <signal.h>
 #include <stdlib.h>
@@ -21,16 +21,33 @@ extern int bdk_harness_engine_keep_profiles;
 /* ---- helpers ---- */
 
 static void control(const char* verb, const char* args, char* out, size_t n) {
-    REQUIRE(bdk_testing_control(t_runtime, S(verb), S(args), out, n) == BDK_OK);
+    REQUIRE(bdk_testing_command(t_runtime, S(verb), S(args), out, n) == BDK_OK);
 }
 
-static int control_count(const char* verb, const char* surface) {
-    char out[32] = "";
-    char args[96] = "{}";
-    if (surface)
-        snprintf(args, sizeof args, "{\"surface\":\"%s\"}", surface);
-    control(verb, args, out, sizeof out);
-    return atoi(out);
+/* The integer member `key` of the JSON object a test hook wrote. */
+static int json_int(const char* json, const char* key) {
+    char pattern[32];
+    snprintf(pattern, sizeof pattern, "\"%s\":", key);
+    const char* at = strstr(json, pattern);
+    return at ? atoi(at + strlen(pattern)) : -1;
+}
+
+/* Scripts the default presenter of the surface: it shows nothing and answers `answer` (the key of
+   a button, or a path). Scripting forgets what the presenter recorded. */
+static void script_presenter(const char* surface, const char* answer) {
+    char args[512];
+    snprintf(args, sizeof args, "{\"surface\":\"%s\",\"answer\":{\"answer\":\"%s\"}}", surface,
+             answer);
+    control("present.script", args, NULL, 0);
+}
+
+/* How many times the surface's default presenter was asked to show something since it was
+   scripted. */
+static int presenter_uses(const char* surface) {
+    char args[96], out[4096];
+    snprintf(args, sizeof args, "{\"surface\":\"%s\"}", surface);
+    control("present.record", args, out, sizeof out);
+    return json_int(out, "shown");
 }
 
 static void set_authentication(const char* answer) {
@@ -40,7 +57,9 @@ static void set_authentication(const char* answer) {
 }
 
 static int authentication_count(void) {
-    return control_count("authentication.count", NULL);
+    char out[32];
+    control("authentication.count", "{}", out, sizeof out);
+    return json_int(out, "count");
 }
 
 /* Calls a built-in command on a profile and pumps until it answers. */
@@ -393,7 +412,7 @@ static void submit_login(bdk_contents_t c) {
 /* Waits, in real time, until the default presenter of the surface has run more than `before`
    times (the engine looks for a password question a few hundred milliseconds after a page). */
 static void wait_for_presenter(const char* surface, int before) {
-    for (int i = 0; i < 60 && control_count("presenter.count", surface) == before; ++i) {
+    for (int i = 0; i < 60 && presenter_uses(surface) == before; ++i) {
         t_pump();
         bdk_testing_run_for(0.1);
     }
@@ -404,11 +423,11 @@ static void wait_for_presenter(const char* surface, int before) {
 static void
 test_engine_a_submitted_login_is_saved_by_the_default_prompt_and_filled_next_time(void) {
     t_start();
-    const int uses_before = control_count("presenter.count", "passwords");
     t_freeze();
     script_page(LOGIN_URL, "text/html", LOGIN_PAGE, "");
     script_page(LOGIN_URL "done", "text/html", DONE_PAGE, "");
-    control("presenter", "{\"surface\":\"passwords\",\"answer\":\"save\"}", NULL, 0);
+    script_presenter("passwords", "save");
+    const int uses_before = presenter_uses("passwords");
     bdk_profile_t p = t_new_profile("Save and fill");
     bdk_contents_t c = new_active_page(p);
     bdk_error_t err = 0;
@@ -417,7 +436,7 @@ test_engine_a_submitted_login_is_saved_by_the_default_prompt_and_filled_next_tim
     submit_login(c);
     REQUIRE(wait_for_title(c, "welcome"));
     wait_for_presenter("passwords", uses_before);
-    CHECK(control_count("presenter.count", "passwords") == uses_before + 1);
+    CHECK(presenter_uses("passwords") == uses_before + 1);
     t_capture_t cap;
     invoke_ok(p, "passwords.list", "{}", &cap);
     CHECK(strstr(cap.json, "login.example") != NULL &&
@@ -442,7 +461,7 @@ test_engine_a_submitted_login_is_saved_by_the_default_prompt_and_filled_next_tim
 static void test_engine_a_password_prompt_reaches_a_handler_and_saving_needs_a_gesture(void) {
     memset(&g_seen, 0, sizeof g_seen);
     t_start();
-    const int presenter_before = control_count("presenter.count", "passwords");
+    const int presenter_before = presenter_uses("passwords");
     bdk_error_t err = 0;
     REQUIRE(bdk_ui_set_handler(t_runtime, BDK_SURFACE_PASSWORDS, hold, &g_seen, NULL, &err) ==
             BDK_OK);
@@ -464,8 +483,7 @@ static void test_engine_a_password_prompt_reaches_a_handler_and_saving_needs_a_g
     CHECK(strstr(g_seen.payload, "\"username\":\"ada\"") != NULL);
     CHECK(strstr(g_seen.payload, "\"isUpdate\":false") != NULL);
     CHECK(strstr(g_seen.payload, "s3cret") == NULL); /* the presenter never sees the password */
-    CHECK(control_count("presenter.count", "passwords") ==
-          presenter_before); /* the handler took it */
+    CHECK(presenter_uses("passwords") == presenter_before); /* the handler took it */
 
     err = 0;
     CHECK(bdk_ui_complete(g_seen.request, S("grant"), S("{}"), no_gesture(), &err) != BDK_OK);
@@ -483,11 +501,11 @@ static void test_engine_a_password_prompt_reaches_a_handler_and_saving_needs_a_g
 
 static void test_engine_declining_the_password_prompt_saves_nothing(void) {
     t_start();
-    const int uses_before = control_count("presenter.count", "passwords");
     t_freeze();
     script_page(LOGIN_URL, "text/html", LOGIN_PAGE, "");
     script_page(LOGIN_URL "done", "text/html", DONE_PAGE, "");
-    control("presenter", "{\"surface\":\"passwords\",\"answer\":\"notNow\"}", NULL, 0);
+    script_presenter("passwords", "notNow");
+    const int uses_before = presenter_uses("passwords");
     bdk_profile_t p = t_new_profile("Not now");
     bdk_contents_t c = new_active_page(p);
     bdk_error_t err = 0;
@@ -496,7 +514,7 @@ static void test_engine_declining_the_password_prompt_saves_nothing(void) {
     submit_login(c);
     REQUIRE(wait_for_title(c, "welcome"));
     wait_for_presenter("passwords", uses_before);
-    CHECK(control_count("presenter.count", "passwords") == uses_before + 1);
+    CHECK(presenter_uses("passwords") == uses_before + 1);
     t_capture_t cap;
     invoke_ok(p, "passwords.list", "{}", &cap);
     CHECK(strstr(cap.json, "ada") == NULL);
@@ -521,7 +539,7 @@ static void test_engine_window_print_raises_a_printing_request_for_a_handler(voi
         t_pump();
     REQUIRE(g_seen.calls == 1);
     CHECK(strstr(g_seen.payload, "\"isUserInitiated\":false") != NULL);
-    CHECK(control_count("presenter.count", "printing") == 0); /* the application has it */
+    CHECK(presenter_uses("printing") == 0); /* the application has it */
     /* The application cancels: nothing is printed and the page carries on. */
     err = 0;
     CHECK(bdk_ui_complete(g_seen.request, S("deny"), S("{}"), no_gesture(), &err) == BDK_OK);
@@ -534,8 +552,8 @@ static void test_engine_window_print_raises_a_printing_request_for_a_handler(voi
 
 static void test_engine_window_print_with_no_handler_uses_the_system_print_panel(void) {
     t_start_frozen();
-    const int uses_before = control_count("presenter.count", "printing");
-    control("presenter", "{\"surface\":\"printing\",\"answer\":\"systemDialog\"}", NULL, 0);
+    script_presenter("printing", "systemDialog");
+    const int uses_before = presenter_uses("printing");
     script_page(LOGIN_URL, "text/html", LOGIN_PAGE, "");
     bdk_error_t err = 0;
     bdk_contents_t c = new_active_page(t_new_profile("Print default"));
@@ -543,7 +561,7 @@ static void test_engine_window_print_with_no_handler_uses_the_system_print_panel
     REQUIRE(wait_for_title(c, "login"));
     run_script(c, "window.print()", 1);
     wait_for_presenter("printing", uses_before);
-    CHECK(control_count("presenter.count", "printing") == uses_before + 1);
+    CHECK(presenter_uses("printing") == uses_before + 1);
     run_script(c, "document.title='after print'", 0);
     CHECK(wait_for_title(c, "after print"));
     close_window();
@@ -610,18 +628,16 @@ static void test_engine_a_download_destination_is_chosen_by_the_handler(void) {
 
 static void test_engine_the_default_download_presenter_saves_where_the_user_says(void) {
     t_start_frozen();
-    const int uses_before = control_count("presenter.count", "downloads");
     prepare_downloads();
-    char args[256];
-    snprintf(args, sizeof args, "{\"surface\":\"downloads\",\"answer\":\"%s\"}", g_dl_chosen);
-    control("presenter", args, NULL, 0);
+    script_presenter("downloads", g_dl_chosen);
+    const int uses_before = presenter_uses("downloads");
     bdk_error_t err = 0;
     bdk_profile_t p = t_new_profile("Download default");
     control("downloads.ask", "{\"on\":true}", NULL, 0);
     bdk_contents_t c = new_active_page(p);
     REQUIRE(bdk_contents_load(c, S(DOWNLOAD_URL), &err) == BDK_OK);
     CHECK(wait_for_file(g_dl_chosen));
-    CHECK(control_count("presenter.count", "downloads") == uses_before + 1);
+    CHECK(presenter_uses("downloads") == uses_before + 1);
     control("downloads.ask", "{\"on\":false}", NULL, 0);
     close_window();
 }

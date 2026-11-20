@@ -65,7 +65,7 @@ static void on_withdrawn(void* ctx) {
 }
 
 static void ui(const char* command, const char* args, char* out, size_t n) {
-    REQUIRE(bdk_testing_ui(t_runtime, S(command), S(args), out, n) == BDK_OK);
+    REQUIRE(bdk_testing_command(t_runtime, S(command), S(args), out, n) == BDK_OK);
 }
 
 static void script(const char* surface, const char* answer) {

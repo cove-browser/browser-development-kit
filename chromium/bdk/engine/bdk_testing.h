@@ -103,88 +103,50 @@ typedef struct bdk_testing_tab_info {
 BDK_EXPORT bdk_status_t bdk_testing_tab_info(bdk_contents_t,
                                              bdk_testing_tab_info_t* out);
 
-/* Drives and inspects the browser-owned surfaces (permissions, JavaScript
-   dialogs, HTTP authentication, file pickers, find, notifications). Commands,
-   with their arguments as JSON ("contents" is a decimal handle string), and the
-   JSON they write to `out`:
+/* Drives and inspects the browser-owned surfaces and the services: one
+   function, so that the framework's export list needs one name for all of it.
+   `command` names what to do, `args_json` is an object ("contents" is a decimal
+   handle string), and `out` receives the JSON object the command writes (empty
+   for most). BDK_ERR_INVALID_ARGUMENT for an unknown command, bad arguments, or
+   a result that does not fit `out_size`. Commands:
 
    present.script {"surface", "answer"}  while scripted, the surface's default
-       presenter shows nothing and answers as `answer` says: permissions
+   presenter shows nothing and answers as `answer` (an object) says: permissions
        {"choice": "allow" | "allowThisVisit" | "block" | "dismiss"},
        javascript_dialogs {"accept", "text", "suppress"}, http_auth
        {"username", "password"} (none: cancel), file_pickers {"paths": [...]},
-       notifications {"event": "clicked" | "closed" | "timeout", "action"}; an
-       answer with "none": true is never given, as a person who has not decided
-   present.clear   ends all scripts and forgets what was recorded
-   present.record {"surface"} -> {"shown", "dismissed", "payload"}  what the
-       default presenter was asked to show, and how often it was taken down
+       notifications {"event": "clicked" | "closed" | "timeout", "action"},
+       passwords {"answer": "save" | "notNow" | "never"} (the key of the
+   button), downloads {"answer": "keep" | "discard"} for a dangerous download or
+   a path (or "cancel") for where to save, printing {"answer": "systemDialog"}
+   (no panel opens); an answer with "none": true is never given, as a person who
+   has not decided present.clear   ends all scripts and forgets what was
+   recorded present.record {"surface"} -> {"shown", "dismissed", "payload"} what
+   the default presenter was asked to show, and how often it was taken down
    find.present / find.start {"text", "matchCase"} / find.next {"forward"} /
    find.stop / find.result {"contents"} -> {"ordinal", "count", "presented"}
    permission.get {"contents", "origin", "kind"} -> {"value": "allow" | "block"
-       | "ask"}  the page's profile's site setting
-
-   BDK_ERR_INVALID_ARGUMENT for an unknown command or bad arguments or a result
-   that does not fit `out_size`. */
-BDK_EXPORT bdk_status_t bdk_testing_ui(bdk_runtime_t,
-                                       bdk_string_t command,
-                                       bdk_string_t args_json,
-                                       char* out,
-                                       size_t out_size);
-
-/* The services' test hooks, behind one function so that the framework's export
-   list needs one name for them. `op` is one of the BDK_TESTING_SERVICES_*
-   values; `page` is a page of the profile the hook looks at.
-
-   PREF_JSON: writes into `out` the JSON value of the Chromium preference named
-   `a` in the profile; fails when there is no such preference.
-   CONTENT_SETTING: writes into `out` what Chromium's content settings hold for
-   the profile, URL `a` and permission kind `b`: "allow", "block" or "ask".
-   CAPTURE_PNG, CAPTURE_PDF: capture the page to the file named `a`, a PNG
-   screenshot of its visible area or a PDF of the document. They run in the
-   background; poll CAPTURE_STATE.
-   CAPTURE_STATE: writes "0" (running, or none started), "1" (the file is
-   written) or "2" (it failed) into `out`. */
-#define BDK_TESTING_SERVICES_PREF_JSON 1u
-#define BDK_TESTING_SERVICES_CONTENT_SETTING 2u
-#define BDK_TESTING_SERVICES_CAPTURE_PNG 3u
-#define BDK_TESTING_SERVICES_CAPTURE_PDF 4u
-#define BDK_TESTING_SERVICES_CAPTURE_STATE 5u
-BDK_EXPORT bdk_status_t bdk_testing_services(uint32_t op,
-                                             bdk_contents_t page,
-                                             bdk_string_t a,
-                                             bdk_string_t b,
-                                             char* out,
-                                             size_t n);
+   | "ask"} the page's profile's site setting pref.json {"contents", "name"} ->
+   {"value": <the preference's JSON value>} capture.start {"contents", "path",
+   "format": "png" | "pdf"} writes the page to the file in the background;
+   capture.state -> {"state": 0 (running, or none started) | 1 (written) | 2
+   (failed)} authentication {"answer": "allow" | "deny" | "ask"}  what the
+   operating system's authentication prompt answers ("ask" is the real prompt,
+   the default); authentication.count -> {"count"}  how many times a command
+   asked for it downloads.ask {"on"}  every loaded profile asks where to save,
+   as the setting does downloads.danger {"on"}  every download is held as
+   dangerous content (this build has no Safe Browsing or file-type policy to
+   flag a real one before M6) script_page {"url", "body", "contentType",
+   "headers"}  serves later navigations to url with this content */
+BDK_EXPORT bdk_status_t bdk_testing_command(bdk_runtime_t,
+                                            bdk_string_t command,
+                                            bdk_string_t args_json,
+                                            char* out,
+                                            size_t out_size);
 
 /* Work the engine has queued or started for the application: BDK tasks not yet
    run plus pages still loading. A harness pumps until it reads 0. */
 BDK_EXPORT size_t bdk_testing_pending_work(void);
-
-/* The test hooks of the services and the default presenters, behind one
-   function. `verb` names one; `arguments_json` is an object; the result, if
-   the verb has one, is written to `out` as a string. Verbs:
-     authentication        {"answer": "allow"|"deny"|"ask"}: what the operating
-                           system's authentication prompt answers ("ask" is
-                           the real prompt, the default).
-     authentication.count  how many times a command asked for it.
-     presenter             {"surface", "answer"}: the answer of a default
-                           presenter, which then shows no native UI (surface
-                           names as in [ui.surfaces]); an empty answer removes
-                           it. Answers are in docs/planning/sdk/ui-requests.md
-                           section 6.
-     presenter.count       {"surface"}: how often its default presenter ran.
-     downloads.ask         {"on"}: every loaded profile asks where to save,
-                           as the setting does.
-     downloads.danger      {"on"}: every download is held as dangerous content
-                           (this build has no Safe Browsing or file-type
-                           policy to flag a real one before M6).
-     script_page           {"url", "body", "contentType", "headers"}: serves
-                           later navigations to url with this content. */
-BDK_EXPORT bdk_status_t bdk_testing_control(bdk_runtime_t,
-                                            bdk_string_t verb,
-                                            bdk_string_t arguments_json,
-                                            char* out,
-                                            size_t out_size);
 
 #ifdef __cplusplus
 }

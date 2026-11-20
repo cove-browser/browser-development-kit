@@ -7,11 +7,16 @@ The BDK engine has test hooks (//bdk/engine/bdk_testing.h in the BDK
 repository): scripted navigations served without the network, UI requests
 raised for the application's own handler, script run with a user
 gesture, synthetic clicks, a count of pending work and a count of the
-windows Chromium opened by itself, and where a page's tab is (its host
-context and tab identifier). The conformance suite and the engine
-scenario tests run against the packaged runtime through them, so the
-framework must export them. They are not the C ABI and give a page
-nothing: each acts as the application, on its own pages.
+windows Chromium opened by itself, where a page's tab is (its host
+context and tab identifier), and one command hook,
+bdk_testing_command, behind which sit everything else the engine tests
+need: scripting the default presenters, driving find in page, reading
+preferences and site settings, capturing a page, and what the operating
+system's authentication prompt and the download policy answer. The
+conformance suite and the engine scenario tests run against the packaged
+runtime through them, so the framework must export them. They are not
+the C ABI and give a page nothing: each acts as the application, on its
+own pages.
 
 List them in chrome/app/framework.exports and, before _ChromeMain, in
 framework.order.
@@ -19,15 +24,15 @@ framework.order.
 Used by: packages/core/tests/harness_engine.mm and the engine scenario
 tests in the BDK repository.
 ---
- chrome/app/framework.exports | 16 ++++++++++++++++
- chrome/app/framework.order   | 16 ++++++++++++++++
- 2 files changed, 32 insertions(+)
+ chrome/app/framework.exports | 17 +++++++++++++++++
+ chrome/app/framework.order   | 17 +++++++++++++++++
+ 2 files changed, 34 insertions(+)
 
 diff --git a/chrome/app/framework.exports b/chrome/app/framework.exports
-index ad7ed13c9e4980b02bc52bbda39b9ff8d8f25e19..93a5fc01549ced7a9adb13ba51d3345503a750fc 100644
+index ad7ed13c9e4980b02bc52bbda39b9ff8d8f25e19..f618eef07e9dfd0f71df47b5058077bb06efcb91 100644
 --- a/chrome/app/framework.exports
 +++ b/chrome/app/framework.exports
-@@ -99,3 +99,19 @@ _bdk_window_register
+@@ -99,3 +99,20 @@ _bdk_window_register
  _bdk_window_unregister
  _OBJC_METACLASS_$_BDKApplicationBase
  _OBJC_CLASS_$_BDKApplicationBase
@@ -35,6 +40,7 @@ index ad7ed13c9e4980b02bc52bbda39b9ff8d8f25e19..93a5fc01549ced7a9adb13ba51d33455
 +# BDK: the engine's test hooks (//bdk/engine/bdk_testing.h). Not ABI.
 +_bdk_testing_chrome_window_count
 +_bdk_testing_click
++_bdk_testing_command
 +_bdk_testing_execute_script
 +_bdk_testing_forget_profiles
 +_bdk_testing_host_context_count
@@ -48,16 +54,17 @@ index ad7ed13c9e4980b02bc52bbda39b9ff8d8f25e19..93a5fc01549ced7a9adb13ba51d33455
 +_bdk_testing_tab_info
 +_bdk_testing_withdraw_ui_requests
 diff --git a/chrome/app/framework.order b/chrome/app/framework.order
-index 242a325e18bc6b0f8d976b6cde02c9b429125ce7..2f0b6339615bd6615b38881c9aff237d28a28af1 100644
+index 242a325e18bc6b0f8d976b6cde02c9b429125ce7..349b97b4655974249f66f0324659d8cb48f2ac0f 100644
 --- a/chrome/app/framework.order
 +++ b/chrome/app/framework.order
-@@ -108,6 +108,22 @@ _bdk_unsubscribe
+@@ -108,6 +108,23 @@ _bdk_unsubscribe
  _bdk_window_register
  _bdk_window_unregister
  
 +# BDK: the engine's test hooks.
 +_bdk_testing_chrome_window_count
 +_bdk_testing_click
++_bdk_testing_command
 +_bdk_testing_execute_script
 +_bdk_testing_forget_profiles
 +_bdk_testing_host_context_count

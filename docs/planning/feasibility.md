@@ -607,7 +607,7 @@ Milestone M0's last step: on the first working build, a throwaway Swift window w
 | What it costs | One AppKit file per platform (`chromium/bdk/engine/presenters_mac.mm`) behind `UiPresenters` (`ui_presenters.h`), which carries only the request payload and callbacks. No Chromium patch is needed for any of it. |
 | Not verified | That a Views widget can be parented to an `NSWindow` that is not a Views widget. Only the cost of finding out and the dependency on Chrome's anchor types stopped the attempt; it stays an option if a surface (the extensions menu, M5) needs Chromium's own views. |
 
-Sheets are attached to the window of the page's host view, one at a time per window as AppKit queues them, and wait for the page to be in a window. Default presenters are replaceable per surface by a scripted presenter in tests (`bdk_testing_ui`), so no test blocks on a panel; one test answers a real sheet.
+Sheets are attached to the window of the page's host view, one at a time per window as AppKit queues them, and wait for the page to be in a window. Default presenters are replaceable per surface by a scripted presenter in tests (`bdk_testing_command`, `present.script`), so no test blocks on a panel; one test answers a real sheet.
 
 ## Open items carried into the plan
 
