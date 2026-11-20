@@ -10,8 +10,15 @@
 #import <AppKit/AppKit.h>
 #import <objc/runtime.h>
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include <condition_variable>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <string>
 #include <thread>
 
@@ -444,6 +451,92 @@ int bdk_harness_engine_accessibility_text(bdk_contents_t contents, char* out, si
     CollectAccessibility(page.window ? (id)page.window.contentView : (id)page, 0, text, &web_area);
     snprintf(out, n, "%s", text.UTF8String);
     return web_area;
+}
+
+/* ---- a loopback server whose download stalls ----
+   Serves one file of 200000 bytes: the first 20000, then nothing until released, so a download of
+   it stays in progress for as long as a test needs and can be paused, resumed and cancelled. */
+
+static int g_download_listener = -1;
+static std::mutex g_download_lock;
+static std::condition_variable g_download_wake;
+static bool g_download_released = false;
+static bool g_download_stopped = false;
+
+static void ServeDownload(int connection) {
+    char request[2048];
+    (void)read(connection, request, sizeof request);
+    const char header[] =
+        "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n"
+        "Content-Length: 200000\r\nContent-Disposition: attachment; filename=\"big.bin\"\r\n"
+        "Connection: close\r\n\r\n";
+    std::string chunk(20000, 'a');
+    bool ok = write(connection, header, sizeof header - 1) > 0 &&
+              write(connection, chunk.data(), chunk.size()) > 0;
+    if (ok) {
+        std::unique_lock<std::mutex> lock(g_download_lock);
+        g_download_wake.wait(lock, [] { return g_download_released || g_download_stopped; });
+        if (g_download_released && !g_download_stopped) {
+            lock.unlock();
+            std::string rest(180000, 'b');
+            size_t sent = 0;
+            while (sent < rest.size()) {
+                ssize_t n = write(connection, rest.data() + sent, rest.size() - sent);
+                if (n <= 0)
+                    break;
+                sent += (size_t)n;
+            }
+        }
+    }
+    close(connection);
+}
+
+/* Starts the server on a free loopback port; returns the port, or 0. */
+int bdk_harness_engine_download_server_start(void) {
+    g_download_released = false;
+    g_download_stopped = false;
+    g_download_listener = socket(AF_INET, SOCK_STREAM, 0);
+    sockaddr_in address;
+    memset(&address, 0, sizeof address);
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    socklen_t length = sizeof address;
+    if (g_download_listener < 0 ||
+        bind(g_download_listener, (sockaddr*)&address, sizeof address) != 0 ||
+        listen(g_download_listener, 8) != 0 ||
+        getsockname(g_download_listener, (sockaddr*)&address, &length) != 0)
+        return 0;
+    int listener = g_download_listener;
+    std::thread([listener] {
+        for (;;) {
+            int connection = accept(listener, nullptr, nullptr);
+            if (connection < 0)
+                return;
+            std::thread(ServeDownload, connection).detach();
+        }
+    }).detach();
+    return ntohs(address.sin_port);
+}
+
+/* Lets the stalled responses finish. */
+void bdk_harness_engine_download_server_release(void) {
+    std::lock_guard<std::mutex> lock(g_download_lock);
+    g_download_released = true;
+    g_download_wake.notify_all();
+}
+
+/* Closes the server and any stalled response. */
+void bdk_harness_engine_download_server_stop(void) {
+    {
+        std::lock_guard<std::mutex> lock(g_download_lock);
+        g_download_stopped = true;
+        g_download_wake.notify_all();
+    }
+    if (g_download_listener >= 0) {
+        shutdown(g_download_listener, SHUT_RDWR);
+        close(g_download_listener);
+        g_download_listener = -1;
+    }
 }
 
 } /* extern "C" */

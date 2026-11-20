@@ -3,6 +3,7 @@
    the engine conformance app (BDK_HARNESS_ENGINE_TESTS); pages are driven through the engine's test
    hooks (bdk_testing.h), and every http(s) load is served by the engine's test interceptor. */
 #include <stdlib.h>
+#include <unistd.h>
 
 #include "bdk_testing.h"
 #include "test_support.h"
@@ -729,6 +730,359 @@ static void test_engine_persistent_profiles_outlive_the_runtime(void) {
     CHECK(strstr(cap.json, id) != NULL);
 }
 
+/* ---- built-in services (T-SVC-02, T-SVC-03, T-SVC-06) ---- */
+
+int bdk_harness_engine_download_server_start(void);
+void bdk_harness_engine_download_server_release(void);
+void bdk_harness_engine_download_server_stop(void);
+
+/* One built-in command by the host, run to its end. Chromium's services answer from other threads,
+   so this pumps until the result arrives. */
+static void svc(const char* command, const char* args, bdk_profile_t profile, t_capture_t* cap) {
+    bdk_invoke_options_t o;
+    memset(&o, 0, sizeof o);
+    o.struct_size = sizeof o;
+    o.profile = profile;
+    t_cap_init(cap);
+    REQUIRE(bdk_invoke_named(t_runtime, S(command), S(args), &o, t_on_result, t_on_progress, cap,
+                             t_on_release) != 0);
+    for (int i = 0; i < 1000 && cap->results == 0; ++i) {
+        t_pump();
+        bdk_testing_run_for(0.01);
+    }
+    CHECK(cap->results == 1);
+}
+
+static int failed_with(const t_capture_t* cap, const char* domain, const char* code) {
+    return cap->has_error && strcmp(cap->domain, domain) == 0 && strcmp(cap->code, code) == 0;
+}
+
+/* Reads a preference of the page's profile as Chromium holds it. */
+static void pref_of(bdk_contents_t page, const char* name, char* out, size_t n) {
+    REQUIRE(bdk_testing_services(BDK_TESTING_SERVICES_PREF_JSON, page, S(name), S(""), out, n) ==
+            BDK_OK);
+}
+
+static void content_setting_of(bdk_contents_t page, const char* url, const char* kind, char* out,
+                               size_t n) {
+    REQUIRE(bdk_testing_services(BDK_TESTING_SERVICES_CONTENT_SETTING, page, S(url), S(kind), out,
+                                 n) == BDK_OK);
+}
+
+static void test_engine_history_is_searched_paginated_and_cleared(void) {
+    t_start_frozen();
+    bdk_profile_t p = t_new_profile("History");
+    t_capture_t cap;
+    const char* urls[] = {"https://a.example/", "https://b.example/", "https://c.example/"};
+    for (int i = 0; i < 3; ++i) {
+        char args[128];
+        snprintf(args, sizeof args, "{\"url\":\"%s\",\"title\":\"page %d\"}", urls[i], i);
+        svc("history.add", args, p, &cap);
+        CHECK(!cap.has_error);
+    }
+    svc("history.search", "{\"limit\":2}", p, &cap);
+    CHECK(!cap.has_error && strstr(cap.json, "c.example") && strstr(cap.json, "b.example"));
+    CHECK(strstr(cap.json, "a.example") == NULL);
+    char cursor[64], next[128];
+    REQUIRE(t_json_string(cap.json, "nextCursor", cursor, sizeof cursor));
+    snprintf(next, sizeof next, "{\"limit\":2,\"cursor\":\"%s\"}", cursor);
+    svc("history.search", next, p, &cap);
+    CHECK(strstr(cap.json, "a.example") && strstr(cap.json, "\"nextCursor\":null"));
+    svc("history.search", "{\"cursor\":\"nonsense\"}", p, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+    svc("history.search", "{\"text\":\"page 1\"}", p, &cap);
+    CHECK(strstr(cap.json, "b.example") && !strstr(cap.json, "c.example"));
+    svc("history.visits", "{\"url\":\"https://a.example/\"}", p, &cap);
+    CHECK(strstr(cap.json, "\"transition\""));
+    svc("history.deleteUrls", "{\"urls\":[\"https://b.example/\"]}", p, &cap);
+    CHECK(!cap.has_error);
+    svc("history.search", "{}", p, &cap);
+    CHECK(!strstr(cap.json, "b.example") && strstr(cap.json, "a.example"));
+    svc("privacy.clear", "{\"types\":[\"history\"]}", p, &cap);
+    CHECK(!cap.has_error);
+    svc("history.search", "{}", p, &cap);
+    CHECK(strstr(cap.json, "\"items\":[]") != NULL);
+}
+
+static void test_engine_bookmarks_nest_move_and_remove(void) {
+    t_start_frozen();
+    bdk_profile_t p = t_new_profile("Bookmarks");
+    t_capture_t cap;
+    svc("bookmarks.roots", "{}", p, &cap);
+    CHECK(!cap.has_error);
+    char bar[32], other[32];
+    REQUIRE(t_json_string(cap.json, "id", bar, sizeof bar));
+    const char* second = strstr(cap.json, "},{");
+    REQUIRE(second != NULL);
+    REQUIRE(t_json_string(second, "id", other, sizeof other));
+    char args[256], a[32], b[32], c[32], mark[32];
+    snprintf(args, sizeof args, "{\"parentId\":\"%s\",\"title\":\"A\"}", bar);
+    svc("bookmarks.createFolder", args, p, &cap);
+    REQUIRE(t_json_string(cap.json, "id", a, sizeof a));
+    snprintf(args, sizeof args, "{\"parentId\":\"%s\",\"title\":\"B\"}", a);
+    svc("bookmarks.createFolder", args, p, &cap);
+    REQUIRE(t_json_string(cap.json, "id", b, sizeof b));
+    snprintf(args, sizeof args,
+             "{\"parentId\":\"%s\",\"title\":\"Example\",\"url\":\"https://bm.example/\"}", b);
+    svc("bookmarks.create", args, p, &cap);
+    CHECK(!cap.has_error && strstr(cap.json, "\"isFolder\":false"));
+    REQUIRE(t_json_string(cap.json, "id", mark, sizeof mark));
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", a);
+    svc("bookmarks.subtree", args, p, &cap);
+    CHECK(strstr(cap.json, "\"title\":\"B\"") != NULL);
+    svc("bookmarks.forUrl", "{\"url\":\"https://bm.example/\"}", p, &cap);
+    CHECK(strstr(cap.json, "Example") != NULL);
+    svc("bookmarks.search", "{\"query\":\"Example\"}", p, &cap);
+    CHECK(strstr(cap.json, "bm.example") != NULL);
+    /* Move B, with its bookmark, to the other bookmarks. */
+    snprintf(args, sizeof args, "{\"id\":\"%s\",\"parentId\":\"%s\"}", b, other);
+    svc("bookmarks.move", args, p, &cap);
+    CHECK(!cap.has_error && strstr(cap.json, other) != NULL);
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", other);
+    svc("bookmarks.children", args, p, &cap);
+    CHECK(strstr(cap.json, "\"title\":\"B\"") != NULL);
+    /* A folder cannot move into its own descendant. */
+    snprintf(args, sizeof args, "{\"parentId\":\"%s\",\"title\":\"C\"}", a);
+    svc("bookmarks.createFolder", args, p, &cap);
+    REQUIRE(t_json_string(cap.json, "id", c, sizeof c));
+    snprintf(args, sizeof args, "{\"id\":\"%s\",\"parentId\":\"%s\"}", a, c);
+    svc("bookmarks.move", args, p, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+    snprintf(args, sizeof args, "{\"id\":\"%s\",\"title\":\"Renamed\"}", mark);
+    svc("bookmarks.update", args, p, &cap);
+    CHECK(strstr(cap.json, "Renamed") != NULL);
+    /* Removing a folder removes what is in it. */
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", b);
+    svc("bookmarks.remove", args, p, &cap);
+    CHECK(!cap.has_error);
+    svc("bookmarks.forUrl", "{\"url\":\"https://bm.example/\"}", p, &cap);
+    CHECK(strstr(cap.json, "\"items\":[]") != NULL);
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", other);
+    svc("bookmarks.remove", args, p, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+}
+
+/* The first time the item's state is `state`, within a time limit. */
+static int wait_for_download_state(bdk_profile_t p, const char* id, const char* state) {
+    char args[64], want[48];
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", id);
+    snprintf(want, sizeof want, "\"state\":\"%s\"", state);
+    for (int i = 0; i < 300; ++i) {
+        t_capture_t cap;
+        svc("downloads.get", args, p, &cap);
+        if (strstr(cap.json, want))
+            return 1;
+        bdk_testing_run_for(0.05);
+    }
+    return 0;
+}
+
+static void test_engine_a_download_completes_and_is_controllable(void) {
+    int port = bdk_harness_engine_download_server_start();
+    REQUIRE(port != 0);
+    t_start_frozen();
+    bdk_profile_t p = t_new_profile("Downloads");
+    char dir[] = "/tmp/bdk-engine-downloads-XXXXXX";
+    REQUIRE(mkdtemp(dir) != NULL);
+    t_capture_t cap;
+    char args[256], url[96], first[32], second[32];
+    snprintf(url, sizeof url, "http://127.0.0.1:%d/big.bin", port);
+    snprintf(args, sizeof args, "{\"url\":\"%s\",\"path\":\"%s/one.bin\"}", url, dir);
+    svc("downloads.start", args, p, &cap);
+    REQUIRE(!cap.has_error);
+    REQUIRE(t_json_string(cap.json, "id", first, sizeof first));
+    snprintf(args, sizeof args, "{\"url\":\"%s\",\"path\":\"%s/two.bin\"}", url, dir);
+    svc("downloads.start", args, p, &cap);
+    REQUIRE(!cap.has_error);
+    REQUIRE(t_json_string(cap.json, "id", second, sizeof second));
+    /* The first is paused and resumed. */
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", first);
+    svc("downloads.pause", args, p, &cap);
+    CHECK(!cap.has_error);
+    CHECK(wait_for_download_state(p, first, "paused"));
+    svc("downloads.resume", args, p, &cap);
+    CHECK(!cap.has_error);
+    CHECK(wait_for_download_state(p, first, "inProgress"));
+    /* The second is cancelled. */
+    char second_args[64];
+    snprintf(second_args, sizeof second_args, "{\"id\":\"%s\"}", second);
+    svc("downloads.cancel", second_args, p, &cap);
+    CHECK(!cap.has_error);
+    CHECK(wait_for_download_state(p, second, "cancelled"));
+    svc("downloads.list", "{\"state\":\"inProgress\"}", p, &cap);
+    CHECK(strstr(cap.json, url) != NULL);
+    /* The server lets the first finish. */
+    bdk_harness_engine_download_server_release();
+    CHECK(wait_for_download_state(p, first, "complete"));
+    svc("downloads.get", args, p, &cap);
+    CHECK(strstr(cap.json, "one.bin") != NULL && strstr(cap.json, "\"receivedBytes\":200000"));
+    svc("downloads.remove", args, p, &cap);
+    CHECK(!cap.has_error);
+    svc("downloads.get", args, p, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+    svc("downloads.clear", "{}", p, &cap);
+    CHECK(!cap.has_error);
+    svc("downloads.list", "{}", p, &cap);
+    CHECK(strstr(cap.json, "\"items\":[]") != NULL);
+    bdk_harness_engine_download_server_stop();
+}
+
+/* Waits for Chromium to record a visit to the page's URL, as the helper of each page does after a
+   commit. */
+static int history_has(bdk_profile_t p, const char* text) {
+    for (int i = 0; i < 100; ++i) {
+        t_capture_t cap;
+        svc("history.search", "{}", p, &cap);
+        if (strstr(cap.json, text))
+            return 1;
+        bdk_testing_run_for(0.05);
+    }
+    return 0;
+}
+
+static void test_engine_profiles_keep_their_data_apart_and_private_ones_record_no_history(void) {
+    t_start_frozen();
+    bdk_profile_t a = t_new_profile("Apart A");
+    bdk_profile_t b = t_new_profile("Apart B");
+    bdk_profile_t priv = 0;
+    bdk_error_t err = 0;
+    REQUIRE(bdk_profile_open_private(t_runtime, &priv, &err) == BDK_OK);
+    t_capture_t cap;
+    bdk_contents_t in_a = t_new_contents(a);
+    bdk_contents_t in_priv = t_new_contents(priv);
+    REQUIRE(bdk_contents_load(in_a, S("https://visited.test/in-a"), &err) == BDK_OK);
+    REQUIRE(bdk_contents_load(in_priv, S("https://visited.test/in-private"), &err) == BDK_OK);
+    CHECK(history_has(a, "visited.test/in-a"));
+    svc("history.search", "{}", b, &cap);
+    CHECK(strstr(cap.json, "visited.test") == NULL);
+    svc("history.search", "{}", priv, &cap);
+    CHECK(strstr(cap.json, "in-private") == NULL);
+    svc("history.add", "{\"url\":\"https://added.test/private\"}", priv, &cap);
+    CHECK(!cap.has_error);
+    svc("history.search", "{}", priv, &cap);
+    CHECK(strstr(cap.json, "added.test") == NULL);
+    /* Settings and site permissions are per profile. */
+    svc("settings.set", "{\"key\":\"appearance.fontSize\",\"value\":21}", a, &cap);
+    CHECK(!cap.has_error);
+    svc("settings.get", "{\"key\":\"appearance.fontSize\"}", b, &cap);
+    CHECK(strstr(cap.json, "\"value\":21") == NULL);
+    svc("permissions.set",
+        "{\"origin\":\"https://x.example\",\"kind\":\"camera\","
+        "\"value\":\"allow\"}",
+        a, &cap);
+    CHECK(!cap.has_error);
+    svc("permissions.get", "{\"origin\":\"https://x.example\",\"kind\":\"camera\"}", priv, &cap);
+    CHECK(strstr(cap.json, "\"source\":\"default\"") != NULL);
+    svc("profiles.current", "{}", priv, &cap);
+    CHECK(strstr(cap.json, "\"isPrivate\":true") != NULL);
+}
+
+static void test_engine_settings_and_permissions_round_trip_to_chromium(void) {
+    t_start_frozen();
+    bdk_profile_t p = t_new_profile("Settings");
+    bdk_contents_t page = t_new_contents(p);
+    t_capture_t cap;
+    char value[128];
+    svc("settings.set", "{\"key\":\"appearance.fontSize\",\"value\":23}", p, &cap);
+    CHECK(!cap.has_error);
+    svc("settings.get", "{\"key\":\"appearance.fontSize\"}", p, &cap);
+    CHECK(strstr(cap.json, "\"value\":23") != NULL);
+    pref_of(page, "webkit.webprefs.default_font_size", value, sizeof value);
+    CHECK(strcmp(value, "23") == 0);
+    svc("settings.describe", "{\"key\":\"appearance.fontSize\"}", p, &cap);
+    CHECK(strstr(cap.json, "\"source\":\"user\"") != NULL);
+    svc("settings.reset", "{\"key\":\"appearance.fontSize\"}", p, &cap);
+    pref_of(page, "webkit.webprefs.default_font_size", value, sizeof value);
+    CHECK(strcmp(value, "23") != 0);
+    svc("settings.set", "{\"key\":\"privacy.cookies.thirdParty\",\"value\":\"block\"}", p, &cap);
+    pref_of(page, "profile.cookie_controls_mode", value, sizeof value);
+    CHECK(strcmp(value, "1") == 0);
+    svc("settings.set", "{\"key\":\"privacy.cookies.thirdParty\",\"value\":\"sideways\"}", p, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+    svc("settings.set", "{\"key\":\"no.such.key\",\"value\":1}", p, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+    svc("settings.get", "{\"key\":\"no.such.key\"}", p, &cap);
+    CHECK(strstr(cap.json, "{\"value\":null}") != NULL);
+    /* Site permissions. */
+    char setting[16];
+    svc("permissions.set",
+        "{\"origin\":\"https://perm.example\",\"kind\":\"geolocation\","
+        "\"value\":\"allow\"}",
+        p, &cap);
+    CHECK(!cap.has_error);
+    content_setting_of(page, "https://perm.example/", "geolocation", setting, sizeof setting);
+    CHECK(strcmp(setting, "allow") == 0);
+    svc("permissions.get", "{\"origin\":\"https://perm.example\",\"kind\":\"geolocation\"}", p,
+        &cap);
+    CHECK(strstr(cap.json, "\"value\":\"allow\"") && strstr(cap.json, "\"source\":\"user\""));
+    svc("permissions.exceptions", "{\"kind\":\"geolocation\"}", p, &cap);
+    CHECK(strstr(cap.json, "perm.example") != NULL);
+    svc("permissions.set",
+        "{\"origin\":\"https://perm.example\",\"kind\":\"javascript\","
+        "\"value\":\"ask\"}",
+        p, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+    svc("permissions.setDefault", "{\"kind\":\"notifications\",\"value\":\"block\"}", p, &cap);
+    content_setting_of(page, "https://other.example/", "notifications", setting, sizeof setting);
+    CHECK(strcmp(setting, "block") == 0);
+    svc("permissions.getDefault", "{\"kind\":\"notifications\"}", p, &cap);
+    CHECK(strstr(cap.json, "\"value\":\"block\"") != NULL);
+    svc("permissions.reset", "{\"origin\":\"https://perm.example\"}", p, &cap);
+    content_setting_of(page, "https://perm.example/", "geolocation", setting, sizeof setting);
+    CHECK(strcmp(setting, "allow") != 0);
+}
+
+static void test_engine_the_default_browser_status_is_answered(void) {
+    t_start_frozen();
+    t_capture_t cap;
+    svc("system.defaultBrowser.status", "{}", 0, &cap);
+    CHECK(!cap.has_error && strstr(cap.json, "\"isDefault\":") &&
+          strstr(cap.json, "\"canBeDefault\":"));
+    svc("runtime.info", "{}", 0, &cap);
+    CHECK(strstr(cap.json, "\"chromiumVersion\":\"") != NULL);
+}
+
+static int wait_for_capture(void) {
+    for (int i = 0; i < 400; ++i) {
+        char state[8];
+        REQUIRE(bdk_testing_services(BDK_TESTING_SERVICES_CAPTURE_STATE, 0, S(""), S(""), state,
+                                     sizeof state) == BDK_OK);
+        if (state[0] != '0')
+            return state[0] == '1';
+        bdk_testing_run_for(0.05);
+    }
+    return 0;
+}
+
+static size_t file_prefix(const char* path, char* out, size_t n) {
+    FILE* f = fopen(path, "rb");
+    if (!f)
+        return 0;
+    size_t got = fread(out, 1, n, f);
+    fclose(f);
+    return got;
+}
+
+static void test_engine_a_page_is_captured_as_an_image_and_as_a_pdf(void) {
+    bdk_contents_t c = start_with_page();
+    bdk_harness_engine_show(c, 1);
+    for (int i = 0; i < 20; ++i)
+        bdk_testing_run_for(0.05);
+    char dir[] = "/tmp/bdk-engine-capture-XXXXXX";
+    REQUIRE(mkdtemp(dir) != NULL);
+    char png[96], pdf[96], head[8];
+    snprintf(png, sizeof png, "%s/page.png", dir);
+    snprintf(pdf, sizeof pdf, "%s/page.pdf", dir);
+    REQUIRE(bdk_testing_services(BDK_TESTING_SERVICES_CAPTURE_PNG, c, S(png), S(""), NULL, 0) ==
+            BDK_OK);
+    CHECK(wait_for_capture());
+    CHECK(file_prefix(png, head, 4) == 4 && memcmp(head, "\x89PNG", 4) == 0);
+    REQUIRE(bdk_testing_services(BDK_TESTING_SERVICES_CAPTURE_PDF, c, S(pdf), S(""), NULL, 0) ==
+            BDK_OK);
+    CHECK(wait_for_capture());
+    CHECK(file_prefix(pdf, head, 4) == 4 && memcmp(head, "%PDF", 4) == 0);
+}
+
 const t_test_t t_engine_tests[] = {
     {"engine_window_open_with_features_raises_a_popup_request",
      test_engine_window_open_with_features_raises_a_popup_request},
@@ -771,5 +1125,18 @@ const t_test_t t_engine_tests[] = {
      test_engine_session_state_restores_chromium_history_into_a_new_page},
     {"engine_persistent_profiles_outlive_the_runtime",
      test_engine_persistent_profiles_outlive_the_runtime},
+    {"engine_history_is_searched_paginated_and_cleared",
+     test_engine_history_is_searched_paginated_and_cleared},
+    {"engine_bookmarks_nest_move_and_remove", test_engine_bookmarks_nest_move_and_remove},
+    {"engine_a_download_completes_and_is_controllable",
+     test_engine_a_download_completes_and_is_controllable},
+    {"engine_profiles_keep_their_data_apart_and_private_ones_record_no_history",
+     test_engine_profiles_keep_their_data_apart_and_private_ones_record_no_history},
+    {"engine_settings_and_permissions_round_trip_to_chromium",
+     test_engine_settings_and_permissions_round_trip_to_chromium},
+    {"engine_the_default_browser_status_is_answered",
+     test_engine_the_default_browser_status_is_answered},
+    {"engine_a_page_is_captured_as_an_image_and_as_a_pdf",
+     test_engine_a_page_is_captured_as_an_image_and_as_a_pdf},
     {NULL, NULL},
 };

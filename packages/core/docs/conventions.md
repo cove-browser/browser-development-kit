@@ -68,6 +68,10 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
     (`ui.gestureRequired`). Completing twice fails with `ui.requestCompleted`. Other completion names are not
     validated per surface until the per-surface interface definitions exist; the router adds only the rules in
     "The UI request router" below.
+12. Built-in events (the events of the interface definitions) are emitted by a backend with `emit_builtin_event`
+    (`runtime/broker_internal.h`): delivered later, in order, to the subscriptions for the event's name or
+    identifier. A subscription made with a profile in its options gets only that profile's events; one made
+    without gets every profile's. Events with no profile (`profiles.*`) reach only the unfiltered subscriptions.
 12. `bdk_native_handle_t` and `bdk_native_kind_t` live in `bdk_base.h` (c-abi.md puts them in section 5.4) because the
     start configuration needs them.
 13. `include/bdk/bdk_ids.h` is generated (T-ABI-03) from `interface/*.json` and the registry `interface/ids.json`; do

@@ -75,6 +75,37 @@ opened itself.
 What Chromium requires of a window that is not a `BrowserView` (T-ADP-02) is in
 [amendments.md](../../docs/planning/amendments.md) section 2.13.
 
+## Services (`engine/services/`)
+
+`EngineBackend::ExecuteCommand` hands every built-in command to `ExecuteBuiltinCommand`
+(`command_dispatch.cc`), which finds a handler by command name; a command with no handler answers
+`broker.notImplemented`. One file per service, each adding to the table: `history_service.cc`,
+`bookmarks_service.cc`, `downloads_service.cc`, `settings_service.cc` (the catalogue table maps each key to one
+Chromium pref; a key not in it reads as `null` and cannot be written), `permissions_service.cc` (the kind table maps
+each kind to a `ContentSettingsType`), `cookies_service.cc`, `privacy_service.cc` (`BrowsingDataRemover`),
+`profiles_service.cc` (`runtime.info`, `profiles.*`), `system_service.cc` with `system_mac.mm` (the only platform
+code: default-browser status and request), and `capture_service.cc` (PNG screenshot, print to PDF). A handler is
+`void(const std::shared_ptr<ServiceCall>&)`; `ServiceCall` carries the parsed arguments, the Chromium `Profile`
+and the ways to answer. Result field names and shapes are those of `packages/core/interface/*.json`; timestamps are
+integer milliseconds; void commands answer `null`.
+
+A private profile reads and writes its parent's bookmarks, reads and deletes in its parent's history and records
+none, and has its own cookies, content-setting exceptions, preferences and downloads list. Content-setting defaults
+are set on the parent's map, which the private profile's follows.
+
+Events (`events.cc`): per opened profile a `ServiceEvents` observes history, bookmarks and downloads and emits
+`history.*`, `bookmarks.*` and `downloads.*`; command handlers emit `settings.changed`, `permissions.changed`,
+`privacy.cleared` and `profiles.*`. All go through the core's `emit_builtin_event`. Not emitted: `cookies.changed`,
+`autofill.changed`, `passwords.*`.
+
+Not implemented (answer `broker.notImplemented`): `bookmarks.import`/`export`, `permissions.certificateExceptions`
+and `revokeCertificateException` (Chromium keeps no list to read), and every `passwords.*` and `autofill.*`
+command. Screenshots and PDFs have no command yet (`contents.screenshot` and `contents.pdf` are M7); the functions
+are in `capture_service.cc` and the test hook `bdk_testing_services` starts them. `privacy.clear` cannot stop a
+removal that has begun. `privacy.estimate` counts history, cookies and downloads; other types report 0 items.
+
+Pages record visits in history through Chromium's `HistoryTabHelper` (attached in `EngineContents::Attach`).
+
 ## The patches it needs
 
 `chromium/patches` links `//bdk` into the framework, exports the C ABI, `BDKApplicationBase` and the test hooks
@@ -83,7 +114,7 @@ engine keep the content runner after start-up, leaves `NSApplication`'s delegate
 application, lets the application name its Keychain item, lets the engine supply its own
 `ChromeContentBrowserClient`, lets it supply the `BrowserWindow` of a `Browser` (a settable factory that
 `BrowserWindow::CreateBrowserWindow` asks first), accepts a `Browser` with no side panel UI outside tests,
-allows a `Browser` in a BDK private profile, lets the engine supply the `TabDialogs` of a tab (the passwords bubble; a settable factory that `TabDialogs::Create` asks first), lets it present printing (a settable hook `PrintViewManager` asks before it creates the print preview dialog, in both the print command's and `window.print()`'s entry), and exports `bdk_testing_control`, the services' test hook. Each patch's message says why.
+allows a `Browser` in a BDK private profile, lets the engine supply the `TabDialogs` of a tab (the passwords bubble; a settable factory that `TabDialogs::Create` asks first), lets it present printing (a settable hook `PrintViewManager` asks before it creates the print preview dialog, in both the print command's and `window.print()`'s entry), and exports the test hooks `bdk_testing_ui`, `bdk_testing_control` and `bdk_testing_services`. Each patch's message says why.
 
 `bdk_overlay_marker()` stays as the cheapest proof that `//bdk` is linked: `chromium:build` runs
 `nm -gU` on the built framework and fails if the symbol is absent.

@@ -38,8 +38,10 @@
 #include "bdk/engine/identity.h"
 #include "bdk/engine/services/authentication.h"
 #include "bdk/engine/services/download_prompts.h"
+#include "bdk/engine/services/events.h"
 #include "bdk/engine/services/passwords_service.h"
 #include "bdk/engine/services/prompt_hooks.h"
+#include "bdk/engine/services/services.h"
 #include "bdk/engine/session_state.h"
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_notifications.h"
@@ -166,6 +168,7 @@ class EngineBackend final : public bdkcore::Backend {
       registry_writer_ = base::ThreadPool::CreateSequencedTaskRunner(
           {base::MayBlock(), base::TaskShutdownBehavior::BLOCK_SHUTDOWN});
     }
+    SetRuntimeInfo(resolved);
     base_profile_ = ProfileManager::GetLastUsedProfileIfLoaded();
     if (!base_profile_) {
       return bdkcore::fail(out_error, BDK_DOMAIN_RUNTIME, "startFailed",
@@ -221,6 +224,17 @@ class EngineBackend final : public bdkcore::Backend {
         .value_or("{}");
   }
 
+  // Built-in commands, service by service (engine/services): passwords and
+  // autofill first, then the rest.
+  void ExecuteCommand(
+      Runtime& rt,
+      const std::shared_ptr<bdkcore::BuiltinCall>& call) override {
+    if (ExecutePasswordsOrAutofillCommand(rt, call)) {
+      return;
+    }
+    ExecuteBuiltinCommand(rt, call);
+  }
+
   void ProfilesChanged(Runtime& rt) override {
     base::ListValue profiles;
     registry_.next_id = rt.next_id;
@@ -273,6 +287,7 @@ class EngineBackend final : public bdkcore::Backend {
                     InstallDownloadPrompts(loaded);
                     auto data = std::make_unique<EngineProfile>();
                     data->profile = loaded;
+                    data->events = CreateServiceEvents(loaded, p);
                     p->data = std::move(data);
                     done("", "");
                   },
@@ -353,16 +368,6 @@ class EngineBackend final : public bdkcore::Backend {
 
   void CloseContents(const std::shared_ptr<Contents>& c) override {
     Page(*c).Close();
-  }
-
-  // Built-in commands, service by service (engine/services).
-  void ExecuteCommand(
-      Runtime& rt,
-      const std::shared_ptr<bdkcore::BuiltinCall>& call) override {
-    if (ExecutePasswordsOrAutofillCommand(rt, call)) {
-      return;
-    }
-    Backend::ExecuteCommand(rt, call);
   }
 
   void Authenticate(Runtime& rt,

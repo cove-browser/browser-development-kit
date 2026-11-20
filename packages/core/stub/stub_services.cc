@@ -222,6 +222,8 @@ bool run(Ctx& c) {
         ++row->visits;
         if (c.text("transition") == "typed")
             ++row->typed;
+        emit_builtin_event(current_runtime(), "history.visited", c.call.profile->handle,
+                           "{\"entry\":" + history_json(*row) + ",\"source\":\"application\"}");
         c.out = "null";
         return true;
     }

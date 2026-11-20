@@ -133,6 +133,13 @@ bdk_call_t broker_submit(const std::shared_ptr<Runtime>& rt, const std::shared_p
    capability.denied. */
 void broker_revoke_caller(const std::shared_ptr<Caller>& caller);
 
+/* Emits a built-in event (an event of the interface definitions) to the subscriptions for it, by
+   name or by identifier. A subscription made for a profile gets only that profile's events;
+   `profile` is the handle of the profile the event happened in. Delivered later, on the UI thread,
+   in order. For backends. Returns false for a name that is not a built-in event. */
+bool emit_builtin_event(const std::shared_ptr<Runtime>&, const std::string& name,
+                        bdk_profile_t profile, const std::string& payload_json);
+
 /* ---- Argument checking (broker_args.cc) ---- */
 
 /* A parsed JSON value. Only what argument checking needs. */
