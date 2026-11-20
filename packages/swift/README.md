@@ -80,7 +80,7 @@ throws `ui.requestCompleted`; completing a withdrawn request does nothing.
 | `passwords` | `PasswordSaveRequest`, `LeakedPasswordRequest` | `save(confirmedBy:)` (grant), `never()`, `dismiss()` |
 | `autofill`, `autofillSuggestions` | `AutofillSaveRequest`, `AutofillSuggestionsRequest` | `save(confirmedBy:)`, `accept(_:confirmedBy:)` (grant), `dismiss()` |
 | `printing` | `PrintRequest` | `printWithSystemDialog()`, `savePDF(to:)`, `cancel()` |
-| `find` | `FindRequest` | `close()` |
+| `find` | `FindRequest` | `session`, `close()` |
 | `fullscreen`, `exclusiveAccess` | `FullscreenRequest`, `ExclusiveAccessRequest` | `allow()`, `deny()`; `acknowledge()` |
 | `notifications` | `NotificationRequest` | `shown()` (local), `clicked(action:)`, `closed(byUser:)` |
 | `certificateErrors`, `reputationWarnings` | `CertificateErrorRequest`, `ReputationWarningRequest` | `goBack()`, `proceed(confirmedBy:)` (grant; `ui.notOverridable` when Chromium refuses) |
@@ -192,7 +192,7 @@ so a test can start a load and act on it (supersede it, stop it) before the stub
   `BDKWindow` yet); `profile` is optional; `setHandler` throws (it can fail after the freeze); a surface with two
   request kinds (`downloads`, `passwords`) takes `BDKUIRequest`; `NewWindowRequest.newContents` and the other
   page-carrying fields are optional; `BDKMenuItem` has no `icon`; there is no `AutofillSuggestionsRequest.preview`,
-  `FindRequest.session` or `ProviderDescriptor` beyond `BDKProviderDescriptor(name:isRemote:)`.
+  or `ProviderDescriptor` beyond `BDKProviderDescriptor(name:isRemote:)`.
 * Commands (T-SVC-05): `BDKCommand` carries its shape; `BDKCommandContext.caller` is `BDKCommandCaller`;
   `runtime.commands` has no `.profile(profile)` convenience beyond `invoke(…, profile:)`.
 
@@ -200,10 +200,10 @@ so a test can start a load and act on it (supersede it, stop it) before the stub
 
 | Left out | Why | Task |
 |---|---|---|
-| Page registration, application settings and providers on `BDKConfiguration`; wrappers for services with no definition yet (search, translation, extensions, favicons, top sites; page-scoped print and capture) | The ABI declares `bdk_page_handler_register`, `bdk_app_setting_register` and `bdk_provider_register`; the wrappers are generated, so each arrives with its definition | T-ABI-03, T-SWF-04, T-SVC-06 |
+| Page registration, application settings and providers on `BDKConfiguration`; wrappers for services with no definition yet (search, translation, extensions, favicons, top sites; page-scoped capture) | The ABI declares `bdk_page_handler_register`, `bdk_app_setting_register` and `bdk_provider_register`; the wrappers are generated, so each arrives with its definition | T-ABI-03, T-SWF-04, T-SVC-06 |
 | `BDKSettingKey<T>` typed keys; `BDKProfiles.events` for the `profiles.*` events | The keys need the setting registration; `profiles` is a native namespace | T-SVC-05, T-ABI-03 |
 | `BDKWindow`, anchors, window delegate, host contexts | `bdk_window_register` takes a window and a kind and nothing more yet; the other `bdk_window_*` functions are not declared | T-UIR-01, T-ADP-06 |
-| Page commands (`perform`, `canPerform`), find, capture, print, translation, scripting, user scripts | Not declared in the ABI | T-UIR-04, T-UIR-06, T-SVC-06, T-AUT-03 |
+| Page commands (`perform`, `canPerform`), capture, translation, scripting, user scripts | Not declared in the ABI | T-UIR-04, T-UIR-06, T-SVC-06, T-AUT-03 |
 | `BDKRuntime.contents` lookup by id, `BDKProfiles.events`, `ProfileDescriptor.lastUsed`, profile rename by id | Not in the ABI (a rename needs an open profile handle) | T-ABI-03 |
 | `displayURL`, favicon, `capture`, `isCrashed`, `isDiscarded`, `isAutoDiscardable` getter, `isFullscreen`, opener, `extensionTabID`, `hoveredLinkChanged`, discard events (renderer loss is `.rendererGone`) | `bdk_contents_state_t` and the event kinds do not carry them | T-ABI-03 |
 | Navigation `LoadOptions`, `prune`, `deferInitialLoad`, `userAgent` and `isInitiallyMuted` creation options | Not in `bdk_contents_options_t` or `bdk_contents_load` | T-ABI-03 |

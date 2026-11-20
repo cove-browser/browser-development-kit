@@ -61,6 +61,15 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
    callbacks yet because their signatures are not specified.
 10. Application command, event and page-route names must start with `app.` (`config.nameNotApp`). Duplicates fail
     with `config.duplicateName` (not in the swift-api error table).
+11a. Find and print (T-SWF-07). Find results are `BDK_CONTENTS_EVENT_FIND_RESULT` events on the contents subscription, not
+    a callback of their own: they are ordered with the page's other events and need no new handle or release rule. The
+    detail is `{"matchCount","activeIndex","rect":{"x","y","width","height"},"final"}`; `activeIndex` is 1-based (0 for
+    none) and `final` is false while Chromium is still counting. `find_next` and `find_previous` do nothing when no
+    search is in progress. The stub renders nothing: every start and every move reports zero matches, one final event
+    each (an empty text clears the search; after `find_stop` the moves report nothing), and `find_present` and `print`
+    raise the `find` (payload `initialText` is the last search) and `printing` (`isUserInitiated` true) requests, one
+    find UI open per page. `bdk_contents_print` takes the path the print command takes, so with no handler the default
+    presenter runs.
 11. Which completions grant is the `grants` column of the surface table in `runtime/ui_router.cc`, from
     ui-requests.md section 5: `grant` (permissions, and on every surface), `keep` (downloads), `save` (passwords,
     autofill), `accept` (autofill suggestions), `proceed` (interstitials), `select` (device choosers), `share` (screen
