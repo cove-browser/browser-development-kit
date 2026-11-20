@@ -12,6 +12,7 @@
 #include "base/task/sequenced_task_runner.h"
 #include "bdk/engine/engine_contents.h"
 #include "bdk/engine/host_view.h"
+#include "bdk/engine/json_util.h"
 #include "components/find_in_page/find_tab_helper.h"
 #include "components/find_in_page/find_types.h"
 #include "content/public/browser/render_widget_host_view.h"
@@ -52,6 +53,7 @@ void PageFind::OnNavigated() {
     CloseUi();
   }
   result_ = Result();
+  active_ = false;
 }
 
 void PageFind::Present() {
@@ -131,7 +133,7 @@ void PageFind::Next(bool forward) {
     return;
   }
   const std::u16string text = helper_->find_text();
-  if (text.empty()) {
+  if (!active_ || text.empty()) {
     return;
   }
   helper_->StartFinding(text, forward, match_case_, /*find_match=*/true);
@@ -144,6 +146,7 @@ void PageFind::Stop(bool clear_selection) {
   helper_->StopFinding(clear_selection ? find_in_page::SelectionAction::kClear
                                        : find_in_page::SelectionAction::kKeep);
   result_ = Result();
+  active_ = false;
 }
 
 void PageFind::Search(const std::string& text,
@@ -154,6 +157,7 @@ void PageFind::Search(const std::string& text,
     return;
   }
   match_case_ = match_case;
+  active_ = !text.empty();
   helper_->StartFinding(base::UTF8ToUTF16(text), forward, match_case,
                         /*find_match=*/true);
 }
@@ -175,6 +179,8 @@ void PageFind::OnFindResultAvailable(content::WebContents* web_contents) {
   if (bar_) {
     bar_->SetResult(result_.ordinal, result_.count);
   }
+  Report(result_.count, result_.ordinal, details.selection_rect(),
+         details.final_update());
 }
 
 void PageFind::OnFindEmptyText(content::WebContents* web_contents) {
@@ -182,6 +188,24 @@ void PageFind::OnFindEmptyText(content::WebContents* web_contents) {
   if (bar_) {
     bar_->SetResult(0, 0);
   }
+  Report(0, 0, gfx::Rect(), /*final_update=*/true);
+}
+
+void PageFind::Report(int count,
+                      int ordinal,
+                      const gfx::Rect& rect,
+                      bool final_update) {
+  page_->Emit(BDK_CONTENTS_EVENT_FIND_RESULT, "",
+              ToJson(base::DictValue()
+                         .Set("matchCount", count)
+                         .Set("activeIndex", ordinal)
+                         .Set("rect", base::DictValue()
+                                          .Set("x", rect.x())
+                                          .Set("y", rect.y())
+                                          .Set("width", rect.width())
+                                          .Set("height", rect.height()))
+                         .Set("final", final_update)),
+              0, 0);
 }
 
 void PageFind::OnFindTabHelperDestroyed(find_in_page::FindTabHelper* helper) {

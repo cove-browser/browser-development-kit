@@ -139,6 +139,37 @@ static void test_handled_request_can_use_the_default_later(void) {
     bdk_error_release(err);
 }
 
+static void test_present_raises_a_find_request_the_handler_completes(void) {
+    bdk_contents_t c = setup(BDK_SURFACE_FIND, BDK_UI_HANDLED);
+    bdk_error_t err = 0;
+    CHECK(bdk_contents_find_present(c, &err) == BDK_OK);
+    CHECK(g_handler_calls == 0); /* never synchronous */
+    t_pump();
+    REQUIRE(g_handler_calls == 1);
+    CHECK(g_seen_surface == BDK_SURFACE_FIND);
+    /* One find UI is open per page: asking again raises nothing. */
+    CHECK(bdk_contents_find_present(c, &err) == BDK_OK);
+    t_pump();
+    CHECK(g_handler_calls == 1);
+    CHECK(bdk_ui_complete(g_request, S("accept"), S("{\"action\":\"close\"}"), no_gesture(),
+                          &err) == BDK_OK);
+    CHECK(bdk_contents_find_present(c, &err) == BDK_OK);
+    t_pump();
+    CHECK(g_handler_calls == 2);
+}
+
+static void test_print_raises_a_user_initiated_printing_request(void) {
+    bdk_contents_t c = setup(BDK_SURFACE_PRINTING, BDK_UI_HANDLED);
+    bdk_error_t err = 0;
+    CHECK(bdk_contents_print(c, &err) == BDK_OK);
+    CHECK(g_handler_calls == 0);
+    t_pump();
+    REQUIRE(g_handler_calls == 1);
+    CHECK(g_seen_surface == BDK_SURFACE_PRINTING);
+    CHECK(strstr(g_payload, "\"isUserInitiated\":true") != NULL);
+    CHECK(bdk_ui_complete(g_request, S("deny"), S("{}"), no_gesture(), &err) == BDK_OK);
+}
+
 static void test_a_surface_with_no_handler_uses_the_default(void) {
     bdk_contents_t c = setup(BDK_SURFACE_FIND, BDK_UI_HANDLED);
     REQUIRE(bdk_harness_raise_ui_request(t_runtime, BDK_SURFACE_PRINTING, c, "{}") == BDK_OK);
@@ -853,6 +884,9 @@ const t_test_t t_ui_tests[] = {
     {"ui.permission_grant_cannot_widen", test_a_permission_grant_cannot_widen_the_request},
     {"ui.dropped_request_is_cancelled_never_granted",
      test_a_dropped_request_is_cancelled_never_granted},
+    {"ui.find_present_raises_a_find_request",
+     test_present_raises_a_find_request_the_handler_completes},
+    {"ui.print_raises_a_printing_request", test_print_raises_a_user_initiated_printing_request},
     {"ui.queue_one_at_a_time", test_requests_of_a_kind_for_a_page_reach_the_handler_one_at_a_time},
     {"ui.queue_per_page_and_kind", test_queues_are_per_page_and_per_kind},
     {"ui.queue_drains_when_handler_answers_at_once",

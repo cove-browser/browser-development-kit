@@ -45,6 +45,7 @@ public final class BDKWebContents: Identifiable {
     package private(set) var handle: bdk_contents_t
     let broadcaster = EventBroadcaster<Event>()
     private var hostView: BDKWebView?
+    var findSession: FindSession?
     private var lastState = State()
 
     /// False once the page was destroyed, or its profile or runtime went away.

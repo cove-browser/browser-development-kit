@@ -164,7 +164,8 @@
       { "name": "FOCUS_CHANGED", "id": 6 },
       { "name": "CLOSED", "id": 7 },
       { "name": "RENDERER_GONE", "id": 8 },
-      { "name": "VISIBILITY_CHANGED", "id": 9 }
+      { "name": "VISIBILITY_CHANGED", "id": 9 },
+      { "name": "FIND_RESULT", "id": 10 }
     ],
     "eventFlags": [
       { "name": "MAIN_FRAME", "id": 1 },

@@ -145,11 +145,11 @@ Exit criteria: a browser built with no custom UI code is usable for everyday bro
 | T-UIR-03 | Done: where to save and dangerous downloads; context menus and new windows from M2. | ui-requests.md |
 | T-UIR-04 | Done: the password save and update prompt (asked when a page finishes a navigation with a question pending), autofill save prompts and the suggestion popup, `window.print()`. The leaked-password request waits for the leak-check provider (S16, M6). The card autofill prompt has no scenario (T-UIR-07, M4). | ui-requests.md 5.7 to 5.9 |
 | T-UIR-05 | Done: certificate and Safe Browsing interstitials only go back or proceed; disabling fails at start; reject, drop and release go back; proceed needs a gesture and an overridable error. Tested with a real TLS server with an untrusted certificate. The non-overridable case (HSTS, pinning) is not tested end to end (T-UIR-07, M4). | ui-requests.md; `tests_engine_prompts.c` |
-| T-UIR-06 | Done: find (no C ABI function yet for the application to start it, nor `page.print()`: T-SWF-07, M4), fullscreen, notifications (in-window banner: the system notification centre needs entitlements). | ui-requests.md 8.1 |
+| T-UIR-06 | Done: find (started by the application too: `page.find` and `page.print()`, T-SWF-07, done in M3), fullscreen, notifications (in-window banner: the system notification centre needs entitlements). | ui-requests.md 8.1 |
 | T-MAC-04 (M0, settled here) | Default presenters are AppKit, not Chromium's views, which need a Views widget to anchor to. Decided from the source and from what the engine needed, not from a spike. | feasibility.md section 11 |
 | Exit criterion | Met by the scenarios with no handler registered for passwords, autofill, downloads, printing and permission prompts. Not checked by hand in `apps/examples/minimal-browser` (T-UIR-07, M4). | engine suite |
 
-Typed application settings (`BDKSettingKey`, `config.settings.register`) are done (T-SVC-08, in M3). Swift API from swift-api.md that M3 did not build, each now a task: `page.find` and `page.print()` (T-SWF-07, M4); page commands, setting zoom and mute, leaving picture-in-picture, all left over from M2 (T-SWF-06, M4); address-bar services, `profile.search` (S1, T-SVC-10, M4); `page.capture` (T-SVC-09, M7); public window registration and anchors (S11, T-SWF-08, M5).
+Typed application settings (`BDKSettingKey`, `config.settings.register`, T-SVC-08) and `page.find` and `page.print()` (T-SWF-07) are done in M3. Swift API from swift-api.md that M3 did not build, each now a task: page commands, setting zoom and mute, leaving picture-in-picture, all left over from M2 (T-SWF-06, M4); address-bar services, `profile.search` (S1, T-SVC-10, M4); `page.capture` (T-SVC-09, M7); public window registration and anchors (S11, T-SWF-08, M5).
 
 Also fixed in M3: a persistent profile stayed loaded in Chromium after the application closed it, keeping about 87 file descriptors; it is now unloaded, and reopening waits for Chromium to finish destroying it.
 
@@ -161,7 +161,7 @@ Also fixed in M3: a persistent profile stayed loaded in Chromium after the appli
 | Bundled pages | T-WUI-03, T-CLI-04 | `Pages/Settings` is discovered, built with the Vite preset and served under the standard content security policy. |
 | Capability broker | T-WUI-04 | A granted page reads and writes settings through `@bdk/internal`; Swift sees the same values. An ungranted page, a subframe, an extension and a web page are refused. A wrong-page interface request terminates the renderer. An alias carries its target's grants. |
 | SDK and generation | T-JS-01, T-JS-02, T-JS-03 | Declarations are generated locally from interface definitions and registered commands. Nothing is published to npm. |
-| Left over from M2 and M3 | T-SVC-07, T-SVC-08, T-SVC-10, T-SWF-06, T-SWF-07, T-UIR-07, T-UIR-08 | No Swift wrapper calls a command the engine rejects as not implemented. Typed application settings, find, print, page commands and address-bar services work from Swift. The M3 scenarios left open pass, and the M3 exit criterion is checked by hand. |
+| Left over from M2 and M3 | T-SVC-07, T-SVC-08, T-SVC-10, T-SWF-06, T-UIR-07, T-UIR-08 (T-SWF-07 is done in M3) | No Swift wrapper calls a command the engine rejects as not implemented. Typed application settings, page commands and address-bar services work from Swift. The M3 scenarios left open pass, and the M3 exit criterion is checked by hand. |
 
 ### M5 — Extensions (public v1 gate)
 

@@ -441,6 +441,75 @@ static void test_discard_keeps_the_handle_valid(void) {
     CHECK(str_is(st.url, URL_A));
 }
 
+static void test_find_and_print_validate_their_arguments(void) {
+    g_c = new_page();
+    bdk_error_t err = 0;
+    bdk_find_options_t opts;
+    memset(&opts, 0, sizeof opts);
+    opts.struct_size = sizeof opts;
+    CHECK(bdk_contents_find_start(g_c, S("needle"), &opts, &err) == BDK_OK);
+    CHECK(bdk_contents_find_start(g_c, S("needle"), NULL, &err) == BDK_OK);
+    CHECK(bdk_contents_find_start(g_c, S(""), NULL, &err) == BDK_OK); /* clears the search */
+    opts.struct_size = 1;                                             /* smaller than a size_t */
+    CHECK(bdk_contents_find_start(g_c, S("needle"), &opts, &err) == BDK_ERR_INVALID_ARGUMENT);
+    bdk_string_t bad = {NULL, 3};
+    CHECK(bdk_contents_find_start(g_c, bad, NULL, &err) == BDK_ERR_INVALID_ARGUMENT);
+    /* with no search in progress the moves and stop do nothing */
+    CHECK(bdk_contents_find_stop(g_c, 1, &err) == BDK_OK);
+    CHECK(bdk_contents_find_next(g_c, &err) == BDK_OK);
+    CHECK(bdk_contents_find_previous(g_c, &err) == BDK_OK);
+    CHECK(bdk_contents_find_stop(g_c, 0, &err) == BDK_OK);
+    CHECK(bdk_contents_find_present(g_c, &err) == BDK_OK);
+    CHECK(bdk_contents_print(g_c, &err) == BDK_OK);
+}
+
+static void test_find_and_print_on_a_stale_or_unknown_handle_fail(void) {
+    g_c = new_page();
+    bdk_error_t err = 0;
+    CHECK(bdk_contents_find_start(0, S("x"), NULL, &err) == BDK_ERR_STALE_HANDLE);
+    CHECK(bdk_contents_find_next(0, &err) == BDK_ERR_STALE_HANDLE);
+    CHECK(bdk_contents_find_previous(0, &err) == BDK_ERR_STALE_HANDLE);
+    CHECK(bdk_contents_find_stop(0, 1, &err) == BDK_ERR_STALE_HANDLE);
+    CHECK(bdk_contents_find_present(0, &err) == BDK_ERR_STALE_HANDLE);
+    CHECK(bdk_contents_print(0, &err) == BDK_ERR_STALE_HANDLE);
+    CHECK(bdk_contents_close(g_c, &err) == BDK_OK);
+    t_pump();
+    CHECK(bdk_contents_find_start(g_c, S("x"), NULL, &err) == BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "contents", "stale"));
+    CHECK(bdk_contents_find_present(g_c, &err) == BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "contents", "stale"));
+    CHECK(bdk_contents_print(g_c, &err) == BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "contents", "stale"));
+    CHECK(bdk_contents_destroy(g_c) == BDK_OK);
+    CHECK(bdk_contents_find_stop(g_c, 1, &err) == BDK_ERR_STALE_HANDLE);
+}
+
+/* The stub renders nothing: every search finds no match, and says so once per start or move. */
+static void test_the_stub_reports_a_search_as_zero_matches(void) {
+    if (strcmp(bdk_harness_session_format(), "BDKSTUB1") != 0) {
+        printf("    (skipped: the stub's fake results; a real engine counts real matches)\n");
+        return;
+    }
+    g_c = new_page();
+    watch(g_c, &g_ev);
+    bdk_error_t err = 0;
+    CHECK(bdk_contents_find_start(g_c, S("needle"), NULL, &err) == BDK_OK);
+    CHECK(g_ev.count == 0); /* never synchronous */
+    t_pump();
+    REQUIRE(g_ev.count == 1);
+    CHECK(g_ev.kind[0] == BDK_CONTENTS_EVENT_FIND_RESULT);
+    CHECK(strstr(g_ev.detail[0], "\"matchCount\":0") != NULL);
+    CHECK(strstr(g_ev.detail[0], "\"activeIndex\":0") != NULL);
+    CHECK(strstr(g_ev.detail[0], "\"final\":true") != NULL);
+    CHECK(bdk_contents_find_next(g_c, &err) == BDK_OK);
+    t_pump();
+    CHECK(g_ev.count == 2);
+    CHECK(bdk_contents_find_stop(g_c, 1, &err) == BDK_OK);
+    CHECK(bdk_contents_find_next(g_c, &err) == BDK_OK); /* no search any more */
+    t_pump();
+    CHECK(g_ev.count == 2);
+}
+
 static void test_close_then_destroy(void) {
     g_c = new_page();
     watch(g_c, &g_ev);
@@ -768,6 +837,10 @@ static void test_a_contents_subscription_is_not_called_after_unsubscribe(void) {
 
 const t_test_t t_contents_tests[] = {
     {"contents.new_state_defaults", test_new_contents_state_defaults},
+    {"contents.find_and_print_validate_arguments", test_find_and_print_validate_their_arguments},
+    {"contents.find_and_print_stale_handles",
+     test_find_and_print_on_a_stale_or_unknown_handle_fail},
+    {"contents.stub_find_reports_zero_matches", test_the_stub_reports_a_search_as_zero_matches},
     {"contents.navigation_events_are_ordered_and_async",
      test_navigation_emits_ordered_events_after_the_call_returns},
     {"contents.scripted_title_and_insecure_scheme", test_scripted_title_and_insecure_scheme},

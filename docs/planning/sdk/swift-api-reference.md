@@ -378,9 +378,9 @@ Never matches internal pages or extension pages. Later: a message channel from a
 | `page.capture` | `screenshot(.visible \| .fullPage \| .rect(CGRect)) async throws` | Image | M7, T-SVC-09 (not built) |
 | | `pdf(.init(paper:, landscape:, printBackground:)) async throws` | PDF | M7, T-SVC-09 (not built) |
 | | `save(to:, as: .htmlOnly \| .completePage \| .singleFile) async throws` | Save page | M7, T-SVC-09 (not built) |
-| `page.find` | `start(_ text, options:) ` | AS of results: matchCount, activeIndex, rect | M4, T-SWF-07 (not built) |
-| | `next()`, `previous()`, `stop(.clearSelection)` | | |
-| | `present()` | Ask for the find surface | |
+| `page.find` | `start(_ text, options:) throws` | AS of results: matchCount, activeIndex, rect, isFinal. Ends at `stop`, at the next `start`, and when the page closes | M3, T-SWF-07 |
+| | `next() throws`, `previous() throws`, `stop(.clearSelection \| .keepSelection) throws` | | |
+| | `present() throws` | Ask for the find surface | |
 | `page.zoom` | `set(_ factor, scope: .site \| .page) throws` | | M4, T-SWF-06 (not built; the factor is readable) |
 | `page.media` | `isMuted` (RW) | | M4, T-SWF-06 (read-only for now) |
 | | `exitPictureInPicture()` | | M4, T-SWF-06 (not built) |
@@ -388,7 +388,7 @@ Never matches internal pages or extension pages. Later: a message channel from a
 | | `translate(to:) async throws` | | |
 | | `revert() async throws` | | |
 | | `present()` | Ask for the translation surface | |
-| `page` | `print()` | Goes through the printing surface | M4, T-SWF-07 (not built) |
+| `page` | `print() throws` | Goes through the printing surface (a `PrintRequest` with `isUserInitiated` true) | M3, T-SWF-07 |
 
 `present()` on find, translation and DevTools, and `print()`, start a flow whose UI is a browser-owned surface. The request takes the normal path in [ui-requests.md](ui-requests.md).
 

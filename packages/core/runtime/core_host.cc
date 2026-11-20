@@ -1,6 +1,7 @@
 /* Runtime core: profiles, WebContents, views, windows and UI requests. The checks and the
    bookkeeping are here; what a page does is the backend's. */
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 
@@ -616,6 +617,64 @@ BDK_EXPORT bdk_status_t bdk_contents_set_auto_discardable(bdk_contents_t h, uint
     if (!c)
         return st;
     return backend().SetAutoDiscardable(*c, discardable != 0, err);
+}
+
+BDK_EXPORT bdk_status_t bdk_contents_find_start(bdk_contents_t h, bdk_string_t text,
+                                                const bdk_find_options_t* options,
+                                                bdk_error_t* err) {
+    bdk_status_t st;
+    auto c = open_contents_for(h, err, &st);
+    if (!c)
+        return st;
+    if (!string_ok(text) || (options && options->struct_size < sizeof(size_t)))
+        return BDK_ERR_INVALID_ARGUMENT;
+    /* Only the bytes the caller declared are read; match_case is missing (0) in a smaller struct */
+    bool match_case = options &&
+                      options->struct_size >=
+                          offsetof(bdk_find_options_t, match_case) + sizeof options->match_case &&
+                      options->match_case != 0;
+    return backend().FindStart(c, str(text), match_case, err);
+}
+
+BDK_EXPORT bdk_status_t bdk_contents_find_next(bdk_contents_t h, bdk_error_t* err) {
+    bdk_status_t st;
+    auto c = open_contents_for(h, err, &st);
+    if (!c)
+        return st;
+    return backend().FindNext(c, true, err);
+}
+
+BDK_EXPORT bdk_status_t bdk_contents_find_previous(bdk_contents_t h, bdk_error_t* err) {
+    bdk_status_t st;
+    auto c = open_contents_for(h, err, &st);
+    if (!c)
+        return st;
+    return backend().FindNext(c, false, err);
+}
+
+BDK_EXPORT bdk_status_t bdk_contents_find_stop(bdk_contents_t h, uint8_t clear_selection,
+                                               bdk_error_t* err) {
+    bdk_status_t st;
+    auto c = open_contents_for(h, err, &st);
+    if (!c)
+        return st;
+    return backend().FindStop(c, clear_selection != 0, err);
+}
+
+BDK_EXPORT bdk_status_t bdk_contents_find_present(bdk_contents_t h, bdk_error_t* err) {
+    bdk_status_t st;
+    auto c = open_contents_for(h, err, &st);
+    if (!c)
+        return st;
+    return backend().FindPresent(c, err);
+}
+
+BDK_EXPORT bdk_status_t bdk_contents_print(bdk_contents_t h, bdk_error_t* err) {
+    bdk_status_t st;
+    auto c = open_contents_for(h, err, &st);
+    if (!c)
+        return st;
+    return backend().Print(c, err);
 }
 
 BDK_EXPORT bdk_subscription_t bdk_contents_subscribe(bdk_contents_t h, bdk_contents_event_cb cb,

@@ -293,6 +293,12 @@ public final class FindRequest: BDKUIRequest {
         super.init(delivery, runtime: runtime)
     }
 
+    /// The page's find session, the same object as `page.find`, so a handler's own find field can
+    /// search through it. Nil when the request names no page.
+    public var session: FindSession? {
+        contents?.find
+    }
+
     public func close() {
         try? submit("accept", ["action": .string("close")])
     }

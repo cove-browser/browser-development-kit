@@ -1,8 +1,8 @@
 /* BDK C ABI: WebContents lifecycle, navigation, state and events. See c-abi.md sections 5.2
    and 5.3. Signatures are PROVISIONAL where c-abi.md only names a function (it gives the event
    struct and the subscribe functions in full). Named in c-abi.md but not declared, because nothing
-   states their shape: bdk_contents_prune, _perform_command, _can_perform_command, _find_start,
-   _find_next, _find_stop, _set_host_context (conditional on decision D1). */
+   states their shape: bdk_contents_prune, _perform_command, _can_perform_command,
+   _set_host_context (conditional on decision D1). */
 #ifndef BDK_CONTENTS_H_
 #define BDK_CONTENTS_H_
 
@@ -72,6 +72,32 @@ BDK_EXPORT bdk_status_t bdk_contents_set_user_agent(bdk_contents_t, bdk_string_t
 BDK_EXPORT bdk_status_t bdk_contents_discard(bdk_contents_t, bdk_error_t*);
 BDK_EXPORT bdk_status_t bdk_contents_set_auto_discardable(bdk_contents_t, uint8_t discardable,
                                                           bdk_error_t*);
+
+/* Find in page and printing, started by the application (T-SWF-07). Results arrive as
+   BDK_CONTENTS_EVENT_FIND_RESULT events on the contents subscription, with detail_json
+   {"matchCount":int,"activeIndex":int,"rect":{"x","y","width","height"},"final":bool}.
+   activeIndex is 1-based and 0 when no match is active; rect is the active match in view
+   coordinates (all zero when none); final is false while the count is still growing. Starting a
+   search with empty text clears it and reports zero matches. */
+typedef struct bdk_find_options {
+    size_t struct_size;
+    uint8_t match_case; /* 0: case-insensitive */
+} bdk_find_options_t;
+
+/* Starts (or restarts) a search. options may be NULL for the defaults. */
+BDK_EXPORT bdk_status_t bdk_contents_find_start(bdk_contents_t, bdk_string_t text,
+                                                const bdk_find_options_t* options, bdk_error_t*);
+/* Move the active match. With no search in progress they do nothing. */
+BDK_EXPORT bdk_status_t bdk_contents_find_next(bdk_contents_t, bdk_error_t*);
+BDK_EXPORT bdk_status_t bdk_contents_find_previous(bdk_contents_t, bdk_error_t*);
+/* Ends the search; clear_selection also deselects the active match. */
+BDK_EXPORT bdk_status_t bdk_contents_find_stop(bdk_contents_t, uint8_t clear_selection,
+                                               bdk_error_t*);
+/* Raises a `find` UI request (BDK_SURFACE_FIND): the application's handler, else the default find
+   bar. */
+BDK_EXPORT bdk_status_t bdk_contents_find_present(bdk_contents_t, bdk_error_t*);
+/* Raises a `printing` UI request (BDK_SURFACE_PRINTING) as the print command does. */
+BDK_EXPORT bdk_status_t bdk_contents_print(bdk_contents_t, bdk_error_t*);
 
 /* Events (section 5.3). The struct and every string in it are valid until the callback returns. */
 typedef struct bdk_contents_event {

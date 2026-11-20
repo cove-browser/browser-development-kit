@@ -305,6 +305,19 @@ class Backend {
     virtual bdk_status_t Discard(Contents& contents, bdk_error_t* out_error) = 0;
     virtual bdk_status_t SetAutoDiscardable(Contents& contents, bool discardable,
                                             bdk_error_t* out_error) = 0;
+    /* Find in page and printing, started by the application. Results are
+       BDK_CONTENTS_EVENT_FIND_RESULT events. */
+    virtual bdk_status_t FindStart(const std::shared_ptr<Contents>& contents,
+                                   const std::string& text, bool match_case,
+                                   bdk_error_t* out_error) = 0;
+    virtual bdk_status_t FindNext(const std::shared_ptr<Contents>& contents, bool forward,
+                                  bdk_error_t* out_error) = 0;
+    virtual bdk_status_t FindStop(const std::shared_ptr<Contents>& contents, bool clear_selection,
+                                  bdk_error_t* out_error) = 0;
+    virtual bdk_status_t FindPresent(const std::shared_ptr<Contents>& contents,
+                                     bdk_error_t* out_error) = 0;
+    virtual bdk_status_t Print(const std::shared_ptr<Contents>& contents,
+                               bdk_error_t* out_error) = 0;
 
     /* Views and windows. */
     virtual bdk_status_t NativeView(Contents& contents, bdk_native_handle_t* out,

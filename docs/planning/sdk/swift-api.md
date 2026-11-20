@@ -406,10 +406,10 @@ let image = try await page.capture.screenshot(.visible)                 // .visi
 let pdf   = try await page.capture.pdf(.init(paper: .a4, landscape: false, printBackground: true))
 try await page.capture.save(to: fileURL, as: .completePage)             // .htmlOnly, .completePage, .singleFile
 
-// Find in page — M3, T-UIR-06
-for await result in page.find.start("needle", options: .init(matchCase: false)) { … }   // matchCount, activeIndex, rect
-page.find.next(); page.find.previous(); page.find.stop(.clearSelection)
-page.find.present()                    // ask for the find surface; default presenter or the application's handler
+// Find in page — M3, T-UIR-06; started by the application, T-SWF-07
+for await result in try page.find.start("needle", options: .init(matchCase: false)) { … }   // matchCount, activeIndex, rect, isFinal
+try page.find.next(); try page.find.previous(); try page.find.stop(.clearSelection)
+try page.find.present()                // ask for the find surface; default presenter or the application's handler
 
 // Zoom
 try page.zoom.set(1.25, scope: .site)  // .site (Chromium's per-site default) or .page
@@ -425,12 +425,12 @@ try await page.translation.revert()
 page.translation.present()             // ask for the translation surface
 
 // Printing — M3, T-UIR-04
-page.print()                           // goes through the printing surface
+try page.print()                       // goes through the printing surface
 ```
 
 `present()` on find, translation and DevTools, and `print()`, are how an application-owned menu item or shortcut starts a flow whose UI is a browser-owned surface. The request then takes the normal path in [ui-requests.md](ui-requests.md).
 
-Not built at the end of M3 (2026-11-20): `page.capture` (T-SVC-09, M7, with the `contents.*` commands); `page.find` and `page.print()` (T-SWF-07, M4); `page.zoom.set`, a settable `isMuted` and `exitPictureInPicture()` (T-SWF-06, M4). `page.zoom` and `page.isMuted` can be read. The find and printing surfaces exist, so a handler already receives the requests Chromium raises.
+Not built at the end of M3 (2026-11-20): `page.capture` (T-SVC-09, M7, with the `contents.*` commands); `page.zoom.set`, a settable `isMuted` and `exitPictureInPicture()` (T-SWF-06, M4). `page.zoom` and `page.isMuted` can be read. Find and printing are built (T-SWF-07): the calls throw `contents.stale` on a closed page, like the other page calls. `find.start` returns the results of that search as a stream: one report when it starts and one for each move of the active match, each with `matchCount`, `activeIndex` (from 1, 0 for none), `rect` in the page view's coordinates and `isFinal` (the engine reports while it is still counting). The stream ends at `stop`, at the next `start` and when the page closes. `FindRequest.session` is the same `page.find`. The stub renders nothing, so its searches always report zero matches.
 
 ### 6.8 Session state
 

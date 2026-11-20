@@ -173,7 +173,7 @@ The functions behind the Swift objects in [swift-api.md](swift-api.md) sections 
 | `bdk_contents_session_state`, `bdk_contents_restore` | Serialised navigation state, as a buffer |
 | `bdk_contents_set_muted`, `_set_zoom`, `_set_user_agent`, `_perform_command`, `_can_perform_command` | Page controls |
 | `bdk_contents_discard`, `_set_auto_discardable` | Added (S15). Discard a hidden page's renderer; exempt a page from Chromium's automatic discarding. The `bdk_contents_t` handle stays valid across a discard, including when Chromium replaces the underlying WebContents. |
-| `bdk_contents_find_start`, `_find_next`, `_find_stop` | Find in page |
+| `bdk_contents_find_start`, `_find_next`, `_find_previous`, `_find_stop`, `_find_present`, `bdk_contents_print` | Find in page and printing, started by the application (T-SWF-07). `find_start` takes the text and an optional size-prefixed options struct (`match_case`); `find_stop` takes whether to clear the selection. Results arrive as `BDK_CONTENTS_EVENT_FIND_RESULT` events with `{"matchCount","activeIndex","rect","final"}`. `find_present` and `print` raise a `find` and a `printing` UI request. |
 | `bdk_contents_set_host_context` | Conditional on decision D1 |
 
 Scripting, capture, translation and DevTools go through broker commands, not host functions, because automation uses them too.
