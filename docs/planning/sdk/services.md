@@ -261,6 +261,8 @@ Storage: encrypted with a key held in the Keychain item named in `[storage]` ([c
 
 Events: `passwords.changed`, `passwords.issuesChanged` (Added, S16).
 
+Built (M3, T-SVC-04; `chromium/bdk/engine/services/passwords_service.cc`). Shapes: `passwords.list` and `passwords.forOrigin` answer `{items: [{id, origin, username, created, lastUsed}]}`; `created` and `lastUsed` are milliseconds since the Unix epoch, `lastUsed` null when never used; `origin` is the serialised origin with a trailing slash. `id` is the store's key as a decimal string. It is stable while the login is edited in place (a new password) but changes when the username changes, because the username is part of the store's key; `passwords.update` answers with the login under its new `id`. `passwords.add` takes an http or https origin and stores a manually added login in the profile store. `passwords.reveal` answers `{password}`; it and an update that sets `password` ask the operating system through `Backend::Authenticate` (LocalAuthentication: Touch ID or the account password), and a refusal is `capability.reauthenticationFailed`. `passwords.neverSaved` answers `{origins}`. `passwords.export` writes a CSV (`name,url,username,password,note`) and `passwords.import` reads one by column name (`url`, `username`, `password`) and answers `{imported}`. With no leak-check provider `passwords.check` fails with `provider.unavailable`, `passwords.issues` is empty, and `dismissIssue` and `restoreIssue` fail with `broker.invalidArguments`. A private profile has no password store: its commands fail with `broker.unavailable`. The `passwords.changed` and `passwords.issuesChanged` events are not emitted yet. Passwords are encrypted by Chromium's OS crypt under the application's Keychain item (`[storage] keychain_item`, set at start-up from the resolved configuration; `BDK_ENGINE_MOCK_KEYCHAIN=1` in tests); a scenario checks they survive a relaunch of the runtime.
+
 ### 5.10 `autofill` (Plan, M3, T-SVC-04)
 
 | Command | Capability | Marks | Does |
@@ -273,6 +275,8 @@ Events: `passwords.changed`, `passwords.issuesChanged` (Added, S16).
 Server-side card storage and payment-account features are Google services and are excluded.
 
 Events: `autofill.changed`.
+
+Built (M3, T-SVC-04; `autofill_service.cc`). Addresses map `AddressFields` onto Chromium's address model (`fullName` to the full name, `street` to the street address, `region` to the state, `postalCode` to the ZIP, `country` to the country, `phone` to the whole phone number); a new address is a local profile with the country code `US` until its fields say otherwise. Cards are local cards (server cards and Google payments are excluded): `autofill.cards.list` answers holder, network, `lastFour`, `expiryMonth`, `expiryYear` and never the number; `autofill.cards.reveal` answers `{number}` after operating-system authentication. Chromium writes this data asynchronously; a command answers when the change shows. A private profile has no autofill data (`broker.unavailable`). `autofill.changed` is not emitted yet.
 
 ### 5.11 `extensions`
 
