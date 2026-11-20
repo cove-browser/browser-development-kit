@@ -94,23 +94,34 @@ bool completion_grants(uint32_t surface, const std::string& completion) {
 /* Reads the configuration, the payload of a request and the arguments of a completion. Numbers and
    literals are kept as text; nothing here needs more. The text may come from the backend, so the
    depth is bounded. */
+/* An object member. Not std::pair: a pair of an incomplete Json is ill-formed, and libstdc++
+   rejects it. */
+struct JsonMember;
+
 struct Json {
     enum Kind { kOther, kString, kArray, kObject } kind = kOther;
     std::string text; /* a string's value; a number or literal's source text */
     std::vector<Json> items;
-    std::vector<std::pair<std::string, Json>> members;
+    std::vector<JsonMember> members;
 
-    const Json* find(const std::string& key) const {
-        for (const auto& m : members) {
-            if (m.first == key)
-                return &m.second;
-        }
-        return nullptr;
-    }
+    const Json* find(const std::string& key) const;
     bool is_true() const {
         return kind == kOther && text == "true";
     }
 };
+
+struct JsonMember {
+    std::string first;
+    Json second;
+};
+
+const Json* Json::find(const std::string& key) const {
+    for (const auto& m : members) {
+        if (m.first == key)
+            return &m.second;
+    }
+    return nullptr;
+}
 
 class JsonReader {
   public:
@@ -219,7 +230,7 @@ class JsonReader {
                 if (!Value(&v, depth + 1))
                     return false;
                 if (object)
-                    out->members.emplace_back(std::move(key), std::move(v));
+                    out->members.push_back(JsonMember{std::move(key), std::move(v)});
                 else
                     out->items.push_back(std::move(v));
                 Ws();

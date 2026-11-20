@@ -162,7 +162,7 @@ struct Parser {
                 JsonValue member;
                 if (!value(&member, depth + 1))
                     return false;
-                out->members.emplace_back(std::move(key), std::move(member));
+                out->members.push_back(JsonMember{std::move(key), std::move(member)});
                 ws();
                 if (i < s.size() && s[i] == ',') {
                     ++i;

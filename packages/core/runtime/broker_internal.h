@@ -142,18 +142,27 @@ bool emit_builtin_event(const std::shared_ptr<Runtime>&, const std::string& name
 
 /* ---- Argument checking (broker_args.cc) ---- */
 
+/* An object member. Not std::pair: a pair of an incomplete JsonValue is ill-formed, and
+   libstdc++ rejects it. */
+struct JsonMember;
+
 /* A parsed JSON value. Only what argument checking needs. */
 struct JsonValue {
     enum class Type : uint8_t { kNull, kBool, kNumber, kString, kArray, kObject };
     Type type = Type::kNull;
     bool boolean = false;
     double number = 0;
-    bool integral = false;        /* a number written without fraction or exponent */
-    std::string text;             /* a string's value */
-    std::vector<JsonValue> items; /* an array's */
-    std::vector<std::pair<std::string, JsonValue>> members; /* an object's, in order */
+    bool integral = false;           /* a number written without fraction or exponent */
+    std::string text;                /* a string's value */
+    std::vector<JsonValue> items;    /* an array's */
+    std::vector<JsonMember> members; /* an object's, in order */
 
     const JsonValue* find(const std::string& key) const;
+};
+
+struct JsonMember {
+    std::string first;
+    JsonValue second;
 };
 
 /* Parses text that valid_json() accepted. */
