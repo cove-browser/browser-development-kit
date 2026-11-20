@@ -77,6 +77,22 @@ source_set("bdk") {
       "engine/session_state.h",
       "engine/testing.cc",
       "engine/testing.h",
+      "engine/testing_ui.cc",
+      "engine/presenters_mac.mm",
+      "engine/ui_auth.cc",
+      "engine/ui_auth.h",
+      "engine/ui_dialogs.cc",
+      "engine/ui_dialogs.h",
+      "engine/ui_find.cc",
+      "engine/ui_find.h",
+      "engine/ui_notifications.cc",
+      "engine/ui_notifications.h",
+      "engine/ui_permissions.cc",
+      "engine/ui_permissions.h",
+      "engine/ui_presenters.cc",
+      "engine/ui_presenters.h",
+      "engine/ui_request.cc",
+      "engine/ui_request.h",
     ]
     deps = [
       ":core",
@@ -89,9 +105,14 @@ source_set("bdk") {
       "//chrome/browser/lifetime",
       "//chrome/browser/profiles:profile",
       "//components/input",
+      "//components/content_settings/core/browser",
+      "//components/content_settings/core/common",
+      "//components/find_in_page",
       "//components/keep_alive_registry",
       "//components/os_crypt/common:keychain_password_mac",
+      "//components/permissions",
       "//components/sessions",
+      "//components/strings",
       "//components/version_info",
       "//content/public/app",
       "//content/public/browser",
@@ -104,9 +125,13 @@ source_set("bdk") {
       "//third_party/blink/public/common",
       "//ui/base",
       "//ui/base/clipboard",
+      "//ui/message_center/public/cpp",
       "//url",
     ]
     configs += [ ":core_raw_ptr_exclusion" ]
-    frameworks = [ "AppKit.framework" ]
+    frameworks = [
+      "AppKit.framework",
+      "UniformTypeIdentifiers.framework",
+    ]
   }
 }

@@ -103,6 +103,34 @@ typedef struct bdk_testing_tab_info {
 BDK_EXPORT bdk_status_t bdk_testing_tab_info(bdk_contents_t,
                                              bdk_testing_tab_info_t* out);
 
+/* Drives and inspects the browser-owned surfaces (permissions, JavaScript
+   dialogs, HTTP authentication, file pickers, find, notifications). Commands,
+   with their arguments as JSON ("contents" is a decimal handle string), and the
+   JSON they write to `out`:
+
+   present.script {"surface", "answer"}  while scripted, the surface's default
+       presenter shows nothing and answers as `answer` says: permissions
+       {"choice": "allow" | "allowThisVisit" | "block" | "dismiss"},
+       javascript_dialogs {"accept", "text", "suppress"}, http_auth
+       {"username", "password"} (none: cancel), file_pickers {"paths": [...]},
+       notifications {"event": "clicked" | "closed" | "timeout", "action"}; an
+       answer with "none": true is never given, as a person who has not decided
+   present.clear   ends all scripts and forgets what was recorded
+   present.record {"surface"} -> {"shown", "dismissed", "payload"}  what the
+       default presenter was asked to show, and how often it was taken down
+   find.present / find.start {"text", "matchCase"} / find.next {"forward"} /
+   find.stop / find.result {"contents"} -> {"ordinal", "count", "presented"}
+   permission.get {"contents", "origin", "kind"} -> {"value": "allow" | "block"
+       | "ask"}  the page's profile's site setting
+
+   BDK_ERR_INVALID_ARGUMENT for an unknown command or bad arguments or a result
+   that does not fit `out_size`. */
+BDK_EXPORT bdk_status_t bdk_testing_ui(bdk_runtime_t,
+                                       bdk_string_t command,
+                                       bdk_string_t args_json,
+                                       char* out,
+                                       size_t out_size);
+
 /* Work the engine has queued or started for the application: BDK tasks not yet
    run plus pages still loading. A harness pumps until it reads 0. */
 BDK_EXPORT size_t bdk_testing_pending_work(void);

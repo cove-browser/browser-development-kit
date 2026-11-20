@@ -22,6 +22,8 @@ namespace bdk {
 class DevToolsFrontend;
 class HostContext;
 class HostView;
+class PageDialogs;
+class PageFind;
 
 // What the engine keeps for a profile the application opened.
 struct EngineProfile : bdkcore::BackendData {
@@ -52,6 +54,16 @@ class EngineContents : public bdkcore::BackendData,
   ~EngineContents() override;
 
   static EngineContents* From(const bdkcore::Contents& contents);
+  // The page whose WebContents is `contents`, or null.
+  static EngineContents* FromWebContents(content::WebContents* contents);
+
+  // The core's side of the page, null once the application destroyed it.
+  std::shared_ptr<bdkcore::Contents> Core() const { return core_.lock(); }
+  base::WeakPtr<EngineContents> GetWeakPtr() {
+    return weak_factory_.GetWeakPtr();
+  }
+  // Find in page (ui_find.h).
+  PageFind& find() { return *find_; }
 
   content::WebContents* web_contents() { return web_contents_; }
   HostView& host_view() { return *host_view_; }
@@ -124,6 +136,21 @@ class EngineContents : public bdkcore::BackendData,
   void ExitFullscreenModeForTab(content::WebContents* source) override;
   bool IsFullscreenForTabOrPending(
       const content::WebContents* web_contents) override;
+  content::JavaScriptDialogManager* GetJavaScriptDialogManager(
+      content::WebContents* source) override;
+  void RunFileChooser(content::RenderFrameHost* render_frame_host,
+                      scoped_refptr<content::FileSelectListener> listener,
+                      const blink::mojom::FileChooserParams& params) override;
+  void EnumerateDirectory(content::WebContents* web_contents,
+                          scoped_refptr<content::FileSelectListener> listener,
+                          const base::FilePath& path) override;
+  void RequestMediaAccessPermission(
+      content::WebContents* web_contents,
+      const content::MediaStreamRequest& request,
+      content::MediaResponseCallback callback) override;
+  bool CheckMediaAccessPermission(content::RenderFrameHost* render_frame_host,
+                                  const url::Origin& security_origin,
+                                  blink::mojom::MediaStreamType type) override;
 
   // content::WebContentsObserver:
   void DidStartNavigation(content::NavigationHandle* handle) override;
@@ -139,7 +166,7 @@ class EngineContents : public bdkcore::BackendData,
   void OnVisibilityChanged(content::Visibility visibility) override;
 
  private:
-  std::shared_ptr<bdkcore::Contents> core() const { return core_.lock(); }
+  std::shared_ptr<bdkcore::Contents> core() const { return Core(); }
   void Emit(uint32_t kind,
             const std::string& url,
             const std::string& detail,
@@ -171,6 +198,10 @@ class EngineContents : public bdkcore::BackendData,
 
   std::weak_ptr<bdkcore::Contents> core_;
   std::unique_ptr<HostView> host_view_;
+  // JavaScript dialogs and file pickers; find in page (ui_dialogs.h,
+  // ui_find.h).
+  std::unique_ptr<PageDialogs> dialogs_;
+  std::unique_ptr<PageFind> find_;
   // Owned by its tab model, in a host context.
   raw_ptr<content::WebContents> web_contents_ = nullptr;
   // For a DevTools front-end page: the bindings to the page it inspects.

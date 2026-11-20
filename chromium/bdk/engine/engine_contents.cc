@@ -24,6 +24,11 @@
 #include "bdk/engine/identity.h"
 #include "bdk/engine/session_state.h"
 #include "bdk/engine/testing.h"
+#include "bdk/engine/ui_dialogs.h"
+#include "bdk/engine/ui_find.h"
+#include "bdk/engine/ui_permissions.h"
+#include "bdk/engine/ui_request.h"
+#include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
 #include "chrome/browser/profiles/profile.h"
 #include "components/input/native_web_keyboard_event.h"
 #include "content/public/browser/context_menu_params.h"
@@ -158,11 +163,16 @@ EngineContents::EngineContents(
   Registry().push_back(this);
   host_view_->SetWindowChangedCallback(base::BindRepeating(
       &EngineContents::OnHostViewWindowChanged, weak_factory_.GetWeakPtr()));
+  dialogs_ = std::make_unique<PageDialogs>(*this);
+  find_ = std::make_unique<PageFind>(*this);
   Attach(std::move(web_contents));
 }
 
 EngineContents::~EngineContents() {
   std::erase(Registry(), this);
+  // Dialogs and find UI go while the page is whole.
+  find_.reset();
+  dialogs_.reset();
   // The bindings belong to the front end's WebUI, which goes with the page.
   devtools_.reset();
   Observe(nullptr);
@@ -186,6 +196,17 @@ EngineContents* EngineContents::From(const bdkcore::Contents& contents) {
 }
 
 // static
+EngineContents* EngineContents::FromWebContents(
+    content::WebContents* contents) {
+  for (EngineContents* page : Registry()) {
+    if (page->web_contents_ == contents) {
+      return page;
+    }
+  }
+  return nullptr;
+}
+
+// static
 const std::vector<EngineContents*>& EngineContents::All() {
   return Registry();
 }
@@ -195,6 +216,9 @@ void EngineContents::Attach(
   content::WebContents* fresh = web_contents.get();
   std::unique_ptr<content::WebContents> old;
   if (web_contents_) {
+    // What the old page asked for is withdrawn with it.
+    dialogs_->CancelDialogs(web_contents_, /*reset_state=*/true);
+    find_->OnNavigated();
     web_contents_->SetDelegate(nullptr);
     // The page keeps its tab; the tab model swaps the contents.
     old = HostContexts::Get()
@@ -225,6 +249,9 @@ void EngineContents::Attach(
   if (!user_agent_.empty()) {
     SetUserAgent(user_agent_);
   }
+  // Prompts and find follow the page's WebContents.
+  InstallPermissionPrompts(*this, web_contents_);
+  find_->Attach(web_contents_);
   // `old` goes after the host view shows the new page.
 }
 
@@ -685,7 +712,8 @@ bool EngineContents::HandleKeyboardEvent(
 
 bool EngineContents::CanEnterFullscreenModeForTab(
     content::RenderFrameHost* requesting_frame) {
-  return true;
+  // A disabled surface denies: the Fullscreen API rejects.
+  return SurfaceAvailable(core(), BDK_SURFACE_FULLSCREEN);
 }
 
 void EngineContents::SetFullscreen(bool fullscreen) {
@@ -714,7 +742,7 @@ void EngineContents::EnterFullscreenModeForTab(
   request->payload = Json(
       base::DictValue()
           .Set("origin", requesting_frame->GetLastCommittedOrigin().Serialize())
-          .Set("entering", true));
+          .Set("isEntering", true));
   base::WeakPtr<EngineContents> self = weak_factory_.GetWeakPtr();
   request->on_finish = [self](bdkcore::UiOutcome outcome,
                               const std::string& completion,
@@ -725,7 +753,7 @@ void EngineContents::EnterFullscreenModeForTab(
     if (!self->fullscreen_) {
       return;  // the page already left fullscreen
     }
-    if (outcome == bdkcore::UiOutcome::kCompleted && completion == "allow") {
+    if (outcome == bdkcore::UiOutcome::kCompleted && completion == "accept") {
       return;  // the application makes the page fill the screen
     }
     if (outcome == bdkcore::UiOutcome::kDefaulted) {
@@ -757,13 +785,52 @@ void EngineContents::ExitFullscreenModeForTab(content::WebContents* source) {
                .Set("origin", web_contents_->GetPrimaryMainFrame()
                                   ->GetLastCommittedOrigin()
                                   .Serialize())
-               .Set("entering", false));
+               .Set("isEntering", false));
   bdkcore::raise_ui_request(rt, request);
 }
 
 bool EngineContents::IsFullscreenForTabOrPending(
     const content::WebContents* web_contents) {
   return fullscreen_;
+}
+
+content::JavaScriptDialogManager* EngineContents::GetJavaScriptDialogManager(
+    content::WebContents* source) {
+  return dialogs_.get();
+}
+
+void EngineContents::RunFileChooser(
+    content::RenderFrameHost* render_frame_host,
+    scoped_refptr<content::FileSelectListener> listener,
+    const blink::mojom::FileChooserParams& params) {
+  dialogs_->RunFileChooser(render_frame_host, std::move(listener), params);
+}
+
+void EngineContents::EnumerateDirectory(
+    content::WebContents* web_contents,
+    scoped_refptr<content::FileSelectListener> listener,
+    const base::FilePath& path) {
+  dialogs_->EnumerateDirectory(std::move(listener), path);
+}
+
+// Camera and microphone go through Chrome's media capture logic, which asks
+// the page's permission request manager (ui_permissions.h) before it opens a
+// device.
+void EngineContents::RequestMediaAccessPermission(
+    content::WebContents* web_contents,
+    const content::MediaStreamRequest& request,
+    content::MediaResponseCallback callback) {
+  MediaCaptureDevicesDispatcher::GetInstance()->ProcessMediaAccessRequest(
+      web_contents, request, std::move(callback), /*extension=*/nullptr);
+}
+
+bool EngineContents::CheckMediaAccessPermission(
+    content::RenderFrameHost* render_frame_host,
+    const url::Origin& security_origin,
+    blink::mojom::MediaStreamType type) {
+  return MediaCaptureDevicesDispatcher::GetInstance()
+      ->CheckMediaAccessPermission(render_frame_host, security_origin, type,
+                                   /*extension=*/nullptr);
 }
 
 // content::WebContentsObserver -----------------------------------------------
@@ -795,6 +862,10 @@ void EngineContents::DidFinishNavigation(content::NavigationHandle* handle) {
     flags |= BDK_EVENT_FLAG_USER_INITIATED;
   }
   const std::string url = handle->GetURL().spec();
+  if (handle->HasCommitted() && !handle->IsSameDocument()) {
+    dialogs_->OnNavigated();
+    find_->OnNavigated();
+  }
   if (!handle->IsSameDocument()) {
     last_navigation_failed_ = !handle->HasCommitted() || handle->IsErrorPage();
   }
