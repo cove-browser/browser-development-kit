@@ -17,7 +17,6 @@
 #include "base/values.h"
 #include "bdk/core/include/bdk/bdk_ids.h"
 #include "bdk/engine/engine_contents.h"
-#include "bdk/engine/services/password_prompts.h"
 #include "bdk/engine/ui_request.h"
 #include "components/safe_browsing/content/browser/safe_browsing_blocking_page.h"
 #include "components/security_interstitials/content/security_interstitial_page.h"
@@ -191,7 +190,6 @@ void Raise(base::WeakPtr<content::WebContents> weak_contents,
 void OnPrimaryNavigationFinished(EngineContents& page,
                                  content::NavigationHandle* handle) {
   content::WebContents* contents = page.web_contents();
-  SchedulePasswordPromptCheck(contents);
   auto previous = Open().find(contents);
   if (previous != Open().end()) {
     bdkcore::withdraw_ui_request(*previous->second);

@@ -25,9 +25,9 @@ class BdkTabDialogs : public TabDialogsViews {
   BdkTabDialogs(tabs::TabInterface& tab, content::WebContents* contents);
   ~BdkTabDialogs() override;
 
-  // Lets the next navigation's question be raised: one that was answered is
-  // not raised again.
-  void ResetAnswered() { answered_ = false; }
+  // The tab finished a navigation: a new page may ask a new question, and the
+  // password manager may already have one pending.
+  void OnPageNavigated();
 
   // TabDialogs:
   void ShowManagePasswordsBubble(bool user_action) override;
@@ -50,12 +50,8 @@ class BdkTabDialogs : public TabDialogsViews {
   base::WeakPtrFactory<BdkTabDialogs> weak_factory_{this};
 };
 
-// Found by running it: with a BDK window the password manager's own route to
-// ShowManagePasswordsBubble() (a toolbar page action, then the tab's bubble
-// manager) never arrives, though the manager's state is pending. So BDK also
-// looks for a pending save or update question shortly after each navigation
-// and raises it itself. A question already raised is not raised again.
-void SchedulePasswordPromptCheck(content::WebContents* contents);
+// Tells the tab's password prompts that its page finished a navigation.
+void OnPageNavigatedForPasswords(content::WebContents* contents);
 
 }  // namespace bdk
 

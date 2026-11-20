@@ -22,6 +22,7 @@
 #include "bdk/engine/identity.h"
 #include "bdk/engine/json_util.h"
 #include "bdk/engine/services/interstitial_prompts.h"
+#include "bdk/engine/services/password_prompts.h"
 #include "bdk/engine/session_state.h"
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_dialogs.h"
@@ -838,6 +839,7 @@ void EngineContents::DidFinishNavigation(content::NavigationHandle* handle) {
   }
   if (!handle->IsSameDocument()) {
     OnPrimaryNavigationFinished(*this, handle);  // security interstitials
+    OnPageNavigatedForPasswords(web_contents_.get());
   }
   uint32_t flags = kMainFrame;
   if (handle->IsSameDocument()) {

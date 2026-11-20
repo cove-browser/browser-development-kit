@@ -9,7 +9,6 @@
 #include "base/functional/bind.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
-#include "base/time/time.h"
 #include "base/values.h"
 #include "bdk/core/include/bdk/bdk_ids.h"
 #include "bdk/engine/engine_contents.h"
@@ -88,6 +87,19 @@ void BdkTabDialogs::ShowManagePasswordsBubble(bool user_action) {
     controller->OnNoInteraction();
     controller->OnBubbleHidden();
   }
+}
+
+void BdkTabDialogs::OnPageNavigated() {
+  // A new page may ask a new question.
+  answered_ = false;
+  // The password manager may already hold one, about the credentials the
+  // person typed into the page that was left: it keeps that "save?" state
+  // across the navigation (its fallback) but only ever shows an icon for it,
+  // which a BDK window has none of. Ask it now, once the password manager has
+  // handled the navigation itself.
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce(&BdkTabDialogs::ShowManagePasswordsBubble,
+                                weak_factory_.GetWeakPtr(), false));
 }
 
 void BdkTabDialogs::HideManagePasswordsBubble() {
@@ -182,29 +194,10 @@ void BdkTabDialogs::Apply(bool is_update, Choice choice) {
   controller->OnBubbleHidden();
 }
 
-void SchedulePasswordPromptCheck(content::WebContents* contents) {
+void OnPageNavigatedForPasswords(content::WebContents* contents) {
   if (auto* dialogs =
           static_cast<BdkTabDialogs*>(TabDialogs::FromWebContents(contents))) {
-    dialogs->ResetAnswered();
-  }
-  for (int milliseconds : {300, 1000, 2500}) {
-    base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
-        FROM_HERE,
-        base::BindOnce(
-            [](base::WeakPtr<content::WebContents> weak) {
-              content::WebContents* contents = weak.get();
-              if (!contents) {
-                return;
-              }
-              auto* dialogs = static_cast<BdkTabDialogs*>(
-                  TabDialogs::FromWebContents(contents));
-              ManagePasswordsUIController* controller = ControllerOf(contents);
-              if (dialogs && controller) {
-                dialogs->ShowManagePasswordsBubble(false);
-              }
-            },
-            contents->GetWeakPtr()),
-        base::Milliseconds(milliseconds));
+    dialogs->OnPageNavigated();
   }
 }
 
