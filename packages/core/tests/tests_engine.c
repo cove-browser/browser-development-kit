@@ -730,6 +730,41 @@ static void test_engine_persistent_profiles_outlive_the_runtime(void) {
     CHECK(strstr(cap.json, id) != NULL);
 }
 
+/* A profile the application closes is unloaded by Chromium, with its databases and the descriptors
+   they hold; one that is opened again afterwards loads from the same files. */
+int bdk_harness_engine_open_descriptors(void);
+
+static void test_engine_a_closed_profile_releases_its_descriptors(void) {
+    t_start_frozen();
+    char id[64];
+    t_create_profile("Reopened", id, sizeof id);
+    enum { kWarmup = 2, kRounds = 6 };
+    int before = 0;
+    for (int i = 0; i < kWarmup + kRounds; ++i) {
+        char fresh[64], name[32];
+        snprintf(name, sizeof name, "Opened once %d", i);
+        t_create_profile(name, fresh, sizeof fresh);
+        bdk_profile_t p = t_open_profile(fresh);
+        bdk_contents_t c = t_new_contents(p);
+        t_pump();
+        REQUIRE(bdk_contents_destroy(c) == BDK_OK);
+        REQUIRE(bdk_profile_close(p, NULL) == BDK_OK);
+        t_pump();
+        if (i == kWarmup - 1)
+            before = bdk_harness_engine_open_descriptors();
+    }
+    /* A leaked profile held about eighty descriptors. */
+    CHECK(bdk_harness_engine_open_descriptors() - before < 40);
+    /* The same profile, closed and opened at once, is one instance again. */
+    for (int i = 0; i < 3; ++i) {
+        bdk_profile_t p = t_open_profile(id);
+        bdk_contents_t c = t_new_contents(p);
+        t_pump();
+        REQUIRE(bdk_contents_destroy(c) == BDK_OK);
+        REQUIRE(bdk_profile_close(p, NULL) == BDK_OK);
+    }
+}
+
 /* ---- built-in services (T-SVC-02, T-SVC-03, T-SVC-06) ---- */
 
 int bdk_harness_engine_download_server_start(void);
@@ -1125,6 +1160,8 @@ const t_test_t t_engine_tests[] = {
      test_engine_session_state_restores_chromium_history_into_a_new_page},
     {"engine_persistent_profiles_outlive_the_runtime",
      test_engine_persistent_profiles_outlive_the_runtime},
+    {"engine_a_closed_profile_releases_its_descriptors",
+     test_engine_a_closed_profile_releases_its_descriptors},
     {"engine_history_is_searched_paginated_and_cleared",
      test_engine_history_is_searched_paginated_and_cleared},
     {"engine_bookmarks_nest_move_and_remove", test_engine_bookmarks_nest_move_and_remove},

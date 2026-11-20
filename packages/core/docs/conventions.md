@@ -263,7 +263,8 @@ pthreads, and builds on macOS and Linux.
 it drives the engine through `chromium/bdk/engine/bdk_testing.h`. Chromium starts once per process, so the
 harness keeps it between runtimes (`BDK_ENGINE_KEEP_CHROMIUM`), forgets persistent profiles at each start (the
 suite expects a new data directory) and serves every http(s) load from the engine's interceptor. It needs a
-logged-in Mac. Scenarios that need a key window (an input method's composition) are skipped, with a message,
+logged-in Mac. The whole suite runs in one process: a runtime start and stop leaves nothing behind, and a profile
+BDK closes is unloaded by Chromium (`engine_a_closed_profile_releases_its_descriptors` counts descriptors). Scenarios that need a key window (an input method's composition) are skipped, with a message,
 when macOS does not let the harness come to the front. `BDK_TEST_TRACE=1` prints every contents event.
 
 A harness implements four hooks besides pumping and acting as Chromium: `bdk_harness_prepare_start_config`,

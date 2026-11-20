@@ -8,7 +8,9 @@
    so pumping (a nested run of the run loop) lets Chromium work. Navigations never reach the
    network: every http and https load is served by the engine's test interceptor (bdk_testing.h). */
 #import <AppKit/AppKit.h>
+#include <libproc.h>
 #import <objc/runtime.h>
+#include <unistd.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -70,6 +72,10 @@ void bdk_harness_prepare_start_config(bdk_start_config_t* config) {
     bdk_harness_engine_surfaces = NULL;
     config->resolved_config_json = View(resolved.c_str());
     config->user_data_path_override = View(g_data_dir.c_str());
+}
+
+int bdk_harness_engine_open_descriptors(void) {
+    return proc_pidinfo(getpid(), PROC_PIDLISTFDS, 0, nullptr, 0) / (int)sizeof(proc_fdinfo);
 }
 
 size_t bdk_harness_pump(void) {

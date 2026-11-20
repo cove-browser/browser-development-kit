@@ -18,10 +18,4 @@ if [[ $# -gt 0 ]]; then
   "$app" "$@" 2>"$build/engine.log"
   exit $?
 fi
-# One Chromium process cannot run the whole suite: its descriptors and ports grow with every runtime it
-# starts, and past about two hundred of them a child process fails to launch. The browser-owned surface
-# scenarios (tests_engine_ui.c) therefore run in a second process.
-status=0
-"$app" --run '!engine_ui_*' 2>"$build/engine.log" || status=$?
-"$app" --run 'engine_ui_*' 2>"$build/engine-ui.log" || status=$?
-exit $status
+"$app" 2>"$build/engine.log"

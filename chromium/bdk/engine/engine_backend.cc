@@ -22,12 +22,15 @@
 #include "base/functional/callback_helpers.h"
 #include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
+#include "base/memory/weak_ptr.h"
 #include "base/no_destructor.h"
 #include "base/path_service.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/task/thread_pool.h"
+#include "base/time/time.h"
 #include "base/values.h"
 #include "bdk/core/generated/bdk_abi_hash.h"
 #include "bdk/core/runtime/core_internal.h"
@@ -72,6 +75,9 @@ namespace {
 using bdkcore::Contents;
 using bdkcore::Done;
 using bdkcore::Runtime;
+
+// How often a profile open waits to see its profile destroyed.
+constexpr base::TimeDelta kUnloadPoll = base::Milliseconds(10);
 
 // Lists the persistent profiles and the next free identifier number, in the
 // user data directory, next to Chromium's own Local State.
@@ -169,7 +175,12 @@ class EngineBackend final : public bdkcore::Backend {
           {base::MayBlock(), base::TaskShutdownBehavior::BLOCK_SHUTDOWN});
     }
     SetRuntimeInfo(resolved);
-    base_profile_ = ProfileManager::GetLastUsedProfileIfLoaded();
+    // The profile Chromium started with. A runtime started in a Chromium that
+    // is still running (BDK_ENGINE_KEEP_CHROMIUM) keeps it: the last used
+    // profile may by then be one BDK opened and closed, which is unloaded.
+    if (!base_profile_) {
+      base_profile_ = ProfileManager::GetLastUsedProfileIfLoaded();
+    }
     if (!base_profile_) {
       return bdkcore::fail(out_error, BDK_DOMAIN_RUNTIME, "startFailed",
                            "Chromium loaded no profile");
@@ -202,6 +213,10 @@ class EngineBackend final : public bdkcore::Backend {
              ->GetVar(kKeepChromiumEnv)
              .value_or("")
              .empty()) {
+      // Chromium stays, but nothing of this runtime's profiles does.
+      while (!loaded_.empty()) {
+        UnloadWhenClosed(loaded_.begin()->first);
+      }
       done();
       return;
     }
@@ -264,7 +279,26 @@ class EngineBackend final : public bdkcore::Backend {
   void OpenProfile(Runtime& rt,
                    const std::shared_ptr<bdkcore::Profile>& profile,
                    Done done) override {
+    LoadProfile(profile, std::move(done));
+  }
+
+  void LoadProfile(const std::shared_ptr<bdkcore::Profile>& profile,
+                   Done done) {
     const base::FilePath path = user_data_dir_.AppendASCII(profile->id);
+    if (IsUnloading(path)) {
+      NoteTaskPosted();
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+          FROM_HERE,
+          base::BindOnce(
+              [](EngineBackend* backend,
+                 const std::shared_ptr<bdkcore::Profile>& profile, Done done) {
+                NoteTaskRun();
+                backend->LoadProfile(profile, std::move(done));
+              },
+              base::Unretained(this), profile, std::move(done)),
+          kUnloadPoll);
+      return;
+    }
     std::weak_ptr<bdkcore::Profile> weak = profile;
     g_browser_process->profile_manager()->CreateProfileAsync(
         path, base::BindOnce(
@@ -277,6 +311,9 @@ class EngineBackend final : public bdkcore::Backend {
                       return;
                     }
                     if (!p || !p->open) {
+                      // Loaded for nobody: let it unload, as a closed one.
+                      backend->KeepLoaded(path, loaded);
+                      backend->UnloadWhenClosed(path);
                       done("openFailed", "the profile was closed");
                       return;
                     }
@@ -319,6 +356,7 @@ class EngineBackend final : public bdkcore::Backend {
     // the profile may.
     if (profile.data) {
       HostContexts::Get().DestroyProfileContexts(ProfileData(profile).profile);
+      UnloadWhenClosed(user_data_dir_.AppendASCII(profile.id));
     }
     ReleaseProfile(profile);
   }
@@ -578,9 +616,40 @@ class EngineBackend final : public bdkcore::Backend {
   // first still holds.
   void KeepLoaded(const base::FilePath& path, Profile* profile) {
     if (!loaded_.contains(path)) {
-      loaded_[path] = std::make_unique<ScopedProfileKeepAlive>(
-          profile, ProfileKeepAliveOrigin::kBrowserWindow);
+      loaded_[path] = {profile->GetWeakPtr(),
+                       std::make_unique<ScopedProfileKeepAlive>(
+                           profile, ProfileKeepAliveOrigin::kBrowserWindow)};
     }
+  }
+
+  // Lets Chromium unload a persistent profile that BDK has closed. Its
+  // destruction is asynchronous, so the path is remembered until the Profile
+  // object is gone (IsUnloading); without this every profile a runtime ever
+  // opened would stay loaded, with its databases and file descriptors, until
+  // the runtime stopped.
+  void UnloadWhenClosed(const base::FilePath& path) {
+    auto it = loaded_.find(path);
+    if (it == loaded_.end()) {
+      return;
+    }
+    unloading_[path] = it->second.profile;
+    loaded_.erase(it);
+  }
+
+  // True while Chromium has unloaded the profile at `path` but not yet
+  // destroyed it. A profile Chromium still holds loaded (another keep-alive)
+  // is not unloading: opening it again gets the same instance.
+  bool IsUnloading(const base::FilePath& path) {
+    auto it = unloading_.find(path);
+    if (it == unloading_.end()) {
+      return false;
+    }
+    if (!it->second ||
+        g_browser_process->profile_manager()->GetProfileByPath(path)) {
+      unloading_.erase(it);
+      return false;
+    }
+    return true;
   }
 
   // For bdk_testing_forget_profiles().
@@ -642,7 +711,13 @@ class EngineBackend final : public bdkcore::Backend {
   raw_ptr<Profile> base_profile_ = nullptr;
   scoped_refptr<base::SequencedTaskRunner> registry_writer_;
   Registry registry_;
-  std::map<base::FilePath, std::unique_ptr<ScopedProfileKeepAlive>> loaded_;
+  struct LoadedProfile {
+    base::WeakPtr<Profile> profile;
+    std::unique_ptr<ScopedProfileKeepAlive> keep_alive;
+  };
+  std::map<base::FilePath, LoadedProfile> loaded_;
+  // Persistent profiles BDK closed that Chromium is still destroying.
+  std::map<base::FilePath, base::WeakPtr<Profile>> unloading_;
 };
 
 }  // namespace
