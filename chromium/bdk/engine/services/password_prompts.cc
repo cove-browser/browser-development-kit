@@ -63,7 +63,7 @@ void BdkTabDialogs::ShowManagePasswordsBubble(bool user_action) {
   if (!is_update && state != State::PENDING_PASSWORD_STATE) {
     return;
   }
-  if (request_ && !request_->finished) {
+  if (answered_ || (request_ && !request_->finished)) {
     return;
   }
   const password_manager::PasswordForm& pending =
@@ -181,10 +181,15 @@ void BdkTabDialogs::Apply(bool is_update, Choice choice) {
       controller->OnNoInteraction();
       break;
   }
+  answered_ = true;
   controller->OnBubbleHidden();
 }
 
 void SchedulePasswordPromptCheck(content::WebContents* contents) {
+  if (auto* dialogs =
+          static_cast<BdkTabDialogs*>(TabDialogs::FromWebContents(contents))) {
+    dialogs->ResetAnswered();
+  }
   for (int milliseconds : {300, 1000, 2500}) {
     base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
         FROM_HERE,

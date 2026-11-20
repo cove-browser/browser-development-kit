@@ -24,6 +24,10 @@ class BdkTabDialogs : public TabDialogsViews {
   BdkTabDialogs(tabs::TabInterface& tab, content::WebContents* contents);
   ~BdkTabDialogs() override;
 
+  // Lets the next navigation's question be raised: one that was answered is
+  // not raised again.
+  void ResetAnswered() { answered_ = false; }
+
   // TabDialogs:
   void ShowManagePasswordsBubble(bool user_action) override;
   void HideManagePasswordsBubble() override;
@@ -42,6 +46,9 @@ class BdkTabDialogs : public TabDialogsViews {
 
   base::WeakPtr<content::WebContents> contents_;
   std::shared_ptr<bdkcore::Request> request_;
+  // The current question was answered (the password manager's state may stay
+  // pending a moment longer).
+  bool answered_ = false;
   base::WeakPtrFactory<BdkTabDialogs> weak_factory_{this};
 };
 

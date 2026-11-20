@@ -330,6 +330,7 @@ static int wait_for_title(bdk_contents_t c, const char* want) {
         if (strcmp(title, want) == 0)
             return 1;
         t_pump();
+        bdk_testing_run_for(0.1);
     }
     printf("    title is \"%s\", not \"%s\"\n", title, want);
     return 0;
@@ -389,9 +390,13 @@ static void submit_login(bdk_contents_t c) {
                1);
 }
 
-static void wait_for_presenter(const char* surface) {
-    for (int i = 0; i < 40 && control_count("presenter.count", surface) == 0; ++i)
+/* Waits, in real time, until the default presenter of the surface has run more than `before`
+   times (the engine looks for a password question a few hundred milliseconds after a page). */
+static void wait_for_presenter(const char* surface, int before) {
+    for (int i = 0; i < 60 && control_count("presenter.count", surface) == before; ++i) {
         t_pump();
+        bdk_testing_run_for(0.1);
+    }
 }
 
 /* ---- password save and fill prompts (T-UIR-04) ---- */
@@ -411,7 +416,7 @@ test_engine_a_submitted_login_is_saved_by_the_default_prompt_and_filled_next_tim
     t_pump();
     submit_login(c);
     REQUIRE(wait_for_title(c, "welcome"));
-    wait_for_presenter("passwords");
+    wait_for_presenter("passwords", uses_before);
     CHECK(control_count("presenter.count", "passwords") == uses_before + 1);
     t_capture_t cap;
     invoke_ok(p, "passwords.list", "{}", &cap);
@@ -420,6 +425,11 @@ test_engine_a_submitted_login_is_saved_by_the_default_prompt_and_filled_next_tim
 
     /* The next visit is filled by the password manager. */
     REQUIRE(bdk_contents_load(c, S(LOGIN_URL), &err) == BDK_OK);
+    t_pump();
+    /* Chromium hands a filled password to the page's script only after the user touched it. */
+    t_pump();
+    bdk_testing_run_for(0.5);
+    REQUIRE(bdk_testing_click(c, 20, 20, 0) == BDK_OK);
     t_pump();
     run_script(c,
                "setInterval(function(){document.title='filled:'+"
@@ -445,8 +455,10 @@ static void test_engine_a_password_prompt_reaches_a_handler_and_saving_needs_a_g
     t_pump();
     submit_login(c);
     REQUIRE(wait_for_title(c, "welcome"));
-    for (int i = 0; i < 40 && g_seen.calls == 0; ++i)
+    for (int i = 0; i < 60 && g_seen.calls == 0; ++i) {
         t_pump();
+        bdk_testing_run_for(0.1);
+    }
     REQUIRE(g_seen.calls == 1);
     CHECK(strstr(g_seen.payload, "\"origin\":\"https://login.example/\"") != NULL);
     CHECK(strstr(g_seen.payload, "\"username\":\"ada\"") != NULL);
@@ -483,7 +495,7 @@ static void test_engine_declining_the_password_prompt_saves_nothing(void) {
     t_pump();
     submit_login(c);
     REQUIRE(wait_for_title(c, "welcome"));
-    wait_for_presenter("passwords");
+    wait_for_presenter("passwords", uses_before);
     CHECK(control_count("presenter.count", "passwords") == uses_before + 1);
     t_capture_t cap;
     invoke_ok(p, "passwords.list", "{}", &cap);
@@ -530,7 +542,7 @@ static void test_engine_window_print_with_no_handler_uses_the_system_print_panel
     REQUIRE(bdk_contents_load(c, S(LOGIN_URL), &err) == BDK_OK);
     REQUIRE(wait_for_title(c, "login"));
     run_script(c, "window.print()", 1);
-    wait_for_presenter("printing");
+    wait_for_presenter("printing", uses_before);
     CHECK(control_count("presenter.count", "printing") == uses_before + 1);
     run_script(c, "document.title='after print'", 0);
     CHECK(wait_for_title(c, "after print"));
