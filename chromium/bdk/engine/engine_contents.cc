@@ -22,6 +22,7 @@
 #include "bdk/engine/host_context.h"
 #include "bdk/engine/host_view.h"
 #include "bdk/engine/identity.h"
+#include "bdk/engine/services/interstitial_prompts.h"
 #include "bdk/engine/session_state.h"
 #include "bdk/engine/testing.h"
 #include "chrome/browser/profiles/profile.h"
@@ -786,6 +787,9 @@ void EngineContents::DidStartNavigation(content::NavigationHandle* handle) {
 void EngineContents::DidFinishNavigation(content::NavigationHandle* handle) {
   if (!handle->IsInPrimaryMainFrame()) {
     return;
+  }
+  if (!handle->IsSameDocument()) {
+    OnPrimaryNavigationFinished(*this, handle);  // security interstitials
   }
   uint32_t flags = kMainFrame;
   if (handle->IsSameDocument()) {

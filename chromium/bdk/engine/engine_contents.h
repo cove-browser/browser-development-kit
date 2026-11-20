@@ -55,6 +55,9 @@ class EngineContents : public bdkcore::BackendData,
 
   content::WebContents* web_contents() { return web_contents_; }
   HostView& host_view() { return *host_view_; }
+  // The core's page this belongs to, for code that raises UI requests for the
+  // page (engine/services).
+  std::shared_ptr<bdkcore::Contents> Core() const { return core(); }
 
   // Every page of the engine, in creation order.
   static const std::vector<EngineContents*>& All();

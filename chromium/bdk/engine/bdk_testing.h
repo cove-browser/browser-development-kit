@@ -120,6 +120,11 @@ BDK_EXPORT size_t bdk_testing_pending_work(void);
                            it. Answers are in docs/planning/sdk/ui-requests.md
                            section 6.
      presenter.count       {"surface"}: how often its default presenter ran.
+     downloads.ask         {"on"}: every loaded profile asks where to save,
+                           as the setting does.
+     downloads.danger      {"on"}: every download is held as dangerous content
+                           (this build has no Safe Browsing or file-type
+                           policy to flag a real one before M6).
      script_page           {"url", "body", "contentType", "headers"}: serves
                            later navigations to url with this content. */
 BDK_EXPORT bdk_status_t bdk_testing_control(bdk_runtime_t,

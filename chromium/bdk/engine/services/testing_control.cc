@@ -18,6 +18,7 @@
 #include "bdk/core/runtime/core_internal.h"
 #include "bdk/engine/bdk_testing.h"
 #include "bdk/engine/services/authentication.h"
+#include "bdk/engine/services/download_prompts.h"
 #include "bdk/engine/services/presenter_answers.h"
 #include "bdk/engine/testing.h"
 
@@ -97,6 +98,16 @@ BDK_EXPORT bdk_status_t bdk_testing_control(bdk_runtime_t runtime,
     }
     return bdk::Fill(std::to_string(bdk::PresenterUseCountForTesting(*surface)),
                      out, out_size);
+  }
+  if (name == "downloads.ask") {
+    // Makes every loaded profile ask where to save, as the setting does.
+    const std::optional<bool> on = args->FindBool("on");
+    bdk::AskWhereToSaveForTesting(on.value_or(true));
+    return BDK_OK;
+  }
+  if (name == "downloads.danger") {
+    bdk::ForceDangerousDownloadsForTesting(args->FindBool("on").value_or(true));
+    return BDK_OK;
   }
   if (name == "script_page") {
     // A page with content: {"url", "body", "contentType", "headers"}.

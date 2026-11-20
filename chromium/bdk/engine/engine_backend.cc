@@ -37,7 +37,9 @@
 #include "bdk/engine/host_view.h"
 #include "bdk/engine/identity.h"
 #include "bdk/engine/services/authentication.h"
+#include "bdk/engine/services/download_prompts.h"
 #include "bdk/engine/services/passwords_service.h"
+#include "bdk/engine/services/prompt_hooks.h"
 #include "bdk/engine/session_state.h"
 #include "bdk/engine/testing.h"
 #include "chrome/browser/browser_process.h"
@@ -158,6 +160,7 @@ class EngineBackend final : public bdkcore::Backend {
                              error);
       }
       ApplyIdentityAfterStart(*identity);
+      InstallPromptHooks();
       chromium_tasks_.store(true);
       registry_writer_ = base::ThreadPool::CreateSequencedTaskRunner(
           {base::MayBlock(), base::TaskShutdownBehavior::BLOCK_SHUTDOWN});
@@ -263,6 +266,7 @@ class EngineBackend final : public bdkcore::Backend {
                       return;
                     }
                     backend->KeepLoaded(path, loaded);
+                    InstallDownloadPrompts(loaded);
                     auto data = std::make_unique<EngineProfile>();
                     data->profile = loaded;
                     p->data = std::move(data);
@@ -284,6 +288,7 @@ class EngineBackend final : public bdkcore::Backend {
       return bdkcore::fail(out_error, BDK_DOMAIN_PROFILE, "openFailed",
                            "Chromium could not create a private profile");
     }
+    InstallDownloadPrompts(otr);
     auto data = std::make_unique<EngineProfile>();
     data->profile = otr;
     profile.data = std::move(data);

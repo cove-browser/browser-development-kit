@@ -154,6 +154,13 @@ class ScriptedNavigationInterceptor
   void MaybeCreateLoader(const network::ResourceRequest& request,
                          content::BrowserContext* browser_context,
                          LoaderCallback callback) override {
+    // Loopback addresses are the test's own servers (a TLS server with a
+    // certificate nobody trusts, for the interstitial scenarios): the network
+    // serves them.
+    if (request.url.HostIsIPAddress() && request.url.host() == "127.0.0.1") {
+      std::move(callback).Run({});
+      return;
+    }
     std::optional<Script> script;
     {
       Scripts& scripts = GetScripts();

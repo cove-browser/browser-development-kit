@@ -349,6 +349,9 @@ void close_profile(const std::shared_ptr<Runtime>&, const std::shared_ptr<Profil
 std::shared_ptr<Contents> contents_of(bdk_contents_t);
 /* Runs a request's withdrawn-handler release exactly once; later calls do nothing. */
 void release_withdrawn(Request&);
+/* Withdraws one request, if it is not finished: Chromium no longer needs the UI (its bubble was
+   closed by the page, the state changed). */
+void withdraw_ui_request(const std::shared_ptr<Request>&);
 /* Withdraws every unfinished request raised for the contents (0: every request). */
 void withdraw_contents_requests(const std::shared_ptr<Runtime>&, bdk_contents_t);
 
