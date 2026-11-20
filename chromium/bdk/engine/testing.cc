@@ -60,6 +60,11 @@ namespace {
 struct Script {
   int32_t net_error = 0;
   std::string title;
+  // A page with content of its own (ScriptPageForTesting): when `body` is not
+  // empty it is served as `content_type` with the extra response headers.
+  std::string body;
+  std::string content_type;
+  std::string headers;
 };
 
 // Read on the UI thread by the interceptor and written by the hooks, also on
@@ -115,13 +120,21 @@ void Serve(Script script,
   }
   const std::string title =
       script.title.empty() ? request.url.spec() : script.title;
-  const std::string body = "<!doctype html><title>" +
-                           base::EscapeForHTML(title) + "</title><body></body>";
+  const bool custom = !script.body.empty();
+  const std::string content_type = custom && !script.content_type.empty()
+                                       ? script.content_type
+                                       : "text/html";
+  const std::string body = custom ? script.body
+                                  : "<!doctype html><title>" +
+                                        base::EscapeForHTML(title) +
+                                        "</title><body></body>";
   auto head = network::mojom::URLResponseHead::New();
   head->headers = net::HttpResponseHeaders::TryToCreate(
-      "HTTP/1.1 200 OK\nContent-Type: text/html; charset=utf-8\n");
-  head->mime_type = "text/html";
+      "HTTP/1.1 200 OK\nContent-Type: " + content_type + "; charset=utf-8\n" +
+      script.headers);
+  head->mime_type = content_type;
   head->charset = "utf-8";
+  head->content_length = static_cast<int64_t>(body.size());
   mojo::ScopedDataPipeProducerHandle producer;
   mojo::ScopedDataPipeConsumerHandle consumer;
   if (mojo::CreateDataPipe(static_cast<uint32_t>(body.size()), producer,
@@ -141,6 +154,13 @@ class ScriptedNavigationInterceptor
   void MaybeCreateLoader(const network::ResourceRequest& request,
                          content::BrowserContext* browser_context,
                          LoaderCallback callback) override {
+    // Loopback addresses are the test's own servers (a TLS server with a
+    // certificate nobody trusts, for the interstitial scenarios): the network
+    // serves them.
+    if (request.url.HostIsIPAddress() && request.url.host() == "127.0.0.1") {
+      std::move(callback).Run({});
+      return;
+    }
     std::optional<Script> script;
     {
       Scripts& scripts = GetScripts();
@@ -175,6 +195,19 @@ CreateScriptedNavigationInterceptor() {
     return nullptr;
   }
   return std::make_unique<ScriptedNavigationInterceptor>();
+}
+
+void ScriptPageForTesting(const std::string& url,
+                          const std::string& body,
+                          const std::string& content_type,
+                          const std::string& headers) {
+  Scripts& scripts = GetScripts();
+  base::AutoLock lock(scripts.lock);
+  Script script;
+  script.body = body;
+  script.content_type = content_type;
+  script.headers = headers;
+  scripts.by_url[GURL(url).spec()] = std::move(script);
 }
 
 void NoteTaskPosted() {

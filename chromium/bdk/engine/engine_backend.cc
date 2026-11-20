@@ -36,6 +36,10 @@
 #include "bdk/engine/host_context.h"
 #include "bdk/engine/host_view.h"
 #include "bdk/engine/identity.h"
+#include "bdk/engine/services/authentication.h"
+#include "bdk/engine/services/download_prompts.h"
+#include "bdk/engine/services/passwords_service.h"
+#include "bdk/engine/services/prompt_hooks.h"
 #include "bdk/engine/session_state.h"
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_notifications.h"
@@ -157,6 +161,7 @@ class EngineBackend final : public bdkcore::Backend {
                              error);
       }
       ApplyIdentityAfterStart(*identity);
+      InstallPromptHooks();
       chromium_tasks_.store(true);
       registry_writer_ = base::ThreadPool::CreateSequencedTaskRunner(
           {base::MayBlock(), base::TaskShutdownBehavior::BLOCK_SHUTDOWN});
@@ -265,6 +270,7 @@ class EngineBackend final : public bdkcore::Backend {
                     // Web notifications become UI requests
                     // (ui_notifications.h).
                     InstallNotificationDisplay(loaded);
+                    InstallDownloadPrompts(loaded);
                     auto data = std::make_unique<EngineProfile>();
                     data->profile = loaded;
                     p->data = std::move(data);
@@ -286,6 +292,7 @@ class EngineBackend final : public bdkcore::Backend {
       return bdkcore::fail(out_error, BDK_DOMAIN_PROFILE, "openFailed",
                            "Chromium could not create a private profile");
     }
+    InstallDownloadPrompts(otr);
     auto data = std::make_unique<EngineProfile>();
     data->profile = otr;
     profile.data = std::move(data);
@@ -346,6 +353,25 @@ class EngineBackend final : public bdkcore::Backend {
 
   void CloseContents(const std::shared_ptr<Contents>& c) override {
     Page(*c).Close();
+  }
+
+  // Built-in commands, service by service (engine/services).
+  void ExecuteCommand(
+      Runtime& rt,
+      const std::shared_ptr<bdkcore::BuiltinCall>& call) override {
+    if (ExecutePasswordsOrAutofillCommand(rt, call)) {
+      return;
+    }
+    Backend::ExecuteCommand(rt, call);
+  }
+
+  void Authenticate(Runtime& rt,
+                    const std::string& reason,
+                    std::function<void(bool)> done) override {
+    AuthenticateUser(
+        reason, base::BindOnce([](std::function<void(bool)> done,
+                                  bool authenticated) { done(authenticated); },
+                               std::move(done)));
   }
 
   void DestroyContents(Runtime& rt, Contents& c) override { c.data.reset(); }

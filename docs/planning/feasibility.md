@@ -103,9 +103,9 @@ W = works with a bare WebContents and profile. T = needs a tab object. B = needs
 | Downloads core | W | `download_core_service_impl.cc` | Works. |
 | Download UI | B+V | `download_bubble_ui_controller.cc:94-98` | BDK presents downloads over the existing model. |
 | Password manager and autofill logic | T | `tab_features.cc:440-445` | Needs the tab object. |
-| Autofill and password bubbles | T+V | `chrome_autofill_client.cc:787-789`; `browser_window.h:259` | BDK implements or stubs the bubble handler. |
+| Autofill and password bubbles | T+V | `chrome_autofill_client.cc:787-789`; `browser_window.h:259` | BDK implements or stubs the bubble handler. Run (M3): the password bubble goes through `TabDialogs::ShowManagePasswordsBubble` (patched factory); it is shown only for the active tab of an active context (`BubbleManagerImpl` queues it otherwise). The address and card bubbles still need `GetAutofillBubbleHandler`. |
 | Permission prompts | T+V | `permission_prompt_factory.cc:44-103` | Anchoring needs a location-bar object; Webium uses a stub. |
-| Printing and print preview | T+V | `print_preview_dialog_controller.cc:136-140, 266-275` | Needs a modal-dialog host from the BDK window. |
+| Printing and print preview | T+V | `print_preview_dialog_controller.cc:136-140, 266-275` | Needs a modal-dialog host from the BDK window. Run (M3): with the stub window, `window.print()` reached `ShowConstrainedWebDialog` and aborted in `NativeWidgetMac::InitModalType` (a tab-modal widget needs a parent window). BDK therefore asks before the dialog is created (a small patch in `PrintViewManager`, both entries) and prints through the system panel; hosting the preview still needs the host view as the modal parent. |
 | Translate | T+B+V | `chrome_translate_client.cc:608-631` | UI is shown only for the active tab of the last-active window. |
 | Safe Browsing interstitials | W | `chrome_safe_browsing_blocking_page_factory.cc` | Works at content level. |
 | DevTools | B, docked V | `devtools_window.cc:2139-2141` | Undocked DevTools creates a window through the same factory. |

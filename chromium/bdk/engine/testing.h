@@ -6,6 +6,7 @@
 #define BDK_ENGINE_TESTING_H_
 
 #include <memory>
+#include <string>
 
 namespace content {
 class URLLoaderRequestInterceptor;
@@ -17,6 +18,14 @@ namespace bdk {
 // (bdk_testing.h), or null when nothing is scripted.
 std::unique_ptr<content::URLLoaderRequestInterceptor>
 CreateScriptedNavigationInterceptor();
+
+// Serves later navigations to `url` from the engine: `body` as
+// `content_type` (text/html if empty) with `headers` (raw "Name: value\n"
+// lines) added to the response.
+void ScriptPageForTesting(const std::string& url,
+                          const std::string& body,
+                          const std::string& content_type,
+                          const std::string& headers);
 
 // Counts BDK tasks posted to the UI thread and not yet run, for
 // bdk_testing_pending_work().

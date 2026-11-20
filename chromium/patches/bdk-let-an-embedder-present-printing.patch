@@ -1,0 +1,122 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BDK Patches <patches@bdk.invalid>
+Date: Thu, 19 Nov 2026 16:19:19 -0800
+Subject: [PATCH] bdk: let an embedder present printing
+
+window.print() and the user's print command both end in
+PrintViewManager::OnRequestPrintPreviewCallback(), which creates the
+print preview dialog through PrintPreviewDialogController. That dialog is
+a constrained web dialog of a Browser's window, and BDK pages are tabs of
+Browsers whose window has no views, so it cannot be shown. BDK raises a
+printing UI request instead, so that the application can show its own
+print UI, and falls back to the system's print panel.
+
+Add embedder_print_preview_hook.h, a small header with a settable hook
+(inline, no new target), and ask it first in
+OnRequestPrintPreviewCallback(). When it returns true the preview ends for
+the renderer exactly as when a request is rejected
+(OnPrintPreviewRequestRejected), and the embedder decides what to print;
+false, or no hook, leaves Chromium's preview unchanged. Only
+print_view_manager.cc and the new header change, so nothing widely
+included is touched.
+
+Used by: the BDK engine (//bdk/engine/services/print_prompts.cc).
+
+The hook is asked in both entries: OnRequestPrintPreviewCallback() for the
+print command, and OnScriptedPrintPreviewCallback(), where window.print()
+reaches the preview.
+---
+ .../printing/embedder_print_preview_hook.h    | 39 +++++++++++++++++++
+ chrome/browser/printing/print_view_manager.cc | 20 ++++++++++
+ 2 files changed, 59 insertions(+)
+
+diff --git a/chrome/browser/printing/embedder_print_preview_hook.h b/chrome/browser/printing/embedder_print_preview_hook.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..1377590ef9157013af254793d03b5829cc5dadba
+--- /dev/null
++++ b/chrome/browser/printing/embedder_print_preview_hook.h
+@@ -0,0 +1,39 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_PRINTING_EMBEDDER_PRINT_PREVIEW_HOOK_H_
++#define CHROME_BROWSER_PRINTING_EMBEDDER_PRINT_PREVIEW_HOOK_H_
++
++#include "base/functional/callback.h"
++#include "base/no_destructor.h"
++
++namespace content {
++class WebContents;
++}  // namespace content
++
++// A hook for Chromium embedders that present printing in UI of their own.
++// When a hook is set, PrintViewManager asks it before it creates the print
++// preview dialog for `initiator`, which is the one place both window.print()
++// and the user's print command pass through. Returning true means the
++// embedder took the request: no dialog is created, the renderer is told the
++// preview is over, and the embedder prints (PrintViewManager::BasicPrint
++// opens the system's print panel) or not as it decides. Returning false
++// leaves Chromium's print preview as it is. Only embedders set one, once.
++namespace embedder_print_preview_hook {
++
++using Hook = base::RepeatingCallback<bool(content::WebContents* initiator,
++                                          bool is_user_initiated)>;
++
++inline Hook& GetHook() {
++  static base::NoDestructor<Hook> hook;
++  return *hook;
++}
++
++inline void SetHook(Hook hook) {
++  GetHook() = std::move(hook);
++}
++
++}  // namespace embedder_print_preview_hook
++
++#endif  // CHROME_BROWSER_PRINTING_EMBEDDER_PRINT_PREVIEW_HOOK_H_
+diff --git a/chrome/browser/printing/print_view_manager.cc b/chrome/browser/printing/print_view_manager.cc
+index 49a87cb382a1d255d9407c8f0d074776377fc458..40e014ca65297556b245a30500ec0358a532b49c 100644
+--- a/chrome/browser/printing/print_view_manager.cc
++++ b/chrome/browser/printing/print_view_manager.cc
+@@ -17,6 +17,7 @@
+ #include "base/observer_list.h"
+ #include "build/build_config.h"
+ #include "chrome/browser/bad_message.h"
++#include "chrome/browser/printing/embedder_print_preview_hook.h"
+ #include "chrome/browser/printing/print_preview_dialog_controller.h"
+ #include "chrome/browser/printing/printer_query.h"
+ #include "chrome/browser/profiles/profile.h"
+@@ -564,6 +565,15 @@ void PrintViewManager::OnScriptedPrintPreviewCallback(
+     return;
+   }
+ 
++  if (const auto& embedder_hook = embedder_print_preview_hook::GetHook()) {
++    // window.print() reaches the preview here and not through
++    // OnRequestPrintPreviewCallback().
++    if (embedder_hook.Run(web_contents(), /*is_user_initiated=*/false)) {
++      OnPrintPreviewRequestRejected(rfh_id);
++      return;
++    }
++  }
++
+   // Running a dialog causes an exit to webpage-initiated fullscreen.
+   // https://crbug.com/41322524
+   if (web_contents()->IsFullscreen()) {
+@@ -627,6 +637,16 @@ void PrintViewManager::OnRequestPrintPreviewCallback(
+     return;
+   }
+ 
++  if (const auto& embedder_hook = embedder_print_preview_hook::GetHook()) {
++    if (embedder_hook.Run(web_contents(),
++                          print_preview_state_ == USER_INITIATED_PREVIEW)) {
++      // The embedder presents printing itself: end the preview for the
++      // renderer, as when a request is rejected.
++      OnPrintPreviewRequestRejected(rfh_id);
++      return;
++    }
++  }
++
+   if (params->webnode_only) {
+     PrintPreviewForWebNode(render_frame_host);
+   }

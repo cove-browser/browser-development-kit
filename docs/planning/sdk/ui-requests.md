@@ -284,6 +284,8 @@ public final class DangerousDownloadRequest: BDKUIRequest {
 | Rule | Keeping a dangerous download needs a user gesture. The warning cannot be skipped by mode. |
 | `disabled` | Downloads are cancelled when they start |
 
+Built (M3, T-UIR-03; engine/services/download_prompts.cc). Each profile gets a `ChromeDownloadManagerDelegate` subclass that asks through a request wherever Chromium would show its file picker (the "ask where to save" setting, save-as, a name conflict). Payload: `download` (`url`, `suggestedName`, `mimeType`, `size` when known, `referrer`) and `needsLocation: true`. Completions: `accept` with an optional `destination` path (the suggested path if absent) or `deny`. The default presenter is a native save panel on the page's window; with no window it cancels. A download Chromium holds as dangerous or insecure raises a second request, with `danger` (`dangerousFileType`, `dangerousURL`, `dangerousContent`, `uncommon`, `insecure`) and `text`; `grant` keeps it and needs the gesture; `deny`, a rejection, a dropped or a released request discards it. The default presenter is a native Keep or Discard sheet. A request whose download got resolved elsewhere is withdrawn. Chromium's download shelf and bubble are not hosted: BDK has no toolbar, so the download list is the `downloads` service's commands and events.
+
 ### 5.8 Passwords and autofill
 
 ```swift
@@ -328,6 +330,8 @@ public final class LeakedPasswordRequest: BDKUIRequest {          // Added (S16)
 | Rule | Filling a credential or a card into a page needs a user gesture on the suggestion. Revealing a stored password is a service command that needs operating-system authentication ([services.md](services.md) 5.9). |
 | `disabled` | Nothing is offered and nothing is filled. Stored data stays. |
 
+Built (M3, T-UIR-04; engine/services/password_prompts.cc). The password manager's bubble goes through `TabDialogs::ShowManagePasswordsBubble`, which a patch lets BDK supply. Only the two questions are requests, save and update (`isUpdate`); the manage list and the confirmation have no counterpart. Payload: `origin`, `username`, `isUpdate`; the password is never in it. Completions: `grant` (save or update, needs the gesture), `deny` with `never: true` (never for this site; save only) or `dismissed: true`. A rejected, dropped or disabled request saves nothing and leaves the password manager's state as an ignored bubble does. The default presenter is a native sheet (Save or Update, Not now, Never for this site) on the page's window. The password manager's own route to that call (toolbar page action, then the tab's bubble manager) never arrived with a BDK window although its state was pending, so BDK also looks for a pending question 0.3, 1 and 2.5 seconds after each navigation and raises it itself. Filling a saved login into a form is Chromium's own and needs no request. Not built: the address-bar anchor, the suggestion popup as a request (`autofillSuggestions`), the leaked-password request (needs the M6 provider), the `autofill` save-address and save-card prompts. Chromium's own suggestion popup is a Views popup anchored in screen coordinates; whether it shows without a toolbar was not run.
+
 ### 5.9 Printing
 
 ```swift
@@ -346,6 +350,8 @@ public final class PrintRequest: BDKUIRequest {
 | Custom | Host `previewContents.view` in the application's own sheet, or skip the preview and go to the system dialog |
 | Headless PDF | `page.capture.pdf` produces a PDF with no request and no UI |
 | `disabled` | `window.print()` does nothing and the print command is unavailable |
+
+Built (M3, T-UIR-04; engine/services/print_prompts.cc, a patch adds a hook in `PrintViewManager`). `window.print()` and the print command raise one request (`isUserInitiated` is false for `window.print()`) before Chromium creates its preview dialog, which is a constrained web dialog of a Browser window and cannot be shown by a windowless host context (feasibility.md 1). So `previewContents` is not offered yet and the default presenter is the system print panel through Chromium's basic print path (`PrintViewManager::BasicPrint`); the page's `afterprint` still fires. Completions: `accept` with `action: "systemDialog"`, or `deny`. `savePDF` prints nothing: the print-to-PDF command (`system`) is the way to a file. Hosting Chromium's print preview as a page of its own needs the modal-dialog host of amendments 2.13 backed by the page's host view and is not done.
 
 ### 5.10 Translation
 
@@ -450,6 +456,8 @@ public final class ReputationWarningRequest: BDKUIRequest {
 | Default presenter | Chromium's interstitial page, in the page |
 | Custom | The application draws its own warning over the page view. The navigation stays blocked underneath until the request is completed. |
 | Rules | No `disabled` mode. `.reject` and a dropped request both mean "go back". Proceeding needs a user gesture and is refused where Chromium refuses it. |
+
+Built (M3, T-UIR-05; engine/services/interstitial_prompts.cc). When a certificate-error (`SSLBlockingPage`) or Safe Browsing blocking page commits, a request goes to the handler of its surface. Payload: `url`, `isOverridable` (read from the page's own load-time data, the value its Proceed button obeys), `text`; certificate errors add `error` (`dateInvalid`, `authorityInvalid`, `commonNameInvalid`, `revoked`, `pinningFailure`, else the net error name) and `certificate` (`id`, `subject`, `issuer`); reputation warnings add `verdict` and `provider`. `go_back` and `proceed` drive the page's own commands, so Chromium refuses a proceed for HSTS or pinning even if the request said otherwise. With no handler the page is the whole UI. The page stays blocked whatever the application does: a withdrawn request (the page moved on) does nothing. A request that is not a safe-browsing or certificate page (HTTPS-only, bad clock, captive portal) is not raised. The reputation provider comes in M6; whatever Chromium raises is routed.
 
 ### 5.15 DevTools
 
