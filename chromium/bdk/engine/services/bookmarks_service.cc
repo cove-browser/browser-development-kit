@@ -7,15 +7,25 @@
 // parent's bookmarks (services.md section 3); the factory redirects it.
 
 #include <algorithm>
+#include <memory>
+#include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "base/files/file_path.h"
 #include "base/functional/bind.h"
 #include "base/location.h"
+#include "base/no_destructor.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/task/bind_post_task.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/thread_pool.h"
+#include "base/threading/sequence_bound.h"
 #include "bdk/engine/services/services.h"
+#include "chrome/browser/bookmarks/bookmark_html_writer.h"
 #include "chrome/browser/bookmarks/bookmark_model_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "components/bookmarks/browser/bookmark_client.h"
@@ -26,6 +36,9 @@
 #include "components/bookmarks/browser/titled_url_match.h"
 #include "components/bookmarks/common/bookmark_metrics.h"
 #include "components/query_parser/query_parser.h"
+#include "components/user_data_importer/common/imported_bookmark_entry.h"
+#include "components/user_data_importer/content/content_bookmark_parser.h"
+#include "components/user_data_importer/utility/bookmark_parser.h"
 #include "url/gurl.h"
 
 namespace bdk {
@@ -34,8 +47,10 @@ namespace {
 
 using bookmarks::BookmarkModel;
 using bookmarks::BookmarkNode;
+using user_data_importer::ContentBookmarkParser;
 
 constexpr size_t kDefaultSearchLimit = 100;
+constexpr size_t kImportProgressStep = 100;
 
 }  // namespace
 
@@ -290,6 +305,152 @@ void Remove(const std::shared_ptr<ServiceCall>& c, BookmarkModel& model) {
   c->ResolveNull();
 }
 
+// ---- import and export (Netscape bookmarks HTML) ----
+
+// The folder under "Other bookmarks" that an import adds to (services.md 5.5).
+constexpr char16_t kImportFolderTitle[] = u"Imported bookmarks";
+
+// The child folder of `parent` with the title, made if there is none.
+const BookmarkNode* FolderNamed(BookmarkModel& model,
+                                const BookmarkNode* parent,
+                                const std::u16string& title) {
+  for (const auto& child : parent->children()) {
+    if (child->is_folder() && child->GetTitle() == title) {
+      return child.get();
+    }
+  }
+  return model.AddFolder(parent, parent->children().size(), title);
+}
+
+// Adds what the parser read under a new folder of the other bookmarks, keeping
+// the file's folders. Returns how many bookmarks (not folders) it added.
+int AddImported(
+    const std::shared_ptr<ServiceCall>& c,
+    BookmarkModel& model,
+    const std::vector<user_data_importer::ImportedBookmarkEntry>& entries) {
+  const BookmarkNode* root = nullptr;
+  int imported = 0;
+  size_t done = 0;
+  model.BeginExtensiveChanges();
+  for (const user_data_importer::ImportedBookmarkEntry& entry : entries) {
+    ++done;
+    if (!entry.is_folder && !entry.url.is_valid()) {
+      continue;
+    }
+    if (!root) {
+      root = model.AddFolder(model.other_node(),
+                             model.other_node()->children().size(),
+                             kImportFolderTitle);
+    }
+    const BookmarkNode* parent = root;
+    for (const std::u16string& name : entry.path) {
+      parent = FolderNamed(model, parent, name);
+    }
+    if (entry.is_folder) {
+      FolderNamed(model, parent, entry.title);
+    } else {
+      model.AddURL(parent, parent->children().size(), entry.title, entry.url,
+                   nullptr,
+                   entry.creation_time.is_null()
+                       ? std::nullopt
+                       : std::optional<base::Time>(entry.creation_time));
+      ++imported;
+    }
+    if (done % kImportProgressStep == 0) {
+      c->Progress(0.5 + 0.5 * static_cast<double>(done) / entries.size(),
+                  "Imported " + base::NumberToString(imported) + " bookmarks");
+    }
+  }
+  model.EndExtensiveChanges();
+  return imported;
+}
+
+void OnParsed(
+    std::shared_ptr<ServiceCall> c,
+    base::WeakPtr<BookmarkModel> model,
+    std::unique_ptr<base::SequenceBound<ContentBookmarkParser>> parser,
+    user_data_importer::BookmarkParser::BookmarkParsingResult result) {
+  using Error = user_data_importer::BookmarkParser::BookmarkParsingError;
+  if (!model) {
+    return;
+  }
+  if (!result.has_value()) {
+    if (result.error() == Error::kFailedToReadFile ||
+        result.error() == Error::kParsingFailed) {
+      c->InvalidArguments("the file could not be read as bookmarks HTML");
+    } else {
+      c->Reject(BDK_DOMAIN_PLATFORM, "failed",
+                "the bookmarks file could not be parsed");
+    }
+    return;
+  }
+  c->Progress(0.5, "Read " + base::NumberToString(result->bookmarks.size()) +
+                       " entries");
+  const int imported = AddImported(c, *model, result->bookmarks);
+  c->Resolve("{\"imported\":" + base::NumberToString(imported) + "}");
+}
+
+// Parses the file with Chromium's bookmarks parser, which runs its HTML parser
+// in a utility process, as Chromium's own import does. The parser works off
+// the UI thread, on a sequence of its own.
+void Import(const std::shared_ptr<ServiceCall>& c, BookmarkModel& model) {
+  const base::FilePath path =
+      base::FilePath::FromUTF8Unsafe(c->StringOr("path", ""));
+  if (path.empty()) {
+    c->InvalidArguments("the path is empty");
+    return;
+  }
+  c->Progress(0.0, "Reading " + path.BaseName().AsUTF8Unsafe());
+  auto parser = std::make_unique<base::SequenceBound<ContentBookmarkParser>>(
+      base::ThreadPool::CreateSequencedTaskRunner({base::MayBlock()}));
+  base::SequenceBound<ContentBookmarkParser>* const raw = parser.get();
+  auto reply = base::BindPostTaskToCurrentDefault(
+      base::BindOnce(&OnParsed, c, model.AsWeakPtr(), std::move(parser)));
+  raw->PostTaskWithThisObject(base::BindOnce(
+      [](base::FilePath path,
+         user_data_importer::BookmarkParser::BookmarkParsingCallback reply,
+         ContentBookmarkParser* parser) {
+        parser->Parse(path, std::move(reply));
+      },
+      path, std::move(reply)));
+}
+
+// Profiles with an export under way: the writer drops a second request for a
+// profile without calling back.
+std::set<const Profile*>& ExportsInFlight() {
+  static base::NoDestructor<std::set<const Profile*>> in_flight;
+  return *in_flight;
+}
+
+void Export(const std::shared_ptr<ServiceCall>& c, BookmarkModel&) {
+  const base::FilePath path =
+      base::FilePath::FromUTF8Unsafe(c->StringOr("path", ""));
+  if (path.empty()) {
+    c->InvalidArguments("the path is empty");
+    return;
+  }
+  Profile* profile = c->original_profile();
+  if (!ExportsInFlight().insert(profile).second) {
+    c->Reject(BDK_DOMAIN_PLATFORM, "busy",
+              "another export of these bookmarks is under way");
+    return;
+  }
+  bookmark_html_writer::WriteBookmarks(
+      profile, path,
+      base::BindPostTaskToCurrentDefault(base::BindOnce(
+          [](std::shared_ptr<ServiceCall> c, const Profile* profile,
+             bookmark_html_writer::Result result) {
+            ExportsInFlight().erase(profile);
+            if (result == bookmark_html_writer::Result::kSuccess) {
+              c->ResolveNull();
+            } else {
+              c->Reject(BDK_DOMAIN_PLATFORM, "failed",
+                        "the bookmarks file could not be written");
+            }
+          },
+          c, profile)));
+}
+
 template <ModelHandler handler>
 void Run(const std::shared_ptr<ServiceCall>& c) {
   WithModel(c, handler);
@@ -309,6 +470,8 @@ void AddBookmarksHandlers(HandlerTable& table) {
   table["bookmarks.update"] = &Run<Update>;
   table["bookmarks.move"] = &Run<Move>;
   table["bookmarks.remove"] = &Run<Remove>;
+  table["bookmarks.import"] = &Run<Import>;
+  table["bookmarks.export"] = &Run<Export>;
 }
 
 }  // namespace bdk

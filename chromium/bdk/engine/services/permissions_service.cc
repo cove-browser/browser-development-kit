@@ -10,6 +10,7 @@
 #include "bdk/engine/services/permissions.h"
 
 #include <algorithm>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -18,10 +19,13 @@
 #include "bdk/engine/services/services.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ssl/stateful_ssl_host_state_delegate_factory.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/content_settings/core/common/content_settings.h"
 #include "components/content_settings/core/common/content_settings_pattern.h"
 #include "components/content_settings/core/common/content_settings_types.h"
+#include "components/security_interstitials/content/stateful_ssl_host_state_delegate.h"
+#include "content/public/browser/storage_partition.h"
 #include "url/gurl.h"
 
 namespace bdk {
@@ -297,6 +301,54 @@ void SetDefault(const std::shared_ptr<ServiceCall>& c) {
   c->ResolveNull();
 }
 
+// The profile's record of certificate errors the person proceeded past
+// (StatefulSSLHostStateDelegate, which keeps them as SSL_CERT_DECISIONS site
+// settings). A private profile has its own, which is forgotten with it.
+StatefulSSLHostStateDelegate* CertificateDecisions(const ServiceCall& c) {
+  return StatefulSSLHostStateDelegateFactory::GetForProfile(c.profile());
+}
+
+void CertificateExceptions(const std::shared_ptr<ServiceCall>& c) {
+  StatefulSSLHostStateDelegate* decisions = CertificateDecisions(*c);
+  std::set<std::string> hosts;
+  if (decisions) {
+    content::StoragePartition* partition =
+        c->profile()->GetDefaultStoragePartition();
+    for (const ContentSettingPatternSource& rule :
+         MapOf(*c)->GetSettingsForOneType(
+             ContentSettingsType::SSL_CERT_DECISIONS)) {
+      const std::string& host = rule.primary_pattern.GetHost();
+      // A rule can outlive its decisions (an expired one); list only hosts
+      // where a certificate is allowed now.
+      if (!host.empty() && decisions->HasCertAllowException(host, partition)) {
+        hosts.insert(host);
+      }
+    }
+  }
+  std::string out = "{\"hosts\":[";
+  bool first = true;
+  for (const std::string& host : hosts) {
+    out += (first ? "" : ",") + JsonString(host);
+    first = false;
+  }
+  c->Resolve(out + "]}");
+}
+
+void RevokeCertificateException(const std::shared_ptr<ServiceCall>& c) {
+  const std::string host = c->StringOr("host", "");
+  if (host.empty()) {
+    c->InvalidArguments("the host is empty");
+    return;
+  }
+  if (StatefulSSLHostStateDelegate* decisions = CertificateDecisions(*c)) {
+    // The hard form also closes idle connections, so a revisit meets the
+    // certificate error again instead of reusing a connection the person
+    // had accepted.
+    decisions->RevokeUserAllowExceptionsHard(host);
+  }
+  c->ResolveNull();
+}
+
 }  // namespace
 
 const PermissionKind* FindPermissionKind(const std::string& name) {
@@ -330,6 +382,8 @@ void AddPermissionsHandlers(HandlerTable& table) {
   table["permissions.reset"] = &Reset;
   table["permissions.getDefault"] = &GetDefault;
   table["permissions.setDefault"] = &SetDefault;
+  table["permissions.certificateExceptions"] = &CertificateExceptions;
+  table["permissions.revokeCertificateException"] = &RevokeCertificateException;
 }
 
 }  // namespace bdk

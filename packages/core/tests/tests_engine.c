@@ -931,6 +931,88 @@ static void test_engine_bookmarks_nest_move_and_remove(void) {
     CHECK(failed_with(&cap, "broker", "invalidArguments"));
 }
 
+#define BOOKMARKS_FIXTURE                                                                          \
+    "<!DOCTYPE NETSCAPE-Bookmark-file-1>\n"                                                        \
+    "<META HTTP-EQUIV=\"Content-Type\" CONTENT=\"text/html; charset=UTF-8\">\n"                    \
+    "<TITLE>Bookmarks</TITLE>\n<H1>Bookmarks</H1>\n<DL><p>\n"                                      \
+    "<DT><H3>Fixtures</H3>\n<DL><p>\n"                                                             \
+    "<DT><A HREF=\"https://import-one.example/\">Import One</A>\n"                                 \
+    "<DT><A HREF=\"https://import-two.example/page\">Import Two</A>\n"                             \
+    "</DL><p>\n<DT><A HREF=\"https://import-top.example/\">Import Top</A>\n</DL><p>\n"
+
+static void write_text_file(const char* path, const char* text) {
+    FILE* f = fopen(path, "w");
+    REQUIRE(f != NULL);
+    fputs(text, f);
+    fclose(f);
+}
+
+static void test_engine_bookmarks_are_imported_and_exported_as_html(void) {
+    t_start_frozen();
+    bdk_profile_t p = t_new_profile("Bookmark files");
+    bdk_profile_t other = t_new_profile("Bookmark files other");
+    char dir[] = "/tmp/bdk-engine-bookmarks-XXXXXX";
+    REQUIRE(mkdtemp(dir) != NULL);
+    char in[96], out[96], args[256];
+    snprintf(in, sizeof in, "%s/in.html", dir);
+    snprintf(out, sizeof out, "%s/out.html", dir);
+    write_text_file(in, BOOKMARKS_FIXTURE);
+
+    t_capture_t cap;
+    snprintf(args, sizeof args, "{\"path\":\"%s\"}", in);
+    svc("bookmarks.import", args, p, &cap);
+    CHECK(!cap.has_error);
+    CHECK(strstr(cap.json, "\"imported\":3") != NULL);
+    CHECK(cap.progress >= 1);
+
+    /* The bookmarks landed in a folder of the other bookmarks, keeping the file's folder. */
+    char parent[32], folder[32];
+    svc("bookmarks.search", "{\"query\":\"Import One\"}", p, &cap);
+    REQUIRE(t_json_string(cap.json, "parentId", parent, sizeof parent));
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", parent);
+    svc("bookmarks.get", args, p, &cap);
+    CHECK(strstr(cap.json, "\"title\":\"Fixtures\"") != NULL);
+    REQUIRE(t_json_string(cap.json, "parentId", folder, sizeof folder));
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", folder);
+    svc("bookmarks.get", args, p, &cap);
+    CHECK(strstr(cap.json, "\"title\":\"Imported bookmarks\"") != NULL);
+    svc("bookmarks.forUrl", "{\"url\":\"https://import-top.example/\"}", p, &cap);
+    CHECK(strstr(cap.json, "Import Top") != NULL);
+
+    /* Another profile has none of them. */
+    svc("bookmarks.search", "{\"query\":\"Import\"}", other, &cap);
+    CHECK(strstr(cap.json, "\"items\":[]") != NULL);
+
+    /* What cannot be read as bookmarks is refused. */
+    snprintf(args, sizeof args, "{\"path\":\"%s/missing.html\"}", dir);
+    svc("bookmarks.import", args, p, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+
+    /* An export reads back as the same bookmarks. */
+    snprintf(args, sizeof args, "{\"path\":\"%s\"}", out);
+    svc("bookmarks.export", args, p, &cap);
+    CHECK(!cap.has_error);
+    char text[4096] = "";
+    FILE* f = fopen(out, "r");
+    REQUIRE(f != NULL);
+    size_t n = fread(text, 1, sizeof text - 1, f);
+    text[n] = 0;
+    fclose(f);
+    CHECK(strstr(text, "NETSCAPE-Bookmark-file-1") != NULL);
+    CHECK(strstr(text, "https://import-one.example/") != NULL);
+    CHECK(strstr(text, "https://import-two.example/page") != NULL);
+    CHECK(strstr(text, "Import Top") != NULL);
+    CHECK(strstr(text, "Fixtures") != NULL);
+
+    /* Round trip: the export imports into the other profile with the same count. */
+    snprintf(args, sizeof args, "{\"path\":\"%s\"}", out);
+    svc("bookmarks.import", args, other, &cap);
+    CHECK(!cap.has_error && strstr(cap.json, "\"imported\":3") != NULL);
+    unlink(in);
+    unlink(out);
+    rmdir(dir);
+}
+
 /* The first time the item's state is `state`, within a time limit. */
 static int wait_for_download_state(bdk_profile_t p, const char* id, const char* state) {
     char args[64], want[48];
@@ -1204,6 +1286,8 @@ const t_test_t t_engine_tests[] = {
     {"engine_history_is_searched_paginated_and_cleared",
      test_engine_history_is_searched_paginated_and_cleared},
     {"engine_bookmarks_nest_move_and_remove", test_engine_bookmarks_nest_move_and_remove},
+    {"engine_bookmarks_are_imported_and_exported_as_html",
+     test_engine_bookmarks_are_imported_and_exported_as_html},
     {"engine_a_download_completes_and_is_controllable",
      test_engine_a_download_completes_and_is_controllable},
     {"engine_profiles_keep_their_data_apart_and_private_ones_record_no_history",

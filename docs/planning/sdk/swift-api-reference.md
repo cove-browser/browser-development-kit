@@ -543,7 +543,7 @@ Every command in [services.md](services.md) section 5 has a typed wrapper genera
 | `runtime.about` | `info() async throws`, `caller() async throws` (`runtime.info`, `runtime.caller`) | |
 | `runtime.commands` | `invoke(_ name, _ input, profile:) async throws -> Output` | Generic entry point for commands with no wrapper, including `app.` commands |
 
-At the end of M3 four wrappers call commands the engine rejects as not implemented (`bookmarks.import`, `bookmarks.export`, `permissions.certificateExceptions`, `permissions.revokeCertificateException`), and four events are never emitted (`cookies.changed`, `passwords.changed`, `passwords.issuesChanged`, `autofill.changed`): T-SVC-07, M4. Swift calls are not capability-checked (`architecture.md` 9.1). The rules the generator follows, and the places this table departs from [swift-api.md](swift-api.md) 11.1, are in swift-api.md 11.1 ("Settled in T-SVC-02 to T-SVC-06").
+Four events are never emitted (`cookies.changed`, `passwords.changed`, `passwords.issuesChanged`, `autofill.changed`): T-SVC-07, M4. Swift calls are not capability-checked (`architecture.md` 9.1). The rules the generator follows, and the places this table departs from [swift-api.md](swift-api.md) 11.1, are in swift-api.md 11.1 ("Settled in T-SVC-02 to T-SVC-06").
 
 ### 11.2 Provider registration (Plan, M6, T-PRV-01 to T-PRV-09)
 

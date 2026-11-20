@@ -847,6 +847,77 @@ static void test_engine_a_certificate_error_request_proceeds_only_with_a_gesture
     close_window();
 }
 
+/* Pumps until the contents' title is not `title`. */
+static int wait_for_title_not(bdk_contents_t c, const char* title) {
+    char now[128];
+    for (int i = 0; i < 80; ++i) {
+        t_pump();
+        title_of(c, now, sizeof now);
+        if (strcmp(now, title) != 0)
+            return 1;
+    }
+    return 0;
+}
+
+static void test_engine_certificate_exceptions_are_listed_and_revoked(void) {
+    if (!start_tls_server()) {
+        printf("    (skipped: no openssl to serve a bad certificate)\n");
+        return;
+    }
+    memset(&g_seen, 0, sizeof g_seen);
+    t_start();
+    bdk_error_t err = 0;
+    REQUIRE(bdk_ui_set_handler(t_runtime, BDK_SURFACE_CERTIFICATE_ERRORS, hold, &g_seen, NULL,
+                               &err) == BDK_OK);
+    t_freeze();
+    bdk_profile_t profile = t_new_profile("Certificate exceptions");
+    bdk_profile_t other = t_new_profile("Certificate exceptions other");
+    bdk_contents_t c = page_with_history(profile);
+    t_capture_t cap;
+    invoke_ok(profile, "permissions.certificateExceptions", "{}", &cap);
+    CHECK(strstr(cap.json, "\"hosts\":[]") != NULL);
+
+    /* Proceeding past the error records the host. */
+    char url[64];
+    open_bad_certificate_page(c, url, sizeof url);
+    for (int i = 0; i < 40 && g_seen.calls == 0; ++i)
+        t_pump();
+    REQUIRE(g_seen.calls == 1);
+    err = 0;
+    REQUIRE(bdk_ui_complete(g_seen.request, S("proceed"), S("{}"), gesture(), &err) == BDK_OK);
+    bdk_ui_request_release(g_seen.request);
+    CHECK(wait_for_title_not(c, "Privacy error"));
+    invoke_ok(profile, "permissions.certificateExceptions", "{}", &cap);
+    CHECK(strstr(cap.json, "\"hosts\":[\"127.0.0.1\"]") != NULL);
+    invoke_ok(other, "permissions.certificateExceptions", "{}", &cap);
+    CHECK(strstr(cap.json, "\"hosts\":[]") != NULL); /* profiles keep their own */
+
+    /* A revisit goes straight through: no new request. */
+    bdk_error_t load_err = 0;
+    REQUIRE(bdk_contents_load(c, S(LOGIN_URL), &load_err) == BDK_OK);
+    REQUIRE(wait_for_title(c, "login"));
+    open_bad_certificate_page(c, url, sizeof url);
+    for (int i = 0; i < 20; ++i)
+        t_pump();
+    CHECK(g_seen.calls == 1);
+
+    /* Revoking the exception brings the interstitial back. */
+    invoke_ok(profile, "permissions.revokeCertificateException", "{\"host\":\"127.0.0.1\"}", &cap);
+    invoke_ok(profile, "permissions.certificateExceptions", "{}", &cap);
+    CHECK(strstr(cap.json, "\"hosts\":[]") != NULL);
+    invoke(profile, "permissions.revokeCertificateException", "{\"host\":\"\"}", &cap);
+    CHECK(cap.has_error && strcmp(cap.code, "invalidArguments") == 0);
+    REQUIRE(bdk_contents_load(c, S(LOGIN_URL), &load_err) == BDK_OK);
+    REQUIRE(wait_for_title(c, "login"));
+    open_bad_certificate_page(c, url, sizeof url);
+    for (int i = 0; i < 40 && g_seen.calls < 2; ++i)
+        t_pump();
+    CHECK(g_seen.calls == 2);
+    bdk_ui_request_release(g_seen.request);
+    stop_tls_server();
+    close_window();
+}
+
 static void test_engine_a_rejected_certificate_error_request_goes_back(void) {
     if (!start_tls_server()) {
         printf("    (skipped: no openssl to serve a bad certificate)\n");
@@ -1196,6 +1267,8 @@ const t_test_t t_engine_prompt_tests[] = {
      test_engine_a_certificate_error_blocks_the_page_with_no_handler},
     {"engine_a_certificate_error_request_proceeds_only_with_a_gesture",
      test_engine_a_certificate_error_request_proceeds_only_with_a_gesture},
+    {"engine_certificate_exceptions_are_listed_and_revoked",
+     test_engine_certificate_exceptions_are_listed_and_revoked},
     {"engine_a_rejected_certificate_error_request_goes_back",
      test_engine_a_rejected_certificate_error_request_goes_back},
     {"engine_a_dropped_certificate_error_request_goes_back",
