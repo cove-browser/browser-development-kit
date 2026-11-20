@@ -82,7 +82,7 @@ What Chromium requires of a window that is not a `BrowserView` (T-ADP-02) is in
 (`command_dispatch.cc`), which finds a handler by command name; a command with no handler answers
 `broker.notImplemented`. One file per service, each adding to the table: `history_service.cc`,
 `bookmarks_service.cc`, `downloads_service.cc`, `settings_service.cc` (the catalogue table maps each key to one
-Chromium pref; a key not in it reads as `null` and cannot be written), `permissions_service.cc` (the kind table maps
+Chromium pref; a key not in it reads as `null` and cannot be written; `app.` keys never reach it, the core answers them and the engine keeps them in `BDK App Settings.json`, see `LoadAppSettings` in `engine_backend.cc`), `permissions_service.cc` (the kind table maps
 each kind to a `ContentSettingsType`), `cookies_service.cc`, `privacy_service.cc` (`BrowsingDataRemover`),
 `profiles_service.cc` (`runtime.info`, `profiles.*`), `system_service.cc` with `system_mac.mm` (the only platform
 code: default-browser status and request), and `capture_service.cc` (PNG screenshot, print to PDF). A handler is

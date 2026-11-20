@@ -18,6 +18,7 @@
 #include "base/environment.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
+#include "base/files/important_file_writer.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/json/json_writer.h"
@@ -82,6 +83,13 @@ constexpr base::TimeDelta kUnloadPoll = base::Milliseconds(10);
 // Lists the persistent profiles and the next free identifier number, in the
 // user data directory, next to Chromium's own Local State.
 constexpr char kRegistryFile[] = "BDK Profiles.json";
+
+// Application settings (`app.` keys), one file per profile in its directory
+// and one for the application's own in the user data directory. The core
+// answers the settings commands; the engine only keeps the file. The UI thread
+// may not block, so a profile's file is read while it opens and the text is
+// kept in memory; a change is written on the registry writer's sequence.
+constexpr char kAppSettingsFile[] = "BDK App Settings.json";
 
 // Test only: a runtime shutdown leaves Chromium running, so that one process
 // can start and stop many runtimes (the conformance suite does). Chromium can
@@ -158,6 +166,7 @@ class EngineBackend final : public bdkcore::Backend {
       // The UI thread may not block once Chromium runs: read the registry now
       // and keep it in memory from here on.
       registry_ = ReadRegistry(user_data_dir_);
+      app_settings_text_[""] = ReadAppSettings(user_data_dir_);
       ApplyIdentityBeforeStart(*identity);
       ChromiumStartOptions options;
       base::PathService::Get(base::FILE_EXE, &options.program);
@@ -324,7 +333,7 @@ class EngineBackend final : public bdkcore::Backend {
                     data->profile = loaded;
                     data->events = CreateServiceEvents(loaded, p);
                     p->data = std::move(data);
-                    done("", "");
+                    backend->LoadAppSettingsThenDone(p, std::move(done));
                   },
                   base::Unretained(this), path, weak, std::move(done)));
   }
@@ -357,6 +366,40 @@ class EngineBackend final : public bdkcore::Backend {
       UnloadWhenClosed(user_data_dir_.AppendASCII(profile.id));
     }
     ReleaseProfile(profile);
+  }
+
+  std::string LoadAppSettings(Runtime& rt,
+                              const bdkcore::Profile* profile) override {
+    auto it = app_settings_text_.find(profile ? profile->id : std::string());
+    return it == app_settings_text_.end() ? std::string() : it->second;
+  }
+
+  void SaveAppSettings(Runtime& rt,
+                       const bdkcore::Profile* profile,
+                       const std::string& json) override {
+    app_settings_text_[profile ? profile->id : std::string()] = json;
+    registry_writer_->PostTask(
+        FROM_HERE, base::BindOnce(
+                       [](base::FilePath path, std::string json) {
+                         base::ImportantFileWriter::WriteFileAtomically(path,
+                                                                        json);
+                       },
+                       AppSettingsPath(profile), json));
+  }
+
+  // Reads the profile's application settings off the UI thread, then opens it.
+  void LoadAppSettingsThenDone(const std::shared_ptr<bdkcore::Profile>& profile,
+                               Done done) {
+    registry_writer_->PostTaskAndReplyWithResult(
+        FROM_HERE,
+        base::BindOnce(&ReadAppSettings, AppSettingsDir(profile.get())),
+        base::BindOnce(
+            [](EngineBackend* backend, std::string id, Done done,
+               std::string text) {
+              backend->app_settings_text_[id] = std::move(text);
+              done("", "");
+            },
+            base::Unretained(this), profile->id, std::move(done)));
   }
 
   void DeleteProfile(Runtime& rt,
@@ -666,6 +709,20 @@ class EngineBackend final : public bdkcore::Backend {
     }
   }
 
+  base::FilePath AppSettingsDir(const bdkcore::Profile* profile) const {
+    return profile ? user_data_dir_.AppendASCII(profile->id) : user_data_dir_;
+  }
+
+  base::FilePath AppSettingsPath(const bdkcore::Profile* profile) const {
+    return AppSettingsDir(profile).AppendASCII(kAppSettingsFile);
+  }
+
+  static std::string ReadAppSettings(const base::FilePath& dir) {
+    std::string text;
+    base::ReadFileToString(dir.AppendASCII(kAppSettingsFile), &text);
+    return text;
+  }
+
   struct Registry {
     uint64_t next_id = 1;
     std::vector<std::pair<std::string, std::string>> profiles;  // id, name
@@ -707,6 +764,9 @@ class EngineBackend final : public bdkcore::Backend {
   base::FilePath requested_user_data_dir_;
   raw_ptr<Profile> base_profile_ = nullptr;
   scoped_refptr<base::SequencedTaskRunner> registry_writer_;
+  // The text of each scope's application settings file, by profile id ("" for
+  // the application's).
+  std::map<std::string, std::string> app_settings_text_;
   Registry registry_;
   struct LoadedProfile {
     base::WeakPtr<Profile> profile;
