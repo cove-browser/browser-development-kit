@@ -205,6 +205,22 @@ struct Session {
     std::set<bdk_contents_t> contents;
 };
 
+/* An application setting (`app.`), declared with bdk_app_setting_register. */
+struct AppSetting {
+    std::string key;
+    std::string type;         /* boolean, number, string, array, object or json (any value) */
+    std::string default_json; /* normalised JSON */
+    bool application = false; /* scope: the whole application, not one profile */
+    bool exposed = false;     /* exposedToPages: reachable by pages and sessions */
+};
+
+/* The values of one scope, kept by the core so that every backend behaves the same. The backend
+   only persists them (Backend::LoadAppSettings, SaveAppSettings). */
+struct AppSettingValues {
+    bool loaded = false;
+    std::map<std::string, std::string> values; /* key -> JSON */
+};
+
 struct Runtime {
     bdk_runtime_t handle = 0;
     bool frozen = false, shutting = false;
@@ -216,7 +232,8 @@ struct Runtime {
     std::map<std::string, Command> commands;
     std::map<std::string, uint32_t> events; /* declared application events -> identifier */
     uint32_t next_event_id = 0x80000000u;
-    std::vector<std::string> settings;
+    std::map<std::string, AppSetting> app_settings;
+    std::map<std::string, AppSettingValues> app_values; /* by profile id; "" for the application */
     std::map<std::string, Owned> page_handlers, providers;
     std::map<std::string, std::string> provider_keys;
     std::map<uint32_t, UiHandler> ui_handlers;
@@ -303,6 +320,12 @@ class Backend {
        once. The default answers broker.notImplemented, so a backend implements commands one by one.
      */
     virtual void ExecuteCommand(Runtime& rt, const std::shared_ptr<BuiltinCall>& call);
+    /* Application settings (`app.`) are answered by the core (app_settings.cc); the backend only
+       keeps them. LoadAppSettings returns the JSON object last saved for the profile, or for the
+       application when profile is null, and an empty string for none. SaveAppSettings stores the
+       whole object. Neither is called for a private profile. The defaults keep nothing. */
+    virtual std::string LoadAppSettings(Runtime& rt, const Profile* profile);
+    virtual void SaveAppSettings(Runtime& rt, const Profile* profile, const std::string& json);
     /* Asks the user to authenticate with the operating system (a command marked A). done(true) if
        they did. Runs on the UI thread, later. The default refuses. */
     virtual void Authenticate(Runtime& rt, const std::string& reason,

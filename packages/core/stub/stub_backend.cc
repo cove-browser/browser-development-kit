@@ -43,6 +43,9 @@ struct StubState {
     std::deque<std::function<void()>> queue;
     std::map<std::string, std::pair<int32_t, std::string>> scripts;
     bdk_stub_ui_outcome_t outcome{};
+    /* What the stub keeps of application settings, by profile id ("" for the application): its
+       stand-in for the disk, so a closed and reopened profile gets its values back. */
+    std::map<std::string, std::string> app_settings;
 };
 
 StubState& S() {
@@ -247,6 +250,7 @@ class StubBackend final : public Backend {
     bdk_status_t Start(Runtime&, const bdk_start_config_t&, const std::string&,
                        bdk_error_t*) override {
         S().scripts.clear();
+        S().app_settings.clear();
         set_outcome(BDK_STUB_UI_NONE, 0, "", "");
         bdkstub::services_reset();
         return BDK_OK;
@@ -276,7 +280,17 @@ class StubBackend final : public Backend {
 
     void CloseProfile(Runtime&, Profile&) override {}
 
-    void DeleteProfile(Runtime&, const Profile&, Done done) override {
+    std::string LoadAppSettings(Runtime&, const Profile* profile) override {
+        auto it = S().app_settings.find(profile ? profile->id : std::string());
+        return it == S().app_settings.end() ? std::string() : it->second;
+    }
+
+    void SaveAppSettings(Runtime&, const Profile* profile, const std::string& json) override {
+        S().app_settings[profile ? profile->id : std::string()] = json;
+    }
+
+    void DeleteProfile(Runtime&, const Profile& profile, Done done) override {
+        S().app_settings.erase(profile.id);
         done("", "");
     }
 

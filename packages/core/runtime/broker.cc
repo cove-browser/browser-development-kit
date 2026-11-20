@@ -204,8 +204,8 @@ void validate_and_run(const std::shared_ptr<Pending>& p) {
                "the arguments are not valid JSON");
         return;
     }
+    JsonValue parsed;
     if (p->def) {
-        JsonValue parsed;
         std::string problem = json_parse(input, &parsed) ? check_arguments(*p->def, parsed)
                                                          : "arguments: could not be read";
         if (!problem.empty()) {
@@ -213,6 +213,13 @@ void validate_and_run(const std::shared_ptr<Pending>& p) {
                    "invalid arguments for '" + p->name + "': " + problem);
             return;
         }
+    }
+    const bool settings_call = p->def && p->name.compare(0, 9, "settings.") == 0;
+    std::string not_exposed;
+    if (settings_call && p->caller->kind != CallerKind::kHost &&
+        !app_settings_exposed(*p->rt, parsed, &not_exposed)) {
+        refuse(p, BDK_DOMAIN_CAPABILITY, BDK_CODE_DENIED, not_exposed);
+        return;
     }
 
     /* Step 6: the service. Everything before this ran without it. */
@@ -240,6 +247,8 @@ void validate_and_run(const std::shared_ptr<Pending>& p) {
         std::make_shared<CommandControl>(p->call, (p->def->flags & table::kProgress) != 0);
     auto control = call->control;
     p->call->on_stop = [control] { control->Stop(); };
+    if (settings_call && app_settings_execute(*p->rt, call, parsed))
+        return;
     backend().ExecuteCommand(*p->rt, call);
 }
 
@@ -538,6 +547,12 @@ void Backend::ExecuteCommand(Runtime&, const std::shared_ptr<BuiltinCall>& call)
     call->control->Reject(BDK_DOMAIN_BROKER, BDK_CODE_NOT_IMPLEMENTED,
                           "'" + call->name + "' is not implemented by this runtime yet");
 }
+
+std::string Backend::LoadAppSettings(Runtime&, const Profile*) {
+    return std::string();
+}
+
+void Backend::SaveAppSettings(Runtime&, const Profile*, const std::string&) {}
 
 void Backend::Authenticate(Runtime&, const std::string&, std::function<void(bool)> done) {
     post([done = std::move(done)] { done(false); });

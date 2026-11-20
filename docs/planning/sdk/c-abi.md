@@ -274,6 +274,8 @@ BDK_EXPORT bdk_status_t bdk_page_handler_register(bdk_runtime_t, bdk_string_t ro
                                                   bdk_native_page_cb, void* ctx, bdk_release_cb, bdk_error_t*);
 ```
 
+`declaration_json` of `bdk_app_setting_register` is `{"key": "app.…", "default": <json>, "scope": "profile" | "application", "exposedToPages": bool}`; `default` defaults to null, `scope` to `profile` and `exposedToPages` to false. A key that does not start with `app.` is `config.nameNotApp`, a second registration of a key is `config.duplicateName`. The core answers `settings.*` for `app.` keys itself and keeps the values through `Backend::LoadAppSettings` and `SaveAppSettings` (packages/core/docs/conventions.md).
+
 All registration functions must be called between `bdk_runtime_start` and `bdk_runtime_freeze_registrations`.
 
 ## 7. Interface definition format

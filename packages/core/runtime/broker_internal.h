@@ -166,6 +166,27 @@ std::string json_serialize(const JsonValue& value);
    otherwise a message naming the first problem and where it is. */
 std::string check_arguments(const table::CommandDef& def, const JsonValue& arguments);
 
+/* ---- Application settings (app_settings.cc) ---- */
+
+/* Declares an application setting from bdk_app_setting_register's JSON:
+   {"key": "app.…", "default": <json>, "scope": "profile" | "application", "exposedToPages": bool}.
+   Fails with config.nameNotApp and config.duplicateName; the type is that of the default. */
+bdk_status_t app_setting_declare(Runtime& rt, const std::string& declaration,
+                                 bdk_error_t* out_error);
+
+/* Whether a non-host caller may make this settings.* call: false (with a message) when it names an
+   application setting that is not exposed to pages. A key that is not registered is not refused
+   here; the call answers null or an error like any unknown key. */
+bool app_settings_exposed(const Runtime& rt, const JsonValue& arguments, std::string* message);
+
+/* Answers a settings.* call that names application settings (`app.` keys), and returns true.
+   Returns false for any other call, which the backend answers. */
+bool app_settings_execute(Runtime& rt, const std::shared_ptr<BuiltinCall>& call,
+                          const JsonValue& arguments);
+
+/* Forgets the cached values of a profile that closed (they are on disk). */
+void app_settings_forget(Runtime& rt, const std::string& profile_id);
+
 } // namespace bdkcore
 
 #endif /* BDK_BROKER_INTERNAL_H_ */
