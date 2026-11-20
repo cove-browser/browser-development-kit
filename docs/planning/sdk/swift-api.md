@@ -430,6 +430,8 @@ page.print()                           // goes through the printing surface
 
 `present()` on find, translation and DevTools, and `print()`, are how an application-owned menu item or shortcut starts a flow whose UI is a browser-owned surface. The request then takes the normal path in [ui-requests.md](ui-requests.md).
 
+Not built at the end of M3 (2026-11-20): `page.capture` (T-SVC-09, M7, with the `contents.*` commands); `page.find` and `page.print()` (T-SWF-07, M4); `page.zoom.set`, a settable `isMuted` and `exitPictureInPicture()` (T-SWF-06, M4). `page.zoom` and `page.isMuted` can be read. The find and printing surfaces exist, so a handler already receives the requests Chromium raises.
+
 ### 6.8 Session state
 
 Plan, M2, task T-ADP-07. Chromium restores nothing on its own. The application saves and restores.
@@ -482,7 +484,7 @@ There is no BDK window, tab strip, toolbar or split-view type. A split is two vi
 
 Nothing, by default. The first time a page view is added to an `NSWindow`, BDK creates a host context for that window and keeps it until the window closes.
 
-Registration is optional and adds three things (Added, S11):
+Registration is optional and adds three things (Added, S11). Not built at the end of M3: windows are registered automatically and internally, and none of this is public yet (T-SWF-08, M5).
 
 ```swift
 let window = runtime.windows.register(nsWindow, .init(kind: .normal))   // .normal, .popup
@@ -585,6 +587,8 @@ public enum PageCommand {
 }
 ```
 
+`canPerform` and `perform` are not built at the end of M3 (T-SWF-06, M4).
+
 The standard AppKit edit actions (`cut:`, `copy:`, `paste:`, `selectAll:`, `undo:`, `redo:`) are expected to work through the responder chain when the page is first responder, so an ordinary Edit menu needs no BDK call. Unverified outside Chromium's own window.
 
 ## 10. UI request handlers
@@ -663,7 +667,7 @@ try await profile.privacy.clear([.history, .cookies, .cache], since: .lastHour)
 let entries = try await profile.passwords.list()
 let secret = try await profile.passwords.reveal(entries[0].id)   // prompts with Touch ID or the login password
 
-// Search and address bar (Added, S1)
+// Search and address bar (Added, S1) — not built: T-SVC-10, M4
 let kind = try await profile.search.classify("swift.org")          // .url(URL), .search(URL, engine)
 for await batch in profile.search.suggestions(for: "swi", in: page) { … }
 
@@ -830,6 +834,8 @@ config.settings.register(
 ```
 
 Application settings are stored with browser settings and read through the same `settings.get` and `settings.set` commands. `exposedToPages: false` keeps a key out of reach of every page, whatever its capabilities.
+
+Not built at the end of M3: T-SVC-05 shipped commands and events without setting registration, so keys are strings (T-SVC-08, M4).
 
 ## 13. Automation
 

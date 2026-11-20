@@ -375,20 +375,20 @@ Never matches internal pages or extension pages. Later: a message channel from a
 
 | Helper | Member | Does | Milestone |
 |---|---|---|---|
-| `page.capture` | `screenshot(.visible \| .fullPage \| .rect(CGRect)) async throws` | Image | M3, T-SVC-06 |
-| | `pdf(.init(paper:, landscape:, printBackground:)) async throws` | PDF | M3, T-SVC-06 |
-| | `save(to:, as: .htmlOnly \| .completePage \| .singleFile) async throws` | Save page | M3, T-SVC-06 |
-| `page.find` | `start(_ text, options:) ` | AS of results: matchCount, activeIndex, rect | M3, T-UIR-06 |
+| `page.capture` | `screenshot(.visible \| .fullPage \| .rect(CGRect)) async throws` | Image | M7, T-SVC-09 (not built) |
+| | `pdf(.init(paper:, landscape:, printBackground:)) async throws` | PDF | M7, T-SVC-09 (not built) |
+| | `save(to:, as: .htmlOnly \| .completePage \| .singleFile) async throws` | Save page | M7, T-SVC-09 (not built) |
+| `page.find` | `start(_ text, options:) ` | AS of results: matchCount, activeIndex, rect | M4, T-SWF-07 (not built) |
 | | `next()`, `previous()`, `stop(.clearSelection)` | | |
 | | `present()` | Ask for the find surface | |
-| `page.zoom` | `set(_ factor, scope: .site \| .page) throws` | | |
-| `page.media` | `isMuted` (RW) | | |
-| | `exitPictureInPicture()` | | |
+| `page.zoom` | `set(_ factor, scope: .site \| .page) throws` | | M4, T-SWF-06 (not built; the factor is readable) |
+| `page.media` | `isMuted` (RW) | | M4, T-SWF-06 (read-only for now) |
+| | `exitPictureInPicture()` | | M4, T-SWF-06 (not built) |
 | `page.translation` | `state` | `.unavailable`, `.available(detected:)`, `.translating(progress:)`, `.translated(from:to:)`, `.failed(error)` | M6, T-PRV-03 |
 | | `translate(to:) async throws` | | |
 | | `revert() async throws` | | |
 | | `present()` | Ask for the translation surface | |
-| `page` | `print()` | Goes through the printing surface | M3, T-UIR-04 |
+| `page` | `print()` | Goes through the printing surface | M4, T-SWF-07 (not built) |
 
 `present()` on find, translation and DevTools, and `print()`, start a flow whose UI is a browser-owned surface. The request takes the normal path in [ui-requests.md](ui-requests.md).
 
@@ -427,7 +427,7 @@ There is no BDK window, tab strip, toolbar or split-view type.
 
 ## 8. Windows and host contexts
 
-### 8.1 Window registration (Added, S11; optional)
+### 8.1 Window registration (Added, S11; optional; not built: T-SWF-08, M5)
 
 By default BDK creates a host context the first time a page view is added to an `NSWindow` and keeps it until the window closes.
 
@@ -488,8 +488,8 @@ Popups from `window.open`, undocked DevTools, picture-in-picture and extension-c
 
 | Page command API | Does |
 |---|---|
-| `page.canPerform(_ command: PageCommand) -> Bool` | |
-| `page.perform(_ command: PageCommand)` | Invoked by a menu item or toolbar button on the focused page |
+| `page.canPerform(_ command: PageCommand) -> Bool` | Not built: T-SWF-06, M4 |
+| `page.perform(_ command: PageCommand)` | Invoked by a menu item or toolbar button on the focused page. Not built: T-SWF-06, M4 |
 
 | `PageCommand` group | Cases |
 |---|---|
@@ -538,12 +538,12 @@ Every command in [services.md](services.md) section 5 has a typed wrapper genera
 | `profile.permissions` | `set(origin:, kind:, value:)` | `.changed` |
 | `profile.privacy` | `clear(types:, range:, origins:, onProgress:)` | `.cleared` |
 | `profile.passwords` | `list()` (metadata only), `reveal(_ id)` (needs OS authentication) | `.changed`, `.issuesChanged` |
-| `profile.search` (Added, S1) | `classify(_) -> .url(URL) \| .search(URL, engine)`, `suggestions(for:, in:)` | `suggestions` is AS of batches |
+| `profile.search` (Added, S1; not built: T-SVC-10, M4) | `classify(_) -> .url(URL) \| .search(URL, engine)`, `suggestions(for:, in:)` | `suggestions` is AS of batches |
 | `runtime.system.defaultBrowser` | `status() async throws`, `request() async throws` (macOS asks the user) | |
 | `runtime.about` | `info() async throws`, `caller() async throws` (`runtime.info`, `runtime.caller`) | |
 | `runtime.commands` | `invoke(_ name, _ input, profile:) async throws -> Output` | Generic entry point for commands with no wrapper, including `app.` commands |
 
-Swift calls are not capability-checked (`architecture.md` 9.1). The rules the generator follows, and the places this table departs from [swift-api.md](swift-api.md) 11.1, are in swift-api.md 11.1 ("Settled in T-SVC-02 to T-SVC-06").
+At the end of M3 four wrappers call commands the engine rejects as not implemented (`bookmarks.import`, `bookmarks.export`, `permissions.certificateExceptions`, `permissions.revokeCertificateException`), and four events are never emitted (`cookies.changed`, `passwords.changed`, `passwords.issuesChanged`, `autofill.changed`): T-SVC-07, M4. Swift calls are not capability-checked (`architecture.md` 9.1). The rules the generator follows, and the places this table departs from [swift-api.md](swift-api.md) 11.1, are in swift-api.md 11.1 ("Settled in T-SVC-02 to T-SVC-06").
 
 ### 11.2 Provider registration (Plan, M6, T-PRV-01 to T-PRV-09)
 
@@ -608,7 +608,7 @@ Swift is the source of truth. Declarations are extracted at build time to genera
 | Event | `struct X: BDKEvent { static let name = "app.…" }` | Declares an event |
 | Declare | `config.commands.declare(X.self)` | |
 | Emit | `runtime.commands.emit(_, to: .all \| .profile(_) \| .page(_) \| .session(_))` | |
-| Setting | `config.settings.register(BDKSettingKey<T>("app.…"), default:, scope: .profile, exposedToPages: Bool)` | Application setting, read through `settings.get` and `settings.set` |
+| Setting | `config.settings.register(BDKSettingKey<T>("app.…"), default:, scope: .profile, exposedToPages: Bool)` | Application setting, read through `settings.get` and `settings.set`. Not built: T-SVC-08, M4 |
 
 | `CommandContext` member | Type |
 |---|---|

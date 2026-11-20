@@ -9,6 +9,7 @@ Status: plan, 2026-11-14. Each task is sized for one implementation agent workin
 - A task is done when its tests pass in CI, or, for M0 tasks, when its result is written into [feasibility.md](feasibility.md) with the commands run.
 - Never mark something as working from source reading alone. If a test could not be run, say so and leave the task open.
 - Tasks in M0 may use throwaway code. From M1 on, code is kept.
+- Work a milestone leaves undone becomes a task here before the milestone is marked done (see [README.md](README.md), "Recording gaps").
 
 ## Order of work
 
@@ -55,6 +56,7 @@ G0 → T-CHR-03, T-CHR-04 → T-CHR-08 → T-CHR-09 → T-ABI-04 → T-SWF-* →
 | T-ADP-06 | "Presented tab" predicate for layouts with more than two visible pages; enumerate and patch the call sites | M8 | L | Source | Feasibility 10; risk R2 | Patch; list of sites | In a three-pane layout, translate, find and dialogs work for the focused pane and behave as documented for the others | T-ADP-04 |
 | T-ADP-07 | Sessions: stop automatic window restore; expose page navigation state for the application | M2 | M | Source | `session_service.h` | State export and import functions | After relaunch Chromium restores nothing; a page restored from saved state has its history | T-ADP-03 |
 | T-ADP-08 | Host-context mapping experiment for decision D1: off-screen pages as background tabs of one window versus in a separate context | M0 | M | Source | MV3 probe | Recorded probe output for both mappings | Not applicable; this produces evidence | T-EXT-01 |
+| T-ADP-09 | Run the `browser_tests` filters T-ADP-02 named against the BDK `BrowserWindow`, and fix or record each failure (left over from M3) | M9 | L | Source | T-ADP-02 filters; a `browser_tests` build | Results in `feasibility.md`; fixes | The named filters pass, or each failure is recorded with its cause | T-ADP-03 |
 
 ## macOS host
 
@@ -85,6 +87,9 @@ G0 → T-CHR-03, T-CHR-04 → T-CHR-08 → T-CHR-09 → T-ABI-04 → T-SWF-* →
 | T-SWF-03 | Host view and SwiftUI wrapper | M2 | M | Prebuilt | T-MAC-03 | View types | Integration test: two pages visible; one moved to a second window | T-SWF-02, T-MAC-03 |
 | T-SWF-04 | UI-request handler API with handled, use-default and reject | M3 | M | Prebuilt | T-UIR-01 | Handler registration | Each result path covered per surface | T-UIR-01 |
 | T-SWF-05 | Minimal browser example | M2 | M | Prebuilt | T-SWF-03 | `apps/examples/minimal-browser` | Launch smoke test; renderer-crash recovery; relaunch | T-SWF-03 |
+| T-SWF-06 | Page commands and page controls left over from M2: `page.canPerform` and `perform(PageCommand)`, `page.zoom.set(_:scope:)`, settable `isMuted`, `exitPictureInPicture()` (swift-api.md 6.7 and 9) | M4 | M | Source | T-MAC-03 | C ABI functions; engine; Swift | Each command and control on the stub and in an engine scenario; `canPerform` is false where Chromium would disable the command | T-SWF-02 |
+| T-SWF-07 | `page.find` (`start`, `next`, `previous`, `stop`, `present`) and `page.print()` started by the application (left over from M3; the surfaces exist) | M4 | M | Source | T-UIR-04, T-UIR-06 | C ABI functions; engine; Swift | `find.start` reports match counts and the active match; `present()` and `print()` raise the find and printing requests, handled and unhandled | T-UIR-06 |
+| T-SWF-08 | Public window registration (S11): `runtime.windows.register`, `BDKWindow` with `kind`, `pages`, `activePage`, `extensionWindowID`, `anchors` and `delegate` (swift-api.md 8.1). Registration is automatic and internal today | M5 | M | Source | T-ADP-03 | Swift API; anchors used by the default presenters | A registered popup window reports `kind` `popup` to `windows.get`; a default presenter attaches to a supplied anchor | T-SWF-03 |
 
 ## Browser-owned UI requests and default presenters
 
@@ -96,6 +101,8 @@ G0 → T-CHR-03, T-CHR-04 → T-CHR-08 → T-CHR-09 → T-ABI-04 → T-SWF-* →
 | T-UIR-04 | Autofill and password prompts; printing and print preview | M3 | L | Source | Feasibility 1 coupling table | Requests and defaults | Save and fill a password; print to PDF | T-UIR-01 |
 | T-UIR-05 | Interstitials: certificate errors and reputation warnings | M3 | M | Source | Architecture 7 security rules | Tests and enforcement | Setting the surface to disabled or returning reject cannot bypass an interstitial | T-UIR-01 |
 | T-UIR-06 | Find in page, fullscreen, notifications | M3 | M | Source | T-MAC-05 | Requests and defaults | Each works with and without a handler | T-UIR-01 |
+| T-UIR-07 | M3 verification left open: HTTP authentication end to end (a test server that answers 401), a non-overridable interstitial (HSTS or pinning), the card autofill prompt, and the M3 exit criterion checked by hand in the minimal browser | M4 | M | Source | T-UIR-02, T-UIR-04, T-UIR-05 | Engine scenarios; a recorded manual check in the roadmap | Each scenario passes; `proceed` on a non-overridable error is refused | T-UIR-05 |
+| T-UIR-08 | Print preview: host Chromium's preview, or record the system print panel as the permanent default in amendments.md (M3 printed through the system panel because the preview needs a parent widget) | M4 | M | Source | T-MAC-04 result | Presenter or recorded decision | Print to PDF through the preview, or the decision recorded | T-UIR-04 |
 
 ## Service broker and services
 
@@ -107,6 +114,10 @@ G0 → T-CHR-03, T-CHR-04 → T-CHR-08 → T-CHR-09 → T-ABI-04 → T-SWF-* →
 | T-SVC-04 | Passwords and autofill surface; per-application Keychain item name | M3 | L | Source | `keychain_password_mac.mm` | Commands; start-up naming | Stored passwords survive relaunch; the Keychain item carries the application's name | T-SVC-01 |
 | T-SVC-05 | Application-registered commands from Swift | M3 | M | Prebuilt | T-SVC-01 | Registration API; declarations for generation | A registered command is callable from Swift and listed for code generation | T-SVC-01 |
 | T-SVC-06 | Default-browser registration, print to PDF, screenshots | M3 | M | Source | Platform adapters | Commands | Each verified on macOS | T-SVC-01 |
+| T-SVC-07 | Commands and events left over from M3 that are defined and have Swift wrappers but that the engine does not implement: the commands `bookmarks.import`, `bookmarks.export`, `permissions.certificateExceptions` and `permissions.revokeCertificateException` (rejected as `broker.notImplemented`), and the events `cookies.changed`, `passwords.changed`, `passwords.issuesChanged` and `autofill.changed` (never emitted) | M4 | M | Source | services.md 5 | Engine implementations | An engine scenario for each, called or observed through the Swift wrapper: each event fires after the change that should cause it | T-SVC-02, T-SVC-03 |
+| T-SVC-08 | Typed application settings: `config.settings.register(BDKSettingKey<T>, default:, scope:, exposedToPages:)` and typed `get` and `set` (swift-api.md 12.3; left out of T-SVC-05) | M4 | M | Prebuilt | T-SVC-05 | Registration; storage with browser settings; declarations for generation | A registered key reads its default and survives relaunch; `exposedToPages: false` is refused to every page | T-SVC-05 |
+| T-SVC-09 | `contents.screenshot`, `contents.pdf` and save-page commands, and `page.capture` in Swift (left over from T-SVC-06: the engine can capture but no command exposes it) | M7 | M | Source | services.md `contents.*` | Commands; Swift | Visible, full-page and rectangle screenshots; a PDF; each format of save | T-AUT-03 |
+| T-SVC-10 | Address-bar services (S1): `search.classify`, `search.suggestions` and search-engine management; `profile.search` in Swift | M4 | L | Source | services.md 5.13; S1 confirmed | Commands; Swift | Input classified as a URL or a search with the configured engine; suggestions from history and bookmarks with no Google endpoint | T-SVC-02 |
 
 ## Internal pages and configuration
 
