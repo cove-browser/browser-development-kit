@@ -124,14 +124,14 @@ Exit criteria: the multi-page sample survives a renderer crash and an applicatio
 
 | Work | Tasks | Acceptance |
 |---|---|---|
-| Broker | T-SVC-01, T-SVC-05 | Commands are defined once, checked per caller, cancellable. Application commands register from Swift. |
-| Services | T-SVC-02, T-SVC-03, T-SVC-04, T-SVC-06 | History, bookmarks with folders and moves, downloads, site settings, cookies, permissions, passwords and autofill with Keychain storage, print to PDF, screenshots, default-browser registration. |
-| UI requests and defaults | T-UIR-01 to T-UIR-06, T-SWF-04 | Every surface works with no handler registered. Each can be replaced from Swift. Handled, use-default and reject behave as specified. |
+| Broker | T-SVC-01, T-SVC-05, T-SVC-08 | Commands are defined once, checked per caller, cancellable. Application commands register from Swift. |
+| Services | T-SVC-02, T-SVC-03, T-SVC-04, T-SVC-06, T-SVC-07 | History, bookmarks with folders and moves, downloads, site settings, cookies, permissions, passwords and autofill with Keychain storage, print to PDF, screenshots, default-browser registration. |
+| UI requests and defaults | T-UIR-01 to T-UIR-06, T-SWF-04, T-SWF-07 | Every surface works with no handler registered. Each can be replaced from Swift. Handled, use-default and reject behave as specified. |
 | Security flows | T-UIR-05 | Certificate and reputation interstitials cannot be disabled or bypassed. A permission cannot be granted without a user gesture. |
 
 Exit criteria: a browser built with no custom UI code is usable for everyday browsing, including passwords, autofill, downloads, printing and permission prompts.
 
-**Status, 2026-11-20: the exit criteria are met on Chromium 158, by the engine scenarios; nobody has browsed with the minimal browser by hand.** Every page is now a tab of a `Browser` host context ([amendments.md](amendments.md) section 2.13), which M2 had left out (section 2.12). The engine suite is 279 of 279 in one process, on an unlocked screen (`nx run core:test-engine`); the stub suites, Swift (121 tests) and codegen pass. The patch series is 14 patches; each message says why.
+**Status, 2026-11-20: the exit criteria are met on Chromium 158, by the engine scenarios; nobody has browsed with the minimal browser by hand.** Every page is now a tab of a `Browser` host context ([amendments.md](amendments.md) section 2.13), which M2 had left out (section 2.12). The engine suite was 279 of 279 in one process on an unlocked screen (`nx run core:test-engine`). After T-SVC-07, T-SVC-08 and T-SWF-07 joined M3 it is 300 tests, run with the screen locked: 296 pass, and the 4 that fail need an unlocked screen and a key window (HTML fullscreen twice, the accessibility tree, page capture), as before. The stub suites, Swift (133 tests) and codegen pass. The patch series is 14 patches; each message says why.
 
 | Task | Status | Where it is recorded |
 |---|---|---|
@@ -161,7 +161,7 @@ Also fixed in M3: a persistent profile stayed loaded in Chromium after the appli
 | Bundled pages | T-WUI-03, T-CLI-04 | `Pages/Settings` is discovered, built with the Vite preset and served under the standard content security policy. |
 | Capability broker | T-WUI-04 | A granted page reads and writes settings through `@bdk/internal`; Swift sees the same values. An ungranted page, a subframe, an extension and a web page are refused. A wrong-page interface request terminates the renderer. An alias carries its target's grants. |
 | SDK and generation | T-JS-01, T-JS-02, T-JS-03 | Declarations are generated locally from interface definitions and registered commands. Nothing is published to npm. |
-| Left over from M2 and M3 | T-SVC-07, T-SVC-08, T-SVC-10, T-SWF-06, T-UIR-07, T-UIR-08 (T-SWF-07 is done in M3) | No Swift wrapper calls a command the engine rejects as not implemented. Typed application settings, page commands and address-bar services work from Swift. The M3 scenarios left open pass, and the M3 exit criterion is checked by hand. |
+| Left over from M2 and M3 | T-SVC-10, T-SWF-06, T-UIR-07, T-UIR-08 | Page commands, zoom, mute and address-bar services work from Swift. The M3 scenarios left open pass, print preview is hosted or the system panel is recorded as the default, and the M3 exit criterion is checked by hand. (T-SVC-07, T-SVC-08 and T-SWF-07 were planned here and done in M3.) |
 
 ### M5 — Extensions (public v1 gate)
 
