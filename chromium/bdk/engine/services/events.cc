@@ -35,11 +35,6 @@ using bookmarks::BookmarkModel;
 using bookmarks::BookmarkNode;
 using ProfilePtr = std::weak_ptr<bdkcore::Profile>;
 
-std::set<GURL>& ApplicationVisits() {
-  static base::NoDestructor<std::set<GURL>> visits;
-  return *visits;
-}
-
 void Emit(const ProfilePtr& profile,
           const char* name,
           const std::string& payload) {
@@ -57,12 +52,10 @@ class HistoryEvents : public history::HistoryServiceObserver {
 
   void OnURLVisited(history::HistoryService*,
                     const history::VisitedURLInfo& info) override {
-    const bool application = ApplicationVisits().erase(info.url_row.url()) > 0;
     Emit(profile_, "history.visited",
          "{\"entry\":" +
              HistoryEntryJson(info.url_row, info.visit_row.visit_time) +
-             ",\"source\":" + (application ? "\"application\"" : "\"user\"") +
-             "}");
+             ",\"source\":\"user\"}");
   }
 
   void OnHistoryDeletions(history::HistoryService*,
@@ -151,6 +144,9 @@ class BookmarkEvents : public bookmarks::BookmarkModelObserver {
   }
 
   void BookmarkNodeFaviconChanged(const BookmarkNode*) override {}
+
+  void BookmarkAllUserNodesRemoved(const std::set<GURL>&,
+                                   const base::Location&) override {}
 
   void BookmarkNodeChildrenReordered(const BookmarkNode* node) override {
     Emit(profile_, "bookmarks.reordered",
@@ -273,10 +269,6 @@ void EmitEvent(const std::shared_ptr<bdkcore::Profile>& bdk_profile,
     bdkcore::emit_builtin_event(
         runtime, name, bdk_profile ? bdk_profile->handle : 0, payload_json);
   }
-}
-
-void NoteApplicationVisit(const GURL& url) {
-  ApplicationVisits().insert(url);
 }
 
 }  // namespace bdk

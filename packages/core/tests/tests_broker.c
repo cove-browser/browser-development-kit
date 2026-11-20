@@ -1130,7 +1130,8 @@ static void test_a_built_in_event_reaches_the_subscriptions_of_its_profile(void)
     t_capture_t cap;
     host_call("history.add", "{\"url\":\"https://events.example/\",\"title\":\"E\"}", a, &cap);
     CHECK(!cap.has_error);
-    t_pump();
+    for (int i = 0; i < 300 && for_all.count == 0; ++i)
+        t_pump();
     CHECK(for_a.count == 1 && for_all.count == 1 && for_b.count == 0);
     CHECK(strstr(for_a.payload, "\"entry\"") != NULL &&
           strstr(for_a.payload, "events.example") != NULL &&

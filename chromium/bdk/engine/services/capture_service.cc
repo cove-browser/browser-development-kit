@@ -14,6 +14,7 @@
 #include "chrome/browser/printing/print_view_manager.h"
 #include "components/printing/browser/print_to_pdf/pdf_print_result.h"
 #include "components/printing/browser/print_to_pdf/pdf_print_utils.h"
+#include "components/viz/common/frame_sinks/copy_output_result.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_widget_host_view.h"
 #include "content/public/browser/web_contents.h"

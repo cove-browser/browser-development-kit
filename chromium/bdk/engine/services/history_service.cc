@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-#include "base/containers/contains.h"
+#include "base/functional/bind.h"
 #include "base/no_destructor.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
@@ -161,10 +161,17 @@ void Add(const std::shared_ptr<ServiceCall>& c) {
                                     static_cast<int64_t>(*c->Number("time")))
                               : base::Time::Now();
   const bool typed = c->StringOr("transition", "") == "typed";
-  NoteApplicationVisit(GURL(url));
   history->AddPageWithDetails(
       GURL(url), base::UTF8ToUTF16(c->StringOr("title", "")), 1, typed ? 1 : 0,
       when, /*hidden=*/false, history::SOURCE_BROWSED);
+  // AddPageWithDetails does not tell observers of a visit, so say so here.
+  history::URLRow row{GURL(url)};
+  row.set_title(base::UTF8ToUTF16(c->StringOr("title", "")));
+  row.set_visit_count(1);
+  row.set_typed_count(typed ? 1 : 0);
+  EmitEvent(c->builtin().profile, "history.visited",
+            "{\"entry\":" + HistoryEntryJson(row, when) +
+                ",\"source\":\"application\"}");
   c->ResolveNull();
 }
 
@@ -196,7 +203,12 @@ void DeleteUrls(const std::shared_ptr<ServiceCall>& c) {
     c->ResolveNull();
     return;
   }
-  Expire(c, std::move(urls), TimeBounds());
+  // Deleting every visit of some URLs: a range from the epoch to the end of
+  // time (an unbounded range is only for deleting all history).
+  TimeBounds everything;
+  everything.begin = base::Time::FromMillisecondsSinceUnixEpoch(1);
+  everything.end = base::Time::Max();
+  Expire(c, std::move(urls), everything);
 }
 
 void DeleteRange(const std::shared_ptr<ServiceCall>& c) {

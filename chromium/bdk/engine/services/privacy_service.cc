@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "base/functional/bind.h"
+#include "base/memory/raw_ptr.h"
 #include "base/no_destructor.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/task/cancelable_task_tracker.h"
@@ -41,14 +42,19 @@ using content::BrowsingDataRemover;
 // Calls back once, when the remover has finished, and deletes itself.
 class RemovalWaiter : public BrowsingDataRemover::Observer {
  public:
-  explicit RemovalWaiter(base::OnceClosure done) : done_(std::move(done)) {}
+  RemovalWaiter(BrowsingDataRemover* remover, base::OnceClosure done)
+      : remover_(remover), done_(std::move(done)) {
+    remover_->AddObserver(this);
+  }
 
   void OnBrowsingDataRemoverDone(uint64_t failed_data_types) override {
+    remover_->RemoveObserver(this);
     std::move(done_).Run();
     delete this;
   }
 
  private:
+  raw_ptr<BrowsingDataRemover> remover_;
   base::OnceClosure done_;
 };
 
@@ -236,7 +242,7 @@ void RemoveBrowsingData(
   const uint64_t origins = BrowsingDataRemover::ORIGIN_TYPE_UNPROTECTED_WEB |
                            BrowsingDataRemover::ORIGIN_TYPE_PROTECTED_WEB;
   // The waiter deletes itself when the remover is done.
-  auto* waiter = new RemovalWaiter(std::move(done));
+  auto* waiter = new RemovalWaiter(remover, std::move(done));
   if (filter) {
     remover->RemoveWithFilterAndReply(begin, end, data_types, origins,
                                       std::move(filter), waiter);

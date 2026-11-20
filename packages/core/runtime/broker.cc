@@ -519,6 +519,11 @@ void CommandControl::OnCancel(std::function<void()> stop) {
     stop_ = std::move(stop);
 }
 
+CommandControl::CommandControl(std::shared_ptr<Call> call, bool progress)
+    : call_(std::move(call)), progress_(progress) {}
+
+CommandControl::~CommandControl() = default;
+
 void CommandControl::Stop() {
     if (stop_) {
         auto stop = std::move(stop_);

@@ -12,6 +12,8 @@
 #include <utility>
 #include <vector>
 
+#include "base/compiler_specific.h"
+#include "base/containers/span.h"
 #include "base/files/file_path.h"
 #include "base/functional/bind.h"
 #include "base/json/json_writer.h"
@@ -38,9 +40,11 @@ bdk_status_t CopyOut(const std::string& text, char* out, size_t n) {
   if (!out || n == 0) {
     return BDK_ERR_INVALID_ARGUMENT;
   }
+  // SAFETY: the caller lends `n` writable bytes at `out`.
+  base::span<char> buffer = UNSAFE_BUFFERS(base::span<char>(out, n));
   const size_t length = std::min(text.size(), n - 1);
-  std::copy_n(text.data(), length, out);
-  out[length] = '\0';
+  buffer.first(length).copy_from(base::span(text).first(length));
+  buffer[length] = '\0';
   return BDK_OK;
 }
 

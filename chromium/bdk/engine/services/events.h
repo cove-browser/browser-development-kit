@@ -36,10 +36,6 @@ void EmitEvent(const std::shared_ptr<bdkcore::Profile>& bdk_profile,
                const std::string& name,
                const std::string& payload_json);
 
-// A visit the application added with history.add: its event says so instead of
-// "user".
-void NoteApplicationVisit(const GURL& url);
-
 }  // namespace bdk
 
 #endif  // BDK_ENGINE_SERVICES_EVENTS_H_

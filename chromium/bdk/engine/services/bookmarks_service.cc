@@ -25,6 +25,7 @@
 #include "components/bookmarks/browser/bookmark_utils.h"
 #include "components/bookmarks/browser/titled_url_match.h"
 #include "components/bookmarks/common/bookmark_metrics.h"
+#include "components/query_parser/query_parser.h"
 #include "url/gurl.h"
 
 namespace bdk {
@@ -253,10 +254,11 @@ void Update(const std::shared_ptr<ServiceCall>& c, BookmarkModel& model) {
   }
   if (std::optional<std::string> title = c->String("title")) {
     model.SetTitle(node, base::UTF8ToUTF16(*title),
-                   metrics::BookmarkEditSource::kOther);
+                   bookmarks::metrics::BookmarkEditSource::kOther);
   }
   if (url) {
-    model.SetURL(node, GURL(*url), metrics::BookmarkEditSource::kOther);
+    model.SetURL(node, GURL(*url),
+                 bookmarks::metrics::BookmarkEditSource::kOther);
   }
   c->Resolve(BookmarkNodeJson(model, node));
 }
@@ -284,7 +286,7 @@ void Remove(const std::shared_ptr<ServiceCall>& c, BookmarkModel& model) {
   if (!node || !Editable(c, model, node)) {
     return;
   }
-  model.Remove(node, metrics::BookmarkEditSource::kOther, FROM_HERE);
+  model.Remove(node, bookmarks::metrics::BookmarkEditSource::kOther, FROM_HERE);
   c->ResolveNull();
 }
 

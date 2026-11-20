@@ -33,6 +33,8 @@ ServiceCall::ServiceCall(bdkcore::Runtime& runtime,
               .value_or(base::DictValue());
 }
 
+ServiceCall::~ServiceCall() = default;
+
 std::optional<std::string> ServiceCall::String(const char* key) const {
   const std::string* value = args_.FindString(key);
   return value ? std::optional<std::string>(*value) : std::nullopt;

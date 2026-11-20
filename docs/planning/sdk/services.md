@@ -456,6 +456,18 @@ The spec excludes any built-in sync and says an application may build its own on
 | Passwords | Reading them in clear needs operating-system authentication each time unless the application caches its own key. That is the application's design, and its risk. |
 | Open pages and layout | The application's own data. BDK has none. |
 
+## 8A. Decisions from the Chromium implementation (T-SVC-02, T-SVC-03, T-SVC-06)
+
+- Results are exactly the types of `packages/core/interface/*.json`; timestamps are integer milliseconds; void commands answer `null`. A list's cursor is an opaque string valid for the same arguments.
+- `settings.get` and `getMany` answer `null` for a key the catalogue does not list. `settings.set`, `reset` and `describe` reject it with `broker.invalidArguments`. The engine maps 16 catalogue keys and every `content.<kind>.default`; the rest of section 6 is not reachable yet.
+- Permission kinds are named `camera`, `microphone`, `geolocation`, `notifications`, `popups`, `javascript`, `images`, `cookies`, `sound`, `automaticDownloads`, `clipboard`, `midi`, `usb`, `bluetooth`, `hid`, `serial`, `windowManagement`, `fileSystemAccess`. A value a kind does not accept (for example `ask` for `javascript`) is `broker.invalidArguments`. `permissions.exceptions` reports Chromium's rule pattern (such as `https://[*.]example.com:443`) as `origin`. The `embargo` source is not reported yet.
+- A private profile reads and deletes in its parent's history and records none (`history.add` does nothing); it reads and writes its parent's bookmarks; its cookies, content-setting exceptions, preferences and downloads list are its own; content-setting defaults are set on the parent's map.
+- `cookies.sites` reports `storageBytes` as 0: only cookies are counted. A cookie's `sameSite` is `none`, `lax`, `strict` or `null`.
+- `privacy.clear` cannot stop a removal that has begun: a cancelled call is answered cancelled and the removal runs on. `privacy.estimate` counts history, cookies and downloads; the other types report 0 items.
+- `downloads.start` starts the download directly; the downloads UI request it is marked with belongs to the downloads surface work. `downloads.retry` resumes an interrupted download that can resume and otherwise starts again from the URL.
+- Built-in events are emitted through the core (conventions.md, "The broker", item 12). `history.visited` says `application` for a visit added with `history.add` and `user` for a navigation.
+- Screenshots and PDFs are not commands until M7; the engine has the functions (`capture_service.cc`).
+
 ## 9. Where definitions live
 
 `packages/core/interface/` holds one file per namespace. The format is in [c-abi.md](c-abi.md) section 7. From those files the build generates:

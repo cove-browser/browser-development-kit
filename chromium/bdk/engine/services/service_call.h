@@ -37,9 +37,11 @@ class ServiceCall {
   ServiceCall(bdkcore::Runtime& runtime,
               std::shared_ptr<bdkcore::BuiltinCall> call,
               Profile* profile);
+  ~ServiceCall();
 
   const std::string& name() const { return call_->name; }
   bdkcore::Runtime& runtime() const { return *runtime_; }
+  bdkcore::BuiltinCall& builtin() const { return *call_; }
   bdkcore::CommandControl& control() const { return *call_->control; }
   bool cancelled() const { return call_->control->cancelled(); }
 

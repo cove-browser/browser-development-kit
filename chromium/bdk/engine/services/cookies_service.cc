@@ -55,7 +55,8 @@ std::string SiteOfHost(const std::string& host) {
 std::string SiteArg(const ServiceCall& c) {
   std::string text = c.StringOr("site", "");
   GURL url(text);
-  return SiteOfHost(url.is_valid() && url.has_host() ? url.host() : text);
+  return SiteOfHost(url.is_valid() && url.has_host() ? std::string(url.host())
+                                                     : text);
 }
 
 const char* SameSiteName(net::CookieSameSite same_site) {

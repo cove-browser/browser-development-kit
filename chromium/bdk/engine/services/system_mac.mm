@@ -34,19 +34,24 @@ bool DeclaresScheme(NSString* scheme) {
   return NO;
 }
 
-bool IsDefaultHandlerOf(CFStringRef scheme, NSString* bundle_id) {
-  base::apple::ScopedCFTypeRef<CFStringRef> handler(
-      LSCopyDefaultHandlerForURLScheme(scheme));
-  return handler && bundle_id &&
-         [base::apple::CFToNSPtrCast(handler.get())
-             caseInsensitiveCompare:bundle_id] == NSOrderedSame;
+// Whether the application the system opens URLs of this scheme with is this
+// one.
+bool IsDefaultHandlerOf(NSString* scheme, NSString* bundle_id) {
+  NSURL* probe =
+      [NSURL URLWithString:[scheme stringByAppendingString:@"://example.com/"]];
+  NSURL* handler =
+      [NSWorkspace.sharedWorkspace URLForApplicationToOpenURL:probe];
+  NSString* handler_id =
+      handler ? [NSBundle bundleWithURL:handler].bundleIdentifier : nil;
+  return handler_id && bundle_id &&
+         [handler_id caseInsensitiveCompare:bundle_id] == NSOrderedSame;
 }
 
 DefaultBrowserStatus ReadStatus() {
   DefaultBrowserStatus status;
   NSString* bundle_id = NSBundle.mainBundle.bundleIdentifier;
-  status.is_default = IsDefaultHandlerOf(CFSTR("http"), bundle_id) &&
-                      IsDefaultHandlerOf(CFSTR("https"), bundle_id);
+  status.is_default = IsDefaultHandlerOf(@"http", bundle_id) &&
+                      IsDefaultHandlerOf(@"https", bundle_id);
   status.can_be_default = DeclaresScheme(@"http") && DeclaresScheme(@"https");
   return status;
 }
