@@ -16,13 +16,16 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/time/time.h"
 #include "bdk/engine/services/browsing_data.h"
+#include "bdk/engine/services/events.h"
 #include "bdk/engine/services/services.h"
 #include "chrome/browser/profiles/profile.h"
 #include "content/public/browser/browsing_data_filter_builder.h"
 #include "content/public/browser/browsing_data_remover.h"
 #include "content/public/browser/storage_partition.h"
+#include "mojo/public/cpp/bindings/receiver.h"
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
 #include "net/cookies/canonical_cookie.h"
+#include "net/cookies/cookie_change_dispatcher.h"
 #include "net/cookies/cookie_constants.h"
 #include "net/cookies/cookie_options.h"
 #include "services/network/public/mojom/cookie_manager.mojom.h"
@@ -250,7 +253,52 @@ void RemoveSiteData(const std::shared_ptr<ServiceCall>& c) {
                      c));
 }
 
+// Reports every change to the profile's cookies (cookies.changed): the cookie
+// in its post-change state, and whether the change removed it. The network
+// service does not say who made a change, so the source is "application".
+// Closing the receiver (on destruction) ends the subscription.
+class CookieEvents : public ServiceEvents,
+                     public network::mojom::CookieChangeListener {
+ public:
+  CookieEvents(network::mojom::CookieManager* manager,
+               std::weak_ptr<bdkcore::Profile> profile)
+      : profile_(std::move(profile)) {
+    manager->AddGlobalChangeListener(receiver_.BindNewPipeAndPassRemote());
+  }
+
+  void OnCookieChange(const net::CookieChangeInfo& change) override {
+    switch (change.cause) {
+      // An overwrite is reported as the removal of the old cookie followed by
+      // the insertion of the new one; only the insertion is a change.
+      case net::CookieChangeCause::OVERWRITE:
+      case net::CookieChangeCause::INSERTED_NO_CHANGE_OVERWRITE:
+        return;
+      default:
+        break;
+    }
+    EmitEvent(profile_, "cookies.changed",
+              "{\"cookie\":" + CookieJson(change.cookie, true) +
+                  ",\"removed\":" +
+                  (net::CookieChangeCauseIsDeletion(change.cause) ? "true"
+                                                                  : "false") +
+                  ",\"source\":\"application\"}");
+  }
+
+ private:
+  std::weak_ptr<bdkcore::Profile> profile_;
+  mojo::Receiver<network::mojom::CookieChangeListener> receiver_{this};
+};
+
 }  // namespace
+
+std::unique_ptr<ServiceEvents> CreateCookieEvents(
+    Profile* profile,
+    std::weak_ptr<bdkcore::Profile> bdk_profile) {
+  return std::make_unique<CookieEvents>(
+      profile->GetDefaultStoragePartition()
+          ->GetCookieManagerForBrowserProcess(),
+      std::move(bdk_profile));
+}
 
 void AddCookiesHandlers(HandlerTable& table) {
   table["cookies.sites"] = &Sites;
