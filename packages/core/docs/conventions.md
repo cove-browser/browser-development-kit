@@ -97,7 +97,7 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
 | Queueing | Requests of one surface for one page (`contents`, 0 is its own page) reach the handler one at a time; the next is delivered, on a later task, after the previous one finishes by any route (completed, default, reject, released, withdrawn). A request withdrawn while waiting is never delivered. The default presenter path finishes at once, so it never holds the queue; the engine queues its own presenters. |
 | Notices | A request with no `on_finish` (a notice to a custom presenter, such as leaving fullscreen) is delivered at once and never queued. |
 | Dropped | An uncompleted request released by the application finishes `kCancelled`, never granted. |
-| Gesture kind | The core checks that the gesture is an `NSEVENT`. That it is recent and went to a window of this application is for the backend that has windows (Phase 2). |
+| Gesture kind | The core checks that the gesture is an `NSEVENT`. That it is recent and went to a window of this application is the backend's: while a completion's `on_finish` runs, `Request::gesture` holds the borrowed event so the engine can check it (the Chromium engine does: mouse-up or key-down, under 10 s old, delivered to one of the application's windows; anything less grants nothing). `withdraw_ui_request` withdraws one request, for a backend whose own UI went away. |
 | Extension surfaces | `[extensions.ui]` is not read by the core before M5. |
 
 ### Named in c-abi.md and not declared (nothing states their shape)

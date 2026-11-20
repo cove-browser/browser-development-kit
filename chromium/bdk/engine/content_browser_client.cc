@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "bdk/engine/testing.h"
+#include "bdk/engine/ui_auth.h"
 #include "content/public/browser/url_loader_request_interceptor.h"
 
 namespace bdk {
@@ -32,6 +33,27 @@ BdkContentBrowserClient::WillCreateURLLoaderRequestInterceptors(
     interceptors.insert(interceptors.begin(), std::move(scripted));
   }
   return interceptors;
+}
+
+std::unique_ptr<content::LoginDelegate>
+BdkContentBrowserClient::CreateLoginDelegate(
+    const net::AuthChallengeInfo& auth_info,
+    content::WebContents* web_contents,
+    content::BrowserContext* browser_context,
+    const content::GlobalRequestID& request_id,
+    bool is_request_for_primary_main_frame_navigation,
+    bool is_request_for_navigation,
+    const GURL& url,
+    scoped_refptr<net::HttpResponseHeaders> response_headers,
+    bool first_auth_attempt,
+    bool do_not_prompt_for_login,
+    content::GuestPageHolder* guest_page_holder,
+    content::LoginDelegate::LoginAuthRequiredCallback auth_required_callback) {
+  // Chrome's own prompt is a Views dialog on a Browser window; BDK's is a UI
+  // request of the `http_auth` surface.
+  return CreateBdkLoginDelegate(auth_info, web_contents,
+                                do_not_prompt_for_login,
+                                std::move(auth_required_callback));
 }
 
 }  // namespace bdk

@@ -181,6 +181,10 @@ struct Request {
     std::string payload;
     double anchor[4] = {0, 0, 0, 0};
     bdk_native_handle_t secure_view{};
+    /* The gesture event of the completion being applied, for on_finish to check further (a
+       recent mouse-up or key-down of this application). Borrowed: set only while on_finish runs
+       for a completion, empty otherwise. */
+    bdk_native_handle_t gesture{};
     bool delivered = false, finished = false;
     bool holds_slot = false; /* it is the one request of its kind and page the handler sees */
     void (*withdrawn)(void*) = nullptr;
@@ -351,6 +355,9 @@ std::shared_ptr<Contents> contents_of(bdk_contents_t);
 void release_withdrawn(Request&);
 /* Withdraws every unfinished request raised for the contents (0: every request). */
 void withdraw_contents_requests(const std::shared_ptr<Runtime>&, bdk_contents_t);
+/* Withdraws one request if it is unfinished: the application's withdrawn-handler fires and the
+   raiser learns kWithdrawn. For a backend whose own UI went away (a login delegate destroyed). */
+void withdraw_ui_request(Request&);
 
 /* For backends. */
 /* Delivers a contents event later, in order, unless the page is gone by then. */

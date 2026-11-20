@@ -259,7 +259,7 @@ static void test_engine_inspect_opens_devtools_through_a_new_window_request(void
 
 static void test_engine_html_fullscreen_enters_and_exits_through_requests(void) {
     reset_logs();
-    g_fullscreen.complete = "allow";
+    g_fullscreen.complete = "accept";
     bdk_contents_t c = start_with_page();
     bdk_harness_engine_show(c, 1);
     /* Chromium refuses fullscreen to a page that does not have focus. */
@@ -271,12 +271,12 @@ static void test_engine_html_fullscreen_enters_and_exits_through_requests(void) 
                1);
     REQUIRE(wait_for_title(c, "in"));
     REQUIRE(g_fullscreen.calls == 1);
-    CHECK(strstr(g_fullscreen.payload, "\"entering\":true") != NULL);
+    CHECK(strstr(g_fullscreen.payload, "\"isEntering\":true") != NULL);
     CHECK(strstr(g_fullscreen.payload, "\"origin\":\"https://bdk.test\"") != NULL);
     run_script(c, "document.exitFullscreen()", 1);
     REQUIRE(wait_for_title(c, "out"));
     CHECK(g_fullscreen.calls == 2);
-    CHECK(strstr(g_fullscreen.payload, "\"entering\":false") != NULL);
+    CHECK(strstr(g_fullscreen.payload, "\"isEntering\":false") != NULL);
     bdk_harness_engine_show(c, 0);
 }
 
@@ -290,7 +290,7 @@ static void test_engine_a_denied_page_ends_up_not_fullscreen(void) {
     REQUIRE(bdk_contents_focus(c) == BDK_OK);
     run_script(c, "document.documentElement.requestFullscreen().catch(()=>{})", 1);
     REQUIRE(g_fullscreen.calls >= 1);
-    CHECK(strstr(g_fullscreen.payload, "\"entering\"") != NULL);
+    CHECK(strstr(g_fullscreen.payload, "\"isEntering\"") != NULL);
     for (int i = 0; i < 10; ++i)
         t_pump();
     run_script(c, "document.title=document.fullscreenElement?'fullscreen':'not-fullscreen'", 0);

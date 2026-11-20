@@ -594,6 +594,21 @@ Milestone M0's last step: on the first working build, a throwaway Swift window w
 
 ---
 
+## 11. Default presenters on a native window (T-MAC-04, 2026-11-19)
+
+**Result: AppKit presenters, not Chromium's dialog and bubble views.** Decided in M3 phase 2, from the source and from what the engine needed to run, not from a throwaway spike. Risk R7 is therefore realised in its "write platform-native presenters" form; the request model does not change.
+
+| Question | Finding |
+|---|---|
+| Can Chromium's own permission bubble be used? | Its views anchor to the `BrowserView`'s location bar or chip (`GetChipAnchor`, `bubble_anchor_util`), which return Views types. A `BdkBrowserWindow` has no Views widget, so there is no anchor to give. The request manager's prompt interface (`permissions::PermissionPrompt`) is the seam and is used: BDK supplies its own prompt object that raises the request. |
+| JavaScript dialogs? | Chrome's tab-modal manager shows a Views dialog through `WebContentsModalDialogHost`, which needs a Views widget to parent it. Not attempted: BDK's `JavaScriptDialogManager` raises a request and the default is an `NSAlert` sheet. |
+| File pickers? | Chrome's `FileSelectHelper` uses `ui::SelectFileDialog`, and a folder upload adds a Views confirmation. BDK implements `RunFileChooser` itself; the default is `NSOpenPanel` or `NSSavePanel` as a sheet. |
+| Authentication, find, notifications? | Chrome's are Views (login prompt, find bar) or the system's (notifications, which need the alert helper and entitlements). BDK raises requests; defaults are an `NSAlert` sheet, a find bar view in the page view and an in-window banner. |
+| What it costs | One AppKit file per platform (`chromium/bdk/engine/presenters_mac.mm`) behind `UiPresenters` (`ui_presenters.h`), which carries only the request payload and callbacks. No Chromium patch is needed for any of it. |
+| Not verified | That a Views widget can be parented to an `NSWindow` that is not a Views widget. Only the cost of finding out and the dependency on Chrome's anchor types stopped the attempt; it stays an option if a surface (the extensions menu, M5) needs Chromium's own views. |
+
+Sheets are attached to the window of the page's host view, one at a time per window as AppKit queues them, and wait for the page to be in a window. Default presenters are replaceable per surface by a scripted presenter in tests (`bdk_testing_ui`), so no test blocks on a panel; one test answers a real sheet.
+
 ## Open items carried into the plan
 
 | Item | Where it is handled |

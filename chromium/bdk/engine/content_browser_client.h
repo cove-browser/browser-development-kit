@@ -12,9 +12,10 @@
 
 namespace bdk {
 
-// Chrome's browser client, plus what the BDK engine adds. For now: the
-// navigation interceptor the engine's test hooks script (testing.cc). BDK's
-// internal pages and broker hook in here later (M4).
+// Chrome's browser client, plus what the BDK engine adds: the navigation
+// interceptor the engine's test hooks script (testing.cc) and HTTP
+// authentication as a UI request (ui_auth.h). BDK's internal pages and broker
+// hook in here later (M4).
 class BdkContentBrowserClient : public ChromeContentBrowserClient {
  public:
   BdkContentBrowserClient();
@@ -27,6 +28,21 @@ class BdkContentBrowserClient : public ChromeContentBrowserClient {
       int64_t navigation_id,
       bool force_no_https_upgrade,
       scoped_refptr<base::SequencedTaskRunner> navigation_response_task_runner)
+      override;
+
+  std::unique_ptr<content::LoginDelegate> CreateLoginDelegate(
+      const net::AuthChallengeInfo& auth_info,
+      content::WebContents* web_contents,
+      content::BrowserContext* browser_context,
+      const content::GlobalRequestID& request_id,
+      bool is_request_for_primary_main_frame_navigation,
+      bool is_request_for_navigation,
+      const GURL& url,
+      scoped_refptr<net::HttpResponseHeaders> response_headers,
+      bool first_auth_attempt,
+      bool do_not_prompt_for_login,
+      content::GuestPageHolder* guest_page_holder,
+      content::LoginDelegate::LoginAuthRequiredCallback auth_required_callback)
       override;
 };
 

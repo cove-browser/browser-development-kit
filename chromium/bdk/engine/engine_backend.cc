@@ -38,6 +38,7 @@
 #include "bdk/engine/identity.h"
 #include "bdk/engine/session_state.h"
 #include "bdk/engine/testing.h"
+#include "bdk/engine/ui_notifications.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/profiles/delete_profile_helper.h"
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
@@ -261,6 +262,9 @@ class EngineBackend final : public bdkcore::Backend {
                       return;
                     }
                     backend->KeepLoaded(path, loaded);
+                    // Web notifications become UI requests
+                    // (ui_notifications.h).
+                    InstallNotificationDisplay(loaded);
                     auto data = std::make_unique<EngineProfile>();
                     data->profile = loaded;
                     p->data = std::move(data);
