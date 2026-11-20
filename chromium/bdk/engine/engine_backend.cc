@@ -43,10 +43,12 @@
 #include "bdk/engine/services/download_prompts.h"
 #include "bdk/engine/services/events.h"
 #include "bdk/engine/services/passwords_service.h"
+#include "bdk/engine/services/print_prompts.h"
 #include "bdk/engine/services/prompt_hooks.h"
 #include "bdk/engine/services/services.h"
 #include "bdk/engine/session_state.h"
 #include "bdk/engine/testing.h"
+#include "bdk/engine/ui_find.h"
 #include "bdk/engine/ui_notifications.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/profiles/delete_profile_helper.h"
@@ -571,6 +573,42 @@ class EngineBackend final : public bdkcore::Backend {
                                   bool discardable,
                                   bdk_error_t* out_error) override {
     Page(c).set_auto_discardable(discardable);
+    return BDK_OK;
+  }
+
+  bdk_status_t FindStart(const std::shared_ptr<Contents>& c,
+                         const std::string& text,
+                         bool match_case,
+                         bdk_error_t* out_error) override {
+    Page(*c).find().Start(text, match_case);
+    return BDK_OK;
+  }
+
+  bdk_status_t FindNext(const std::shared_ptr<Contents>& c,
+                        bool forward,
+                        bdk_error_t* out_error) override {
+    Page(*c).find().Next(forward);
+    return BDK_OK;
+  }
+
+  bdk_status_t FindStop(const std::shared_ptr<Contents>& c,
+                        bool clear_selection,
+                        bdk_error_t* out_error) override {
+    Page(*c).find().Stop(clear_selection);
+    return BDK_OK;
+  }
+
+  bdk_status_t FindPresent(const std::shared_ptr<Contents>& c,
+                           bdk_error_t* out_error) override {
+    Page(*c).find().Present();
+    return BDK_OK;
+  }
+
+  bdk_status_t Print(const std::shared_ptr<Contents>& c,
+                     bdk_error_t* out_error) override {
+    // The path the print command takes: a `printing` request, then the
+    // application's choice or the default presenter.
+    OnPrintRequested(Page(*c).web_contents(), /*is_user_initiated=*/true);
     return BDK_OK;
   }
 

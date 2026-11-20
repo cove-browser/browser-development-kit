@@ -14,6 +14,7 @@
 #include "bdk/engine/ui_presenters.h"
 #include "bdk/engine/ui_request.h"
 #include "components/find_in_page/find_result_observer.h"
+#include "ui/gfx/geometry/rect.h"
 
 namespace content {
 class WebContents;
@@ -53,6 +54,8 @@ class PageFind : public FindBarClient, public find_in_page::FindResultObserver {
   void Start(const std::string& text, bool match_case);
   void Next(bool forward);
   void Stop(bool clear_selection);
+  // Reports each result to the application as a BDK_CONTENTS_EVENT_FIND_RESULT
+  // event (bdk_contents.h).
   // The latest result of the search.
   Result result() const { return result_; }
   // Whether a find UI is open (a request outstanding, or a bar shown).
@@ -71,6 +74,9 @@ class PageFind : public FindBarClient, public find_in_page::FindResultObserver {
   void OnFindTabHelperDestroyed(find_in_page::FindTabHelper* helper) override;
 
  private:
+  // Tells the application: the match count, the active match (1-based, 0 for
+  // none), its rectangle and whether the count is final.
+  void Report(int count, int ordinal, const gfx::Rect& rect, bool final_update);
   void OnEnded(base::DictValue payload, const UiResult& result);
   // Removes the find UI and ends the search.
   void CloseUi();
@@ -81,6 +87,8 @@ class PageFind : public FindBarClient, public find_in_page::FindResultObserver {
   std::unique_ptr<FindBar> bar_;
   Result result_;
   bool match_case_ = false;
+  // A search is in progress: started and not stopped.
+  bool active_ = false;
   base::WeakPtrFactory<PageFind> weak_factory_{this};
 };
 

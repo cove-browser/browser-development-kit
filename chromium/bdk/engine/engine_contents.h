@@ -66,6 +66,12 @@ class EngineContents : public bdkcore::BackendData,
   base::WeakPtr<EngineContents> GetWeakPtr() {
     return weak_factory_.GetWeakPtr();
   }
+  // Reports an event to the application's subscription, later.
+  void Emit(uint32_t kind,
+            const std::string& url,
+            const std::string& detail,
+            int32_t net_error,
+            uint32_t flags);
   // Find in page (ui_find.h).
   PageFind& find() { return *find_; }
 
@@ -171,11 +177,6 @@ class EngineContents : public bdkcore::BackendData,
 
  private:
   std::shared_ptr<bdkcore::Contents> core() const { return Core(); }
-  void Emit(uint32_t kind,
-            const std::string& url,
-            const std::string& detail,
-            int32_t net_error,
-            uint32_t flags);
   // Makes `web_contents` the page's WebContents: its first, as a tab of the
   // parking context, or a replacement in the same tab.
   void Attach(std::unique_ptr<content::WebContents> web_contents);

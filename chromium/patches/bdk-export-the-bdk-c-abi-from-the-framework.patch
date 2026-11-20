@@ -19,15 +19,15 @@ build.
 
 Used by: the BDK engine (//bdk/engine) and the Swift SDK.
 ---
- chrome/app/framework.exports | 79 ++++++++++++++++++++++++++++++++++++
- chrome/app/framework.order   | 79 ++++++++++++++++++++++++++++++++++++
- 2 files changed, 158 insertions(+)
+ chrome/app/framework.exports | 85 ++++++++++++++++++++++++++++++++++++
+ chrome/app/framework.order   | 85 ++++++++++++++++++++++++++++++++++++
+ 2 files changed, 170 insertions(+)
 
 diff --git a/chrome/app/framework.exports b/chrome/app/framework.exports
-index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..ad7ed13c9e4980b02bc52bbda39b9ff8d8f25e19 100644
+index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..a9bcfc14ae87b90f6d84619ed64b3c34251be0dc 100644
 --- a/chrome/app/framework.exports
 +++ b/chrome/app/framework.exports
-@@ -20,3 +20,82 @@ _ChromeAppModeStart_v8
+@@ -20,3 +20,88 @@ _ChromeAppModeStart_v8
  _ChromeMain
  _ChromeWebAppShortcutCopierMain
  _bdk_overlay_marker
@@ -53,11 +53,17 @@ index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..ad7ed13c9e4980b02bc52bbda39b9ff8
 +_bdk_contents_destroy
 +_bdk_contents_discard
 +_bdk_contents_entries
++_bdk_contents_find_next
++_bdk_contents_find_present
++_bdk_contents_find_previous
++_bdk_contents_find_start
++_bdk_contents_find_stop
 +_bdk_contents_focus
 +_bdk_contents_go_to_index
 +_bdk_contents_go_to_offset
 +_bdk_contents_load
 +_bdk_contents_native_view
++_bdk_contents_print
 +_bdk_contents_reload
 +_bdk_contents_restore
 +_bdk_contents_session_state
@@ -111,10 +117,10 @@ index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..ad7ed13c9e4980b02bc52bbda39b9ff8
 +_OBJC_METACLASS_$_BDKApplicationBase
 +_OBJC_CLASS_$_BDKApplicationBase
 diff --git a/chrome/app/framework.order b/chrome/app/framework.order
-index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..242a325e18bc6b0f8d976b6cde02c9b429125ce7 100644
+index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..5dd16f0c003e2d36bb7ba413608471f5fa2760ba 100644
 --- a/chrome/app/framework.order
 +++ b/chrome/app/framework.order
-@@ -33,5 +33,84 @@ _ChromeWebAppShortcutCopierMain
+@@ -33,5 +33,90 @@ _ChromeWebAppShortcutCopierMain
  # repository.
  _bdk_overlay_marker
  
@@ -137,11 +143,17 @@ index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..242a325e18bc6b0f8d976b6cde02c9b4
 +_bdk_contents_destroy
 +_bdk_contents_discard
 +_bdk_contents_entries
++_bdk_contents_find_next
++_bdk_contents_find_present
++_bdk_contents_find_previous
++_bdk_contents_find_start
++_bdk_contents_find_stop
 +_bdk_contents_focus
 +_bdk_contents_go_to_index
 +_bdk_contents_go_to_offset
 +_bdk_contents_load
 +_bdk_contents_native_view
++_bdk_contents_print
 +_bdk_contents_reload
 +_bdk_contents_restore
 +_bdk_contents_session_state

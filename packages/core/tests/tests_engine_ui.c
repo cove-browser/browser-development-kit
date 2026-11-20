@@ -797,6 +797,104 @@ static void test_ui_navigating_away_closes_the_find_ui(void) {
     finish(c);
 }
 
+/* ---- find in page started by the application (T-SWF-07) ---- */
+
+typedef struct {
+    int results;
+    char last[512];
+} find_events_t;
+
+static find_events_t g_find;
+
+static void on_find_event(void* ctx, const bdk_contents_event_t* event) {
+    find_events_t* events = (find_events_t*)ctx;
+    if (event->kind != BDK_CONTENTS_EVENT_FIND_RESULT)
+        return;
+    ++events->results;
+    snprintf(events->last, sizeof events->last, "%.*s", (int)event->detail_json.length,
+             event->detail_json.data ? event->detail_json.data : "");
+}
+
+static void watch_find(bdk_contents_t c) {
+    memset(&g_find, 0, sizeof g_find);
+    REQUIRE(bdk_contents_subscribe(c, on_find_event, &g_find, NULL) != 0);
+}
+
+/* Waits for a final result with the given count and active match (-1: any active match). */
+static int wait_for_find_event(int want_count, int want_active) {
+    for (int i = 0; i < 80; ++i) {
+        if (g_find.results > 0 && strstr(g_find.last, "\"final\":true") != NULL &&
+            count_of(g_find.last, "matchCount") == want_count &&
+            (want_active < 0 ? count_of(g_find.last, "activeIndex") > 0
+                             : count_of(g_find.last, "activeIndex") == want_active))
+            return 1;
+        t_pump();
+    }
+    printf("    last find result is %s, not %d matches with %d active\n", g_find.last, want_count,
+           want_active);
+    return 0;
+}
+
+static void test_ui_the_application_finds_matches_moves_the_active_one_and_stops(void) {
+    bdk_contents_t c = start_page(0, NULL);
+    find_text_page(c);
+    watch_find(c);
+    bdk_error_t err = 0;
+    REQUIRE(bdk_contents_find_start(c, S("alpha"), NULL, &err) == BDK_OK);
+    CHECK(wait_for_find_event(3, 1));
+    CHECK(strstr(g_find.last, "\"rect\":{") != NULL);
+    REQUIRE(bdk_contents_find_next(c, &err) == BDK_OK);
+    CHECK(wait_for_find_event(3, 2));
+    REQUIRE(bdk_contents_find_next(c, &err) == BDK_OK);
+    CHECK(wait_for_find_event(3, 3));
+    REQUIRE(bdk_contents_find_previous(c, &err) == BDK_OK);
+    CHECK(wait_for_find_event(3, 2));
+    /* Case matters only when asked. */
+    REQUIRE(bdk_contents_find_start(c, S("ALPHA"), NULL, &err) == BDK_OK);
+    CHECK(wait_for_find_event(3, -1));
+    bdk_find_options_t exact;
+    memset(&exact, 0, sizeof exact);
+    exact.struct_size = sizeof exact;
+    exact.match_case = 1;
+    REQUIRE(bdk_contents_find_start(c, S("ALPHA"), &exact, &err) == BDK_OK);
+    CHECK(wait_for_find_event(0, 0));
+    REQUIRE(bdk_contents_find_start(c, S("gamma"), NULL, &err) == BDK_OK);
+    CHECK(wait_for_find_event(1, 1));
+    REQUIRE(bdk_contents_find_stop(c, 1, &err) == BDK_OK);
+    pumps(5);
+    const int after_stop = g_find.results;
+    REQUIRE(bdk_contents_find_next(c, &err) == BDK_OK); /* no search: nothing happens */
+    pumps(10);
+    CHECK(g_find.results == after_stop);
+    int ordinal, count, presented;
+    find_result(c, &ordinal, &count, &presented);
+    CHECK(count == 0);
+    finish(c);
+}
+
+static void test_ui_the_application_presents_find_for_a_handler(void) {
+    bdk_contents_t c = start_page(BDK_SURFACE_FIND, NULL);
+    find_text_page(c);
+    watch_find(c);
+    bdk_error_t err = 0;
+    REQUIRE(bdk_contents_find_start(c, S("beta"), NULL, &err) == BDK_OK);
+    CHECK(wait_for_find_event(1, 1));
+    REQUIRE(bdk_contents_find_present(c, &err) == BDK_OK);
+    pumps(5);
+    REQUIRE(g_log.calls == 1);
+    CHECK(strstr(g_log.payload, "initialText\":\"beta") != NULL);
+    CHECK(shown("find") == 0);
+    bdk_native_handle_t none;
+    memset(&none, 0, sizeof none);
+    REQUIRE(bdk_ui_complete(g_log.request, S("accept"), S("{\"action\":\"close\"}"), none, &err) ==
+            BDK_OK);
+    pumps(3);
+    int ordinal, count, presented;
+    find_result(c, &ordinal, &count, &presented);
+    CHECK(!presented);
+    finish(c);
+}
+
 /* ---- fullscreen ---- */
 
 static const char* fullscreen_script =
@@ -966,6 +1064,10 @@ const t_test_t t_engine_ui_tests[] = {
      test_ui_permissions_are_kept_per_profile_and_a_private_one_stays_separate},
     {"engine_ui_find_with_no_handler_shows_the_default_find_bar_and_searches",
      test_ui_find_with_no_handler_shows_the_default_find_bar_and_searches},
+    {"engine_ui_the_application_finds_matches_moves_the_active_one_and_stops",
+     test_ui_the_application_finds_matches_moves_the_active_one_and_stops},
+    {"engine_ui_the_application_presents_find_for_a_handler",
+     test_ui_the_application_presents_find_for_a_handler},
     {"engine_ui_the_find_request_offers_the_last_search_as_initial_text",
      test_ui_the_find_request_offers_the_last_search_as_initial_text},
     {"engine_ui_a_find_handler_shows_its_own_bar_and_closes_it",

@@ -570,6 +570,49 @@ static void test_engine_window_print_with_no_handler_uses_the_system_print_panel
     close_window();
 }
 
+static void test_engine_the_application_prints_for_a_handler(void) {
+    memset(&g_seen, 0, sizeof g_seen);
+    t_start();
+    bdk_error_t err = 0;
+    REQUIRE(bdk_ui_set_handler(t_runtime, BDK_SURFACE_PRINTING, hold, &g_seen, NULL, &err) ==
+            BDK_OK);
+    t_freeze();
+    script_page(LOGIN_URL, "text/html", LOGIN_PAGE, "");
+    bdk_contents_t c = new_active_page(t_new_profile("Print by application"));
+    REQUIRE(bdk_contents_load(c, S(LOGIN_URL), &err) == BDK_OK);
+    REQUIRE(wait_for_title(c, "login"));
+    REQUIRE(bdk_contents_print(c, &err) == BDK_OK);
+    for (int i = 0; i < 80 && g_seen.calls == 0; ++i)
+        t_pump();
+    REQUIRE(g_seen.calls == 1);
+    CHECK(strstr(g_seen.payload, "\"isUserInitiated\":true") != NULL);
+    CHECK(presenter_uses("printing") == 0); /* the application has it */
+    err = 0;
+    CHECK(bdk_ui_complete(g_seen.request, S("deny"), S("{}"), no_gesture(), &err) == BDK_OK);
+    t_pump();
+    run_script(c, "document.title='after print'", 0);
+    CHECK(wait_for_title(c, "after print"));
+    bdk_ui_request_release(g_seen.request);
+    close_window();
+}
+
+static void test_engine_the_application_prints_with_no_handler_through_the_default(void) {
+    t_start_frozen();
+    script_presenter("printing", "systemDialog"); /* scripted: no system panel opens */
+    const int uses_before = presenter_uses("printing");
+    script_page(LOGIN_URL, "text/html", LOGIN_PAGE, "");
+    bdk_error_t err = 0;
+    bdk_contents_t c = new_active_page(t_new_profile("Print by application default"));
+    REQUIRE(bdk_contents_load(c, S(LOGIN_URL), &err) == BDK_OK);
+    REQUIRE(wait_for_title(c, "login"));
+    REQUIRE(bdk_contents_print(c, &err) == BDK_OK);
+    wait_for_presenter("printing", uses_before);
+    CHECK(presenter_uses("printing") == uses_before + 1);
+    run_script(c, "document.title='after print'", 0);
+    CHECK(wait_for_title(c, "after print"));
+    close_window();
+}
+
 /* ---- downloads (T-UIR-03) ---- */
 
 #define DOWNLOAD_URL "https://dl.example/file.bin"
@@ -1182,6 +1225,10 @@ static void test_engine_a_certificate_error_surface_cannot_be_disabled(void) {
 const t_test_t t_engine_prompt_tests[] = {
     {"engine_window_print_raises_a_printing_request_for_a_handler",
      test_engine_window_print_raises_a_printing_request_for_a_handler},
+    {"engine_the_application_prints_for_a_handler",
+     test_engine_the_application_prints_for_a_handler},
+    {"engine_the_application_prints_with_no_handler_through_the_default",
+     test_engine_the_application_prints_with_no_handler_through_the_default},
     {"engine_window_print_with_no_handler_uses_the_system_print_panel",
      test_engine_window_print_with_no_handler_uses_the_system_print_panel},
     {"engine_a_download_destination_is_chosen_by_the_handler",

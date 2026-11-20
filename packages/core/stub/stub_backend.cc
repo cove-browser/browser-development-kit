@@ -433,7 +433,7 @@ class StubBackend final : public Backend {
 
     /* A request raised for the page, as the engine raises its own. */
     static void raise_for(const std::shared_ptr<Contents>& c, uint32_t surface,
-                          const std::string& payload, std::function<void()> on_end) {
+                          const std::string& payload, const std::function<void()>& on_end) {
         auto rt = c->rt.lock();
         if (!rt)
             return;
