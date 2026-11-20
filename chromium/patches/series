@@ -8,3 +8,4 @@ bdk-export-the-bdk-engine-s-test-hooks-from-the-framework.patch
 bdk-let-an-embedder-supply-the-browserwindow-of-a-browser.patch
 bdk-accept-a-browser-whose-window-has-no-side-panel-ui-outside-tests.patch
 bdk-allow-a-browser-in-a-bdk-private-profile.patch
+bdk-export-the-test-hook-for-browser-owned-surfaces-from-the-framework.patch
