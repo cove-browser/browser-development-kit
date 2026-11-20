@@ -30,7 +30,7 @@ let package = Package(
             ],
             sources: [
                 "runtime/core.cc", "runtime/core_host.cc", "runtime/ui_router.cc",
-                "runtime/broker.cc", "runtime/broker_args.cc",
+                "runtime/app_settings.cc", "runtime/broker.cc", "runtime/broker_args.cc",
                 "stub/stub_backend.cc", "stub/stub_services.cc", "stub/stub_broker.cc",
             ],
             publicHeadersPath: "stub",

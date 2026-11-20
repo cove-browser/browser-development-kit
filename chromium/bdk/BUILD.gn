@@ -16,6 +16,7 @@ config("core_config") {
 # and style, so Chromium's style checks do not apply to it.
 source_set("core") {
   sources = [
+    "core/runtime/app_settings.cc",
     "core/runtime/broker.cc",
     "core/runtime/broker_args.cc",
     "core/runtime/broker_internal.h",

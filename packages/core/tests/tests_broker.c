@@ -1185,6 +1185,201 @@ static void test_a_listing_never_carries_a_secret(void) {
     CHECK(strstr(cap.json, "Oslo") != NULL);
 }
 
+/* Application settings (T-SVC-08): registered before the freeze, answered by the core. */
+
+static void register_setting(const char* declaration) {
+    bdk_error_t err = 0;
+    REQUIRE(bdk_app_setting_register(t_runtime, S(declaration), &err) == BDK_OK);
+}
+
+static void start_with_settings(void) {
+    t_start();
+    register_setting("{\"key\":\"app.sidebar.width\",\"default\":240,\"scope\":\"profile\","
+                     "\"exposedToPages\":true}");
+    register_setting("{\"key\":\"app.secret\",\"default\":\"x\",\"scope\":\"profile\","
+                     "\"exposedToPages\":false}");
+    register_setting("{\"key\":\"app.lastProfile\",\"default\":\"\",\"scope\":\"application\","
+                     "\"exposedToPages\":true}");
+    t_freeze();
+}
+
+static void test_setting_registration_is_validated(void) {
+    t_start();
+    bdk_error_t err = 0;
+    CHECK(bdk_app_setting_register(t_runtime, S("{\"key\":\"appearance.fontSize\",\"default\":1}"),
+                                   &err) == BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "config", "nameNotApp"));
+    CHECK(bdk_app_setting_register(t_runtime, S("{\"key\":\"app.\",\"default\":1}"), &err) ==
+          BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "config", "nameNotApp"));
+    CHECK(bdk_app_setting_register(t_runtime, S("{\"default\":1}"), &err) ==
+          BDK_ERR_INVALID_ARGUMENT);
+    CHECK(bdk_app_setting_register(t_runtime, S("{\"key\":\"app.a\",\"scope\":\"world\"}"), &err) ==
+          BDK_ERR_INVALID_ARGUMENT);
+    CHECK(bdk_app_setting_register(t_runtime, S("{\"key\":\"app.a\",\"exposedToPages\":1}"),
+                                   &err) == BDK_ERR_INVALID_ARGUMENT);
+    CHECK(bdk_app_setting_register(t_runtime, S("{\"key\":\"app.a\",\"default\":1}"), &err) ==
+          BDK_OK);
+    CHECK(bdk_app_setting_register(t_runtime, S("{\"key\":\"app.a\",\"default\":2}"), &err) ==
+          BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "config", "duplicateName"));
+    t_freeze();
+    CHECK(bdk_app_setting_register(t_runtime, S("{\"key\":\"app.b\",\"default\":1}"), &err) ==
+          BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "config", "registrationAfterStart"));
+}
+
+static void test_a_registered_setting_reads_its_default_and_validates_what_is_set(void) {
+    start_with_settings();
+    bdk_profile_t p = t_new_profile("Settings");
+    t_capture_t cap;
+    host_call("settings.get", "{\"key\":\"app.sidebar.width\"}", p, &cap);
+    CHECK(!cap.has_error && strcmp(cap.json, "{\"value\":240}") == 0);
+    host_call("settings.describe", "{\"key\":\"app.sidebar.width\"}", p, &cap);
+    CHECK(!cap.has_error && strstr(cap.json, "\"type\":\"number\"") != NULL &&
+          strstr(cap.json, "\"default\":240") != NULL &&
+          strstr(cap.json, "\"source\":\"product\"") != NULL &&
+          strstr(cap.json, "\"scope\":\"profile\"") != NULL);
+    host_call("settings.set", "{\"key\":\"app.sidebar.width\",\"value\":300}", p, &cap);
+    CHECK(!cap.has_error && strcmp(cap.json, "null") == 0);
+    host_call("settings.get", "{\"key\":\"app.sidebar.width\"}", p, &cap);
+    CHECK(strcmp(cap.json, "{\"value\":300}") == 0);
+    host_call("settings.describe", "{\"key\":\"app.sidebar.width\"}", p, &cap);
+    CHECK(strstr(cap.json, "\"source\":\"user\"") != NULL);
+    host_call("settings.getMany", "{\"keys\":[\"app.sidebar.width\",\"app.nothing\"]}", p, &cap);
+    CHECK(strcmp(cap.json, "{\"values\":{\"app.sidebar.width\":300,\"app.nothing\":null}}") == 0);
+    host_call("settings.set", "{\"key\":\"app.sidebar.width\",\"value\":\"wide\"}", p, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+    host_call("settings.get", "{\"key\":\"app.sidebar.width\"}", p, &cap);
+    CHECK(strcmp(cap.json, "{\"value\":300}") == 0); /* a refused value changes nothing */
+    host_call("settings.reset", "{\"key\":\"app.sidebar.width\"}", p, &cap);
+    CHECK(!cap.has_error);
+    host_call("settings.get", "{\"key\":\"app.sidebar.width\"}", p, &cap);
+    CHECK(strcmp(cap.json, "{\"value\":240}") == 0);
+    /* An unregistered key reads as null and is refused for writing, like any unknown key. */
+    host_call("settings.get", "{\"key\":\"app.unknown\"}", p, &cap);
+    CHECK(strcmp(cap.json, "{\"value\":null}") == 0);
+    host_call("settings.set", "{\"key\":\"app.unknown\",\"value\":1}", p, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+    host_call("settings.describe", "{\"key\":\"app.unknown\"}", p, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+    /* Application and browser settings do not mix in one getMany. */
+    host_call("settings.getMany", "{\"keys\":[\"app.sidebar.width\",\"appearance.fontSize\"]}", p,
+              &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+}
+
+static void test_profile_scope_needs_a_profile_and_application_scope_does_not(void) {
+    start_with_settings();
+    t_capture_t cap;
+    host_call("settings.get", "{\"key\":\"app.sidebar.width\"}", 0, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+    host_call("settings.set", "{\"key\":\"app.lastProfile\",\"value\":\"work\"}", 0, &cap);
+    CHECK(!cap.has_error);
+    bdk_profile_t a = t_new_profile("One"), b = t_new_profile("Two");
+    host_call("settings.get", "{\"key\":\"app.lastProfile\"}", a, &cap);
+    CHECK(strcmp(cap.json, "{\"value\":\"work\"}") == 0);
+    host_call("settings.get", "{\"key\":\"app.lastProfile\"}", b, &cap);
+    CHECK(strcmp(cap.json, "{\"value\":\"work\"}") == 0); /* one value for the application */
+    host_call("settings.set", "{\"key\":\"app.sidebar.width\",\"value\":10}", a, &cap);
+    host_call("settings.get", "{\"key\":\"app.sidebar.width\"}", b, &cap);
+    CHECK(strcmp(cap.json, "{\"value\":240}") == 0); /* a profile's value is its own */
+}
+
+static void test_a_profile_scoped_setting_survives_closing_and_reopening_the_profile(void) {
+    start_with_settings();
+    char id[64];
+    t_create_profile("Keeper", id, sizeof id);
+    bdk_profile_t p = t_open_profile(id);
+    t_capture_t cap;
+    host_call("settings.set", "{\"key\":\"app.sidebar.width\",\"value\":321}", p, &cap);
+    CHECK(!cap.has_error);
+    host_call("settings.set", "{\"key\":\"app.lastProfile\",\"value\":\"keeper\"}", p, &cap);
+    CHECK(!cap.has_error);
+    bdk_error_t err = 0;
+    REQUIRE(bdk_profile_close(p, &err) == BDK_OK);
+    t_pump();
+    bdk_profile_t again = t_open_profile(id);
+    host_call("settings.get", "{\"key\":\"app.sidebar.width\"}", again, &cap);
+    CHECK(!cap.has_error && strcmp(cap.json, "{\"value\":321}") == 0);
+    host_call("settings.describe", "{\"key\":\"app.sidebar.width\"}", again, &cap);
+    CHECK(strstr(cap.json, "\"source\":\"user\"") != NULL);
+    host_call("settings.get", "{\"key\":\"app.lastProfile\"}", again, &cap);
+    CHECK(strcmp(cap.json, "{\"value\":\"keeper\"}") == 0);
+    host_call("settings.reset", "{\"key\":\"app.sidebar.width\"}", again, &cap);
+    host_call("settings.get", "{\"key\":\"app.sidebar.width\"}", again, &cap);
+    CHECK(strcmp(cap.json, "{\"value\":240}") == 0);
+}
+
+static int g_setting_events;
+static char g_setting_event[256];
+static void on_setting_event(void* ctx, uint32_t id, bdk_string_t name, bdk_string_t payload) {
+    (void)ctx;
+    (void)id;
+    (void)name;
+    ++g_setting_events;
+    snprintf(g_setting_event, sizeof g_setting_event, "%.*s", (int)payload.length, payload.data);
+}
+
+static void test_changing_an_application_setting_announces_settings_changed(void) {
+    start_with_settings();
+    bdk_profile_t p = t_new_profile("Events");
+    g_setting_events = 0;
+    bdk_subscription_t sub = bdk_subscribe_named(t_runtime, S("settings.changed"), S(""), NULL,
+                                                 on_setting_event, NULL, NULL);
+    REQUIRE(sub != 0);
+    t_capture_t cap;
+    host_call("settings.set", "{\"key\":\"app.sidebar.width\",\"value\":250}", p, &cap);
+    t_pump();
+    CHECK(g_setting_events == 1);
+    CHECK(strstr(g_setting_event, "\"key\":\"app.sidebar.width\"") != NULL &&
+          strstr(g_setting_event, "\"oldValue\":240") != NULL &&
+          strstr(g_setting_event, "\"newValue\":250") != NULL &&
+          strstr(g_setting_event, "\"source\":\"application\"") != NULL);
+    host_call("settings.set", "{\"key\":\"app.sidebar.width\",\"value\":250}", p, &cap);
+    t_pump();
+    CHECK(g_setting_events == 1); /* no change, no event */
+    bdk_unsubscribe(sub);
+}
+
+static void test_a_setting_not_exposed_to_pages_is_refused_to_every_page_and_session(void) {
+    NEED_HOOKS();
+    start_with_settings();
+    bdk_profile_t p = t_new_profile("Exposure");
+    /* Even a page that holds both capabilities. */
+    bdk_harness_caller_t page = page_in(p, "[\"settings.read\",\"settings.write\"]");
+    bdk_harness_caller_t session = session_with("[\"settings.read\",\"settings.write\"]");
+    t_capture_t cap;
+    unsigned before = reached_services();
+    caller_call(page, "settings.get", "{\"key\":\"app.secret\"}", 0, 0, &cap);
+    CHECK(failed_with(&cap, "capability", "denied"));
+    caller_call(page, "settings.set", "{\"key\":\"app.secret\",\"value\":\"y\"}", 0, 0, &cap);
+    CHECK(failed_with(&cap, "capability", "denied"));
+    caller_call(page, "settings.describe", "{\"key\":\"app.secret\"}", 0, 0, &cap);
+    CHECK(failed_with(&cap, "capability", "denied"));
+    caller_call(page, "settings.reset", "{\"key\":\"app.secret\"}", 0, 0, &cap);
+    CHECK(failed_with(&cap, "capability", "denied"));
+    caller_call(page, "settings.getMany", "{\"keys\":[\"app.sidebar.width\",\"app.secret\"]}", 0, 0,
+                &cap);
+    CHECK(failed_with(&cap, "capability", "denied"));
+    caller_call(session, "settings.get", "{\"key\":\"app.secret\"}", p, 0, &cap);
+    CHECK(failed_with(&cap, "capability", "denied"));
+    CHECK(reached_services() == before);
+    /* The host reads it; an exposed key is open to a page with the capability. */
+    host_call("settings.get", "{\"key\":\"app.secret\"}", p, &cap);
+    CHECK(strcmp(cap.json, "{\"value\":\"x\"}") == 0);
+    caller_call(page, "settings.set", "{\"key\":\"app.sidebar.width\",\"value\":260}", 0, 0, &cap);
+    CHECK(!cap.has_error);
+    caller_call(page, "settings.get", "{\"key\":\"app.sidebar.width\"}", 0, 0, &cap);
+    CHECK(strcmp(cap.json, "{\"value\":260}") == 0);
+    caller_call(session, "settings.get", "{\"key\":\"app.sidebar.width\"}", p, 0, &cap);
+    CHECK(strcmp(cap.json, "{\"value\":260}") == 0);
+    /* The capability is still needed. */
+    bdk_harness_caller_t reader = page_in(p, "[\"settings.read\"]");
+    caller_call(reader, "settings.set", "{\"key\":\"app.sidebar.width\",\"value\":1}", 0, 0, &cap);
+    CHECK(failed_with(&cap, "capability", "denied"));
+}
+
 const t_test_t t_broker_tests[] = {
     {"values.json_crosses_verbatim", test_json_values_cross_verbatim},
     {"values.invalid_json_arguments_are_rejected",
@@ -1258,4 +1453,15 @@ const t_test_t t_broker_tests[] = {
     {"services.history_is_paginated", test_history_is_paginated_with_an_opaque_cursor},
     {"services.bookmarks_nest", test_bookmarks_nest_and_remove_with_their_contents},
     {"services.listings_carry_no_secret", test_a_listing_never_carries_a_secret},
+    {"settings.registration_is_validated", test_setting_registration_is_validated},
+    {"settings.registered_setting_reads_default_and_validates",
+     test_a_registered_setting_reads_its_default_and_validates_what_is_set},
+    {"settings.scope_decides_whether_a_profile_is_needed",
+     test_profile_scope_needs_a_profile_and_application_scope_does_not},
+    {"settings.profile_scoped_setting_survives_reopening_the_profile",
+     test_a_profile_scoped_setting_survives_closing_and_reopening_the_profile},
+    {"settings.change_is_announced",
+     test_changing_an_application_setting_announces_settings_changed},
+    {"settings.not_exposed_is_refused_to_pages_and_sessions",
+     test_a_setting_not_exposed_to_pages_is_refused_to_every_page_and_session},
     {NULL, NULL}};

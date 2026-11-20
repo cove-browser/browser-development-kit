@@ -149,7 +149,7 @@ Exit criteria: a browser built with no custom UI code is usable for everyday bro
 | T-MAC-04 (M0, settled here) | Default presenters are AppKit, not Chromium's views, which need a Views widget to anchor to. Decided from the source and from what the engine needed, not from a spike. | feasibility.md section 11 |
 | Exit criterion | Met by the scenarios with no handler registered for passwords, autofill, downloads, printing and permission prompts. Not checked by hand in `apps/examples/minimal-browser` (T-UIR-07, M4). | engine suite |
 
-Swift API from swift-api.md that M3 did not build, each now a task: typed application settings (`BDKSettingKey`, T-SVC-08, M4); `page.find` and `page.print()` (T-SWF-07, M4); page commands, setting zoom and mute, leaving picture-in-picture, all left over from M2 (T-SWF-06, M4); address-bar services, `profile.search` (S1, T-SVC-10, M4); `page.capture` (T-SVC-09, M7); public window registration and anchors (S11, T-SWF-08, M5).
+Typed application settings (`BDKSettingKey`, `config.settings.register`) are done (T-SVC-08, in M3). Swift API from swift-api.md that M3 did not build, each now a task: `page.find` and `page.print()` (T-SWF-07, M4); page commands, setting zoom and mute, leaving picture-in-picture, all left over from M2 (T-SWF-06, M4); address-bar services, `profile.search` (S1, T-SVC-10, M4); `page.capture` (T-SVC-09, M7); public window registration and anchors (S11, T-SWF-08, M5).
 
 Also fixed in M3: a persistent profile stayed loaded in Chromium after the application closed it, keeping about 87 file descriptors; it is now unloaded, and reopening waits for Chromium to finish destroying it.
 

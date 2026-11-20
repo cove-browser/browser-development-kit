@@ -204,7 +204,7 @@ extension Dictionary where Key == String, Value == BDKTypeDefinition {
     }
 }
 
-/// The application's commands and events as one JSON file, for code generation.
+/// The application's commands, events and settings as one JSON file, for code generation.
 public struct BDKDeclarations: Sendable, Equatable {
     /// The format version of the file.
     public static let formatVersion = 1
@@ -213,14 +213,25 @@ public struct BDKDeclarations: Sendable, Equatable {
 
     public let commands: [BDKCommandDeclaration]
     public let events: [BDKEventDeclaration]
+    public let settings: [BDKSettingDeclaration]
 
-    /// Deterministic: commands and events sorted by name, keys sorted, so that the same input
-    /// gives the same bytes.
+    public init(
+        commands: [BDKCommandDeclaration], events: [BDKEventDeclaration],
+        settings: [BDKSettingDeclaration] = []
+    ) {
+        self.commands = commands
+        self.events = events
+        self.settings = settings
+    }
+
+    /// Deterministic: commands, events and settings sorted by name, keys sorted, so that the same
+    /// input gives the same bytes.
     public var jsonString: String {
         BDKJSValue.object([
             "version": .number(Double(Self.formatVersion)),
             "commands": .array(commands.sorted { $0.name < $1.name }.map(\.json)),
             "events": .array(events.sorted { $0.name < $1.name }.map(\.json)),
+            "settings": .array(settings.sorted { $0.name < $1.name }.map(\.json)),
         ]).jsonString
     }
 

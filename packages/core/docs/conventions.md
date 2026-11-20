@@ -9,7 +9,7 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
 |---|---|
 | `include/bdk/*.h` | Public headers: plain C, `extern "C"` guards, `BDK_EXPORT`, no platform header, no platform type |
 | `interface/` | Interface definitions (JSON, T-ABI-03): one `<namespace>.json` per namespace, `policy.json`, and the identifier registry `ids.json`. Every `*.json` here goes into the hash |
-| `runtime/` | The runtime core, C++23, no exceptions, no platform code: handles, errors, calls, subscriptions, broker (`broker.cc`, `broker_args.cc`, `broker_internal.h`), UI requests and every ABI function's checks. What a page does is behind the `Backend` interface in `runtime/core_internal.h` |
+| `runtime/` | The runtime core, C++23, no exceptions, no platform code: handles, errors, calls, subscriptions, broker (`broker.cc`, `broker_args.cc`, `broker_internal.h`), application settings (`app_settings.cc`), UI requests and every ABI function's checks. What a page does is behind the `Backend` interface in `runtime/core_internal.h` |
 | `stub/` | The stub's in-memory backend and its task queue. Test hooks in `stub/bdk_stub.h` are not ABI |
 | `tests/` | Conformance suite in C11, written against `bdk/bdk.h` and `tests/harness.h` only |
 | `cmake/abi-hash.cmake`, `generated/` | Hash generator and checker; the recorded hash. Also `bdk_command_table.inc`, generated from `interface/` (not part of the hash: its inputs are) |
@@ -61,6 +61,14 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
    callbacks yet because their signatures are not specified.
 10. Application command, event and page-route names must start with `app.` (`config.nameNotApp`). Duplicates fail
     with `config.duplicateName` (not in the swift-api error table).
+10a. Application settings (`bdk_app_setting_register`, T-SVC-08): the broker, not the backend, answers `settings.get`,
+    `getMany`, `describe`, `set` and `reset` for `app.` keys (`runtime/app_settings.cc`), so every runtime behaves the
+    same. A key's type is the JSON kind of its default and `set` checks it. A key registered with `exposedToPages`
+    false is refused with `capability.denied` to a page or session before the service runs, whatever it holds. The
+    values are cached by scope (profile id, or the application) and the backend only keeps them:
+    `Backend::LoadAppSettings` is called once per scope after the profile opens, and `SaveAppSettings` with the whole
+    JSON object after each change; neither is called for a private profile. A `getMany` that mixes `app.` and browser
+    keys is `broker.invalidArguments`.
 11. Which completions grant is the `grants` column of the surface table in `runtime/ui_router.cc`, from
     ui-requests.md section 5: `grant` (permissions, and on every surface), `keep` (downloads), `save` (passwords,
     autofill), `accept` (autofill suggestions), `proceed` (interstitials), `select` (device choosers), `share` (screen

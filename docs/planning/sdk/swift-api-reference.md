@@ -608,7 +608,7 @@ Swift is the source of truth. Declarations are extracted at build time to genera
 | Event | `struct X: BDKEvent { static let name = "app.…" }` | Declares an event |
 | Declare | `config.commands.declare(X.self)` | |
 | Emit | `runtime.commands.emit(_, to: .all \| .profile(_) \| .page(_) \| .session(_))` | |
-| Setting | `config.settings.register(BDKSettingKey<T>("app.…"), default:, scope: .profile, exposedToPages: Bool)` | Application setting, read through `settings.get` and `settings.set`. Not built: T-SVC-08, M4 |
+| Setting | `config.settings.register(BDKSettingKey<T>("app.…"), default:, scope: .profile, exposedToPages: Bool)` | Application setting, read through `settings.get` and `settings.set`; typed `profile.settings.get(key)` and `set(key, value)` (also on `runtime.settings`). Built in T-SVC-08 |
 
 | `CommandContext` member | Type |
 |---|---|

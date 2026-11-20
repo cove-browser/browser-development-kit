@@ -944,8 +944,7 @@ BDK_EXPORT bdk_status_t bdk_app_setting_register(bdk_runtime_t h, bdk_string_t d
     bool is_object = false;
     if (!string_ok(decl) || !valid_json(str(decl), &is_object) || !is_object)
         return BDK_ERR_INVALID_ARGUMENT;
-    rt->settings.push_back(str(decl));
-    return BDK_OK;
+    return app_setting_declare(*rt, str(decl), out_error);
 }
 
 BDK_EXPORT bdk_status_t bdk_page_handler_register(bdk_runtime_t h, bdk_string_t route,

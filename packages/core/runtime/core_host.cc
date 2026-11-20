@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <cstring>
 
-#include "core_internal.h"
+#include "broker_internal.h"
 
 using namespace bdkcore;
 
@@ -23,6 +23,7 @@ void close_profile(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Pro
     table_free(p->handle);
     p->handle = 0;
     backend().CloseProfile(*rt, *p);
+    app_settings_forget(*rt, p->id);
     if (p->ephemeral) {
         rt->profiles.erase(std::remove(rt->profiles.begin(), rt->profiles.end(), p),
                            rt->profiles.end());
