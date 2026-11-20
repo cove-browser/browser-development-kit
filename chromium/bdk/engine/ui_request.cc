@@ -23,6 +23,13 @@ bool SurfaceAvailable(const std::shared_ptr<bdkcore::Contents>& contents,
   return rt && bdkcore::ui_surface_available(*rt, surface);
 }
 
+bool SurfaceHasHandler(const std::shared_ptr<bdkcore::Contents>& contents,
+                       uint32_t surface) {
+  std::shared_ptr<bdkcore::Runtime> rt =
+      contents ? contents->rt.lock() : nullptr;
+  return rt && rt->ui_handlers.count(surface) > 0;
+}
+
 std::shared_ptr<bdkcore::Request> RaiseUiRequest(
     const std::shared_ptr<bdkcore::Contents>& contents,
     uint32_t surface,

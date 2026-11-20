@@ -604,11 +604,15 @@ int main(int argc, char** argv) {
         setvbuf(stdout, nullptr, _IOLBF, 0);
         setenv("BDK_ENGINE_KEEP_CHROMIUM", "1", 1);
         setenv("BDK_ENGINE_MOCK_KEYCHAIN", "1", 1);
-        /* Chromium refuses fullscreen to a page whose window is not key. macOS does not let a
-           process make itself frontmost while another application is (cooperative activation), so
-           the harness's window cannot be relied on to be key; the fullscreen scenarios test BDK's
-           requests, not that policy. */
-        setenv("BDK_ENGINE_SWITCHES", "disable-features=SuppressFullscreenFromUnfocusedView", 0);
+        /* Chromium refuses fullscreen to a page whose window is not key, and offers autofill
+           suggestions only to a view that has focus (which on macOS includes being in the key
+           window). macOS does not let a process make itself frontmost while another application
+           is (cooperative activation), so the harness's window cannot be relied on to be key; the
+           scenarios test BDK's requests, not those policies. */
+        setenv("BDK_ENGINE_SWITCHES",
+               "disable-features=SuppressFullscreenFromUnfocusedView,"
+               "RWHVMacHasFocusReturnsFalseForNonKeyWindow",
+               0);
         char dir[] = "/tmp/bdk-engine-conformance-XXXXXX";
         if (!mkdtemp(dir)) {
             perror("mkdtemp");

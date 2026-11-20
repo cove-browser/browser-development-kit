@@ -7,6 +7,7 @@
 #include <memory>
 
 #include "base/functional/bind.h"
+#include "bdk/engine/services/autofill_prompts.h"
 #include "bdk/engine/services/password_prompts.h"
 #include "bdk/engine/services/print_prompts.h"
 #include "chrome/browser/printing/embedder_print_preview_hook.h"
@@ -21,6 +22,7 @@ void InstallPromptHooks() {
         return std::make_unique<BdkTabDialogs>(tab, contents);
       }));
   embedder_print_preview_hook::SetHook(base::BindRepeating(&OnPrintRequested));
+  InstallAutofillPopupHook();
 }
 
 }  // namespace bdk

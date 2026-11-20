@@ -76,6 +76,8 @@ source_set("bdk") {
       "engine/json_util.cc",
       "engine/json_util.h",
       "engine/services/authentication.cc",
+      "engine/services/autofill_prompts.cc",
+      "engine/services/autofill_prompts.h",
       "engine/services/authentication.h",
       "engine/services/authentication_mac.mm",
       "engine/services/autofill_service.cc",

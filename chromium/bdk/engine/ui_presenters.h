@@ -168,6 +168,8 @@ struct PresenterRecord {
 };
 void ScriptPresenter(const std::string& surface, base::DictValue answer);
 void ClearPresenterScripts();
+// Whether `surface` is scripted: its default presenter then shows nothing.
+bool PresenterScripted(const std::string& surface);
 // For a default presenter that is Chromium's own UI and so has no UiPresenters
 // method (the system print panel, the suggestion popup). When `surface` is
 // scripted, records the use and, unless the script says "none", gives
@@ -177,6 +179,10 @@ std::optional<Dismisser> ScriptedPresent(
     const std::string& surface,
     const base::DictValue& payload,
     base::OnceCallback<void(const base::DictValue&)> answer);
+// Records that the default presenter of `surface` showed something (Chromium's
+// own UI, which no script replaced), so a test can see it ran.
+void RecordPresented(const std::string& surface,
+                     const base::DictValue& payload);
 PresenterRecord PresenterRecordOf(const std::string& surface);
 
 }  // namespace bdk

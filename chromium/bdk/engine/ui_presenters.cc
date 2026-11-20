@@ -286,6 +286,10 @@ void ClearPresenterScripts() {
   Records().clear();
 }
 
+bool PresenterScripted(const std::string& surface) {
+  return Scripted::Find(surface) != nullptr;
+}
+
 std::optional<Dismisser> ScriptedPresent(
     const std::string& surface,
     const base::DictValue& payload,
@@ -298,6 +302,13 @@ std::optional<Dismisser> ScriptedPresent(
       [answer = std::move(answer)](const base::DictValue& a) mutable {
         std::move(answer).Run(a);
       });
+}
+
+void RecordPresented(const std::string& surface,
+                     const base::DictValue& payload) {
+  PresenterRecord& record = Records()[surface];
+  ++record.shown;
+  record.last_payload = ToJson(payload);
 }
 
 PresenterRecord PresenterRecordOf(const std::string& surface) {

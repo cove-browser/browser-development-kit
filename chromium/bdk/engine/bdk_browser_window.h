@@ -48,6 +48,12 @@ class BdkBrowserWindow : public BrowserWindow {
   // The native window became or stopped being the key window.
   void OnActiveChanged(bool active);
 
+  // Gives the window the handler of the autofill bubbles (what
+  // `GetAutofillBubbleHandler()` returns, and what the card bubbles find in
+  // the Browser's user data). Once the Browser exists: the handler registers
+  // itself with it.
+  void InstallAutofillBubbleHandler();
+
   // BrowserWindow:
   gfx::NativeWindow GetNativeWindow() const override;
   bool IsOnCurrentWorkspace() const override;
@@ -182,6 +188,7 @@ class BdkBrowserWindow : public BrowserWindow {
  private:
   const raw_ptr<BrowserWindowInterface> browser_;
   std::unique_ptr<HostWindow> host_window_;
+  std::unique_ptr<autofill::AutofillBubbleHandler> autofill_bubble_handler_;
   mutable std::unique_ptr<HostLocationBar> location_bar_;
   std::unique_ptr<ExclusiveAccessContext> exclusive_access_context_;
   std::unique_ptr<web_modal::WebContentsModalDialogHost> modal_dialog_host_;

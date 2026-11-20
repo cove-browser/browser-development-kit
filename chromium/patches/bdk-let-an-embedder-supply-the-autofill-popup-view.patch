@@ -1,0 +1,134 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Ethan Krich <ektechworld@gmail.com>
+Date: Thu, 19 Nov 2026 18:05:42 -0800
+Subject: [PATCH] bdk: let an embedder supply the autofill popup view
+
+The autofill suggestion popup is created by AutofillPopupView::Create(),
+which always makes PopupViewViews. BDK raises the suggestions as a UI
+request so that the application can show them, and shows Chromium's own
+popup, anchored to the page's native view, when the application has no
+handler. Mac needs no Views parent for it (CanShowRootPopup() only asks
+for the native view's window), so Chromium's popup works in a window
+that is not a BrowserView.
+
+Add embedder_popup_view_factory.h, a small header with a settable
+factory (inline, no new target) and the declaration of
+CreateViewsPopupView(), which is what Create() did. Create() asks the
+factory first; a null return makes the popup fail as it does when Chrome
+finds no window, and BDK's factory calls CreateViewsPopupView() for the
+requests it leaves to Chromium. With no factory Chrome is unchanged. Only
+popup_view_views.cc and the new header change, so nothing widely included
+is touched.
+
+Used by: the BDK engine (//bdk/engine/services/autofill_prompts.cc).
+---
+ .../popup/embedder_popup_view_factory.h       | 57 +++++++++++++++++++
+ .../views/autofill/popup/popup_view_views.cc  | 20 +++++++
+ 2 files changed, 77 insertions(+)
+
+diff --git a/chrome/browser/ui/views/autofill/popup/embedder_popup_view_factory.h b/chrome/browser/ui/views/autofill/popup/embedder_popup_view_factory.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..99361a40c03bceb6870902632e3fe22434c6c5c5
+--- /dev/null
++++ b/chrome/browser/ui/views/autofill/popup/embedder_popup_view_factory.h
+@@ -0,0 +1,57 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_AUTOFILL_POPUP_EMBEDDER_POPUP_VIEW_FACTORY_H_
++#define CHROME_BROWSER_UI_VIEWS_AUTOFILL_POPUP_EMBEDDER_POPUP_VIEW_FACTORY_H_
++
++#include <optional>
++#include <utility>
++
++#include "base/functional/callback.h"
++#include "base/memory/weak_ptr.h"
++#include "base/no_destructor.h"
++#include "chrome/browser/ui/autofill/autofill_popup_view.h"
++
++namespace autofill {
++
++class AutofillPopupController;
++
++// A hook for Chromium embedders that show the autofill suggestion popup in UI
++// of their own. When a factory is set, AutofillPopupView::Create() uses the
++// view it returns (a null return makes the popup fail, as it does when Chrome
++// cannot find a window); an embedder that wants Chrome's popup for some
++// requests calls CreateViewsPopupView(). With no factory Chrome is unchanged.
++// Only embedders set one, once, before any popup is shown.
++namespace embedder_popup_view_factory {
++
++using Factory = base::RepeatingCallback<base::WeakPtr<AutofillPopupView>(
++    base::WeakPtr<AutofillPopupController> controller,
++    std::optional<const AutofillPopupView::SearchBarConfig> search_bar_config,
++    std::optional<const AutofillPopupView::TabbedPaneConfig>
++        tabbed_pane_config,
++    std::optional<const AutofillPopupView::SubPopupConfig> sub_popup_config)>;
++
++inline Factory& GetFactory() {
++  static base::NoDestructor<Factory> factory;
++  return *factory;
++}
++
++inline void SetFactory(Factory factory) {
++  GetFactory() = std::move(factory);
++}
++
++// Chrome's own popup: what AutofillPopupView::Create() makes with no factory.
++// Defined in popup_view_views.cc.
++base::WeakPtr<AutofillPopupView> CreateViewsPopupView(
++    base::WeakPtr<AutofillPopupController> controller,
++    std::optional<const AutofillPopupView::SearchBarConfig> search_bar_config,
++    std::optional<const AutofillPopupView::TabbedPaneConfig>
++        tabbed_pane_config,
++    std::optional<const AutofillPopupView::SubPopupConfig> sub_popup_config);
++
++}  // namespace embedder_popup_view_factory
++
++}  // namespace autofill
++
++#endif  // CHROME_BROWSER_UI_VIEWS_AUTOFILL_POPUP_EMBEDDER_POPUP_VIEW_FACTORY_H_
+diff --git a/chrome/browser/ui/views/autofill/popup/popup_view_views.cc b/chrome/browser/ui/views/autofill/popup/popup_view_views.cc
+index 96cd6f3b9cdd68ee0c5c60fd80e5df2413a42015..b0bdb4c519893ac74113f170dbde9dbc0a803574 100644
+--- a/chrome/browser/ui/views/autofill/popup/popup_view_views.cc
++++ b/chrome/browser/ui/views/autofill/popup/popup_view_views.cc
+@@ -3,6 +3,7 @@
+ // found in the LICENSE file.
+ 
+ #include "chrome/browser/ui/views/autofill/popup/popup_view_views.h"
++#include "chrome/browser/ui/views/autofill/popup/embedder_popup_view_factory.h"
+ 
+ #include <algorithm>
+ #include <memory>
+@@ -2015,6 +2016,23 @@ base::WeakPtr<AutofillPopupView> AutofillPopupView::Create(
+     std::optional<const AutofillPopupView::SearchBarConfig> search_bar_config,
+     std::optional<const AutofillPopupView::TabbedPaneConfig> tabbed_pane_config,
+     std::optional<const AutofillPopupView::SubPopupConfig> sub_popup_config) {
++  if (const auto& factory = embedder_popup_view_factory::GetFactory()) {
++    return factory.Run(std::move(controller), std::move(search_bar_config),
++                       std::move(tabbed_pane_config),
++                       std::move(sub_popup_config));
++  }
++  return embedder_popup_view_factory::CreateViewsPopupView(
++      std::move(controller), std::move(search_bar_config),
++      std::move(tabbed_pane_config), std::move(sub_popup_config));
++}
++
++namespace embedder_popup_view_factory {
++
++base::WeakPtr<AutofillPopupView> CreateViewsPopupView(
++    base::WeakPtr<AutofillPopupController> controller,
++    std::optional<const AutofillPopupView::SearchBarConfig> search_bar_config,
++    std::optional<const AutofillPopupView::TabbedPaneConfig> tabbed_pane_config,
++    std::optional<const AutofillPopupView::SubPopupConfig> sub_popup_config) {
+   if (!controller || !CanShowRootPopup(*controller)) {
+     return nullptr;
+   }
+@@ -2025,4 +2043,6 @@ base::WeakPtr<AutofillPopupView> AutofillPopupView::Create(
+       ->GetWeakPtr();
+ }
+ 
++}  // namespace embedder_popup_view_factory
++
+ }  // namespace autofill

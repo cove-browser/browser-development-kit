@@ -10,7 +10,9 @@
 #include "base/notimplemented.h"
 #include "base/observer_list.h"
 #include "bdk/engine/host_window.h"
+#include "bdk/engine/services/autofill_prompts.h"
 #include "chrome/browser/themes/theme_service.h"
+#include "chrome/browser/ui/autofill/autofill_bubble_handler.h"
 #include "chrome/browser/ui/browser_active_state_manager/browser_active_state_manager.h"
 #include "chrome/browser/ui/browser_command_controller.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
@@ -214,9 +216,14 @@ BdkBrowserWindow::BdkBrowserWindow(BrowserWindowInterface* browser)
       modal_dialog_host_(std::make_unique<HostModalDialogHost>()) {}
 
 BdkBrowserWindow::~BdkBrowserWindow() {
+  autofill_bubble_handler_.reset();
   // A window implementation tears the Browser's window-scoped features down
   // before it goes (WebUIBrowserWindow and BrowserWidget do the same).
   browser_->GetFeatures().TearDownPreBrowserWindowDestruction();
+}
+
+void BdkBrowserWindow::InstallAutofillBubbleHandler() {
+  autofill_bubble_handler_ = CreateAutofillBubbleHandler(browser_);
 }
 
 void BdkBrowserWindow::SetHostWindow(std::unique_ptr<HostWindow> host_window) {
@@ -299,8 +306,7 @@ void BdkBrowserWindow::SetContentsSize(const gfx::Size& size) {
 }
 
 autofill::AutofillBubbleHandler* BdkBrowserWindow::GetAutofillBubbleHandler() {
-  NOTIMPLEMENTED_LOG_ONCE();
-  return nullptr;
+  return autofill_bubble_handler_.get();
 }
 
 LocationBar* BdkBrowserWindow::GetLocationBar() const {

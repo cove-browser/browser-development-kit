@@ -55,6 +55,11 @@ std::shared_ptr<bdkcore::Request> RaiseUiRequest(EngineContents& page,
                                                  const base::DictValue& payload,
                                                  UiFinish finish);
 
+// Whether the application has a handler for the surface: when it has not, a
+// request can only be answered by the default presenter.
+bool SurfaceHasHandler(const std::shared_ptr<bdkcore::Contents>& contents,
+                       uint32_t surface);
+
 // Whether the configuration leaves the surface enabled: when it does not, the
 // web API behind it reports itself unavailable instead of raising a request.
 bool SurfaceAvailable(const std::shared_ptr<bdkcore::Contents>& contents,

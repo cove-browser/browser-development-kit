@@ -14,6 +14,9 @@
 #include "bdk_testing.h"
 #include "test_support.h"
 
+/* From harness_engine.mm: the [ui.surfaces] table the next runtime starts with. */
+extern const char* bdk_harness_engine_surfaces;
+
 /* From harness_engine.mm: while set, a new runtime keeps the persistent profiles of the last one.
  */
 extern int bdk_harness_engine_keep_profiles;
@@ -893,6 +896,276 @@ static void test_engine_a_dropped_certificate_error_request_goes_back(void) {
     close_window();
 }
 
+/* ---- autofill save prompts and suggestions (T-UIR-04) ---- */
+
+#define ADDRESS_URL "https://addr.example/"
+#define FIELD "position:absolute;left:20px;width:240px;height:28px;top:"
+/* An address form whose fields Chromium recognises from their autocomplete attributes. The title
+   follows the street field, so a test can see a fill. */
+#define ADDRESS_PAGE                                                                               \
+    "<!doctype html><title>empty</title><form id=f method=post action=/done>"                      \
+    "<input id=n name=n autocomplete=name style='" FIELD "20px'>"                                  \
+    "<input id=s name=s autocomplete=address-line1 style='" FIELD "60px'>"                         \
+    "<input id=c name=c autocomplete=address-level2 style='" FIELD "100px'>"                       \
+    "<input id=r name=r autocomplete=address-level1 style='" FIELD "140px'>"                       \
+    "<input id=z name=z autocomplete=postal-code style='" FIELD "180px'>"                          \
+    "<input id=e name=e autocomplete=email style='" FIELD "220px'></form>"                         \
+    "<script>setInterval(function(){document.title="                                               \
+    "document.getElementById('s').value||'empty'},50)</script>"
+
+static void submit_address(bdk_contents_t c) {
+    run_script(c,
+               "document.getElementById('n').value='Ada Lovelace';"
+               "document.getElementById('s').value='1 Main St';"
+               "document.getElementById('c').value='Springfield';"
+               "document.getElementById('r').value='IL';"
+               "document.getElementById('z').value='62701';"
+               "document.getElementById('e').value='ada@example.com';"
+               "document.getElementById('f').requestSubmit();",
+               1);
+}
+
+/* Clicks the name field of the address form, as the person would to get suggestions. */
+static void click_name_field(bdk_contents_t c) {
+    REQUIRE(bdk_testing_click(c, 100, 34, 0) == BDK_OK);
+    t_pump();
+}
+
+static seen_t g_suggestions;
+
+/* Rejects what it is asked. */
+static bdk_ui_response_t reject_request(void* ctx, const bdk_ui_request_info_t* info) {
+    (void)info;
+    ++((seen_t*)ctx)->calls;
+    return BDK_UI_REJECT;
+}
+
+static int saved_addresses_contain(bdk_profile_t p, const char* text) {
+    t_capture_t cap;
+    invoke(p, "autofill.addresses.list", "{}", &cap);
+    return !cap.has_error && strstr(cap.json, text) != NULL;
+}
+
+static int wait_for_saved_address(bdk_profile_t p, const char* text) {
+    for (int i = 0; i < 60; ++i) {
+        if (saved_addresses_contain(p, text))
+            return 1;
+        t_pump();
+        bdk_testing_run_for(0.1);
+    }
+    return 0;
+}
+
+static void wait_for_calls(const seen_t* seen, int calls) {
+    for (int i = 0; i < 60 && seen->calls < calls; ++i) {
+        t_pump();
+        bdk_testing_run_for(0.1);
+    }
+}
+
+/* Loads the address form into `c` and waits until it is there. */
+static void load_address_form(bdk_contents_t c) {
+    bdk_error_t err = 0;
+    REQUIRE(bdk_contents_load(c, S(ADDRESS_URL), &err) == BDK_OK);
+    t_pump();
+    bdk_testing_run_for(0.3);
+}
+
+/* The decimal id of the first suggestion in a request payload. */
+static int first_suggestion_id(const char* payload, char* out, size_t n) {
+    const char* at = strstr(payload, "\"id\":\"");
+    if (!at)
+        return 0;
+    at += strlen("\"id\":\"");
+    size_t len = 0;
+    while (at[len] && at[len] != '"' && len + 1 < n) {
+        out[len] = at[len];
+        ++len;
+    }
+    out[len] = '\0';
+    return len > 0;
+}
+
+static void test_engine_a_submitted_address_is_saved_with_a_gesture_and_offered_next_time(void) {
+    memset(&g_seen, 0, sizeof g_seen);
+    memset(&g_suggestions, 0, sizeof g_suggestions);
+    t_start();
+    bdk_error_t err = 0;
+    REQUIRE(bdk_ui_set_handler(t_runtime, BDK_SURFACE_AUTOFILL, hold, &g_seen, NULL, &err) ==
+            BDK_OK);
+    REQUIRE(bdk_ui_set_handler(t_runtime, BDK_SURFACE_AUTOFILL_SUGGESTIONS, hold, &g_suggestions,
+                               NULL, &err) == BDK_OK);
+    t_freeze();
+    script_page(ADDRESS_URL, "text/html", ADDRESS_PAGE, "");
+    script_page(ADDRESS_URL "done", "text/html", DONE_PAGE, "");
+    bdk_profile_t p = t_new_profile("Address save");
+    bdk_contents_t c = new_active_page(p);
+    load_address_form(c);
+    submit_address(c);
+    REQUIRE(wait_for_title(c, "welcome"));
+    wait_for_calls(&g_seen, 1);
+    REQUIRE(g_seen.calls == 1);
+    CHECK(strstr(g_seen.payload, "\"kind\":\"address\"") != NULL);
+    CHECK(strstr(g_seen.payload, "\"isUpdate\":false") != NULL);
+    CHECK(strstr(g_seen.payload, "1 Main St") != NULL);
+    CHECK(!saved_addresses_contain(p, "1 Main St")); /* nothing saved before the person says so */
+
+    err = 0;
+    CHECK(bdk_ui_complete(g_seen.request, S("grant"), S("{}"), no_gesture(), &err) != BDK_OK);
+    CHECK(!saved_addresses_contain(p, "1 Main St"));
+    err = 0;
+    CHECK(bdk_ui_complete(g_seen.request, S("grant"), S("{}"), gesture(), &err) == BDK_OK);
+    CHECK(wait_for_saved_address(p, "1 Main St"));
+    bdk_ui_request_release(g_seen.request);
+
+    /* The next form offers it. */
+    load_address_form(c);
+    CHECK(wait_for_title(c, "empty"));
+    click_name_field(c);
+    wait_for_calls(&g_suggestions, 1);
+    REQUIRE(g_suggestions.calls == 1);
+    CHECK(strstr(g_suggestions.payload, "Ada Lovelace") != NULL);
+    CHECK(strstr(g_suggestions.payload, "\"fieldRect\"") != NULL);
+    char id[16];
+    REQUIRE(first_suggestion_id(g_suggestions.payload, id, sizeof id));
+    char args[64];
+    snprintf(args, sizeof args, "{\"suggestion\":\"%s\"}", id);
+    bdk_testing_run_for(0.8); /* Chromium ignores a choice made at once */
+    err = 0;
+    CHECK(bdk_ui_complete(g_suggestions.request, S("grant"), S(args), no_gesture(), &err) !=
+          BDK_OK);
+    CHECK(wait_for_title(c, "empty")); /* refused: nothing filled */
+    err = 0;
+    CHECK(bdk_ui_complete(g_suggestions.request, S("grant"), S(args), gesture(), &err) == BDK_OK);
+    CHECK(wait_for_title(c, "1 Main St"));
+    bdk_ui_request_release(g_suggestions.request);
+    close_window();
+}
+
+/* Runs an address submission with `handler` for the save prompt, completing the request it holds
+   with "deny" when `complete_with_deny` is set, and checks that nothing was saved. */
+static void submit_address_and_check_nothing_is_saved(bdk_ui_handler_cb handler,
+                                                      int complete_with_deny, const char* name) {
+    memset(&g_seen, 0, sizeof g_seen);
+    t_start();
+    bdk_error_t err = 0;
+    REQUIRE(bdk_ui_set_handler(t_runtime, BDK_SURFACE_AUTOFILL, handler, &g_seen, NULL, &err) ==
+            BDK_OK);
+    t_freeze();
+    script_page(ADDRESS_URL, "text/html", ADDRESS_PAGE, "");
+    script_page(ADDRESS_URL "done", "text/html", DONE_PAGE, "");
+    bdk_profile_t p = t_new_profile(name);
+    bdk_contents_t c = new_active_page(p);
+    load_address_form(c);
+    submit_address(c);
+    REQUIRE(wait_for_title(c, "welcome"));
+    wait_for_calls(&g_seen, 1);
+    REQUIRE(g_seen.calls == 1);
+    if (complete_with_deny) {
+        err = 0;
+        CHECK(bdk_ui_complete(g_seen.request, S("deny"), S("{}"), no_gesture(), &err) == BDK_OK);
+        bdk_ui_request_release(g_seen.request);
+    }
+    bdk_testing_run_for(1.0);
+    CHECK(!saved_addresses_contain(p, "1 Main St"));
+    close_window();
+}
+
+static void test_engine_a_rejected_address_prompt_saves_nothing(void) {
+    submit_address_and_check_nothing_is_saved(reject_request, 0, "Address reject");
+}
+
+static void test_engine_a_declined_address_prompt_saves_nothing(void) {
+    submit_address_and_check_nothing_is_saved(hold, 1, "Address decline");
+}
+
+static void test_engine_the_default_address_prompt_saves_and_suggestions_use_chromiums_popup(void) {
+    t_start();
+    t_freeze();
+    script_page(ADDRESS_URL, "text/html", ADDRESS_PAGE, "");
+    script_page(ADDRESS_URL "done", "text/html", DONE_PAGE, "");
+    script_presenter("autofill", "save");
+    bdk_profile_t p = t_new_profile("Address default");
+    bdk_contents_t c = new_active_page(p);
+    load_address_form(c);
+    submit_address(c);
+    REQUIRE(wait_for_title(c, "welcome"));
+    CHECK(wait_for_saved_address(p, "1 Main St"));
+    CHECK(presenter_uses("autofill") == 1);
+
+    /* No handler, no script: Chromium's own popup, built for the page's view. */
+    const int popups_before = presenter_uses("autofill_suggestions");
+    load_address_form(c);
+    click_name_field(c);
+    for (int i = 0; i < 30 && presenter_uses("autofill_suggestions") == popups_before; ++i) {
+        t_pump();
+        bdk_testing_run_for(0.1);
+    }
+    CHECK(presenter_uses("autofill_suggestions") == popups_before + 1);
+    close_window();
+}
+
+static void test_engine_a_scripted_suggestion_fills_the_form(void) {
+    t_start();
+    t_freeze();
+    script_page(ADDRESS_URL, "text/html", ADDRESS_PAGE, "");
+    script_page(ADDRESS_URL "done", "text/html", DONE_PAGE, "");
+    script_presenter("autofill", "save");
+    bdk_profile_t p = t_new_profile("Address scripted");
+    bdk_contents_t c = new_active_page(p);
+    load_address_form(c);
+    submit_address(c);
+    REQUIRE(wait_for_title(c, "welcome"));
+    CHECK(wait_for_saved_address(p, "1 Main St"));
+
+    script_presenter("autofill_suggestions", "Ada Lovelace");
+    load_address_form(c);
+    CHECK(wait_for_title(c, "empty"));
+    click_name_field(c);
+    CHECK(wait_for_title(c, "1 Main St"));
+    CHECK(presenter_uses("autofill_suggestions") >= 1);
+    close_window();
+}
+
+static void test_engine_disabled_autofill_offers_nothing_and_fills_nothing(void) {
+    memset(&g_seen, 0, sizeof g_seen);
+    memset(&g_suggestions, 0, sizeof g_suggestions);
+    bdk_harness_engine_surfaces = "{\"autofill\":\"disabled\"}";
+    t_start();
+    bdk_harness_engine_surfaces = NULL;
+    bdk_error_t err = 0;
+    REQUIRE(bdk_ui_set_handler(t_runtime, BDK_SURFACE_AUTOFILL, hold, &g_seen, NULL, &err) ==
+            BDK_OK);
+    REQUIRE(bdk_ui_set_handler(t_runtime, BDK_SURFACE_AUTOFILL_SUGGESTIONS, hold, &g_suggestions,
+                               NULL, &err) == BDK_OK);
+    t_freeze();
+    script_page(ADDRESS_URL, "text/html", ADDRESS_PAGE, "");
+    script_page(ADDRESS_URL "done", "text/html", DONE_PAGE, "");
+    bdk_profile_t p = t_new_profile("Address disabled");
+    t_capture_t cap;
+    invoke_ok(p, "autofill.addresses.add",
+              "{\"fields\":{\"fullName\":\"Grace Hopper\",\"street\":\"9 Elm St\","
+              "\"city\":\"Springfield\",\"region\":\"IL\",\"postalCode\":\"62701\","
+              "\"country\":\"US\"}}",
+              &cap);
+    bdk_contents_t c = new_active_page(p);
+    load_address_form(c);
+    submit_address(c);
+    REQUIRE(wait_for_title(c, "welcome"));
+    bdk_testing_run_for(1.5);
+    CHECK(g_seen.calls == 0); /* no save prompt */
+    CHECK(!saved_addresses_contain(p, "1 Main St"));
+
+    const int popups_before = presenter_uses("autofill_suggestions");
+    load_address_form(c);
+    click_name_field(c);
+    bdk_testing_run_for(1.5);
+    CHECK(g_suggestions.calls == 0);                                /* no request */
+    CHECK(presenter_uses("autofill_suggestions") == popups_before); /* no popup */
+    CHECK(wait_for_title(c, "empty"));                              /* nothing filled */
+    close_window();
+}
+
 static void test_engine_a_certificate_error_surface_cannot_be_disabled(void) {
     bdk_start_config_t config;
     memset(&config, 0, sizeof config);
@@ -948,5 +1221,17 @@ const t_test_t t_engine_prompt_tests[] = {
      test_engine_autofill_addresses_are_stored_updated_and_removed},
     {"engine_autofill_cards_are_masked_and_revealing_needs_authentication",
      test_engine_autofill_cards_are_masked_and_revealing_needs_authentication},
+    {"engine_ui_autofill_a_submitted_address_is_saved_with_a_gesture_and_offered_next_time",
+     test_engine_a_submitted_address_is_saved_with_a_gesture_and_offered_next_time},
+    {"engine_ui_autofill_a_rejected_address_prompt_saves_nothing",
+     test_engine_a_rejected_address_prompt_saves_nothing},
+    {"engine_ui_autofill_a_declined_address_prompt_saves_nothing",
+     test_engine_a_declined_address_prompt_saves_nothing},
+    {"engine_ui_autofill_the_default_prompt_saves_and_suggestions_use_chromiums_popup",
+     test_engine_the_default_address_prompt_saves_and_suggestions_use_chromiums_popup},
+    {"engine_ui_autofill_a_scripted_suggestion_fills_the_form",
+     test_engine_a_scripted_suggestion_fills_the_form},
+    {"engine_ui_autofill_disabled_offers_nothing_and_fills_nothing",
+     test_engine_disabled_autofill_offers_nothing_and_fills_nothing},
     {NULL, NULL},
 };
