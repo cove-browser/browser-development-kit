@@ -309,6 +309,10 @@ class EngineBackend final : public bdkcore::Backend {
       return;
     }
     std::weak_ptr<bdkcore::Profile> weak = profile;
+    // The open counts as pending work until its result is delivered: the
+    // profile loads asynchronously and its settings file is read on another
+    // sequence, neither of which is a BDK task on the UI thread.
+    NoteTaskPosted();
     g_browser_process->profile_manager()->CreateProfileAsync(
         path, base::BindOnce(
                   [](EngineBackend* backend, base::FilePath path,
@@ -316,6 +320,7 @@ class EngineBackend final : public bdkcore::Backend {
                      Profile* loaded) {
                     std::shared_ptr<bdkcore::Profile> p = weak.lock();
                     if (!loaded) {
+                      NoteTaskRun();
                       done("openFailed", "Chromium could not load the profile");
                       return;
                     }
@@ -323,6 +328,7 @@ class EngineBackend final : public bdkcore::Backend {
                       // Loaded for nobody: let it unload, as a closed one.
                       backend->KeepLoaded(path, loaded);
                       backend->UnloadWhenClosed(path);
+                      NoteTaskRun();
                       done("openFailed", "the profile was closed");
                       return;
                     }
@@ -399,6 +405,7 @@ class EngineBackend final : public bdkcore::Backend {
             [](EngineBackend* backend, std::string id, Done done,
                std::string text) {
               backend->app_settings_text_[id] = std::move(text);
+              NoteTaskRun();
               done("", "");
             },
             base::Unretained(this), profile->id, std::move(done)));
