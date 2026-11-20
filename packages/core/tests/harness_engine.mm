@@ -43,6 +43,9 @@ extern "C" {
 
 /* Set by a test that checks what persists between runtimes. */
 int bdk_harness_engine_keep_profiles = 0;
+/* Set by a test that needs surfaces configured: the value of "surfaces" in the resolved
+   configuration, for example {"notifications":"disabled"}. Cleared by the next start. */
+const char* bdk_harness_engine_surfaces = NULL;
 
 void bdk_harness_prepare_start_config(bdk_start_config_t* config) {
     /* The suite expects each runtime to start with no profiles, as with a new data directory. */
@@ -52,7 +55,13 @@ void bdk_harness_prepare_start_config(bdk_start_config_t* config) {
     bdk_testing_intercept_all(0);
     bdk_testing_intercept_all(1);
     /* The engine needs a browser name for its identity; everything else is the suite's. */
-    config->resolved_config_json = View("{\"browser\":{\"name\":\"BDK Conformance\"}}");
+    static std::string resolved;
+    resolved = "{\"browser\":{\"name\":\"BDK Conformance\"}";
+    if (bdk_harness_engine_surfaces)
+        resolved += std::string(",\"surfaces\":") + bdk_harness_engine_surfaces;
+    resolved += "}";
+    bdk_harness_engine_surfaces = NULL;
+    config->resolved_config_json = View(resolved.c_str());
     config->user_data_path_override = View(g_data_dir.c_str());
 }
 
@@ -290,6 +299,55 @@ void bdk_harness_engine_key(bdk_contents_t contents, unsigned short key_code,
         [NSApp sendEvent:event];
     }
     bdk_harness_pump();
+}
+
+/* The event a person's click or key press leaves for a handler to confirm a grant with. kind: 0 a
+   recent mouse-up in the page's window, 1 a recent key-down, 2 a mouse-up a minute old, 3 a
+   mouse-down, 4 a mouse-up that went to no window. */
+bdk_native_handle_t bdk_harness_engine_gesture(bdk_contents_t contents, int kind) {
+    static NSEvent* held;
+    NSWindow* window = WindowOf(contents);
+    NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
+    NSInteger number = kind == 4 ? 0 : window.windowNumber;
+    if (kind == 1) {
+        held = [NSEvent keyEventWithType:NSEventTypeKeyDown
+                                location:NSZeroPoint
+                           modifierFlags:0
+                               timestamp:now
+                            windowNumber:number
+                                 context:nil
+                              characters:@"a"
+             charactersIgnoringModifiers:@"a"
+                               isARepeat:NO
+                                 keyCode:0];
+    } else {
+        held = [NSEvent
+            mouseEventWithType:kind == 3 ? NSEventTypeLeftMouseDown : NSEventTypeLeftMouseUp
+                      location:NSMakePoint(10, 10)
+                 modifierFlags:0
+                     timestamp:kind == 2 ? now - 60 : now
+                  windowNumber:number
+                       context:nil
+                   eventNumber:1
+                    clickCount:1
+                      pressure:1];
+    }
+    bdk_native_handle_t handle;
+    memset(&handle, 0, sizeof handle);
+    handle.kind = BDK_NATIVE_NSEVENT;
+    handle.pointer = (__bridge void*)held;
+    return handle;
+}
+
+/* Answers the sheet a default presenter attached to the page's window: the button at `index`
+   (0 is the first). Returns 0 when there is no sheet. */
+int bdk_harness_engine_answer_sheet(bdk_contents_t contents, int index) {
+    NSWindow* window = WindowOf(contents);
+    NSWindow* sheet = window.attachedSheet;
+    if (!sheet)
+        return 0;
+    [window endSheet:sheet returnCode:NSAlertFirstButtonReturn + index];
+    return 1;
 }
 
 int bdk_harness_engine_window_is_key(bdk_contents_t contents) {

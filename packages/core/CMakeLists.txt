@@ -134,7 +134,7 @@ if(BDK_ENGINE_FRAMEWORK AND APPLE)
   set(BDK_ENGINE_HOOKS "${CMAKE_CURRENT_SOURCE_DIR}/../../chromium/bdk/engine")
   add_executable(bdk_engine_conformance MACOSX_BUNDLE
     tests/test_support.c tests/tests_base.c tests/tests_runtime.c tests/tests_broker.c
-    tests/tests_profile.c tests/tests_contents.c tests/tests_ui.c tests/tests_engine.c
+    tests/tests_profile.c tests/tests_contents.c tests/tests_ui.c tests/tests_engine.c tests/tests_engine_ui.c
     tests/harness_engine.mm tests/harness_broker_unsupported.c)
   target_compile_definitions(bdk_engine_conformance PRIVATE BDK_HARNESS_OWNS_MAIN BDK_HARNESS_ENGINE_TESTS)
   target_include_directories(bdk_engine_conformance PRIVATE tests "${BDK_ENGINE_HOOKS}")
