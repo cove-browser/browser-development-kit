@@ -22,6 +22,7 @@
 #include "base/task/thread_pool.h"
 #include "base/time/time.h"
 #include "bdk/core/include/bdk/bdk_ids.h"
+#include "bdk/engine/json_util.h"
 #include "bdk/engine/services/autofill_service.h"
 #include "bdk/engine/services/service_common.h"
 #include "chrome/browser/password_manager/factories/profile_password_store_factory.h"

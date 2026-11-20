@@ -48,6 +48,21 @@ struct AuthAnswer {
 
 enum class NotificationEvent { kClicked, kClosedByUser, kClosedByTimeout };
 
+// A question with a few answers, shown as a sheet by the prompts the engine
+// builds itself (the password manager, downloads): each button has a key (what
+// a test script answers with) and a title (shown).
+struct AlertButton {
+  std::string key;
+  std::string title;
+};
+
+struct Alert {
+  std::string title;
+  std::string message;
+  // The first is the default button. The last one is Escape's.
+  std::vector<AlertButton> buttons;
+};
+
 // The find bar's side of the conversation: what the person typed and did.
 class FindBarClient {
  public:
@@ -109,6 +124,23 @@ class UiPresenters {
       base::RepeatingCallback<void(NotificationEvent,
                                    const std::optional<std::string>&)>
           event) = 0;
+  // `surface` names the [ui.surfaces] key that is asking (for test scripts).
+  // `answer` gets the chosen button's index, or -1 when the sheet is dismissed
+  // or there is no window to show it in. Unlike the others it is not given a
+  // request payload: the prompt is the engine's own (ui-requests.md section
+  // 6, "small AppKit presenters").
+  virtual Dismisser ShowAlert(const std::string& surface,
+                              HostView* view,
+                              Alert alert,
+                              base::OnceCallback<void(int)> answer) = 0;
+  // A save panel as a sheet. `answer` gets the chosen path, or nothing when
+  // the person cancels or there is no window to show it in. A script answers
+  // with the path, or "cancel".
+  virtual Dismisser ShowSavePanel(
+      const std::string& surface,
+      HostView* view,
+      const std::string& suggested_name,
+      base::OnceCallback<void(std::optional<std::string>)> answer) = 0;
   // payload: the find request payload (initialText).
   virtual std::unique_ptr<FindBar> ShowFindBar(HostView* view,
                                                const base::DictValue& payload,
@@ -123,11 +155,12 @@ class UiPresenters {
 // Implemented by the platform (presenters_mac.mm).
 std::unique_ptr<UiPresenters> CreatePlatformPresenters();
 
-// Test scripting (bdk_testing.h). While a surface is scripted its presenter
-// shows nothing and answers as `answer` says, later, on the task runner; an
-// answer with "none": true leaves the request unanswered, as a person who has
-// not decided yet. Surfaces are named as in [ui.surfaces]. Records what was
-// presented either way.
+// Test scripting (bdk_testing.h), the one mechanism for every default
+// presenter. While a surface is scripted its presenter shows nothing and
+// answers as `answer` says, later, on the task runner; an answer with
+// "none": true leaves the request unanswered, as a person who has not decided
+// yet. Surfaces are named as in [ui.surfaces]. Records what was presented
+// either way.
 struct PresenterRecord {
   int shown = 0;
   int dismissed = 0;
@@ -135,6 +168,21 @@ struct PresenterRecord {
 };
 void ScriptPresenter(const std::string& surface, base::DictValue answer);
 void ClearPresenterScripts();
+// Whether `surface` is scripted: its default presenter then shows nothing.
+bool PresenterScripted(const std::string& surface);
+// For a default presenter that is Chromium's own UI and so has no UiPresenters
+// method (the system print panel, the suggestion popup). When `surface` is
+// scripted, records the use and, unless the script says "none", gives
+// `answer` the script's answer later, and returns the dismisser; the caller
+// then shows nothing. Returns nothing when `surface` is not scripted.
+std::optional<Dismisser> ScriptedPresent(
+    const std::string& surface,
+    const base::DictValue& payload,
+    base::OnceCallback<void(const base::DictValue&)> answer);
+// Records that the default presenter of `surface` showed something (Chromium's
+// own UI, which no script replaced), so a test can see it ran.
+void RecordPresented(const std::string& surface,
+                     const base::DictValue& payload);
 PresenterRecord PresenterRecordOf(const std::string& surface);
 
 }  // namespace bdk

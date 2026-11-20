@@ -15,8 +15,8 @@
 #include "base/values.h"
 #include "bdk/core/include/bdk/bdk_ids.h"
 #include "bdk/engine/engine_contents.h"
-#include "bdk/engine/services/native_presenter.h"
-#include "bdk/engine/services/ui_requests.h"
+#include "bdk/engine/ui_presenters.h"
+#include "bdk/engine/ui_request.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/download/chrome_download_manager_delegate.h"
 #include "chrome/browser/download/download_core_service.h"
@@ -46,7 +46,8 @@ using download::DownloadItem;
 bool g_force_danger = false;
 
 EngineContents* PageOf(DownloadItem* item) {
-  return FindEngineContents(content::DownloadItemUtils::GetWebContents(item));
+  return EngineContents::FromWebContents(
+      content::DownloadItemUtils::GetWebContents(item));
 }
 
 base::DictValue DownloadInfo(DownloadItem* item,
@@ -130,43 +131,50 @@ class BdkDownloadManagerDelegate : public ChromeDownloadManagerDelegate {
     const base::FilePath suggested = suggested_path;
     RaiseUiRequest(
         *page, BDK_SURFACE_DOWNLOADS, payload,
-        [self, answer, suggested, name, page_contents = page->web_contents()](
-            bdkcore::UiOutcome outcome, const std::string& completion,
-            const std::string& arguments) {
-          if (!self) {
-            return;
-          }
-          if (outcome == bdkcore::UiOutcome::kCompleted &&
-              completion == "accept") {
-            const std::string destination =
-                ArgumentString(arguments, "destination");
-            self->Answer(answer,
-                         destination.empty()
-                             ? suggested
-                             : base::FilePath::FromUTF8Unsafe(destination));
-            return;
-          }
-          if (outcome == bdkcore::UiOutcome::kDefaulted) {
-            EngineContents* page = FindEngineContents(page_contents);
-            PresentSavePanel(
-                "downloads", name,
-                page ? WindowOfPage(*page) : bdk_native_handle_t{},
-                base::BindOnce(
-                    [](base::WeakPtr<BdkDownloadManagerDelegate> self,
-                       std::shared_ptr<DownloadTargetDeterminerDelegate::
-                                           ConfirmationCallback> answer,
-                       std::optional<std::string> path) {
-                      if (self) {
-                        self->Answer(
-                            answer, path ? base::FilePath::FromUTF8Unsafe(*path)
-                                         : base::FilePath());
-                      }
-                    },
-                    self, answer));
-            return;
-          }
-          self->Answer(answer, base::FilePath());  // denied, rejected, gone
-        });
+        base::BindOnce(
+            [](base::WeakPtr<BdkDownloadManagerDelegate> self,
+               std::shared_ptr<
+                   DownloadTargetDeterminerDelegate::ConfirmationCallback>
+                   answer,
+               base::FilePath suggested, std::string name,
+               content::WebContents* page_contents, const UiResult& result) {
+              if (!self) {
+                return;
+              }
+              if (result.outcome == bdkcore::UiOutcome::kCompleted &&
+                  result.completion == "accept") {
+                const std::string* destination =
+                    result.args.FindString("destination");
+                self->Answer(
+                    answer, !destination || destination->empty()
+                                ? suggested
+                                : base::FilePath::FromUTF8Unsafe(*destination));
+                return;
+              }
+              if (result.outcome == bdkcore::UiOutcome::kDefaulted) {
+                EngineContents* page =
+                    EngineContents::FromWebContents(page_contents);
+                UiPresenters::Get().ShowSavePanel(
+                    "downloads", page ? &page->host_view() : nullptr, name,
+                    base::BindOnce(
+                        [](base::WeakPtr<BdkDownloadManagerDelegate> self,
+                           std::shared_ptr<DownloadTargetDeterminerDelegate::
+                                               ConfirmationCallback> answer,
+                           std::optional<std::string> path) {
+                          if (self) {
+                            self->Answer(
+                                answer,
+                                path ? base::FilePath::FromUTF8Unsafe(*path)
+                                     : base::FilePath());
+                          }
+                        },
+                        self, answer));
+                return;
+              }
+              // denied, rejected, gone
+              self->Answer(answer, base::FilePath());
+            },
+            self, answer, suggested, name, page->web_contents()));
   }
 
  private:
@@ -244,35 +252,39 @@ class ItemWatch : public DownloadItem::Observer {
     base::WeakPtr<ItemWatch> self = weak_factory_.GetWeakPtr();
     request_ = RaiseUiRequest(
         *page, BDK_SURFACE_DOWNLOADS, payload,
-        [self, contents](bdkcore::UiOutcome outcome,
-                         const std::string& completion, const std::string&) {
-          if (!self || outcome == bdkcore::UiOutcome::kWithdrawn) {
-            return;
-          }
-          self->request_.reset();
-          if (outcome == bdkcore::UiOutcome::kCompleted &&
-              completion == "grant") {
-            self->Keep();
-          } else if (outcome == bdkcore::UiOutcome::kDefaulted) {
-            EngineContents* page = FindEngineContents(contents);
-            Alert alert;
-            alert.title = "Keep this download?";
-            alert.message = "It may be dangerous.";
-            alert.buttons.push_back({"keep", "Keep"});
-            alert.buttons.push_back({"discard", "Discard"});
-            PresentAlert("downloads", std::move(alert),
-                         page ? WindowOfPage(*page) : bdk_native_handle_t{},
-                         base::BindOnce(
-                             [](base::WeakPtr<ItemWatch> self, int index) {
-                               if (self) {
-                                 index == 0 ? self->Keep() : self->Discard();
-                               }
-                             },
-                             self));
-          } else {
-            self->Discard();  // denied, rejected, dropped: never kept
-          }
-        });
+        base::BindOnce(
+            [](base::WeakPtr<ItemWatch> self, content::WebContents* contents,
+               const UiResult& result) {
+              if (!self || result.outcome == bdkcore::UiOutcome::kWithdrawn) {
+                return;
+              }
+              self->request_.reset();
+              if (result.outcome == bdkcore::UiOutcome::kCompleted &&
+                  result.completion == "grant") {
+                self->Keep();
+              } else if (result.outcome == bdkcore::UiOutcome::kDefaulted) {
+                EngineContents* page =
+                    EngineContents::FromWebContents(contents);
+                Alert alert;
+                alert.title = "Keep this download?";
+                alert.message = "It may be dangerous.";
+                alert.buttons.push_back({"keep", "Keep"});
+                alert.buttons.push_back({"discard", "Discard"});
+                UiPresenters::Get().ShowAlert(
+                    "downloads", page ? &page->host_view() : nullptr,
+                    std::move(alert),
+                    base::BindOnce(
+                        [](base::WeakPtr<ItemWatch> self, int index) {
+                          if (self) {
+                            index == 0 ? self->Keep() : self->Discard();
+                          }
+                        },
+                        self));
+              } else {
+                self->Discard();  // denied, rejected, dropped: never kept
+              }
+            },
+            self, contents));
   }
 
   void Keep() {

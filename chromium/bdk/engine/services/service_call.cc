@@ -6,9 +6,9 @@
 
 #include <utility>
 
-#include "base/json/json_reader.h"
 #include "base/strings/string_number_conversions.h"
 #include "bdk/engine/engine_contents.h"
+#include "bdk/engine/json_util.h"
 #include "chrome/browser/profiles/profile.h"
 
 namespace bdk {
@@ -29,8 +29,7 @@ ServiceCall::ServiceCall(bdkcore::Runtime& runtime,
                          std::shared_ptr<bdkcore::BuiltinCall> call,
                          Profile* profile)
     : call_(std::move(call)), runtime_(&runtime), profile_(profile) {
-  args_ = base::JSONReader::ReadDict(call_->arguments, base::JSON_PARSE_RFC)
-              .value_or(base::DictValue());
+  args_ = ParseJsonDict(call_->arguments).value_or(base::DictValue());
 }
 
 ServiceCall::~ServiceCall() = default;

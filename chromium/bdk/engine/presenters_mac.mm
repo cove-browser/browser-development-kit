@@ -16,6 +16,7 @@
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/strings/sys_string_conversions.h"
+#include "base/task/single_thread_task_runner.h"
 #include "bdk/engine/host_view.h"
 
 // The default presenters on macOS: small AppKit sheets, panels and views
@@ -414,6 +415,14 @@ class FindBarMac : public FindBar {
   BDKFindBarView* __strong view_;
 };
 
+// Answers from a task, as every presenter does: never from inside the call
+// that showed it.
+template <typename T>
+void AnswerLater(base::OnceCallback<void(T)> answer, T value) {
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce(std::move(answer), std::move(value)));
+}
+
 class PresentersMac : public UiPresenters {
  public:
   Dismisser ShowPermission(
@@ -654,6 +663,59 @@ class PresentersMac : public UiPresenters {
     }
     return base::BindOnce([](std::function<void()> remove) { remove(); },
                           std::function<void()>(remove));
+  }
+
+  Dismisser ShowAlert(const std::string& surface,
+                      HostView* view,
+                      Alert alert,
+                      base::OnceCallback<void(int)> answer) override {
+    NSView* anchor = AnchorOf(view);
+    if (!anchor.window.visible) {
+      AnswerLater(std::move(answer), -1);  // nowhere to show it
+      return base::DoNothing();
+    }
+    NSAlert* ns_alert = [[NSAlert alloc] init];
+    ns_alert.messageText = base::SysUTF8ToNSString(alert.title);
+    ns_alert.informativeText = base::SysUTF8ToNSString(alert.message);
+    for (const AlertButton& button : alert.buttons) {
+      [ns_alert addButtonWithTitle:base::SysUTF8ToNSString(button.title)];
+    }
+    const size_t count = alert.buttons.size();
+    __block base::OnceCallback<void(int)> callback = std::move(answer);
+    return PresentAlert(anchor, ns_alert, ^(NSModalResponse response) {
+      const NSInteger index = response - NSAlertFirstButtonReturn;
+      std::move(callback).Run(index >= 0 && static_cast<size_t>(index) < count
+                                  ? static_cast<int>(index)
+                                  : -1);
+    });
+  }
+
+  Dismisser ShowSavePanel(
+      const std::string& surface,
+      HostView* view,
+      const std::string& suggested_name,
+      base::OnceCallback<void(std::optional<std::string>)> answer) override {
+    NSView* anchor = AnchorOf(view);
+    if (!anchor.window.visible) {
+      AnswerLater(std::move(answer), std::optional<std::string>());
+      return base::DoNothing();
+    }
+    NSSavePanel* panel = [NSSavePanel savePanel];
+    panel.nameFieldStringValue = base::SysUTF8ToNSString(suggested_name);
+    __block base::OnceCallback<void(std::optional<std::string>)> callback =
+        std::move(answer);
+    return PresentSheet(
+        anchor, panel,
+        ^(NSWindow* parent, void (^completion)(NSModalResponse)) {
+          [panel beginSheetModalForWindow:parent completionHandler:completion];
+        },
+        ^(NSModalResponse response) {
+          if (response == NSModalResponseOK && panel.URL.path) {
+            std::move(callback).Run(base::SysNSStringToUTF8(panel.URL.path));
+          } else {
+            std::move(callback).Run(std::nullopt);
+          }
+        });
   }
 
   std::unique_ptr<FindBar> ShowFindBar(HostView* view,

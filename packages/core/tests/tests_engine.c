@@ -792,16 +792,50 @@ static int failed_with(const t_capture_t* cap, const char* domain, const char* c
     return cap->has_error && strcmp(cap->domain, domain) == 0 && strcmp(cap->code, code) == 0;
 }
 
+static void command(const char* name, const char* args, char* out, size_t n) {
+    REQUIRE(bdk_testing_command(t_runtime, S(name), S(args), out, n) == BDK_OK);
+}
+
+/* The member `key` of a one-member JSON object the test hook wrote, without the braces and, for a
+   string, without its quotes. */
+static void value_of_member(const char* json, const char* key, char* out, size_t n) {
+    char pattern[32];
+    snprintf(pattern, sizeof pattern, "\"%s\":", key);
+    const char* at = strstr(json, pattern);
+    REQUIRE(at != NULL);
+    at += strlen(pattern);
+    size_t len = strlen(at);
+    while (len > 0 && at[len - 1] == '}')
+        --len;
+    if (len >= 2 && at[0] == '"' && at[len - 1] == '"') {
+        ++at;
+        len -= 2;
+    }
+    REQUIRE(len < n);
+    memcpy(out, at, len);
+    out[len] = '\0';
+}
+
+static void value_of(const char* json, char* out, size_t n) {
+    value_of_member(json, "value", out, n);
+}
+
 /* Reads a preference of the page's profile as Chromium holds it. */
 static void pref_of(bdk_contents_t page, const char* name, char* out, size_t n) {
-    REQUIRE(bdk_testing_services(BDK_TESTING_SERVICES_PREF_JSON, page, S(name), S(""), out, n) ==
-            BDK_OK);
+    char args[256], json[512];
+    snprintf(args, sizeof args, "{\"contents\":\"%llu\",\"name\":\"%s\"}", (unsigned long long)page,
+             name);
+    command("pref.json", args, json, sizeof json);
+    value_of(json, out, n);
 }
 
 static void content_setting_of(bdk_contents_t page, const char* url, const char* kind, char* out,
                                size_t n) {
-    REQUIRE(bdk_testing_services(BDK_TESTING_SERVICES_CONTENT_SETTING, page, S(url), S(kind), out,
-                                 n) == BDK_OK);
+    char args[256], json[128];
+    snprintf(args, sizeof args, "{\"contents\":\"%llu\",\"origin\":\"%s\",\"kind\":\"%s\"}",
+             (unsigned long long)page, url, kind);
+    command("permission.get", args, json, sizeof json);
+    value_of(json, out, n);
 }
 
 static void test_engine_history_is_searched_paginated_and_cleared(void) {
@@ -1077,11 +1111,18 @@ static void test_engine_the_default_browser_status_is_answered(void) {
     CHECK(strstr(cap.json, "\"chromiumVersion\":\"") != NULL);
 }
 
+static void start_capture(bdk_contents_t c, const char* path, const char* format) {
+    char args[256];
+    snprintf(args, sizeof args, "{\"contents\":\"%llu\",\"path\":\"%s\",\"format\":\"%s\"}",
+             (unsigned long long)c, path, format);
+    command("capture.start", args, NULL, 0);
+}
+
 static int wait_for_capture(void) {
     for (int i = 0; i < 400; ++i) {
-        char state[8];
-        REQUIRE(bdk_testing_services(BDK_TESTING_SERVICES_CAPTURE_STATE, 0, S(""), S(""), state,
-                                     sizeof state) == BDK_OK);
+        char json[32], state[8];
+        command("capture.state", "{}", json, sizeof json);
+        value_of_member(json, "state", state, sizeof state);
         if (state[0] != '0')
             return state[0] == '1';
         bdk_testing_run_for(0.05);
@@ -1108,12 +1149,10 @@ static void test_engine_a_page_is_captured_as_an_image_and_as_a_pdf(void) {
     char png[96], pdf[96], head[8];
     snprintf(png, sizeof png, "%s/page.png", dir);
     snprintf(pdf, sizeof pdf, "%s/page.pdf", dir);
-    REQUIRE(bdk_testing_services(BDK_TESTING_SERVICES_CAPTURE_PNG, c, S(png), S(""), NULL, 0) ==
-            BDK_OK);
+    start_capture(c, png, "png");
     CHECK(wait_for_capture());
     CHECK(file_prefix(png, head, 4) == 4 && memcmp(head, "\x89PNG", 4) == 0);
-    REQUIRE(bdk_testing_services(BDK_TESTING_SERVICES_CAPTURE_PDF, c, S(pdf), S(""), NULL, 0) ==
-            BDK_OK);
+    start_capture(c, pdf, "pdf");
     CHECK(wait_for_capture());
     CHECK(file_prefix(pdf, head, 4) == 4 && memcmp(head, "%PDF", 4) == 0);
 }

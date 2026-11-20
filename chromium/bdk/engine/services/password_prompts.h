@@ -10,6 +10,7 @@
 
 #include "base/memory/weak_ptr.h"
 #include "bdk/core/runtime/core_internal.h"
+#include "bdk/engine/ui_request.h"
 #include "chrome/browser/ui/views/tab_dialogs_views.h"
 #include "content/public/browser/web_contents.h"
 
@@ -24,9 +25,9 @@ class BdkTabDialogs : public TabDialogsViews {
   BdkTabDialogs(tabs::TabInterface& tab, content::WebContents* contents);
   ~BdkTabDialogs() override;
 
-  // Lets the next navigation's question be raised: one that was answered is
-  // not raised again.
-  void ResetAnswered() { answered_ = false; }
+  // The tab finished a navigation: a new page may ask a new question, and the
+  // password manager may already have one pending.
+  void OnPageNavigated();
 
   // TabDialogs:
   void ShowManagePasswordsBubble(bool user_action) override;
@@ -36,10 +37,7 @@ class BdkTabDialogs : public TabDialogsViews {
   // What the user (or the application on their behalf) chose.
   enum class Choice { kSave, kNotNow, kNever, kNoInteraction };
 
-  void Finished(bool is_update,
-                bdkcore::UiOutcome outcome,
-                const std::string& completion,
-                const std::string& arguments);
+  void Finished(bool is_update, const UiResult& result);
   // Gives the password manager the answer, if it still waits for one (the
   // page may have moved on while a sheet was open), and closes the bubble.
   void Apply(bool is_update, Choice choice);
@@ -52,12 +50,8 @@ class BdkTabDialogs : public TabDialogsViews {
   base::WeakPtrFactory<BdkTabDialogs> weak_factory_{this};
 };
 
-// Found by running it: with a BDK window the password manager's own route to
-// ShowManagePasswordsBubble() (a toolbar page action, then the tab's bubble
-// manager) never arrives, though the manager's state is pending. So BDK also
-// looks for a pending save or update question shortly after each navigation
-// and raises it itself. A question already raised is not raised again.
-void SchedulePasswordPromptCheck(content::WebContents* contents);
+// Tells the tab's password prompts that its page finished a navigation.
+void OnPageNavigatedForPasswords(content::WebContents* contents);
 
 }  // namespace bdk
 

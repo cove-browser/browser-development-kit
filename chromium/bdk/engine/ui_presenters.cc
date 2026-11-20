@@ -9,10 +9,10 @@
 #include <utility>
 
 #include "base/functional/bind.h"
-#include "base/json/json_writer.h"
 #include "base/memory/weak_ptr.h"
 #include "base/no_destructor.h"
 #include "base/task/sequenced_task_runner.h"
+#include "bdk/engine/json_util.h"
 
 namespace bdk {
 
@@ -59,7 +59,7 @@ class Scripted {
     Script* script = Find(surface);
     PresenterRecord& record = Records()[surface];
     ++record.shown;
-    record.last_payload = base::WriteJson(payload).value_or("{}");
+    record.last_payload = ToJson(payload);
     if (script->answer.FindBool("none").value_or(false)) {
       return base::BindOnce(
           [](std::string surface) { ++Records()[surface].dismissed; }, surface);
@@ -198,6 +198,56 @@ class RoutingPresenters : public UiPresenters {
         });
   }
 
+  Dismisser ShowAlert(const std::string& surface,
+                      HostView* view,
+                      Alert alert,
+                      base::OnceCallback<void(int)> answer) override {
+    if (!Scripted::Find(surface)) {
+      return platform_->ShowAlert(surface, view, std::move(alert),
+                                  std::move(answer));
+    }
+    base::DictValue shown;
+    shown.Set("title", alert.title);
+    shown.Set("message", alert.message);
+    base::ListValue keys;
+    for (const AlertButton& button : alert.buttons) {
+      keys.Append(button.key);
+    }
+    shown.Set("buttons", std::move(keys));
+    return Scripted::Present(
+        surface, shown,
+        [alert = std::move(alert),
+         answer = std::move(answer)](const base::DictValue& a) mutable {
+          const std::string* key = a.FindString("answer");
+          int index = -1;
+          for (size_t i = 0; key && i < alert.buttons.size(); ++i) {
+            if (alert.buttons[i].key == *key) {
+              index = static_cast<int>(i);
+            }
+          }
+          std::move(answer).Run(index);
+        });
+  }
+
+  Dismisser ShowSavePanel(
+      const std::string& surface,
+      HostView* view,
+      const std::string& suggested_name,
+      base::OnceCallback<void(std::optional<std::string>)> answer) override {
+    if (!Scripted::Find(surface)) {
+      return platform_->ShowSavePanel(surface, view, suggested_name,
+                                      std::move(answer));
+    }
+    return Scripted::Present(
+        surface, base::DictValue().Set("suggestedName", suggested_name),
+        [answer = std::move(answer)](const base::DictValue& a) mutable {
+          const std::string* path = a.FindString("answer");
+          std::move(answer).Run(path && *path != "cancel"
+                                    ? std::optional<std::string>(*path)
+                                    : std::nullopt);
+        });
+  }
+
   std::unique_ptr<FindBar> ShowFindBar(HostView* view,
                                        const base::DictValue& payload,
                                        FindBarClient* client) override {
@@ -206,7 +256,7 @@ class RoutingPresenters : public UiPresenters {
     }
     PresenterRecord& record = Records()["find"];
     ++record.shown;
-    record.last_payload = base::WriteJson(payload).value_or("{}");
+    record.last_payload = ToJson(payload);
     return std::make_unique<ScriptedFindBar>();
   }
 
@@ -234,6 +284,31 @@ void ScriptPresenter(const std::string& surface, base::DictValue answer) {
 void ClearPresenterScripts() {
   Scripts().clear();
   Records().clear();
+}
+
+bool PresenterScripted(const std::string& surface) {
+  return Scripted::Find(surface) != nullptr;
+}
+
+std::optional<Dismisser> ScriptedPresent(
+    const std::string& surface,
+    const base::DictValue& payload,
+    base::OnceCallback<void(const base::DictValue&)> answer) {
+  if (!Scripted::Find(surface)) {
+    return std::nullopt;
+  }
+  return Scripted::Present(
+      surface, payload,
+      [answer = std::move(answer)](const base::DictValue& a) mutable {
+        std::move(answer).Run(a);
+      });
+}
+
+void RecordPresented(const std::string& surface,
+                     const base::DictValue& payload) {
+  PresenterRecord& record = Records()[surface];
+  ++record.shown;
+  record.last_payload = ToJson(payload);
 }
 
 PresenterRecord PresenterRecordOf(const std::string& surface) {

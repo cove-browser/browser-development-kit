@@ -9,7 +9,6 @@
 #include <optional>
 #include <string>
 
-#include "base/json/json_writer.h"
 #include "base/values.h"
 #include "bdk/core/runtime/broker_internal.h"
 
@@ -22,7 +21,8 @@ class WebContents;
 namespace bdk {
 
 // What the services share: the Chromium profile a command was called on, the
-// arguments as a dictionary, and the way a result is written.
+// arguments as a dictionary, and the ways a call is rejected (json_util.h has
+// the way a result is written).
 
 // The Chromium profile of a command that names one (every command of the
 // passwords and autofill namespaces does), or null when it is not open.
@@ -31,9 +31,6 @@ Profile* ProfileOfCall(const bdkcore::BuiltinCall& call);
 // The command's arguments. The broker already checked them against the
 // command's types, so this is an object.
 base::DictValue ArgumentsOf(const bdkcore::BuiltinCall& call);
-
-std::string ToJson(const base::DictValue& value);
-std::string ToJson(const base::ListValue& value);
 
 // Answers `call` with a failure from the broker's own domain.
 void RejectCall(const bdkcore::BuiltinCall& call,

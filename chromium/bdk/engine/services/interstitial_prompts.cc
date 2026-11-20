@@ -17,8 +17,7 @@
 #include "base/values.h"
 #include "bdk/core/include/bdk/bdk_ids.h"
 #include "bdk/engine/engine_contents.h"
-#include "bdk/engine/services/password_prompts.h"
-#include "bdk/engine/services/ui_requests.h"
+#include "bdk/engine/ui_request.h"
 #include "components/safe_browsing/content/browser/safe_browsing_blocking_page.h"
 #include "components/security_interstitials/content/security_interstitial_page.h"
 #include "components/security_interstitials/content/security_interstitial_tab_helper.h"
@@ -113,7 +112,7 @@ void Raise(base::WeakPtr<content::WebContents> weak_contents,
   if (!contents) {
     return;
   }
-  EngineContents* page = FindEngineContents(contents);
+  EngineContents* page = EngineContents::FromWebContents(contents);
   SecurityInterstitialPage* interstitial = CommittedInterstitial(contents);
   if (!page || !interstitial) {
     return;
@@ -160,24 +159,30 @@ void Raise(base::WeakPtr<content::WebContents> weak_contents,
   base::WeakPtr<content::WebContents> weak = contents->GetWeakPtr();
   Open()[contents] = RaiseUiRequest(
       *page, surface, payload,
-      [weak, url](bdkcore::UiOutcome outcome, const std::string& completion,
-                  const std::string&) {
-        // Whatever does not say "proceed" goes back (the router already turns
-        // a rejection, a dropped request and a released one into "go_back").
-        // A withdrawn request means the page moved on by itself.
-        if (!weak || outcome == bdkcore::UiOutcome::kWithdrawn ||
-            outcome == bdkcore::UiOutcome::kDefaulted) {
-          return;  // Chromium's page stays; nothing was decided
-        }
-        SecurityInterstitialPage* page = CommittedInterstitial(weak.get());
-        if (!page || weak->GetLastCommittedURL() != url) {
-          return;
-        }
-        const bool proceed = outcome == bdkcore::UiOutcome::kCompleted &&
-                             completion == "proceed";
-        // The page refuses a proceed it does not allow (HSTS, pinning) as well.
-        page->CommandReceived(proceed ? kCommandProceed : kCommandDontProceed);
-      });
+      base::BindOnce(
+          [](base::WeakPtr<content::WebContents> weak, GURL url,
+             const UiResult& result) {
+            // Whatever does not say "proceed" goes back (the router already
+            // turns a rejection, a dropped request and a released one into
+            // "go_back"). A withdrawn request means the page moved on by
+            // itself.
+            if (!weak || result.outcome == bdkcore::UiOutcome::kWithdrawn ||
+                result.outcome == bdkcore::UiOutcome::kDefaulted) {
+              return;  // Chromium's page stays; nothing was decided
+            }
+            SecurityInterstitialPage* page = CommittedInterstitial(weak.get());
+            if (!page || weak->GetLastCommittedURL() != url) {
+              return;
+            }
+            const bool proceed =
+                result.outcome == bdkcore::UiOutcome::kCompleted &&
+                result.completion == "proceed";
+            // The page refuses a proceed it does not allow (HSTS, pinning) as
+            // well.
+            page->CommandReceived(proceed ? kCommandProceed
+                                          : kCommandDontProceed);
+          },
+          weak, url));
 }
 
 }  // namespace
@@ -185,7 +190,6 @@ void Raise(base::WeakPtr<content::WebContents> weak_contents,
 void OnPrimaryNavigationFinished(EngineContents& page,
                                  content::NavigationHandle* handle) {
   content::WebContents* contents = page.web_contents();
-  SchedulePasswordPromptCheck(contents);
   auto previous = Open().find(contents);
   if (previous != Open().end()) {
     bdkcore::withdraw_ui_request(*previous->second);

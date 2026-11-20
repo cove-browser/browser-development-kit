@@ -9,9 +9,9 @@
 #include <utility>
 
 #include "base/containers/span.h"
-#include "base/json/json_reader.h"
-#include "base/json/json_writer.h"
+#include "bdk/engine/engine_contents.h"
 #include "bdk/engine/host_view.h"
+#include "bdk/engine/json_util.h"
 #include "bdk/engine/ui_presenters.h"
 
 namespace bdk {
@@ -23,12 +23,20 @@ bool SurfaceAvailable(const std::shared_ptr<bdkcore::Contents>& contents,
   return rt && bdkcore::ui_surface_available(*rt, surface);
 }
 
+bool SurfaceHasHandler(const std::shared_ptr<bdkcore::Contents>& contents,
+                       uint32_t surface) {
+  std::shared_ptr<bdkcore::Runtime> rt =
+      contents ? contents->rt.lock() : nullptr;
+  return rt && rt->ui_handlers.count(surface) > 0;
+}
+
 std::shared_ptr<bdkcore::Request> RaiseUiRequest(
     const std::shared_ptr<bdkcore::Contents>& contents,
     uint32_t surface,
     const base::DictValue& payload,
     UiFinish finish,
-    HostView* anchor_view) {
+    HostView* anchor_view,
+    std::optional<std::array<double, 2>> point_in_view) {
   std::shared_ptr<bdkcore::Runtime> rt =
       contents ? contents->rt.lock() : nullptr;
   if (!rt || rt->shutting) {
@@ -45,6 +53,11 @@ std::shared_ptr<bdkcore::Request> RaiseUiRequest(
     anchor[1] = frame[1];
     anchor[2] = frame[2];
     anchor[3] = 0;
+    if (point_in_view) {
+      anchor[0] += (*point_in_view)[0];
+      anchor[1] += (*point_in_view)[1];
+      anchor[2] = 0;
+    }
   }
   // The lambda lives in the request, and the router calls it while the
   // request is alive, so it may read the request's gesture.
@@ -56,12 +69,8 @@ std::shared_ptr<bdkcore::Request> RaiseUiRequest(
     UiResult result;
     result.outcome = outcome;
     result.completion = completion;
-    if (!args.empty()) {
-      std::optional<base::DictValue> parsed = base::JSONReader::ReadDict(
-          args, base::JSON_PARSE_CHROMIUM_EXTENSIONS);
-      if (parsed) {
-        result.args = std::move(*parsed);
-      }
+    if (std::optional<base::DictValue> parsed = ParseJsonDict(args)) {
+      result.args = std::move(*parsed);
     }
     result.gesture_ok = UiPresenters::Get().IsRecentGesture(raw->gesture);
     if (*shared_finish) {
@@ -69,6 +78,14 @@ std::shared_ptr<bdkcore::Request> RaiseUiRequest(
     }
   };
   return bdkcore::raise_ui_request(rt, request);
+}
+
+std::shared_ptr<bdkcore::Request> RaiseUiRequest(EngineContents& page,
+                                                 uint32_t surface,
+                                                 const base::DictValue& payload,
+                                                 UiFinish finish) {
+  return RaiseUiRequest(page.Core(), surface, payload, std::move(finish),
+                        &page.host_view());
 }
 
 }  // namespace bdk

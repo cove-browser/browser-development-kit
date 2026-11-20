@@ -161,6 +161,7 @@ HostContext& HostContexts::Create(Profile* profile,
   BrowserWindowInterface* browser = CreateBrowserWindow(std::move(params));
   CHECK(browser);
   CHECK(g_created_window);
+  g_created_window->InstallAutofillBubbleHandler();
   std::unique_ptr<HostContext> context(new HostContext(profile, window));
   context->browser_ = browser->GetWeakPtr();
   if (window) {
