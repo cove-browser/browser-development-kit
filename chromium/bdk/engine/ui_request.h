@@ -11,6 +11,7 @@
 #include "base/functional/callback.h"
 #include "base/values.h"
 #include "bdk/core/runtime/core_internal.h"
+#include "bdk/engine/services/service_common.h"  // ToJson
 
 namespace bdk {
 
@@ -46,9 +47,6 @@ std::shared_ptr<bdkcore::Request> RaiseUiRequest(
 // web API behind it reports itself unavailable instead of raising a request.
 bool SurfaceAvailable(const std::shared_ptr<bdkcore::Contents>& contents,
                       uint32_t surface);
-
-// The payload text of a dictionary, for the requests.
-std::string ToJson(const base::DictValue& dict);
 
 }  // namespace bdk
 

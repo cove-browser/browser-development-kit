@@ -16,10 +16,6 @@
 
 namespace bdk {
 
-std::string ToJson(const base::DictValue& dict) {
-  return base::WriteJson(dict).value_or("{}");
-}
-
 bool SurfaceAvailable(const std::shared_ptr<bdkcore::Contents>& contents,
                       uint32_t surface) {
   std::shared_ptr<bdkcore::Runtime> rt =
