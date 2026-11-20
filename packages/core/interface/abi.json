@@ -76,7 +76,8 @@
         "FOCUS_CHANGED": 6,
         "CLOSED": 7,
         "RENDERER_GONE": 8,
-        "VISIBILITY_CHANGED": 9
+        "VISIBILITY_CHANGED": 9,
+        "FIND_RESULT": 10
       }
     },
     {
