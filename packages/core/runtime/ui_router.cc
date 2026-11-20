@@ -461,16 +461,22 @@ std::shared_ptr<Request> raise_ui_request(const std::shared_ptr<Runtime>& rt,
     return r;
 }
 
+void withdraw_ui_request(Request& r) {
+    if (r.finished)
+        return;
+    if (r.withdrawn) {
+        void (*cb)(void*) = r.withdrawn;
+        void* ctx = r.wctx;
+        post([cb, ctx] { cb(ctx); });
+    }
+    finish_request(r, UiOutcome::kWithdrawn);
+}
+
 void withdraw_contents_requests(const std::shared_ptr<Runtime>& rt, bdk_contents_t contents) {
     for (auto& r : std::vector<std::shared_ptr<Request>>(rt->requests)) {
-        if (r->finished || (contents && r->contents != contents))
+        if (contents && r->contents != contents)
             continue;
-        if (r->withdrawn) {
-            void (*cb)(void*) = r->withdrawn;
-            void* ctx = r->wctx;
-            post([cb, ctx] { cb(ctx); });
-        }
-        finish_request(*r, UiOutcome::kWithdrawn);
+        withdraw_ui_request(*r);
     }
 }
 
@@ -551,7 +557,9 @@ bdk_status_t ui_complete(Request& r, const std::string& completion, const std::s
             }
         }
     }
+    r.gesture = gesture;
     finish_request(r, UiOutcome::kCompleted, completion, arguments);
+    r.gesture = bdk_native_handle_t{};
     return BDK_OK;
 }
 
