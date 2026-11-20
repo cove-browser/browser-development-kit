@@ -49,6 +49,7 @@ session (a logged-in Mac or the hosted macOS runner).
 | Calls | Asynchronous ABI calls bridge to `async throws` with a continuation resumed once; cancelling the task calls `bdk_call_cancel` and throws `broker.cancelled` | T-SWF-02 |
 | Views | `BDKWebView` (hosts `bdk_contents_native_view`, shows URL and title when the runtime reports `platform.unsupported`, registers each `NSWindow` once with `bdk_window_register` and unregisters it when it closes, forwards focus), `BDKWebContentsView` (SwiftUI), `BDKKeyboardDelegate` | T-SWF-03 |
 | UI requests | `BDKUIHandlers` (`config.ui`, `runtime.ui`): one `Surface<Request>` per surface with `setHandler(_:)` and `mode`; `BDKUIResponse` (`.handled`, `.useDefault`, `.reject`); `BDKUIRequest` and a typed subclass per surface (see below) | T-SWF-04 |
+| Settings | `BDKSettingKey`, `BDKSettingRegistry` (`config.settings`), typed `settings.get`, `set`, `reset`, `describe` on `BDKSettings`, `config.declarations` | T-SVC-08 |
 | Commands | `BDKCommand`, `BDKEvent`, `BDKCommandRegistry` (`config.commands`), `BDKCommands` (`runtime.commands`: `register`, `declare`, `emit`, `events`, `invoke`), `BDKCommandContext`, `BDKDeclarations` | T-SVC-05 |
 
 Pages and profiles dropped without `close()` are closed on deinit with a warning in the log.
@@ -119,8 +120,8 @@ drives it). A thrown `BDKError` reaches the caller with its domain and code; any
 between start and the freeze, which `BDKRuntime.start` does at once; they exist for tests and fail afterwards with
 `config.registrationAfterStart`.
 
-Declarations for code generation: `config.commands.declarations` (`BDKDeclarations`) needs no runtime.
-`declarations.write(to:)` writes `bdk.commands.json`, `{"version":1,"commands":[…],"events":[…]}` sorted by name with
+Declarations for code generation: `config.declarations` (`BDKDeclarations`: commands, events and settings; `config.commands.declarations` has no settings) needs no runtime.
+`declarations.write(to:)` writes `bdk.commands.json`, `{"version":1,"commands":[…],"events":[…],"settings":[…]}` sorted by name with
 sorted keys, so equal input gives equal bytes. Each command entry is an interface-definition entry (`name`,
 `capability`, `callers`, `profile`, `args`, `result`, optional `requires`, `progress`, `types`) with the same type
 expressions as `packages/core/interface`. The extractor (T-JS-02, T-CLI-04) is a small executable target of the
@@ -200,8 +201,8 @@ so a test can start a load and act on it (supersede it, stop it) before the stub
 
 | Left out | Why | Task |
 |---|---|---|
-| Page registration, application settings and providers on `BDKConfiguration`; wrappers for services with no definition yet (search, translation, extensions, favicons, top sites; page-scoped print and capture) | The ABI declares `bdk_page_handler_register`, `bdk_app_setting_register` and `bdk_provider_register`; the wrappers are generated, so each arrives with its definition | T-ABI-03, T-SWF-04, T-SVC-06 |
-| `BDKSettingKey<T>` typed keys; `BDKProfiles.events` for the `profiles.*` events | The keys need the setting registration; `profiles` is a native namespace | T-SVC-05, T-ABI-03 |
+| Page registration and providers on `BDKConfiguration`; wrappers for services with no definition yet (search, translation, extensions, favicons, top sites; page-scoped print and capture) | The ABI declares `bdk_page_handler_register` and `bdk_provider_register`; the wrappers are generated, so each arrives with its definition | T-ABI-03, T-SWF-04, T-SVC-06 |
+| `BDKProfiles.events` for the `profiles.*` events | `profiles` is a native namespace | T-ABI-03 |
 | `BDKWindow`, anchors, window delegate, host contexts | `bdk_window_register` takes a window and a kind and nothing more yet; the other `bdk_window_*` functions are not declared | T-UIR-01, T-ADP-06 |
 | Page commands (`perform`, `canPerform`), find, capture, print, translation, scripting, user scripts | Not declared in the ABI | T-UIR-04, T-UIR-06, T-SVC-06, T-AUT-03 |
 | `BDKRuntime.contents` lookup by id, `BDKProfiles.events`, `ProfileDescriptor.lastUsed`, profile rename by id | Not in the ABI (a rename needs an open profile handle) | T-ABI-03 |

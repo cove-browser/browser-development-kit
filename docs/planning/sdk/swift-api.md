@@ -835,7 +835,14 @@ config.settings.register(
 
 Application settings are stored with browser settings and read through the same `settings.get` and `settings.set` commands. `exposedToPages: false` keeps a key out of reach of every page, whatever its capabilities.
 
-Not built at the end of M3: T-SVC-05 shipped commands and events without setting registration, so keys are strings (T-SVC-08, M4).
+Settled in T-SVC-08 (2026-11-20):
+
+- `BDKSettingKey<Value>` (`Value: Codable & Sendable`) names a setting; `config.settings` is a value (`BDKSettingRegistry`) like `config.commands`, `scope` defaults to `.profile` and `exposedToPages` to `false`. The name must start with `app.` (`config.nameNotApp`), a name registered twice is `config.duplicateName`, and a default that cannot be encoded is `config.settingDefaultInvalid`; all are start errors, and the core checks the first two again in `bdk_app_setting_register`.
+- The type of a key is the JSON kind of its default (`boolean`, `number`, `string`, `array`, `object`; a null default makes it `json`, which takes any value). `settings.set` with another kind is `broker.invalidArguments`.
+- `profile.settings.get(key)`, `set(key, value)`, `reset(key)` and `describe(key)` sit beside the string overloads, on `profile.settings` and on `runtime.settings`. A `profile` scoped key needs a profile; an `application` scoped key has one value for every profile.
+- The shared core answers `app.` keys, so the stub and the engine behave the same; the engine only keeps the values, in `BDK App Settings.json` in the profile's directory (profile scope) or in the user data directory (application scope). A private profile keeps none. An unregistered `app.` key reads as `null` and is refused for `set`, `reset` and `describe`. `settings.changed` is emitted for a change.
+- `exposedToPages: false` refuses every page and every session with `capability.denied`, whatever capabilities it holds, for all five `settings.*` commands (`getMany` too, if any key is hidden). Swift calls are never refused. One `getMany` cannot mix `app.` keys with browser keys.
+- `config.declarations` (`BDKDeclarations`) lists commands, events and `settings` (`key`, `type`, `default`, `scope`, `exposedToPages`) for code generation.
 
 ## 13. Automation
 

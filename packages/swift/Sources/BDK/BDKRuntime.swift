@@ -82,6 +82,7 @@ public final class BDKRuntime {
         freezingRegistrations: Bool = true
     ) throws -> BDKRuntime {
         try configuration.commands.validate()
+        try configuration.settings.validate()
         var handle: bdk_runtime_t = 0
         var error: bdk_error_t = 0
         let strings = [
@@ -142,11 +143,12 @@ public final class BDKRuntime {
 
     // MARK: Registrations
 
-    /// Hands the configuration's UI handlers, commands and events to the runtime. Both are
+    /// Hands the configuration's UI handlers, commands, events and settings to the runtime. Both are
     /// registrations, so this runs before the freeze.
     private func register(_ configuration: BDKConfiguration) throws {
         try ui.attach(to: self, from: configuration)
         try commands.adopt(configuration.commands)
+        try configuration.settings.adopt(into: self)
     }
 
     /// Freezes the route and capability tables. Registrations after this fail with

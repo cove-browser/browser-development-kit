@@ -428,7 +428,7 @@ Planned keys for the `settings.*` commands, `[settings.defaults]` and `@bdk/inte
 | `performance.memorySaver.exceptions` | array of site patterns | A | Added (S15). Sites whose pages are never discarded automatically |
 | `extensions.developerMode` | boolean | P | When `[extensions] developer_mode = "user"` |
 | `devtools.dock` | enum | P | The user's last dock choice |
-| `app.*` | declared in Swift | P or A | Application settings ([swift-api.md](swift-api.md) 12.3) |
+| `app.*` | declared in Swift | P or A | Application settings ([swift-api.md](swift-api.md) 12.3). Answered by the core: the default is the declared one, and a key declared with `exposedToPages: false` is refused (`capability.denied`) to every page and session, whatever its capabilities |
 
 Rules:
 

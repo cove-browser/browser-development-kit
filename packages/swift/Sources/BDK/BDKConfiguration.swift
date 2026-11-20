@@ -18,6 +18,15 @@ public struct BDKConfiguration: Sendable {
     public var ui = BDKUIHandlers()
     /// Application commands and events (swift-api.md section 12).
     public var commands = BDKCommandRegistry()
+    /// Application settings (swift-api.md section 12.3).
+    public var settings = BDKSettingRegistry()
+
+    /// Everything the application declares, for code generation: commands, events and settings.
+    public var declarations: BDKDeclarations {
+        BDKDeclarations(
+            commands: commands.commands.map(\.declaration), events: commands.events,
+            settings: settings.settings)
+    }
 
     public init(resolvedJSON: String, bundleURL: URL? = nil, launch: LaunchOptions = .init()) {
         self.resolvedJSON = resolvedJSON
