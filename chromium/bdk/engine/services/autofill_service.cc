@@ -16,6 +16,7 @@
 #include "base/uuid.h"
 #include "bdk/core/include/bdk/bdk_ids.h"
 #include "bdk/engine/json_util.h"
+#include "bdk/engine/services/events.h"
 #include "bdk/engine/services/service_common.h"
 #include "chrome/browser/autofill/personal_data_manager_factory.h"
 #include "chrome/browser/browser_process.h"
@@ -342,7 +343,53 @@ void ExecuteCards(const std::shared_ptr<BuiltinCall>& call,
           call));
 }
 
+// Reports that a profile's addresses or cards changed (autofill.changed). The
+// data managers say only that something changed once their pending writes have
+// finished, not what, so `id` is empty and `kind` is "address" or "card".
+class AutofillEvents : public ServiceEvents,
+                       public autofill::AddressDataManager::Observer,
+                       public autofill::PaymentsDataManager::Observer {
+ public:
+  AutofillEvents(autofill::PersonalDataManager& pdm,
+                 std::weak_ptr<bdkcore::Profile> profile)
+      : pdm_(pdm.GetWeakPtr()), profile_(std::move(profile)) {
+    pdm.address_data_manager().AddObserver(this);
+    pdm.payments_data_manager().AddObserver(this);
+  }
+
+  ~AutofillEvents() override {
+    if (pdm_) {
+      pdm_->address_data_manager().RemoveObserver(this);
+      pdm_->payments_data_manager().RemoveObserver(this);
+    }
+  }
+
+  void OnAddressDataChanged() override { Emit("address"); }
+  void OnPaymentsDataChanged() override { Emit("card"); }
+
+ private:
+  void Emit(const char* kind) {
+    EmitEvent(profile_, "autofill.changed",
+              std::string("{\"kind\":\"") + kind +
+                  "\",\"id\":\"\",\"source\":\"application\"}");
+  }
+
+  base::WeakPtr<autofill::PersonalDataManager> pdm_;
+  std::weak_ptr<bdkcore::Profile> profile_;
+};
+
 }  // namespace
+
+std::unique_ptr<ServiceEvents> CreateAutofillEvents(
+    Profile* profile,
+    std::weak_ptr<bdkcore::Profile> bdk_profile) {
+  autofill::PersonalDataManager* pdm =
+      autofill::PersonalDataManagerFactory::GetForBrowserContext(profile);
+  if (!pdm) {
+    return nullptr;
+  }
+  return std::make_unique<AutofillEvents>(*pdm, std::move(bdk_profile));
+}
 
 bool ExecuteAutofillCommand(bdkcore::Runtime& rt,
                             const std::shared_ptr<BuiltinCall>& call) {

@@ -1250,6 +1250,154 @@ static void test_engine_a_certificate_error_surface_cannot_be_disabled(void) {
     CHECK(rt == 0);
 }
 
+/* ---- service events: cookies, passwords and autofill (T-SVC-07) ---- */
+
+/* The payloads of the events of one name a subscription received, one per line. */
+typedef struct {
+    int count;
+    char payloads[4096];
+} event_log_t;
+
+static void on_service_event(void* ctx, uint32_t id, bdk_string_t name, bdk_string_t payload) {
+    event_log_t* log = (event_log_t*)ctx;
+    (void)id;
+    (void)name;
+    size_t used = strlen(log->payloads);
+    ++log->count;
+    snprintf(log->payloads + used, sizeof log->payloads - used, "%.*s\n", (int)payload.length,
+             payload.data);
+}
+
+static void subscribe_to(const char* event, bdk_profile_t profile, event_log_t* log) {
+    bdk_invoke_options_t o;
+    memset(&o, 0, sizeof o);
+    o.struct_size = sizeof o;
+    o.profile = profile;
+    memset(log, 0, sizeof *log);
+    REQUIRE(bdk_subscribe_named(t_runtime, S(event), S(""), &o, on_service_event, log, NULL) != 0);
+}
+
+/* Pumps, in real time, until `text` is in the log's payloads. */
+static int wait_for_payload(const event_log_t* log, const char* text) {
+    for (int i = 0; i < 100 && !strstr(log->payloads, text); ++i) {
+        t_pump();
+        bdk_testing_run_for(0.05);
+    }
+    if (!strstr(log->payloads, text))
+        printf("    no event with \"%s\"; got:\n%s", text, log->payloads);
+    return strstr(log->payloads, text) != NULL;
+}
+
+static void test_engine_cookie_changes_are_reported_with_their_values(void) {
+    t_start_frozen();
+    bdk_profile_t p = t_new_profile("Cookie events");
+    bdk_profile_t other = t_new_profile("Other cookie events");
+    event_log_t log, other_log;
+    subscribe_to("cookies.changed", p, &log);
+    subscribe_to("cookies.changed", other, &other_log);
+    t_capture_t cap;
+    invoke_ok(p, "cookies.set",
+              "{\"cookie\":{\"name\":\"sid\",\"value\":\"v1\",\"domain\":\"cookies.example\","
+              "\"path\":\"/\",\"secure\":true,\"httpOnly\":true,\"sameSite\":\"lax\","
+              "\"expires\":4102444800000}}",
+              &cap);
+    CHECK(wait_for_payload(&log, "\"value\":\"v1\""));
+    CHECK(strstr(log.payloads, "\"name\":\"sid\"") != NULL &&
+          strstr(log.payloads, "\"domain\":\".cookies.example\"") != NULL &&
+          strstr(log.payloads, "\"removed\":false") != NULL &&
+          strstr(log.payloads, "\"source\":\"application\"") != NULL);
+    CHECK(strstr(log.payloads, "\"secure\":true") != NULL &&
+          strstr(log.payloads, "\"httpOnly\":true") != NULL &&
+          strstr(log.payloads, "\"sameSite\":\"lax\"") != NULL);
+
+    /* Replacing a cookie is one change, not a removal and an insertion. */
+    invoke_ok(p, "cookies.set",
+              "{\"cookie\":{\"name\":\"sid\",\"value\":\"v2\",\"domain\":\"cookies.example\","
+              "\"path\":\"/\",\"secure\":true,\"httpOnly\":true,\"sameSite\":\"lax\"}}",
+              &cap);
+    CHECK(wait_for_payload(&log, "\"value\":\"v2\""));
+    CHECK(strstr(log.payloads, "\"removed\":true") == NULL);
+
+    invoke_ok(p, "cookies.remove",
+              "{\"name\":\"sid\",\"domain\":\".cookies.example\",\"path\":\"/\"}", &cap);
+    CHECK(wait_for_payload(&log, "\"removed\":true"));
+    CHECK(other_log.count == 0); /* another profile's subscription hears nothing */
+}
+
+#define COOKIE_PAGE_URL "https://cookie-page.example/"
+
+static void test_engine_a_cookie_set_by_a_page_is_reported(void) {
+    t_start_frozen();
+    bdk_profile_t p = t_new_profile("Page cookie events");
+    event_log_t log;
+    subscribe_to("cookies.changed", p, &log);
+    script_page(COOKIE_PAGE_URL, "text/html", "<!doctype html><title>cookie page</title>", "");
+    bdk_contents_t c = new_active_page(p);
+    bdk_error_t err = 0;
+    REQUIRE(bdk_contents_load(c, S(COOKIE_PAGE_URL), &err) == BDK_OK);
+    REQUIRE(wait_for_title(c, "cookie page"));
+    run_script(c, "document.cookie='seen=by-page; path=/'", 0);
+    CHECK(wait_for_payload(&log, "\"name\":\"seen\""));
+    CHECK(strstr(log.payloads, "\"value\":\"by-page\"") != NULL &&
+          strstr(log.payloads, "\"domain\":\"cookie-page.example\"") != NULL &&
+          strstr(log.payloads, "\"removed\":false") != NULL);
+    close_window();
+}
+
+static void test_engine_password_changes_are_reported(void) {
+    t_start_frozen();
+    bdk_profile_t p = t_new_profile("Password events");
+    event_log_t changed, issues;
+    subscribe_to("passwords.changed", p, &changed);
+    subscribe_to("passwords.issuesChanged", p, &issues);
+    t_capture_t cap;
+    invoke_ok(p, "passwords.add",
+              "{\"origin\":\"https://events.example\",\"username\":\"ada\","
+              "\"password\":\"s3cret\"}",
+              &cap);
+    char id[32], args[160];
+    REQUIRE(t_json_string(cap.json, "id", id, sizeof id));
+    CHECK(wait_for_payload(&changed, "\"change\":\"added\""));
+    char want[96];
+    snprintf(want, sizeof want, "\"id\":\"%s\"", id);
+    CHECK(strstr(changed.payloads, want) != NULL &&
+          strstr(changed.payloads, "\"source\":\"application\"") != NULL);
+    CHECK(strstr(changed.payloads, "s3cret") == NULL); /* never in an event */
+
+    set_authentication("allow");
+    snprintf(args, sizeof args, "{\"id\":\"%s\",\"password\":\"n3w\"}", id);
+    invoke_ok(p, "passwords.update", args, &cap);
+    CHECK(wait_for_payload(&changed, "\"change\":\"updated\""));
+
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", id);
+    invoke_ok(p, "passwords.remove", args, &cap);
+    CHECK(wait_for_payload(&changed, "\"change\":\"removed\""));
+    /* No command flags a login as insecure without a leak-check provider (M6), so the issues
+       never change here. */
+    CHECK(issues.count == 0);
+}
+
+static void test_engine_autofill_changes_are_reported(void) {
+    t_start_frozen();
+    bdk_profile_t p = t_new_profile("Autofill events");
+    event_log_t log;
+    subscribe_to("autofill.changed", p, &log);
+    t_capture_t cap;
+    invoke_ok(p, "autofill.addresses.add",
+              "{\"fields\":{\"fullName\":\"Ada Lovelace\",\"city\":\"London\","
+              "\"country\":\"GB\"}}",
+              &cap);
+    CHECK(wait_for_payload(&log, "\"kind\":\"address\""));
+    CHECK(strstr(log.payloads, "\"source\":\"application\"") != NULL);
+    CHECK(strstr(log.payloads, "Lovelace") == NULL); /* the event carries no data */
+    invoke_ok(p, "autofill.cards.add",
+              "{\"card\":{\"holder\":\"Ada Lovelace\",\"number\":\"4111111111111111\","
+              "\"expiryMonth\":12,\"expiryYear\":2099}}",
+              &cap);
+    CHECK(wait_for_payload(&log, "\"kind\":\"card\""));
+    CHECK(strstr(log.payloads, "4111") == NULL);
+}
+
 const t_test_t t_engine_prompt_tests[] = {
     {"engine_window_print_raises_a_printing_request_for_a_handler",
      test_engine_window_print_raises_a_printing_request_for_a_handler},
@@ -1294,6 +1442,11 @@ const t_test_t t_engine_prompt_tests[] = {
      test_engine_autofill_addresses_are_stored_updated_and_removed},
     {"engine_autofill_cards_are_masked_and_revealing_needs_authentication",
      test_engine_autofill_cards_are_masked_and_revealing_needs_authentication},
+    {"engine_cookie_changes_are_reported_with_their_values",
+     test_engine_cookie_changes_are_reported_with_their_values},
+    {"engine_a_cookie_set_by_a_page_is_reported", test_engine_a_cookie_set_by_a_page_is_reported},
+    {"engine_password_changes_are_reported", test_engine_password_changes_are_reported},
+    {"engine_autofill_changes_are_reported", test_engine_autofill_changes_are_reported},
     {"engine_ui_autofill_a_submitted_address_is_saved_with_a_gesture_and_offered_next_time",
      test_engine_a_submitted_address_is_saved_with_a_gesture_and_offered_next_time},
     {"engine_ui_autofill_a_rejected_address_prompt_saves_nothing",

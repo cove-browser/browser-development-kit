@@ -24,10 +24,13 @@
 #include "bdk/core/include/bdk/bdk_ids.h"
 #include "bdk/engine/json_util.h"
 #include "bdk/engine/services/autofill_service.h"
+#include "bdk/engine/services/events.h"
 #include "bdk/engine/services/service_common.h"
+#include "bdk/engine/services/services.h"
 #include "chrome/browser/password_manager/factories/profile_password_store_factory.h"
 #include "components/keyed_service/core/service_access_type.h"
 #include "components/password_manager/core/browser/password_form.h"
+#include "components/password_manager/core/browser/password_store/password_store_change.h"
 #include "components/password_manager/core/browser/password_store/password_store_consumer.h"
 #include "components/password_manager/core/browser/password_store/password_store_interface.h"
 #include "components/password_manager/core/browser/password_store/stored_credential.h"
@@ -527,7 +530,67 @@ void Import(const std::shared_ptr<BuiltinCall>& call, const Store& store) {
           call, store));
 }
 
+// Reports the changes to the profile's saved logins (passwords.changed) and,
+// when a change touched the insecure-credential flags of a login, that the
+// issues changed (passwords.issuesChanged). A login that is renamed is stored
+// under a new key, so it is reported as a removal and an addition. Sites the
+// user chose never to save are not logins and are not reported.
+class PasswordEvents : public ServiceEvents,
+                       public PasswordStoreInterface::Observer {
+ public:
+  PasswordEvents(Store store, std::weak_ptr<bdkcore::Profile> profile)
+      : store_(std::move(store)), profile_(std::move(profile)) {
+    store_->AddObserver(this);
+  }
+
+  ~PasswordEvents() override { store_->RemoveObserver(this); }
+
+  void OnLoginsChanged(
+      PasswordStoreInterface*,
+      const password_manager::PasswordStoreChangeList& changes) override {
+    bool issues_changed = false;
+    for (const password_manager::PasswordStoreChange& change : changes) {
+      issues_changed |= change.insecure_credentials_changed().value();
+      if (change.credential().blocked_by_user) {
+        continue;
+      }
+      const char* kind = "updated";
+      if (change.type() == password_manager::PasswordStoreChange::ADD) {
+        kind = "added";
+      } else if (change.type() ==
+                 password_manager::PasswordStoreChange::REMOVE) {
+        kind = "removed";
+      }
+      EmitEvent(profile_, "passwords.changed",
+                "{\"id\":" + JsonString(IdOf(change.credential())) +
+                    ",\"change\":\"" + kind + "\",\"source\":\"application\"}");
+    }
+    if (issues_changed) {
+      EmitEvent(profile_, "passwords.issuesChanged", "{}");
+    }
+  }
+
+  void OnLoginsRetained(PasswordStoreInterface*,
+                        const std::vector<StoredCredential>&) override {}
+
+ private:
+  Store store_;
+  std::weak_ptr<bdkcore::Profile> profile_;
+};
+
 }  // namespace
+
+std::unique_ptr<ServiceEvents> CreatePasswordEvents(
+    Profile* profile,
+    std::weak_ptr<bdkcore::Profile> bdk_profile) {
+  Store store = ProfilePasswordStoreFactory::GetForProfile(
+      profile, ServiceAccessType::EXPLICIT_ACCESS);
+  if (!store) {
+    return nullptr;
+  }
+  return std::make_unique<PasswordEvents>(std::move(store),
+                                          std::move(bdk_profile));
+}
 
 bool ExecutePasswordsOrAutofillCommand(
     bdkcore::Runtime& rt,

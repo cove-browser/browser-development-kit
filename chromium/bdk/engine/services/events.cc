@@ -38,9 +38,7 @@ using ProfilePtr = std::weak_ptr<bdkcore::Profile>;
 void Emit(const ProfilePtr& profile,
           const char* name,
           const std::string& payload) {
-  if (std::shared_ptr<bdkcore::Profile> p = profile.lock()) {
-    EmitEvent(p, name, payload);
-  }
+  EmitEvent(profile, name, payload);
 }
 
 class HistoryEvents : public history::HistoryServiceObserver {
@@ -246,12 +244,18 @@ class ProfileEvents : public ServiceEvents {
     if (content::DownloadManager* manager = profile->GetDownloadManager()) {
       downloads_ = std::make_unique<DownloadEvents>(manager, bdk_profile);
     }
+    cookies_ = CreateCookieEvents(profile, bdk_profile);
+    passwords_ = CreatePasswordEvents(profile, bdk_profile);
+    autofill_ = CreateAutofillEvents(profile, bdk_profile);
   }
 
  private:
   std::unique_ptr<HistoryEvents> history_;
   std::unique_ptr<BookmarkEvents> bookmarks_;
   std::unique_ptr<DownloadEvents> downloads_;
+  std::unique_ptr<ServiceEvents> cookies_;
+  std::unique_ptr<ServiceEvents> passwords_;
+  std::unique_ptr<ServiceEvents> autofill_;
 };
 
 }  // namespace
@@ -260,6 +264,14 @@ std::unique_ptr<ServiceEvents> CreateServiceEvents(
     Profile* profile,
     std::weak_ptr<bdkcore::Profile> bdk_profile) {
   return std::make_unique<ProfileEvents>(profile, bdk_profile);
+}
+
+void EmitEvent(const std::weak_ptr<bdkcore::Profile>& bdk_profile,
+               const std::string& name,
+               const std::string& payload_json) {
+  if (std::shared_ptr<bdkcore::Profile> p = bdk_profile.lock()) {
+    EmitEvent(p, name, payload_json);
+  }
 }
 
 void EmitEvent(const std::shared_ptr<bdkcore::Profile>& bdk_profile,
