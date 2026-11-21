@@ -446,7 +446,7 @@ When a `dev` branch starts producing beta releases, a build machine and a build 
 |---|---|---|
 | Spec and brief: "GN/Ninja" | GN with `autoninja`, which uses Siso by default at M158 | Upstream changed the default executor. Ninja still works for an output directory that was first built with it. |
 | Brief: use Nx caching for suitable packaged runtime artifacts | Nx caches the pointer; the artifact lives in the runtime store | Size, cache retention, and the stale-runtime hazard verified in E9. |
-| Spec §5: generated declarations stay in Xcode derived data | True for downstream apps. Inside this monorepo, generated bindings are Nx outputs inside each package and are not committed. | The spec text is about applications built with BDK. |
+| Spec §5: generated declarations stay in Xcode derived data | True for downstream apps. Inside this monorepo, generated bindings are Nx outputs inside each package and are not committed, except those that a build which cannot run the generator compiles (amendments.md 2.14). | The spec text is about applications built with BDK. |
 | Spec §5: `bdk doctor` checks toolchain, compatibility and signatures | Kept, with no disk reporting | Brief section 8. |
 | Brief layout: `packages/core` is "native C++ bridge" | Split between `packages/core` (ABI, definitions, stub) and `chromium/bdk` (Chromium-linked code) | The Chromium-linked code cannot build outside a Chromium checkout. |
 | Spec §5: `bdk.toml` is parsed at build and at runtime | One parser, in the CLI. The build writes a validated `bdk.resolved.json` into the app bundle and the engine reads only that. | Avoids a second TOML implementation inside the engine and keeps validation in one place. |
