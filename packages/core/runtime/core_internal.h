@@ -34,7 +34,9 @@ enum Type : uint8_t {
     T_CALL,
     T_SUB,
     T_SESSION,
-    T_CONTEXT
+    T_CONTEXT,
+    T_TASK,
+    T_HELLO
 };
 
 struct Err {
@@ -47,6 +49,8 @@ struct Buf {
 struct Runtime;
 struct Contents;
 struct BuiltinCall; /* broker_internal.h */
+struct UserScript;  /* automation_internal.h */
+class TaskPort;     /* automation_internal.h */
 
 struct Sub {
     bool active = true;
@@ -57,6 +61,7 @@ struct Sub {
     bdk_contents_event_cb ccb = nullptr;
     bdk_runtime_event_cb rcb = nullptr;
     bdk_event_cb ecb = nullptr;
+    bdk_task_event_cb tcb = nullptr; /* a task's subscription (automation.cc) */
     uint32_t event_id = 0;
     std::string event_name;
     bdk_profile_t profile = 0; /* events of this profile only; 0 for every profile */
@@ -203,10 +208,6 @@ struct Window {
     uint32_t kind = 0;
     bdk_native_handle_t native{};
 };
-struct Session {
-    bool revoked = false;
-    std::set<bdk_contents_t> contents;
-};
 
 /* An application setting (`app.`), declared with bdk_app_setting_register. */
 struct AppSetting {
@@ -260,6 +261,9 @@ class Backend {
 
     /* Runs task later on the UI thread, after every task posted before it. Any thread. */
     virtual void Post(std::function<void()> task) = 0;
+    /* Runs task on the UI thread no sooner than delay_ms from now (a command's deadline). UI
+       thread only. A runtime without a clock may run it once nothing else is pending. */
+    virtual void PostDelayed(std::function<void()> task, int64_t delay_ms) = 0;
 
     /* Called by bdk_runtime_start once the ABI and the resolved configuration are checked. Fills
        rt.profiles with the persistent profiles and sets rt.next_id above every identifier used. */
@@ -346,6 +350,18 @@ class Backend {
        they did. Runs on the UI thread, later. The default refuses. */
     virtual void Authenticate(Runtime& rt, const std::string& reason,
                               std::function<void(bool)> done);
+
+    /* The automation host (automation_internal.h). StartTask runs a bundled script: the backend
+       sets task->to_script before returning and hands the script's frames to task->FromScript.
+       The default has no host: the task finishes with automation.hostGone. EndTask tears a
+       script down after it finished, was cancelled or lost its session; the default does
+       nothing. */
+    virtual void StartTask(Runtime& rt, const std::shared_ptr<TaskPort>& task);
+    virtual void EndTask(Runtime& rt, TaskPort& task);
+    /* The user scripts of a profile changed: every one, in registration order. The default keeps
+       nothing (a runtime that renders nothing runs no script). */
+    virtual void UserScriptsChanged(Runtime& rt, Profile& profile,
+                                    const std::vector<UserScript>& scripts);
 };
 
 /* The runtime that links the core defines this. */
@@ -382,6 +398,10 @@ std::shared_ptr<Call> new_call(const std::shared_ptr<Runtime>&, bdk_result_cb, b
                                void* ctx, bdk_release_cb);
 void finish_call(const std::shared_ptr<Call>&, const char* domain, const char* code,
                  const std::string& message, const std::string& result_json);
+/* Succeeds a call with a JSON value and bytes outside it: the result callback borrows them as a
+   buffer (a command marked binary). */
+void finish_call_binary(const std::shared_ptr<Call>&, const std::string& result_json,
+                        std::string bytes);
 void emit_runtime_event(const std::shared_ptr<Runtime>&, uint32_t kind, const std::string& detail,
                         bool to_closing = false);
 void log_line(const std::shared_ptr<Runtime>&, uint32_t level, const std::string& message);

@@ -12,6 +12,12 @@
 
 namespace bdkstub {
 
+/* The stub's automation host (stub_automation.cc): scripts the tests define as callbacks. */
+void automation_reset();
+void automation_start(const std::shared_ptr<bdkcore::TaskPort>& task);
+void automation_end(bdkcore::TaskPort& task);
+void automation_scripts_changed();
+
 /* Forgets every stored value and resets the test controls. Called at runtime start. */
 void services_reset();
 

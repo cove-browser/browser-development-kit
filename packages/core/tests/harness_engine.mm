@@ -68,6 +68,8 @@ void bdk_harness_prepare_start_config(bdk_start_config_t* config) {
     resolved = "{\"browser\":{\"name\":\"BDK Conformance\"}";
     if (bdk_harness_engine_surfaces)
         resolved += std::string(",\"surfaces\":") + bdk_harness_engine_surfaces;
+    if (t_config_extra) /* the suite's own members, such as [automation] */
+        resolved += std::string(",") + t_config_extra;
     resolved += "}";
     bdk_harness_engine_surfaces = NULL;
     config->resolved_config_json = View(resolved.c_str());

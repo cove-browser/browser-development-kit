@@ -1,12 +1,15 @@
 /* Stub runtime: the in-memory backend of the runtime core, its task queue and its test hooks.
    Nothing renders; navigation is a scripted state machine. */
+#include <algorithm>
 #include <climits>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <deque>
+#include <map>
 #include <mutex>
 
+#include "../runtime/automation_internal.h"
 #include "../runtime/core_internal.h"
 #include "bdk_abi_hash.h"
 #include "bdk_stub.h"
@@ -43,6 +46,11 @@ StubContents& data_of(const Contents& c) {
 struct StubState {
     std::mutex mutex;
     std::deque<std::function<void()>> queue;
+    /* PostDelayed: the stub has no clock. Its time moves only when nothing else is pending: pump
+       then runs the earliest delayed task (ties in order posted). */
+    int64_t now_ms = 0;
+    uint64_t delayed_seq = 0;
+    std::map<std::pair<int64_t, uint64_t>, std::function<void()>> delayed;
     std::map<std::string, std::pair<int32_t, std::string>> scripts;
     bdk_stub_ui_outcome_t outcome{};
     /* What the stub keeps of application settings, by profile id ("" for the application): its
@@ -249,10 +257,21 @@ class StubBackend final : public Backend {
         S().queue.push_back(std::move(task));
     }
 
+    void PostDelayed(std::function<void()> task, int64_t delay_ms) override {
+        std::lock_guard<std::mutex> lock(S().mutex);
+        S().delayed[{S().now_ms + std::max<int64_t>(0, delay_ms), S().delayed_seq++}] =
+            std::move(task);
+    }
+
     bdk_status_t Start(Runtime&, const bdk_start_config_t&, const std::string&,
                        bdk_error_t*) override {
         S().scripts.clear();
         S().app_settings.clear();
+        {
+            std::lock_guard<std::mutex> lock(S().mutex);
+            S().delayed.clear();
+        }
+        bdkstub::automation_reset();
         set_outcome(BDK_STUB_UI_NONE, 0, "", "");
         bdkstub::services_reset();
         return BDK_OK;
@@ -517,6 +536,18 @@ class StubBackend final : public Backend {
     void Authenticate(Runtime&, const std::string&, std::function<void(bool)> done) override {
         bdkstub::services_authenticate(std::move(done));
     }
+
+    void StartTask(Runtime&, const std::shared_ptr<TaskPort>& task) override {
+        bdkstub::automation_start(task);
+    }
+
+    void EndTask(Runtime&, TaskPort& task) override {
+        bdkstub::automation_end(task);
+    }
+
+    void UserScriptsChanged(Runtime&, Profile&, const std::vector<UserScript>&) override {
+        bdkstub::automation_scripts_changed();
+    }
 };
 
 } // namespace
@@ -540,8 +571,14 @@ BDK_EXPORT size_t bdk_stub_pump(void) {
         std::function<void()> fn;
         {
             std::lock_guard<std::mutex> lock(S().mutex);
-            if (S().queue.empty())
-                break;
+            if (S().queue.empty()) {
+                if (S().delayed.empty())
+                    break;
+                auto first = S().delayed.begin();
+                S().now_ms = std::max(S().now_ms, first->first.first);
+                S().queue.push_back(std::move(first->second));
+                S().delayed.erase(first);
+            }
             fn = std::move(S().queue.front());
             S().queue.pop_front();
         }

@@ -31,7 +31,10 @@ let package = Package(
             sources: [
                 "runtime/core.cc", "runtime/core_host.cc", "runtime/ui_router.cc",
                 "runtime/app_settings.cc", "runtime/broker.cc", "runtime/broker_args.cc",
+                "runtime/automation.cc", "runtime/contents_commands.cc",
+                "runtime/local_socket_posix.cc",
                 "stub/stub_backend.cc", "stub/stub_services.cc", "stub/stub_broker.cc",
+                "stub/stub_automation.cc",
             ],
             publicHeadersPath: "stub",
             cxxSettings: [.headerSearchPath("runtime"), .headerSearchPath("generated")]

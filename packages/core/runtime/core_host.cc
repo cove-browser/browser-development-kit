@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 
+#include "automation_internal.h"
 #include "broker_internal.h"
 
 using namespace bdkcore;
@@ -35,6 +36,7 @@ void close_profile(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Pro
 
 void destroy_contents(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Contents>& c) {
     withdraw_contents_requests(rt, c->handle);
+    automation_forget_contents(rt, c->handle);
     c->dead = true;
     for (auto& s : c->subs)
         deactivate(s);
@@ -53,6 +55,7 @@ void emit_contents_event_now(const std::shared_ptr<Contents>& c, uint32_t kind,
                              uint32_t flags) {
     if (c->dead)
         return;
+    automation_contents_event(c, kind, url, detail, flags);
     bdk_contents_event_t ev;
     memset(&ev, 0, sizeof ev);
     ev.struct_size = sizeof ev;
