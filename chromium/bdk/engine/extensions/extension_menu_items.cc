@@ -130,7 +130,6 @@ void ExtensionMenuItems::AppendItems(
       const std::string owner = FirstOwner(submenu, owners);
       if (!owner.empty()) {
         item.Set("extensionId", owner);
-        item.Set("extension", owner);
       }
       out.Append(std::move(item));
       continue;
@@ -154,8 +153,6 @@ void ExtensionMenuItems::AppendItems(
     if (owner != owners.end()) {
       const std::string& id = owner->second.extension_key.extension_id;
       item.Set("extensionId", id);
-      // The Swift request reads the owner under this name.
-      item.Set("extension", id);
     }
     out.Append(std::move(item));
   }
