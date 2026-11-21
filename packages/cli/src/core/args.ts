@@ -10,7 +10,7 @@ export interface ParsedArgs {
   project?: string;
   /** Forced diagnostics form; undefined means detect from the environment. */
   diagnostics?: DiagnosticFormat;
-  /** `--out <file>`, for `build config`. */
+  /** `--out <path>`: the resolved file for `build config`, the output directory for `build codegen`. */
   out?: string;
   /** `--bundle <App.app>`, for `build sign`. */
   bundle?: string;
@@ -22,6 +22,8 @@ export interface ParsedArgs {
   entitlements?: string;
   /** `--resolved <file>`: the resolved configuration, for `build pages`. */
   resolved?: string;
+  /** `--commands <file>`: the application's declarations (`bdk.commands.json`), for `build codegen`. */
+  commands?: string;
   positionals: string[];
 }
 
@@ -38,6 +40,7 @@ const OPTIONS = {
   team: { type: "string" },
   entitlements: { type: "string" },
   resolved: { type: "string" },
+  commands: { type: "string" },
 } as const;
 
 /** Options that belong to a step rather than to every command. */
@@ -48,6 +51,7 @@ export const STEP_FLAGS = [
   "team",
   "entitlements",
   "resolved",
+  "commands",
 ] as const;
 export type StepFlag = (typeof STEP_FLAGS)[number];
 

@@ -6,6 +6,7 @@ import type { SignRequest } from "../signing/types.js";
 
 function signingPlatform(requests: SignRequest[], denied = false): Platform {
   return {
+    ...testContext().platform,
     name: "fake",
     isIdeBuild: () => false,
     bundleFacts: () => Promise.resolve(undefined),

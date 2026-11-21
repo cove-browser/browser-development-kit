@@ -13,15 +13,23 @@ export interface PageFile {
   size: number;
 }
 
-/** Every file under `dir`, links followed, in a stable order. Dot-files and dot-directories are not pages' files. */
-export async function collectFiles(dir: string, prefix = ""): Promise<PageFile[]> {
+/**
+ * Every file under `dir`, links followed, in a stable order. Dot-files and dot-directories are not pages' files,
+ * and neither is anything named in `skip` (at any depth).
+ */
+export async function collectFiles(
+  dir: string,
+  prefix = "",
+  skip: ReadonlySet<string> = new Set(),
+): Promise<PageFile[]> {
   const files: PageFile[] = [];
   const entries = await readdir(dir);
   for (const name of entries.sort()) {
-    if (name.startsWith(".")) continue;
+    if (name.startsWith(".") || skip.has(name)) continue;
     const absolute = join(dir, name);
     const info = await stat(absolute);
-    if (info.isDirectory()) files.push(...(await collectFiles(absolute, `${prefix}${name}/`)));
+    if (info.isDirectory())
+      files.push(...(await collectFiles(absolute, `${prefix}${name}/`, skip)));
     else if (info.isFile()) files.push({ relative: `${prefix}${name}`, absolute, size: info.size });
   }
   return files;

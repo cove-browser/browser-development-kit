@@ -234,7 +234,7 @@ describe("bdk build pages, the application bundle", () => {
   it("rejects a pages flag on another step", async () => {
     const ctx = testContext();
     expect(await run(["build", "config", "--resolved", "x.json"], ctx)).toBe(2);
-    expect(ctx.err.join("")).toContain("applies to `bdk build pages` only");
+    expect(ctx.err.join("")).toContain("applies to `bdk build codegen`, `bdk build pages` only");
   });
 });
 

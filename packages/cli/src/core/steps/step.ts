@@ -20,6 +20,11 @@ export interface StepResult {
 /** One `bdk build <step>`. Only steps that work are registered (steps/index.ts). */
 export interface Step {
   name: string;
+  /**
+   * Whether `bdk build` with no step runs this one (sdk/cli.md section 5: "the steps that apply"). Absent
+   * means always. A step named on the command line always runs.
+   */
+  applies?(input: Omit<StepInput, "project">): boolean;
   /** Flags this step reads besides the global ones. */
   flags: readonly StepFlag[];
   run(input: StepInput): Promise<StepResult>;

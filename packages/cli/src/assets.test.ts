@@ -44,7 +44,12 @@ describe("createAssets, listing and the SDK modules", () => {
     await writeFile(join(internal, "settings.d.ts"), "export {};");
     await writeFile(join(internal, "settings.test.js"), "test");
     await writeFile(join(internal, "index.js"), "export const i = 1;");
-    const list = createAssets({ packaged: false, assetsDir: assets, internalDir: internal });
+    const list = createAssets({
+      packaged: false,
+      assetsDir: assets,
+      internalDir: internal,
+      sdkDirs: {},
+    });
     expect(list.list("js/internal/")).toEqual(["js/internal/index.js", "js/internal/settings.js"]);
     expect(list.list("")).toEqual(["a.json", "js/internal/index.js", "js/internal/settings.js"]);
     expect(list.readText("js/internal/settings.js")).toBe("export const s = 1;");
@@ -58,6 +63,29 @@ describe("createAssets, listing and the SDK modules", () => {
     });
     expect(assets.list("js/internal/")).toEqual([]);
     expect(() => assets.readText("js/internal/index.js")).toThrow(AssetNotFoundError);
+  });
+
+  it("lists the SDK packages under js/sdk/@bdk/<package>/ and reads them, tests and other files left out", async () => {
+    const internal = await tempDir();
+    const protocol = await tempDir();
+    await writeFile(join(internal, "page.js"), "export const page = 1;");
+    await writeFile(join(internal, "page.d.ts"), "export declare const page: number;");
+    await writeFile(join(internal, "page.test.js"), "test");
+    await writeFile(join(internal, "page.js.map"), "{}");
+    await writeFile(join(protocol, "index.d.ts"), "export {};");
+    const assets = createAssets({
+      packaged: false,
+      assetsDir: await tempDir(),
+      internalDir: internal,
+      sdkDirs: { "@bdk/internal": internal, "@bdk/protocol": protocol },
+    });
+    expect(assets.list("js/sdk/")).toEqual([
+      "js/sdk/@bdk/internal/page.d.ts",
+      "js/sdk/@bdk/internal/page.js",
+      "js/sdk/@bdk/protocol/index.d.ts",
+    ]);
+    expect(assets.readText("js/sdk/@bdk/internal/page.d.ts")).toContain("declare const page");
+    expect(() => assets.readText("js/sdk/@bdk/internal/page.test.js")).toThrow(AssetNotFoundError);
   });
 
   it("does not read outside the SDK directory", async () => {

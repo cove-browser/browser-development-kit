@@ -7,6 +7,9 @@ import {
   INTERNAL_MODULES_PREFIX,
   internalModulesDir,
   listInternalModules,
+  SDK_PREFIX,
+  sdkAssets,
+  sdkDirs,
 } from "./asset-sources.js";
 
 /** Embedded files (templates, schemas) by name, relative to `packages/cli/assets/`. */
@@ -56,10 +59,17 @@ function isMissing(error: unknown): boolean {
  * (sdk/cli.md section 2.3, risk R31).
  */
 export function createAssets(
-  options: { packaged?: boolean; assetsDir?: string; internalDir?: string } = {},
+  options: {
+    packaged?: boolean;
+    assetsDir?: string;
+    internalDir?: string;
+    /** Build output of each SDK package by name; default `packages/js/<package>/dist`. */
+    sdkDirs?: Record<string, string>;
+  } = {},
 ): Assets {
   const packaged = options.packaged ?? isSea();
   const internalDir = options.internalDir ?? internalModulesDir();
+  const sdk = (): Record<string, string> => sdkAssets(options.sdkDirs ?? sdkDirs());
   return {
     list(prefix) {
       let names: string[];
@@ -72,6 +82,7 @@ export function createAssets(
       } else {
         names = [
           ...listInternalModules(internalDir).map((name) => `${INTERNAL_MODULES_PREFIX}${name}`),
+          ...Object.keys(sdk()),
           ...listFiles(options.assetsDir ?? unpackagedAssetsDir()),
         ];
       }
@@ -84,6 +95,11 @@ export function createAssets(
         } catch {
           throw new AssetNotFoundError(name);
         }
+      }
+      if (name.startsWith(SDK_PREFIX)) {
+        const file = sdk()[name];
+        if (file === undefined) throw new AssetNotFoundError(name);
+        return readFileSync(file, "utf8");
       }
       const internal = name.startsWith(INTERNAL_MODULES_PREFIX);
       const root = internal ? internalDir : (options.assetsDir ?? unpackagedAssetsDir());

@@ -1,2 +1,6 @@
 [browser]
 name = "Minimal Browser"
+internal_scheme = "minimal"
+
+[pages.capabilities.settings]
+allow = ["settings.read", "settings.write"]

@@ -228,6 +228,9 @@ importers:
 
   packages/cli:
     dependencies:
+      '@bdk/codegen':
+        specifier: workspace:*
+        version: link:../js/codegen
       '@bdk/vite':
         specifier: workspace:*
         version: link:../js/vite

@@ -55,7 +55,7 @@ describe.skipIf(!packaged)("packaged executable (skipped when dist/bdk is absent
   it("prints help", () => {
     const result = bdk(["--help"]);
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("Steps: config, pages, sign");
+    expect(result.stdout).toContain("Steps: config, codegen, pages, sign");
   });
 
   it("exits 2 for an unknown command", () => {
@@ -94,6 +94,34 @@ describe.skipIf(!packaged)("packaged executable (skipped when dist/bdk is absent
     const resources = join(app, "Contents", "Resources");
     expect(existsSync(join(resources, "Pages", "Settings", "index.html"))).toBe(true);
     expect(existsSync(join(resources, "BDK", "js", "internal", "index.js"))).toBe(true);
+  });
+
+  it("writes the @bdk packages and links them into Pages with `build config codegen`", async () => {
+    const project = await tempProject();
+    writeFileSync(
+      join(project.dir, "bdk.toml"),
+      '[browser]\nname = "Demo"\ninternal_scheme = "demo"\n',
+    );
+    mkdirSync(join(project.dir, "Pages", "Settings"), { recursive: true });
+    const result = bdk(["build", "config", "codegen"], project.dir);
+    if (!existsSync(join(cliRoot, "assets", "bdk.schema.json"))) {
+      expect(result.status).toBe(3);
+      return;
+    }
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain("[codegen.no_declarations]");
+    const linked = join(project.dir, "Pages", "node_modules", "@bdk");
+    for (const file of [
+      "internal/settings.js",
+      "internal/settings.d.ts",
+      "internal/app.d.ts",
+      "internal/package.json",
+      "protocol/index.d.ts",
+      "vite/index.js",
+      "env.d.ts",
+    ]) {
+      expect(existsSync(join(linked, file)), file).toBe(true);
+    }
   });
 
   it("builds a Vite page with the project's own Vite and no node on PATH", async () => {

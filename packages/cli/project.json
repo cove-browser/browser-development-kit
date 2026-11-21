@@ -2,7 +2,7 @@
   "name": "cli",
   "root": "packages/cli",
   "projectType": "library",
-  "implicitDependencies": ["core", "js-codegen", "js-vite", "js-internal"],
+  "implicitDependencies": ["core", "js-codegen", "js-vite", "js-internal", "js-protocol"],
   "targets": {
     "build": {
       "executor": "nx:run-commands",
@@ -43,6 +43,10 @@
         {
           "projects": ["js-vite"],
           "target": "build"
+        },
+        {
+          "projects": ["js-codegen"],
+          "target": "build"
         }
       ]
     },
@@ -61,6 +65,10 @@
       "dependsOn": [
         {
           "projects": ["js-vite"],
+          "target": "build"
+        },
+        {
+          "projects": ["js-codegen"],
           "target": "build"
         }
       ]
@@ -92,6 +100,14 @@
         },
         {
           "projects": ["js-internal"],
+          "target": "build"
+        },
+        {
+          "projects": ["js-protocol"],
+          "target": "build"
+        },
+        {
+          "projects": ["js-codegen"],
           "target": "build"
         }
       ]

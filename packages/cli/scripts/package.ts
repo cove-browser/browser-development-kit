@@ -13,6 +13,9 @@ import {
   INTERNAL_MODULES_PREFIX,
   internalModulesDir,
   listInternalModules,
+  SDK_PACKAGES,
+  sdkAssets,
+  sdkDirs,
 } from "../src/asset-sources.js";
 import { artifactBundleInfo, internalAssets, listAssets, seaConfig } from "./package-lib.js";
 
@@ -62,9 +65,18 @@ async function main(): Promise<void> {
       `${internalModulesDir()} holds no built @bdk/internal modules, which \`bdk build pages\` copies into applications. Run \`pnpm exec nx run js-internal:build\` first.`,
     );
   }
+  const sdk = sdkAssets();
+  for (const { name } of SDK_PACKAGES) {
+    if (!Object.keys(sdk).some((asset) => asset.includes(`/${name}/`))) {
+      throw new Error(
+        `${sdkDirs()[name]} holds no built files, which \`bdk build codegen\` writes for editors. Run \`pnpm exec nx run-many -t build -p js-protocol,js-internal,js-vite\` first.`,
+      );
+    }
+  }
   const assets = {
     ...listAssets(join(root, "assets")),
     ...internalAssets(internalModulesDir(), modules, INTERNAL_MODULES_PREFIX),
+    ...sdk,
   };
   // `node:sea` cannot list assets, so the executable carries the list, itself included.
   const indexFile = join(work, ASSET_INDEX);

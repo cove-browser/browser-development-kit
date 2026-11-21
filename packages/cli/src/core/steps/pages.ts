@@ -1,13 +1,17 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
-import { parse } from "smol-toml";
 import { INTERNAL_MODULES_PREFIX } from "../../asset-sources.js";
-import { normaliseProjectPath } from "../config/paths.js";
 import type { Diagnostic } from "../diagnostics.js";
 import { hasErrors } from "../diagnostics-format.js";
 import { CliError, ExitCode, usageError } from "../exit-codes.js";
 import { checkPageFiles, collectFiles, type PageFile, writeFiles } from "../pages/files.js";
+import {
+  type BundledRoute,
+  bundleFolder,
+  pagesDirectory,
+  readBundledRoutes,
+} from "../pages/routes.js";
 import { buildPage, findViteConfig, loadVite } from "../pages/vite.js";
 import { RESOLVED_FILE } from "./config.js";
 import type { Step, StepResult } from "./step.js";
@@ -15,91 +19,11 @@ import type { Step, StepResult } from "./step.js";
 /** Where the runtime serves the SDK from, inside the application's resources (design: page bundle layout). */
 export const SDK_DIRECTORY = "BDK/js/internal";
 
-interface BundledRoute {
-  route: string;
-  /** Project-relative, `/`-separated. */
-  path: string;
-}
-
-function resolvedInvalid(file: string, message: string): CliError {
-  return new CliError(
-    {
-      code: "pages.resolved_invalid",
-      severity: "error",
-      message: `${file} ${message}`,
-      file,
-      fix: "Run `bdk build config` again to write it.",
-    },
-    ExitCode.ProjectFailure,
-  );
-}
-
-async function readBundledRoutes(file: string): Promise<BundledRoute[]> {
-  let text: string;
-  try {
-    text = await readFile(file, "utf8");
-  } catch (error) {
-    if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
-      throw new CliError(
-        {
-          code: "pages.resolved_missing",
-          severity: "error",
-          message: `${file} does not exist, so the pages to build are not known.`,
-          file,
-          fix: "Run `bdk build config` first, or pass --resolved <file>.",
-        },
-        ExitCode.ProjectFailure,
-      );
-    }
-    throw error;
-  }
-  let routes: unknown;
-  try {
-    routes = (JSON.parse(text) as { routes?: unknown }).routes;
-  } catch {
-    throw resolvedInvalid(file, "is not valid JSON.");
-  }
-  if (typeof routes !== "object" || routes === null) {
-    throw resolvedInvalid(file, "has no `routes` table.");
-  }
-  const bundled: BundledRoute[] = [];
-  for (const [route, entry] of Object.entries(routes)) {
-    if (typeof entry !== "object" || entry === null || !("mode" in entry)) continue;
-    if (entry.mode !== "bundled") continue;
-    const path =
-      "path" in entry && typeof entry.path === "string" ? normaliseProjectPath(entry.path) : "";
-    if (path === "" || entry.path !== path) {
-      throw resolvedInvalid(file, `holds the bundled route "${route}" with no usable \`path\`.`);
-    }
-    bundled.push({ route, path });
-  }
-  return bundled;
-}
-
-/** The directory that holds the pages, from `[pages] directory` in `bdk.toml` (default `Pages`). */
-async function pagesDirectory(configFile: string): Promise<string> {
-  try {
-    const doc = parse(await readFile(configFile, "utf8"));
-    const pages = doc.pages;
-    if (typeof pages === "object" && pages !== null && "directory" in pages) {
-      if (typeof pages.directory === "string") return normaliseProjectPath(pages.directory);
-    }
-  } catch {
-    // `bdk build config` reports an unreadable bdk.toml; the default is right for everything else.
-  }
-  return "Pages";
-}
-
-function bundleFolder(env: NodeJS.ProcessEnv): string | undefined {
-  if (env.CODESIGNING_FOLDER_PATH) return env.CODESIGNING_FOLDER_PATH;
-  if (env.TARGET_BUILD_DIR && env.WRAPPER_NAME) return join(env.TARGET_BUILD_DIR, env.WRAPPER_NAME);
-  return undefined;
-}
-
 /** `bdk build pages`: package the bundled pages and the SDK into the application's resources (sdk/cli.md section 5). */
 export const pagesStep: Step = {
   name: "pages",
   flags: ["bundle", "resolved"],
+  applies: ({ ctx, args }) => (args.bundle ?? bundleFolder(ctx.env)) !== undefined,
   async run({ project, ctx, args }): Promise<StepResult> {
     const bundle = args.bundle ?? bundleFolder(ctx.env);
     if (bundle === undefined || bundle === "") {

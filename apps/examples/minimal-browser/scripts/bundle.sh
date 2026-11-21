@@ -7,9 +7,10 @@
 #    packages/cli/dist/bdk exists, otherwise the TypeScript sources through tsx.
 # 2. swift build builds the executable.
 # 3. The bundle gets the executable, Info.plist (NSPrincipalClass = BDKApplication) and bdk.resolved.json in
-#    Resources. Built against the real runtime (Package.swift: .bdk/runtime exists and BDK_RUNTIME is not
-#    "stub"), it also gets the runtime's framework in Contents/Frameworks, and `bdk build sign` re-signs the
-#    framework and its helpers as this application (ad hoc). Against the stub it is signed ad hoc as is.
+#    Resources, and `bdk build pages` packages Pages/ (the Settings page) and the SDK into it. Built against the
+#    real runtime (Package.swift: .bdk/runtime exists and BDK_RUNTIME is not "stub"), it also gets the runtime's
+#    framework in Contents/Frameworks, and `bdk build sign` re-signs the framework and its helpers as this
+#    application (ad hoc). Against the stub it is signed ad hoc as is.
 set -euo pipefail
 
 configuration="${1:-debug}"
@@ -45,6 +46,8 @@ vtool -set-build-version macos "$minos" "$sdk" -replace -output "$app/Contents/M
   "$app/Contents/MacOS/MinimalBrowser"
 cp "$project/Info.plist" "$app/Contents/Info.plist"
 cp "$project/bdk.resolved.json" "$app/Contents/Resources/bdk.resolved.json"
+# The bundled pages and the SDK they import; before signing, which covers Resources.
+bdk build pages --bundle "$app" --project "$project"
 # The executable links the framework only when it was built against the real runtime.
 if otool -L "$product" | grep -q "Chromium Framework.framework"; then
   mkdir -p "$app/Contents/Frameworks"
