@@ -74,6 +74,11 @@ void bdk_harness_prepare_start_config(bdk_start_config_t* config) {
     bdk_harness_engine_surfaces = NULL;
     config->resolved_config_json = View(resolved.c_str());
     config->user_data_path_override = View(g_data_dir.c_str());
+    /* Scripts and DevTools front ends are read from the application's bundle: this app's, where
+       CMakeLists.txt packages the fixtures. */
+    static std::string bundle;
+    bundle = NSBundle.mainBundle.bundlePath.UTF8String;
+    config->bundle_path = View(bundle.c_str());
 }
 
 int bdk_harness_engine_open_descriptors(void) {

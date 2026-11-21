@@ -150,6 +150,23 @@ if(BDK_ENGINE_FRAMEWORK AND APPLE)
     tests/tests_engine_automation.c
     tests/harness_engine.mm tests/harness_broker_unsupported.c tests/harness_automation_unsupported.c)
   target_compile_definitions(bdk_engine_conformance PRIVATE BDK_HARNESS_OWNS_MAIN BDK_HARNESS_ENGINE_TESTS)
+  # The automation scripts and DevTools front ends of tests_engine_automation.c, where `bdk build` puts
+  # them in an application, with the digests the resolved configuration records.
+  set(BDK_FIXTURES "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+  foreach(script acceptance wait fail)
+    set(file "${BDK_FIXTURES}/automation/${script}.js")
+    file(SHA256 "${file}" digest)
+    string(TOUPPER "${script}" upper)
+    target_compile_definitions(bdk_engine_conformance PRIVATE
+      "BDK_TEST_${upper}_DIGEST=\"sha256:${digest}\"")
+    target_sources(bdk_engine_conformance PRIVATE "${file}")
+    set_source_files_properties("${file}" PROPERTIES MACOSX_PACKAGE_LOCATION Resources/BDK/Automation)
+  endforeach()
+  set(BDK_OVERLAY "${BDK_FIXTURES}/devtools/Overlay/overlay.css" "${BDK_FIXTURES}/devtools/Overlay/overlay.js")
+  target_sources(bdk_engine_conformance PRIVATE ${BDK_OVERLAY} "${BDK_FIXTURES}/devtools/Frontend/index.html")
+  set_source_files_properties(${BDK_OVERLAY} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/BDK/DevTools/Overlay)
+  set_source_files_properties("${BDK_FIXTURES}/devtools/Frontend/index.html"
+    PROPERTIES MACOSX_PACKAGE_LOCATION Resources/BDK/DevTools/Frontend)
   target_include_directories(bdk_engine_conformance PRIVATE tests "${BDK_ENGINE_HOOKS}")
   target_link_libraries(bdk_engine_conformance PRIVATE bdk_headers)
   target_compile_options(bdk_engine_conformance PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
