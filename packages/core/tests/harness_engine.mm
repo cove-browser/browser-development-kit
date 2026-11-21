@@ -598,6 +598,9 @@ void RunSuite(void*) {
         rc = 1;
     }
     fflush(stdout);
+    /* Each run has a new data directory (a Chromium profile tree of a few hundred megabytes);
+       a finished run leaves none behind. A run that crashes or is killed still does. */
+    [[NSFileManager defaultManager] removeItemAtPath:@(g_data_dir.c_str()) error:nil];
     exit(rc);
 }
 
