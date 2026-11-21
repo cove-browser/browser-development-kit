@@ -221,12 +221,17 @@ bdk_contents_t t_new_contents(bdk_profile_t profile) {
 /* ---- runner ---- */
 
 static const t_test_t* const kTables[] = {
-    t_base_tests,          t_runtime_tests,  t_broker_tests,
-    t_profile_tests,       t_contents_tests, t_ui_tests,
+    t_base_tests,
+    t_runtime_tests,
+    t_broker_tests,
+    t_profile_tests,
+    t_contents_tests,
+    t_ui_tests,
 #ifdef BDK_HARNESS_ENGINE_TESTS
-    t_engine_tests,        /* scenarios only a real engine can run (tests_engine.c) */
-    t_engine_ui_tests,     /* browser-owned surfaces on the engine (tests_engine_ui.c) */
-    t_engine_prompt_tests, /* services and prompts (tests_engine_prompts.c) */
+    t_engine_tests,                 /* scenarios only a real engine can run (tests_engine.c) */
+    t_engine_ui_tests,              /* browser-owned surfaces on the engine (tests_engine_ui.c) */
+    t_engine_prompt_tests,          /* services and prompts (tests_engine_prompts.c) */
+    t_engine_extension_panel_tests, /* windows, side panels, DevTools extensions */
 #endif
 };
 

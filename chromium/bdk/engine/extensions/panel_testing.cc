@@ -148,7 +148,9 @@ std::optional<bool> RunExtensionPanelCommand(const std::string& name,
             base::BindOnce(
                 [](base::Value value, const std::optional<std::string>& error) {
                   g_eval.done = true;
-                  g_eval.value = base::WriteJson(value).value_or("null");
+                  g_eval.value = value.is_string()
+                                     ? value.GetString()
+                                     : base::WriteJson(value).value_or("null");
                   g_eval.error = error.value_or(std::string());
                 }));
     return true;
