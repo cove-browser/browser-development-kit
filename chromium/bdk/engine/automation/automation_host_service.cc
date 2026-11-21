@@ -241,7 +241,7 @@ v8::MaybeLocal<v8::Module> RejectImport(v8::Local<v8::Context> context,
   // Rolldown inlines @bdk/* and every other dependency into the one file; an
   // import left in it means the build is wrong, and nothing can satisfy it
   // here.
-  v8::Isolate* isolate = context->GetIsolate();
+  v8::Isolate* isolate = v8::Isolate::GetCurrent();
   isolate->ThrowException(v8::Exception::Error(NewString(
       isolate, base::StrCat({"an automation script cannot import modules, "
                              "but it imports \"",
@@ -405,7 +405,8 @@ class ScriptTask : public mojom::AutomationTask {
   }
 
   static uint32_t DataOf(const v8::FunctionCallbackInfo<v8::Value>& info) {
-    return info.Data()
+    return info.DataV2()
+        .As<v8::Value>()
         ->Uint32Value(info.GetIsolate()->GetCurrentContext())
         .FromMaybe(0);
   }

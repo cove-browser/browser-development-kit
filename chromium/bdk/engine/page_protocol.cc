@@ -10,7 +10,6 @@
 
 #include "base/barrier_closure.h"
 #include "base/functional/bind.h"
-#include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
 #include "base/no_destructor.h"
 #include "base/strings/string_number_conversions.h"
@@ -343,7 +342,7 @@ void PageProtocol::DispatchProtocolMessage(
     content::DevToolsAgentHost* agent_host,
     base::span<const uint8_t> message) {
   std::optional<base::DictValue> parsed =
-      base::JSONReader::ReadDict(base::as_string_view(message));
+      ParseJsonDict(base::as_string_view(message));
   if (!parsed) {
     return;
   }

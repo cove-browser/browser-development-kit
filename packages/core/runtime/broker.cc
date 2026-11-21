@@ -558,6 +558,9 @@ void resolve_call(const std::shared_ptr<Call>& call, const std::string& result_j
 
 /* ---- CommandControl ---- */
 
+Caller::Caller() = default;
+Caller::~Caller() = default;
+
 CommandControl::CommandControl(std::shared_ptr<Call> call, bool progress)
     : call_(std::move(call)), progress_(progress) {}
 

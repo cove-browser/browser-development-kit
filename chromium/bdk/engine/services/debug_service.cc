@@ -18,7 +18,6 @@
 
 #include "base/containers/span.h"
 #include "base/functional/bind.h"
-#include "base/json/json_reader.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
 #include "base/strings/string_number_conversions.h"
@@ -225,7 +224,7 @@ void DebugClient::DispatchProtocolMessage(
     return;
   }
   std::optional<base::DictValue> parsed =
-      base::JSONReader::ReadDict(base::as_string_view(message));
+      ParseJsonDict(base::as_string_view(message));
   if (!parsed) {
     return;
   }

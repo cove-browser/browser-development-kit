@@ -67,7 +67,7 @@ base::expected<std::string, std::string> ReadBundle(
   if (!base::IsStringUTF8(source)) {
     return base::unexpected("the script's bundle is not valid UTF-8");
   }
-  return source;
+  return base::ok(std::move(source));
 }
 
 }  // namespace

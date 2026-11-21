@@ -43,6 +43,10 @@ struct Scope {
 };
 
 struct Caller : std::enable_shared_from_this<Caller> {
+    /* Out of line, as for CommandControl: Chromium's style plugin refuses implicit ones here. */
+    Caller();
+    ~Caller();
+
     CallerKind kind = CallerKind::kHost;
     std::string name;
     bdk_profile_t profile = 0; /* a page: the profile it is in */
