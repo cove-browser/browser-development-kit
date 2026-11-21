@@ -172,6 +172,79 @@ public struct BDKStub {
         return reserved != 0
     }
 
+    // MARK: Open requests
+
+    /// Sends the runtime's update (a popup's preferred size, say) to the most recently raised
+    /// request. It reaches the request's update handler on the next pump.
+    public func sendUIUpdate(_ json: String) throws {
+        let handle = try runtime.liveHandle()
+        try check(withBDKStrings([json]) { bdk_stub_send_ui_update(handle, $0[0]) })
+    }
+
+    /// The last update the application sent to an open request, "" for none.
+    public var lastUIUpdate: String {
+        get throws {
+            var buffer = [CChar](repeating: 0, count: 512)
+            try check(bdk_stub_last_ui_update(try runtime.liveHandle(), &buffer, buffer.count))
+            return String(
+                decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
+        }
+    }
+
+    // MARK: Windows
+
+    /// Attaches the page to a registered window, as a view entering it would; nil detaches it.
+    public func attach(_ page: BDKWebContents, to window: BDKWindow?) throws {
+        try check(bdk_stub_attach_contents(page.handle, window?.handle ?? 0))
+    }
+
+    /// Acts as an extension asking for a change to the window. The window's delegate answers on
+    /// the next pump.
+    public func requestWindowChange(_ window: BDKWindow, json: String) throws {
+        try check(withBDKStrings([json]) { bdk_stub_window_request(window.handle, $0[0]) })
+    }
+
+    /// The last answer to a window request (`BDK_UI_*`), 0 before it is known.
+    public var lastWindowAnswer: UInt32 {
+        get throws {
+            var answer: UInt32 = 0
+            try check(bdk_stub_last_window_answer(&answer))
+            return answer
+        }
+    }
+
+    /// Acts as a default presenter asking the window's anchor provider for a role. Nil for "no
+    /// anchor". The rectangle is in the ABI's window coordinates (origin at the top left).
+    public func anchor(of window: BDKWindow, role: BDKWindow.AnchorRole) throws -> CGRect? {
+        var rect = [Double](repeating: 0, count: 4)
+        var found: UInt8 = 0
+        try check(bdk_stub_window_anchor(window.handle, role.rawValue, &rect, &found))
+        return found == 0 ? nil : CGRect(x: rect[0], y: rect[1], width: rect[2], height: rect[3])
+    }
+
+    // MARK: Extensions
+
+    /// Registers the manifest of a package the stub cannot read from disk: `kind` is "crx" with the
+    /// file path, "updateUrl" with the extension id, "store" with "<store>/<id>" or "unpacked" with
+    /// a directory (which overrides its manifest.json). Registering a newer version for an
+    /// installed id is what `checkForUpdates` finds.
+    public func registerExtensionPackage(kind: String, key: String, manifestJSON: String) throws {
+        let handle = try runtime.liveHandle()
+        try check(
+            withBDKStrings([kind, key, manifestJSON]) {
+                bdk_stub_extension_package(handle, $0[0], $0[1], $0[2])
+            })
+    }
+
+    /// How many times the default extensions menu was presented since start.
+    public var menusPresented: UInt32 {
+        get throws {
+            var count: UInt32 = 0
+            try check(bdk_stub_menus_presented(&count))
+            return count
+        }
+    }
+
     // MARK: Services
 
     /// How the stub's operating system answers an authentication request.

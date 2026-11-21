@@ -12,71 +12,6 @@ public enum BDKUIResponse: Sendable, Equatable {
     case reject
 }
 
-/// A browser-owned surface (ui-requests.md section 4). The raw value is `BDK_SURFACE_*`.
-public enum BDKUISurface: UInt32, Sendable, CaseIterable {
-    case permissions = 1
-    case javascriptDialogs = 2
-    case httpAuth = 3
-    case clientCertificates = 4
-    case filePickers = 5
-    case contextMenus = 6
-    case newWindows = 7
-    case downloads = 8
-    case passwords = 9
-    case autofill = 10
-    case autofillSuggestions = 11
-    case printing = 12
-    case translation = 13
-    case find = 14
-    case fullscreen = 15
-    case exclusiveAccess = 16
-    case notifications = 17
-    case certificateErrors = 18
-    case reputationWarnings = 19
-    case devTools = 20
-    case deviceChoosers = 21
-    case screenCapture = 22
-    case webAuthn = 23
-    case externalProtocols = 24
-
-    /// The key under `[ui.surfaces]` in `bdk.toml` and in `bdk.resolved.json`.
-    public var configurationKey: String {
-        switch self {
-        case .permissions: "permissions"
-        case .javascriptDialogs: "javascript_dialogs"
-        case .httpAuth: "http_auth"
-        case .clientCertificates: "client_certificates"
-        case .filePickers: "file_pickers"
-        case .contextMenus: "context_menus"
-        case .newWindows: "new_windows"
-        case .downloads: "downloads"
-        case .passwords: "passwords"
-        case .autofill: "autofill"
-        case .autofillSuggestions: "autofill_suggestions"
-        case .printing: "printing"
-        case .translation: "translation"
-        case .find: "find"
-        case .fullscreen: "fullscreen"
-        case .exclusiveAccess: "exclusive_access"
-        case .notifications: "notifications"
-        case .certificateErrors: "certificate_errors"
-        case .reputationWarnings: "reputation_warnings"
-        case .devTools: "devtools"
-        case .deviceChoosers: "device_choosers"
-        case .screenCapture: "screen_capture"
-        case .webAuthn: "webauthn"
-        case .externalProtocols: "external_protocols"
-        }
-    }
-}
-
-/// The mode of a surface, from `[ui.surfaces]` (configuration.md section 3.6).
-public enum BDKUISurfaceMode: String, Sendable, Equatable {
-    case `default`
-    case custom
-    case disabled
-}
-
 /// Fires when Chromium withdraws a request: the page navigated, the page closed, or the request
 /// was superseded. The application then dismisses its own UI.
 @MainActor
@@ -129,6 +64,9 @@ struct BDKUIDelivery: Sendable {
     var profile: bdk_profile_t
     var payloadJSON: String
     var anchor: [Double]
+    /// The native view of a popup, side panel or hosted front end: its kind and address.
+    var secureViewKind: UInt32
+    var secureViewAddress: UInt
 
     init(_ info: bdk_ui_request_info_t) {
         handle = info.request
@@ -138,6 +76,8 @@ struct BDKUIDelivery: Sendable {
         profile = info.profile
         payloadJSON = swiftString(info.payload_json)
         anchor = [info.anchor.0, info.anchor.1, info.anchor.2, info.anchor.3]
+        secureViewKind = info.secure_view.kind
+        secureViewAddress = info.secure_view.pointer.map { UInt(bitPattern: $0) } ?? 0
     }
 }
 
@@ -231,11 +171,7 @@ public class BDKUIRequest {
                 domain: .ui, code: "requestCompleted", message: "the request is already completed")
         }
         guard handle != 0 else { throw BDKError.stale(.request) }
-        let native = gesture.map {
-            bdk_native_handle_t(
-                kind: BDK_NATIVE_NSEVENT.rawValue,
-                pointer: Unmanaged.passUnretained($0).toOpaque(), id: UInt64(max($0.timestamp, 0)))
-        }
+        let native = gesture.map(gestureHandle)
         let json = BDKJSValue.object(arguments).jsonString
         do {
             try withBDKStrings([completion, json]) { lent in
@@ -252,6 +188,48 @@ public class BDKUIRequest {
         }
         state = .completed
         releaseHandle()
+    }
+
+    // MARK: Open requests
+
+    /// Sends the application's change to a request that stays open (`bdk_ui_update`). A withdrawn
+    /// request ignores it.
+    func sendUpdate(_ fields: [String: BDKJSValue]) throws {
+        switch state {
+        case .withdrawn: return
+        case .open: break
+        default:
+            throw BDKError(
+                domain: .ui, code: "requestCompleted", message: "the request is already completed")
+        }
+        guard handle != 0 else { throw BDKError.stale(.request) }
+        let json = BDKJSValue.object(fields).jsonString
+        do {
+            try withBDKString(json) { lent in
+                try abiCall(.request) { bdk_ui_update(handle, lent, $0) }
+            }
+        } catch let error as BDKError where error.domain == .ui && error.code == "requestCompleted"
+        {
+            markWithdrawn()
+        }
+    }
+
+    /// Receives the runtime's changes to an open request, in order, on the main actor. The runtime
+    /// releases the callback when the request finishes.
+    func observeUpdates(_ receive: @escaping @MainActor ([String: BDKJSValue]) -> Void) {
+        let box = Unmanaged.passRetained(UpdateBox(receive))
+        bdk_ui_set_update_handler(
+            handle,
+            { context, _, json in
+                guard let context else { return }
+                let box = Unmanaged<UpdateBox>.fromOpaque(context).takeUnretainedValue()
+                let fields = BDKJSValue(jsonString: swiftString(json))?.objectValue ?? [:]
+                MainActor.assumeIsolated { box.receive(fields) }
+            }, box.toOpaque(),
+            { context in
+                guard let context else { return }
+                Unmanaged<UpdateBox>.fromOpaque(context).release()
+            })
     }
 
     // MARK: Delivery
@@ -299,6 +277,15 @@ public class BDKUIRequest {
         bdk_ui_request_release(handle)
         handle = 0
         EventLoop.kick()
+    }
+}
+
+/// What the update callback holds. The runtime drops the box when the request finishes.
+private final class UpdateBox: @unchecked Sendable {
+    let receive: @MainActor ([String: BDKJSValue]) -> Void
+
+    init(_ receive: @escaping @MainActor ([String: BDKJSValue]) -> Void) {
+        self.receive = receive
     }
 }
 

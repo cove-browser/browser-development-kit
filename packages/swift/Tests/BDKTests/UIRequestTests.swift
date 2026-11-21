@@ -30,6 +30,14 @@ extension BDKStubTests {
                 .deviceChoosers: BDK_SURFACE_DEVICE_CHOOSERS,
                 .screenCapture: BDK_SURFACE_SCREEN_CAPTURE, .webAuthn: BDK_SURFACE_WEBAUTHN,
                 .externalProtocols: BDK_SURFACE_EXTERNAL_PROTOCOLS,
+                .extensionActions: BDK_SURFACE_EXTENSION_ACTIONS,
+                .extensionPopups: BDK_SURFACE_EXTENSION_POPUPS,
+                .extensionSidePanels: BDK_SURFACE_EXTENSION_SIDE_PANELS,
+                .extensionContextMenus: BDK_SURFACE_EXTENSION_CONTEXT_MENUS,
+                .extensionOptionsPages: BDK_SURFACE_EXTENSION_OPTIONS_PAGES,
+                .extensionDevTools: BDK_SURFACE_EXTENSION_DEVTOOLS,
+                .extensionInstalls: BDK_SURFACE_EXTENSION_INSTALLS,
+                .extensionUninstalls: BDK_SURFACE_EXTENSION_UNINSTALLS,
             ]
             #expect(expected.count == BDKUISurface.allCases.count)
             for (surface, value) in expected { #expect(surface.rawValue == value) }

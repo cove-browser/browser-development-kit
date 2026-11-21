@@ -107,7 +107,7 @@ public final class BDKWebView: NSView {
         super.viewDidMoveToWindow()
         guard let window, let runtime = contents?.profile.runtime else { return }
         // A runtime that is no longer running has nothing to register with.
-        try? runtime.windows.register(window, with: runtime)
+        _ = try? runtime.windows.register(window)
     }
 
     // MARK: Focus
