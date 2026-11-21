@@ -54,7 +54,8 @@
       "reason": "The popup is a native view in a BDK or application container (extensions.md 4.2).",
       "evidence": [
         "engine_ext_probe_popup_reports_active_tab",
-        "engine_ext_ui_popup_closes_on_blur"
+        "engine_ext_ui_popup_closes_on_blur_and_the_request_is_withdrawn",
+        "engine_ext_ui_the_application_closes_a_popup_and_navigation_closes_it"
       ],
       "source": "tasks.md T-EXT-01 6"
     },
@@ -101,9 +102,10 @@
       "expected": "supported",
       "reason": "State and activation as in extensions.md 4.1; openPopup raises a popup request.",
       "evidence": [
-        "engine_ext_ui_action_state",
-        "engine_ext_ui_action_activate",
-        "engine_ext_ui_popup_open_popup_api"
+        "engine_ext_ui_actions_report_state_and_badge_changes",
+        "engine_ext_ui_activation_targets_the_focused_page",
+        "engine_ext_ui_activation_without_a_gesture_fails",
+        "engine_ext_ui_action_open_popup_opens_a_popup"
       ],
       "source": "extensions.md 7"
     },
@@ -113,7 +115,10 @@
       "subject": "sidePanel",
       "expected": "supported",
       "reason": "Needs the BrowserWindowFeatures patch (T-EXT-03); the panel is a request with a native view.",
-      "evidence": ["engine_ext_panel_side_panel_open", "engine_ext_panel_side_panel_layout_side"],
+      "evidence": [
+        "engine_ext_panel_side_panel_open_shows_the_default_panel_at_the_trailing_edge",
+        "engine_ext_panel_side_panel_open_reaches_an_application_container"
+      ],
       "source": "extensions.md 7"
     },
     {
@@ -122,10 +127,7 @@
       "subject": "contextMenus",
       "expected": "supported",
       "reason": "Items are part of the context-menu request; a click grants activeTab.",
-      "evidence": [
-        "engine_ext_ui_context_menu_items",
-        "engine_ext_ui_context_menu_click_grants_active_tab"
-      ],
+      "evidence": ["engine_ext_ui_a_context_menu_item_is_listed_performed_and_grants_active_tab"],
       "source": "extensions.md 7"
     },
     {
@@ -134,7 +136,10 @@
       "subject": "commands",
       "expected": "degraded",
       "reason": "The application owns shortcuts. Without application support the default menu lists the commands and nothing is bound.",
-      "evidence": ["engine_ext_ui_commands_perform", "engine_ext_probe_api_presence"],
+      "evidence": [
+        "engine_ext_ui_a_declared_command_fires_oncommand_for_the_page",
+        "engine_ext_probe_api_presence"
+      ],
       "source": "extensions.md 7"
     },
     {
@@ -371,7 +376,7 @@
       "subject": "management",
       "expected": "supported",
       "reason": "Uninstalling through the API raises the uninstall prompt.",
-      "evidence": ["engine_ext_install_uninstall_prompt"],
+      "evidence": ["engine_ext_install_uninstall_raises_the_uninstall_request"],
       "source": "extensions.md 7"
     },
     {
@@ -617,7 +622,11 @@
       "subject": "Actions in the default extensions menu",
       "expected": "supported",
       "reason": "Listed in BDK's menu; a click activates the action.",
-      "evidence": ["engine_ext_ui_action_default_menu"],
+      "evidence": [
+        "engine_ext_ui_popup_opens_from_the_default_menu_with_no_handler",
+        "engine_ext_ui_a_window_with_no_anchor_gets_a_title_bar_button",
+        "engine_ext_ui_a_registered_anchor_replaces_the_title_bar_button"
+      ],
       "source": "extensions.md 4"
     },
     {
@@ -626,7 +635,11 @@
       "subject": "Actions drawn by the application from ActionState",
       "expected": "supported",
       "reason": "State is data and activation is a function (4.1).",
-      "evidence": ["engine_ext_ui_action_state", "engine_ext_ui_action_activate"],
+      "evidence": [
+        "engine_ext_ui_actions_report_state_and_badge_changes",
+        "engine_ext_ui_activation_targets_the_focused_page",
+        "engine_ext_ui_activation_without_a_gesture_fails"
+      ],
       "source": "extensions.md 4"
     },
     {
@@ -635,7 +648,7 @@
       "subject": "Popup in the default transient window",
       "expected": "supported",
       "reason": "Anchored to the action's entry, closes on blur.",
-      "evidence": ["engine_ext_ui_popup_default_presenter"],
+      "evidence": ["engine_ext_ui_popup_opens_from_the_default_menu_with_no_handler"],
       "source": "extensions.md 4"
     },
     {
@@ -644,7 +657,7 @@
       "subject": "Popup placed by the application",
       "expected": "supported",
       "reason": "The application receives a secure view and places it.",
-      "evidence": ["engine_ext_ui_popup_request"],
+      "evidence": ["engine_ext_ui_popup_with_a_handler_gets_the_secure_view_and_sizes"],
       "source": "extensions.md 4"
     },
     {
@@ -653,7 +666,7 @@
       "subject": "Side panel at the trailing edge of the page's window",
       "expected": "supported",
       "reason": "Needs the BrowserWindowFeatures patch (T-EXT-03).",
-      "evidence": ["engine_ext_panel_side_panel_default_presenter"],
+      "evidence": ["engine_ext_panel_side_panel_open_shows_the_default_panel_at_the_trailing_edge"],
       "source": "extensions.md 4"
     },
     {
@@ -662,7 +675,10 @@
       "subject": "Side panel embedded by the application",
       "expected": "supported",
       "reason": "The application embeds the secure view at any size in its own container.",
-      "evidence": ["engine_ext_panel_side_panel_request"],
+      "evidence": [
+        "engine_ext_panel_side_panel_open_reaches_an_application_container",
+        "engine_ext_panel_an_extension_closing_its_panel_withdraws_the_request"
+      ],
       "source": "extensions.md 4"
     },
     {
@@ -671,7 +687,9 @@
       "subject": "Page-scoped side panel while two pages are visible",
       "expected": "gap",
       "reason": "Unverified, recorded for risk R9: a page-scoped panel is meant to belong to the focused page.",
-      "evidence": ["engine_ext_panel_side_panel_scope_split_view"],
+      "evidence": [
+        "engine_ext_panel_a_page_panel_hides_and_shows_with_the_active_page_and_a_second_panel_replaces_it"
+      ],
       "source": "extensions.md 4"
     },
     {
@@ -680,7 +698,7 @@
       "subject": "Extension items in the context-menu request",
       "expected": "supported",
       "reason": "One submenu per extension when it adds more than one.",
-      "evidence": ["engine_ext_ui_context_menu_items"],
+      "evidence": ["engine_ext_ui_a_context_menu_item_is_listed_performed_and_grants_active_tab"],
       "source": "extensions.md 4"
     },
     {
@@ -689,7 +707,10 @@
       "subject": "Options page as a new-window request",
       "expected": "supported",
       "reason": "A newPage request whose initiator is the extension.",
-      "evidence": ["engine_ext_ui_options_page_opens"],
+      "evidence": [
+        "engine_ext_ui_openoptions_raises_a_new_page_request_with_the_extension",
+        "engine_ext_ui_chrome_runtime_openoptionspage_raises_the_same_request"
+      ],
       "source": "extensions.md 4"
     },
     {
@@ -698,7 +719,7 @@
       "subject": "DevTools extension panels in the default front end",
       "expected": "supported",
       "reason": "A devtools_page panel loads in undocked DevTools (T-EXT-08).",
-      "evidence": ["engine_ext_panel_devtools_panel_loads"],
+      "evidence": ["engine_ext_panel_a_devtools_page_adds_its_panel_to_undocked_devtools"],
       "source": "extensions.md 4"
     },
     {
@@ -717,8 +738,8 @@
       "expected": "supported",
       "reason": "Refused at install and at update with a reason naming the surface; the disabled API is absent from chrome.",
       "evidence": [
-        "engine_ext_install_inspect_refuses_disabled_surface",
-        "engine_ext_install_disabled_api_absent"
+        "engine_ext_install_an_incompatible_manifest_is_refused_with_the_finding",
+        "engine_ext_install_allow_all_installs_it_and_the_disabled_apis_are_absent"
       ],
       "source": "extensions.md 4"
     },
@@ -729,8 +750,10 @@
       "expected": "supported",
       "reason": "No disabled mode and no pre-approval: every install and permissions increase is shown and needs a gesture.",
       "evidence": [
-        "engine_ext_install_prompt_requires_gesture",
-        "engine_ext_install_uninstall_prompt"
+        "engine_ext_install_a_grant_without_a_recent_gesture_installs_nothing",
+        "engine_ext_install_denying_the_install_cancels_it",
+        "engine_ext_install_with_no_handler_the_default_alert_lists_the_warnings",
+        "engine_ext_install_uninstall_raises_the_uninstall_request"
       ],
       "source": "extensions.md 4"
     },
@@ -740,7 +763,7 @@
       "subject": "Install from an unpacked directory",
       "expected": "supported",
       "reason": "Subject to developer_mode; always raises the install prompt.",
-      "evidence": ["engine_ext_install_unpacked"],
+      "evidence": ["engine_ext_install_a_handler_grants_an_unpacked_install_with_a_gesture"],
       "source": "extensions.md 5"
     },
     {
@@ -749,7 +772,7 @@
       "subject": "Install from a local CRX",
       "expected": "supported",
       "reason": "BDK replaces Chromium's off-store default-deny with its own setting and keeps the prompt.",
-      "evidence": ["engine_ext_install_crx"],
+      "evidence": ["engine_ext_install_a_crx_built_at_test_time_installs_with_the_prompt"],
       "source": "extensions.md 5"
     },
     {
@@ -758,7 +781,7 @@
       "subject": "Install from a self-hosted update URL",
       "expected": "supported",
       "reason": "Installs and then updates from an update manifest.",
-      "evidence": ["engine_ext_install_update_url"],
+      "evidence": ["engine_ext_install_a_self_hosted_update_url_installs_and_then_updates"],
       "source": "extensions.md 5"
     },
     {
@@ -767,7 +790,11 @@
       "subject": "Install from a named store",
       "expected": "supported",
       "reason": "Available and off unless the application lists it (decision D4).",
-      "evidence": ["engine_ext_install_store_source_gated"],
+      "evidence": [
+        "engine_ext_install_a_store_that_is_not_configured_is_refused",
+        "engine_ext_install_the_store_button_says_add_to_the_browser_name",
+        "engine_ext_install_the_store_button_is_left_alone_when_the_store_is_off"
+      ],
       "source": "extensions.md 5"
     },
     {
@@ -785,7 +812,11 @@
       "subject": "A source that is switched off is refused with a reason",
       "expected": "supported",
       "reason": "extension.sourceNotAllowed names the bdk.toml key.",
-      "evidence": ["engine_ext_install_source_refused"],
+      "evidence": [
+        "engine_ext_install_unpacked_off_is_refused_naming_the_key",
+        "engine_ext_install_crx_off_is_refused_naming_the_key",
+        "engine_ext_install_an_update_url_outside_the_patterns_is_refused"
+      ],
       "source": "extensions.md 5"
     },
     {
@@ -794,7 +825,10 @@
       "subject": "An update applies; one that adds permissions disables until approved",
       "expected": "supported",
       "reason": "Chromium's update flow with BDK's inspection first; an incompatible update is refused.",
-      "evidence": ["engine_ext_install_update_applies"],
+      "evidence": [
+        "engine_ext_install_an_update_that_adds_permissions_is_disabled_until_approved",
+        "engine_ext_install_an_update_that_becomes_incompatible_is_refused"
+      ],
       "source": "extensions.md 5"
     },
     {
@@ -803,7 +837,7 @@
       "subject": "Pre-install compatibility report",
       "expected": "supported",
       "reason": "Blocking findings refuse the install unless install_policy is allow_all (extensions.md 6).",
-      "evidence": ["engine_ext_install_inspect_refuses_disabled_surface"],
+      "evidence": ["engine_ext_install_an_incompatible_manifest_is_refused_with_the_finding"],
       "source": "extensions.md 6"
     },
     {
@@ -830,7 +864,7 @@
       "subject": "allow_in_private = never",
       "expected": "supported",
       "reason": "No extension runs in a private profile and setAllowedInPrivate is refused.",
-      "evidence": ["engine_ext_install_private_never"],
+      "evidence": ["engine_ext_install_allowed_in_private_is_refused_when_private_is_never"],
       "source": "extensions.md 10"
     },
     {

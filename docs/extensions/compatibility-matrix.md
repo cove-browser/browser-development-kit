@@ -15,7 +15,7 @@ Expected status: `supported` behaves as in Chrome. `degraded` exists and differs
 | Focusing a page fires tabs.onActivated for it | supported | not run | `engine_ext_probe_focus_fires_on_activated` |
 | Moving a page to a second window keeps its tab id and fires detach then attach | supported | not run | `engine_ext_probe_move_keeps_tab_id_and_events` |
 | An action click grants activeTab to the focused page only, and navigating revokes it | supported | not run | `engine_ext_probe_action_grants_active_tab_to_one_page` |
-| The popup opens anchored to an arbitrary rectangle, reports the same active tab and closes on blur | supported | not run | `engine_ext_probe_popup_reports_active_tab`<br>`engine_ext_ui_popup_closes_on_blur` |
+| The popup opens anchored to an arbitrary rectangle, reports the same active tab and closes on blur | supported | not run | `engine_ext_probe_popup_reports_active_tab`<br>`engine_ext_ui_popup_closes_on_blur_and_the_request_is_withdrawn`<br>`engine_ext_ui_the_application_closes_a_popup_and_navigation_closes_it` |
 | tabs.sendMessage reaches the content script of both pages, and of the moved one | supported | not run | `engine_ext_probe_messages_reach_both_pages` |
 | The context-menu item is in the menu model and its click names the right tab | supported | not run | `engine_ext_probe_context_menu_names_tab` |
 | sidePanel.open works or fails with an explicit error | supported | not run | `engine_ext_probe_side_panel_open_result` |
@@ -25,10 +25,10 @@ Expected status: `supported` behaves as in Chrome. `degraded` exists and differs
 
 | Row | Expected | Observed | Evidence |
 |---|---|---|---|
-| `action` | supported | not run | `engine_ext_ui_action_state`<br>`engine_ext_ui_action_activate`<br>`engine_ext_ui_popup_open_popup_api` |
-| `sidePanel` | supported | not run | `engine_ext_panel_side_panel_open`<br>`engine_ext_panel_side_panel_layout_side` |
-| `contextMenus` | supported | not run | `engine_ext_ui_context_menu_items`<br>`engine_ext_ui_context_menu_click_grants_active_tab` |
-| `commands` | degraded | not run | `engine_ext_ui_commands_perform`<br>`engine_ext_probe_api_presence` |
+| `action` | supported | not run | `engine_ext_ui_actions_report_state_and_badge_changes`<br>`engine_ext_ui_activation_targets_the_focused_page`<br>`engine_ext_ui_activation_without_a_gesture_fails`<br>`engine_ext_ui_action_open_popup_opens_a_popup` |
+| `sidePanel` | supported | not run | `engine_ext_panel_side_panel_open_shows_the_default_panel_at_the_trailing_edge`<br>`engine_ext_panel_side_panel_open_reaches_an_application_container` |
+| `contextMenus` | supported | not run | `engine_ext_ui_a_context_menu_item_is_listed_performed_and_grants_active_tab` |
+| `commands` | degraded | not run | `engine_ext_ui_a_declared_command_fires_oncommand_for_the_page`<br>`engine_ext_probe_api_presence` |
 | `tabs.create` | supported | not run | `engine_ext_probe_new_window_requests` |
 | `windows.create` | supported | not run | `engine_ext_probe_new_window_requests` |
 | `tabs.update` | degraded | not run | `engine_ext_probe_tabs_update_active_request` |
@@ -54,7 +54,7 @@ Expected status: `supported` behaves as in Chrome. `degraded` exists and differs
 | `desktopCapture` | supported | not run | `engine_ext_ui_screen_capture_request` |
 | `tabCapture` | supported | not run | `engine_ext_ui_screen_capture_request` |
 | `permissions.request` | supported | not run | `engine_ext_install_optional_permissions_prompt` |
-| `management` | supported | not run | `engine_ext_install_uninstall_prompt` |
+| `management` | supported | not run | `engine_ext_install_uninstall_raises_the_uninstall_request` |
 | `bookmarks` | supported | not run | `engine_ext_probe_api_presence` |
 | `history` | supported | not run | `engine_ext_probe_api_presence` |
 | `topSites` | supported | not run | `engine_ext_probe_api_presence` |
@@ -86,32 +86,32 @@ Expected status: `supported` behaves as in Chrome. `degraded` exists and differs
 
 | Row | Expected | Observed | Evidence |
 |---|---|---|---|
-| Actions in the default extensions menu | supported | not run | `engine_ext_ui_action_default_menu` |
-| Actions drawn by the application from ActionState | supported | not run | `engine_ext_ui_action_state`<br>`engine_ext_ui_action_activate` |
-| Popup in the default transient window | supported | not run | `engine_ext_ui_popup_default_presenter` |
-| Popup placed by the application | supported | not run | `engine_ext_ui_popup_request` |
-| Side panel at the trailing edge of the page's window | supported | not run | `engine_ext_panel_side_panel_default_presenter` |
-| Side panel embedded by the application | supported | not run | `engine_ext_panel_side_panel_request` |
-| Page-scoped side panel while two pages are visible | gap | not run | `engine_ext_panel_side_panel_scope_split_view` |
-| Extension items in the context-menu request | supported | not run | `engine_ext_ui_context_menu_items` |
-| Options page as a new-window request | supported | not run | `engine_ext_ui_options_page_opens` |
-| DevTools extension panels in the default front end | supported | not run | `engine_ext_panel_devtools_panel_loads` |
+| Actions in the default extensions menu | supported | not run | `engine_ext_ui_popup_opens_from_the_default_menu_with_no_handler`<br>`engine_ext_ui_a_window_with_no_anchor_gets_a_title_bar_button`<br>`engine_ext_ui_a_registered_anchor_replaces_the_title_bar_button` |
+| Actions drawn by the application from ActionState | supported | not run | `engine_ext_ui_actions_report_state_and_badge_changes`<br>`engine_ext_ui_activation_targets_the_focused_page`<br>`engine_ext_ui_activation_without_a_gesture_fails` |
+| Popup in the default transient window | supported | not run | `engine_ext_ui_popup_opens_from_the_default_menu_with_no_handler` |
+| Popup placed by the application | supported | not run | `engine_ext_ui_popup_with_a_handler_gets_the_secure_view_and_sizes` |
+| Side panel at the trailing edge of the page's window | supported | not run | `engine_ext_panel_side_panel_open_shows_the_default_panel_at_the_trailing_edge` |
+| Side panel embedded by the application | supported | not run | `engine_ext_panel_side_panel_open_reaches_an_application_container`<br>`engine_ext_panel_an_extension_closing_its_panel_withdraws_the_request` |
+| Page-scoped side panel while two pages are visible | gap | not run | `engine_ext_panel_a_page_panel_hides_and_shows_with_the_active_page_and_a_second_panel_replaces_it` |
+| Extension items in the context-menu request | supported | not run | `engine_ext_ui_a_context_menu_item_is_listed_performed_and_grants_active_tab` |
+| Options page as a new-window request | supported | not run | `engine_ext_ui_openoptions_raises_a_new_page_request_with_the_extension`<br>`engine_ext_ui_chrome_runtime_openoptionspage_raises_the_same_request` |
+| DevTools extension panels in the default front end | supported | not run | `engine_ext_panel_a_devtools_page_adds_its_panel_to_undocked_devtools` |
 | DevTools extension panels with a replaced front end | gap | not run | `engine_ext_panel_devtools_replaced_frontend_gap` |
-| An extension that needs a disabled surface is refused | supported | not run | `engine_ext_install_inspect_refuses_disabled_surface`<br>`engine_ext_install_disabled_api_absent` |
-| Install, permission and uninstall prompts | supported | not run | `engine_ext_install_prompt_requires_gesture`<br>`engine_ext_install_uninstall_prompt` |
+| An extension that needs a disabled surface is refused | supported | not run | `engine_ext_install_an_incompatible_manifest_is_refused_with_the_finding`<br>`engine_ext_install_allow_all_installs_it_and_the_disabled_apis_are_absent` |
+| Install, permission and uninstall prompts | supported | not run | `engine_ext_install_a_grant_without_a_recent_gesture_installs_nothing`<br>`engine_ext_install_denying_the_install_cancels_it`<br>`engine_ext_install_with_no_handler_the_default_alert_lists_the_warnings`<br>`engine_ext_install_uninstall_raises_the_uninstall_request` |
 
 ## Installation sources and policy
 
 | Row | Expected | Observed | Evidence |
 |---|---|---|---|
-| Install from an unpacked directory | supported | not run | `engine_ext_install_unpacked` |
-| Install from a local CRX | supported | not run | `engine_ext_install_crx` |
-| Install from a self-hosted update URL | supported | not run | `engine_ext_install_update_url` |
-| Install from a named store | supported | not run | `engine_ext_install_store_source_gated` |
+| Install from an unpacked directory | supported | not run | `engine_ext_install_a_handler_grants_an_unpacked_install_with_a_gesture` |
+| Install from a local CRX | supported | not run | `engine_ext_install_a_crx_built_at_test_time_installs_with_the_prompt` |
+| Install from a self-hosted update URL | supported | not run | `engine_ext_install_a_self_hosted_update_url_installs_and_then_updates` |
+| Install from a named store | supported | not run | `engine_ext_install_a_store_that_is_not_configured_is_refused`<br>`engine_ext_install_the_store_button_says_add_to_the_browser_name`<br>`engine_ext_install_the_store_button_is_left_alone_when_the_store_is_off` |
 | Bundled extensions | gap | not run | `engine_ext_install_bundled_not_read` |
-| A source that is switched off is refused with a reason | supported | not run | `engine_ext_install_source_refused` |
-| An update applies; one that adds permissions disables until approved | supported | not run | `engine_ext_install_update_applies` |
-| Pre-install compatibility report | supported | not run | `engine_ext_install_inspect_refuses_disabled_surface` |
+| A source that is switched off is refused with a reason | supported | not run | `engine_ext_install_unpacked_off_is_refused_naming_the_key`<br>`engine_ext_install_crx_off_is_refused_naming_the_key`<br>`engine_ext_install_an_update_url_outside_the_patterns_is_refused` |
+| An update applies; one that adds permissions disables until approved | supported | not run | `engine_ext_install_an_update_that_adds_permissions_is_disabled_until_approved`<br>`engine_ext_install_an_update_that_becomes_incompatible_is_refused` |
+| Pre-install compatibility report | supported | not run | `engine_ext_install_an_incompatible_manifest_is_refused_with_the_finding` |
 
 ## Private profiles
 
@@ -119,7 +119,7 @@ Expected status: `supported` behaves as in Chrome. `degraded` exists and differs
 |---|---|---|---|
 | Manifest incognito mode spanning | supported | not run | `engine_ext_probe_incognito_spanning` |
 | Manifest incognito mode split | supported | not run | `engine_ext_probe_incognito_split` |
-| allow_in_private = never | supported | not run | `engine_ext_install_private_never` |
+| allow_in_private = never | supported | not run | `engine_ext_install_allowed_in_private_is_refused_when_private_is_never` |
 
 ## Host mapping
 

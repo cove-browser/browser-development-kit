@@ -235,6 +235,7 @@ static const t_test_t* const kTables[] = {
     t_engine_extension_tests,       /* extension install and policy (tests_engine_extensions.c) */
     t_engine_extension_ui_tests,    /* extension UI (tests_engine_ext_ui.c) */
     t_engine_extension_panel_tests, /* windows, side panels, DevTools extensions */
+    t_engine_extension_probe_tests, /* the MV3 probe, T-EXT-01 (tests_engine_ext_probe.c) */
 #endif
 };
 
