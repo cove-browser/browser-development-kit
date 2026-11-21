@@ -50,6 +50,7 @@ session (a logged-in Mac or the hosted macOS runner).
 | Views | `BDKWebView` (hosts `bdk_contents_native_view`, shows URL and title when the runtime reports `platform.unsupported`, registers each `NSWindow` once with `bdk_window_register` and unregisters it when it closes, forwards focus), `BDKWebContentsView` (SwiftUI), `BDKKeyboardDelegate` | T-SWF-03 |
 | UI requests | `BDKUIHandlers` (`config.ui`, `runtime.ui`): one `Surface<Request>` per surface with `setHandler(_:)` and `mode`; `BDKUIResponse` (`.handled`, `.useDefault`, `.reject`); `BDKUIRequest` and a typed subclass per surface (see below) | T-SWF-04 |
 | Settings | `BDKSettingKey`, `BDKSettingRegistry` (`config.settings`), typed `settings.get`, `set`, `reset`, `describe` on `BDKSettings`, `config.declarations` | T-SVC-08 |
+| Providers | `config.services` (`BDKServiceRegistry`), the provider protocols, `page.translation`, `TranslationRequest` (see below) | T-PRV-01, T-PRV-03, T-PRV-09 |
 | Commands | `BDKCommand`, `BDKEvent`, `BDKCommandRegistry` (`config.commands`), `BDKCommands` (`runtime.commands`: `register`, `declare`, `emit`, `events`, `invoke`), `BDKCommandContext`, `BDKDeclarations` | T-SVC-05 |
 
 Pages and profiles dropped without `close()` are closed on deinit with a warning in the log.
@@ -86,7 +87,8 @@ throws `ui.requestCompleted`; completing a withdrawn request does nothing.
 | `notifications` | `NotificationRequest` | `shown()` (local), `clicked(action:)`, `closed(byUser:)` |
 | `certificateErrors`, `reputationWarnings` | `CertificateErrorRequest`, `ReputationWarningRequest` | `goBack()`, `proceed(confirmedBy:)` (grant; `ui.notOverridable` when Chromium refuses) |
 | `devTools`, `externalProtocols` | `DevToolsRequest`, `ExternalProtocolRequest` | `accept()`, `reject()`; `open(remember:confirmedBy:)` (grant), `cancel()` |
-| `translation`, `deviceChoosers`, `screenCapture`, `webAuthn` | `BDKRawUIRequest` | `complete(_:arguments:confirmedBy:)` with "grant", "deny" or "accept" |
+| `translation` | `TranslationRequest` | `translate(from:to:)`, `revert()`, `always(for:)`, `never(for:)`, `neverForThisSite()`, `dismiss()` (none grants, none needs a gesture) |
+| `deviceChoosers`, `screenCapture`, `webAuthn` | `BDKRawUIRequest` | `complete(_:arguments:confirmedBy:)` with "grant", "deny" or "accept" |
 
 Completion mapping (provisional, settled here for T-UIR-01 to T-UIR-06): a completion that grants (permission, a kept
 dangerous download, a saved password or card, an accepted suggestion, a proceed past an interstitial, opening an
@@ -126,6 +128,42 @@ sorted keys, so equal input gives equal bytes. Each command entry is an interfac
 `capability`, `callers`, `profile`, `args`, `result`, optional `requires`, `progress`, `types`) with the same type
 expressions as `packages/core/interface`. The extractor (T-JS-02, T-CLI-04) is a small executable target of the
 application that builds its configuration the same way and calls `write(to:)`; the generator reads the JSON.
+
+### Providers and page translation
+
+`config.services.translation.register(MyProvider())`, `.reputation.register(…)` and `.geolocation.register(…)` collect
+the implementations of a service whose `provider` is `app` in `bdk.toml`; `config.services.google.apiKey` is the key of a
+service whose provider is `google` (it goes to `bdk_start_config_t.google_api_key`). `BDKRuntime.start` registers each
+with `bdk_provider_register` before the freeze, so start errors are `BDKError`s: `config.providerMissing` (an `app`
+service with no provider, found at the freeze), `config.providerNotApp`, `config.descriptorInvalid`, `config.keyMissing`
+and `config.keyUnused`. A registry is a value; registering twice for a service keeps the last.
+
+| Protocol | Required | Optional operations (refining protocols, offered to BDK only when the provider conforms) |
+|---|---|---|
+| `BDKTranslationProvider` | `supportedPairs()`, `translate(_:pair:context:)` | `BDKTranslationModelManaging` (`prepare(_:progress:)`, `removeModel(_:)`), `BDKLanguageDetecting` (`detectLanguage(of:)`) |
+| `BDKReputationProvider` | `check(_:context:)` | `BDKDownloadChecking` (`check(_ download:)`), `BDKReputationUpdating` (`update()`) |
+| `BDKGeolocationProvider` | `positions(_:)`, an `AsyncThrowingStream<BDKPosition, Error>` | |
+
+Each call runs the provider in a task on the main actor and answers with `bdk_provider_resolve` or `bdk_provider_reject`:
+a `BDKError` in the `provider` domain keeps its code, any other error is `provider.remoteError` with its description.
+The core checks every answer against the contract (`provider.contractViolation`; conventions.md, "Providers"), for
+instance that a navigation verdict is not `dangerousDownload`. When BDK no longer wants an answer (the page navigated,
+the translation was reverted, the watch stopped, shutdown) the task is cancelled. A geolocation watch reports each
+position of the stream with `bdk_provider_report` and ends when the stream finishes (the call resolves with null) or
+BDK cancels it, which ends the iteration and so triggers the stream's `onTermination`. A `BDKError` with the code
+`permissionDenied`, `positionUnavailable` or `timeout` thrown by the stream is reported to the page as the position
+error. `BDKTranslationModelManaging.prepare` reports progress through its closure.
+
+`page.translation` (swift-api.md 6.7) is `state()`, `translate(to:from:)`, `revert()` and `present()`: the page commands
+`translation.state`, `translate`, `revert` and `present`, invoked by name with the page in the options (the core finds
+the profile). They are not generated, because they act on a page. `BDKWebContents.Event.translation(BDKTranslationState)`
+carries `BDK_CONTENTS_EVENT_TRANSLATION`. The profile's provider, languages, models and preferences are the generated
+`profile.translation`. `TranslationRequest` is the offer (and what `present()` raises); later phases are the events.
+
+Against the stub, `BDKStub` also sets and reads a page's text (`setPageText(_:language:on:)`, `pageText(of:)`: the stub
+detects, offers and translates as the engine would after a load), loads a reputation list (`loadReputationList(_:)`) and
+starts, reads and stops a page's geolocation watch (`startGeolocationWatch(on:highAccuracy:)`, `lastGeolocation(of:)`,
+`stopGeolocationWatch(on:)`). `CBDKStub` exports `bdk_stub_providers.h` for them.
 
 ### Services
 
@@ -193,7 +231,7 @@ so a test can start a load and act on it (supersede it, stop it) before the stub
   `BDKWindow` yet); `profile` is optional; `setHandler` throws (it can fail after the freeze); a surface with two
   request kinds (`downloads`, `passwords`) takes `BDKUIRequest`; `NewWindowRequest.newContents` and the other
   page-carrying fields are optional; `BDKMenuItem` has no `icon`; there is no `AutofillSuggestionsRequest.preview`,
-  or `ProviderDescriptor` beyond `BDKProviderDescriptor(name:isRemote:)`.
+  or `ProviderDescriptor` beyond the generated `BDKProviderDescriptor`.
 * Commands (T-SVC-05): `BDKCommand` carries its shape; `BDKCommandContext.caller` is `BDKCommandCaller`;
   `runtime.commands` has no `.profile(profile)` convenience beyond `invoke(…, profile:)`.
 
@@ -201,10 +239,11 @@ so a test can start a load and act on it (supersede it, stop it) before the stub
 
 | Left out | Why | Task |
 |---|---|---|
-| Page registration and providers on `BDKConfiguration`; wrappers for services with no definition yet (search, translation, extensions, favicons, top sites; page-scoped capture) | The ABI declares `bdk_page_handler_register` and `bdk_provider_register`; the wrappers are generated, so each arrives with its definition | T-ABI-03, T-SWF-04, T-SVC-06 |
+| Page registration on `BDKConfiguration`; wrappers for services with no definition yet (search, extensions, favicons, top sites; page-scoped capture) | The ABI declares `bdk_page_handler_register`; the wrappers are generated, so each arrives with its definition | T-ABI-03, T-SWF-04, T-SVC-06 |
+| `config.services.<service>.setKey(_:)`, and the credentials and leak-check providers | `bdk_provider_set_key` always fails `config.keyUnused`: no provider in this runtime takes a key that way (the Google key is `google.apiKey`). The credential and leak-check providers (S14, S16) are proposals | — |
 | `BDKProfiles.events` for the `profiles.*` events | `profiles` is a native namespace | T-ABI-03 |
 | `BDKWindow`, anchors, window delegate, host contexts | `bdk_window_register` takes a window and a kind and nothing more yet; the other `bdk_window_*` functions are not declared | T-UIR-01, T-ADP-06 |
-| Page commands (`perform`, `canPerform`), capture, translation, scripting, user scripts | Not declared in the ABI | T-UIR-04, T-UIR-06, T-SVC-06, T-AUT-03 |
+| Page commands (`perform`, `canPerform`), capture, scripting, user scripts | Not declared in the ABI | T-UIR-04, T-UIR-06, T-SVC-06, T-AUT-03 |
 | `BDKRuntime.contents` lookup by id, `BDKProfiles.events`, `ProfileDescriptor.lastUsed`, profile rename by id | Not in the ABI (a rename needs an open profile handle) | T-ABI-03 |
 | `displayURL`, favicon, `capture`, `isCrashed`, `isDiscarded`, `isAutoDiscardable` getter, `isFullscreen`, opener, `extensionTabID`, `hoveredLinkChanged`, discard events (renderer loss is `.rendererGone`) | `bdk_contents_state_t` and the event kinds do not carry them | T-ABI-03 |
 | Navigation `LoadOptions`, `prune`, `deferInitialLoad`, `userAgent` and `isInitiallyMuted` creation options | Not in `bdk_contents_options_t` or `bdk_contents_load` | T-ABI-03 |

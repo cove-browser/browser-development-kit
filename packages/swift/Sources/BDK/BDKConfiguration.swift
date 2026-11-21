@@ -20,6 +20,8 @@ public struct BDKConfiguration: Sendable {
     public var commands = BDKCommandRegistry()
     /// Application settings (swift-api.md section 12.3).
     public var settings = BDKSettingRegistry()
+    /// Provider keys and implementations (swift-api.md section 11.2).
+    public var services = BDKServiceRegistry()
 
     /// Everything the application declares, for code generation: commands, events and settings.
     public var declarations: BDKDeclarations {

@@ -70,7 +70,7 @@ public final class BDKUIHandlers {
         surface(.autofillSuggestions)
     }
     public var printing: Surface<PrintRequest> { surface(.printing) }
-    public var translation: Surface<BDKRawUIRequest> { surface(.translation) }
+    public var translation: Surface<TranslationRequest> { surface(.translation) }
     public var find: Surface<FindRequest> { surface(.find) }
     public var fullscreen: Surface<FullscreenRequest> { surface(.fullscreen) }
     public var exclusiveAccess: Surface<ExclusiveAccessRequest> { surface(.exclusiveAccess) }
@@ -222,6 +222,7 @@ extension BDKUIRequest {
         .autofill: { AutofillSaveRequest($0, runtime: $1) },
         .autofillSuggestions: { AutofillSuggestionsRequest($0, runtime: $1) },
         .printing: { PrintRequest($0, runtime: $1) },
+        .translation: { TranslationRequest($0, runtime: $1) },
         .find: { FindRequest($0, runtime: $1) },
         .fullscreen: { FullscreenRequest($0, runtime: $1) },
         .exclusiveAccess: { ExclusiveAccessRequest($0, runtime: $1) },
@@ -232,7 +233,7 @@ extension BDKUIRequest {
         .externalProtocols: { ExternalProtocolRequest($0, runtime: $1) },
     ]
 
-    /// The typed request for a delivery. Surfaces without a typed request (translation, device
+    /// The typed request for a delivery. Surfaces without a typed request (device
     /// choosers, screen capture, WebAuthn) deliver a `BDKRawUIRequest`.
     static func make(_ delivery: BDKUIDelivery, runtime: BDKRuntime) -> BDKUIRequest {
         let factory = BDKUISurface(rawValue: delivery.surface).flatMap { factories[$0] }
