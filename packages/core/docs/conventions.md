@@ -284,6 +284,12 @@ logged-in Mac. The whole suite runs in one process: a runtime start and stop lea
 BDK closes is unloaded by Chromium (`engine_a_closed_profile_releases_its_descriptors` counts descriptors). Scenarios that need a key window (an input method's composition) are skipped, with a message,
 when macOS does not let the harness come to the front. `BDK_TEST_TRACE=1` prints every contents event.
 
+`BDK_ENGINE_SILENT=1` (or `nx run core:test-engine:silent`) runs it without getting in the way of whoever is using
+the Mac: the harness never activates, has no Dock icon or menu bar, keeps its windows behind every other window and
+never takes one fullscreen, and Chromium keeps drawing its occluded pages (`disable-backgrounding-occluded-windows`).
+The scenarios that need a key window are skipped, as above. The screen must still be unlocked: with it locked, page
+capture, the accessibility tree and both HTML fullscreen scenarios fail.
+
 A harness implements four hooks besides pumping and acting as Chromium: `bdk_harness_prepare_start_config`,
 `bdk_harness_attach_view` (focus needs a window in a real runtime), `bdk_harness_session_format` (tests that
 craft the stub's text format run only for it) and `bdk_harness_newer_session_state`.
