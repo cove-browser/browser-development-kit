@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { build, type Inputs } from "./generate.js";
-import { NATIVE_NAMESPACES } from "./swift.js";
+import { NATIVE_NAMESPACES, PAGE_COMMANDS } from "./swift.js";
 import { abi, history, type Json, mutate } from "./test-support.js";
 
 const POLICY = JSON.stringify({ neverForPages: ["contents.*"], neverForSessions: [] });
@@ -271,6 +271,21 @@ describe("the Swift wrappers", () => {
     const out = swift();
     expect(out).not.toContain("BDKProfiles");
     expect(out).not.toContain("profiles.list");
+  });
+
+  it("leaves the page commands to the hand-written page wrappers", () => {
+    expect(PAGE_COMMANDS).toContain("translation.translate");
+    const translation = {
+      namespace: "translation",
+      since: 1,
+      commands: [
+        command("translation.preferences"),
+        command("translation.translate", { capability: "contents.control", callers: ["swift"] }),
+      ],
+    };
+    const out = swift([...extras(), translation]);
+    expect(out).toContain('"translation.preferences"');
+    expect(out).not.toContain('"translation.translate"');
   });
 
   it("skips a command that Swift may not call", () => {

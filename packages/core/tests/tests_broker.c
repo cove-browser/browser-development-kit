@@ -355,16 +355,14 @@ static void test_settings_handlers_and_providers_register_before_the_freeze(void
     bdk_error_t err = 0;
     CHECK(bdk_app_setting_register(t_runtime, S("{\"key\":\"app.theme\"}"), &err) == BDK_OK);
     CHECK(bdk_app_setting_register(t_runtime, S("[1]"), &err) == BDK_ERR_INVALID_ARGUMENT);
+    /* Providers: registration needs provider = "app" (tests_providers.c has the rest). */
     CHECK(bdk_provider_set_key(t_runtime, S("translation"), S("key"), &err) == BDK_ERR_FAILED);
-    CHECK(t_error_is(err, "config", "providerMissing"));
+    CHECK(t_error_is(err, "config", "keyUnused"));
     bdk_provider_vtable_t vt;
     memset(&vt, 0, sizeof vt);
     vt.struct_size = sizeof vt;
-    CHECK(bdk_provider_register(t_runtime, S("translation"), &vt, NULL, NULL, &err) == BDK_OK);
     CHECK(bdk_provider_register(t_runtime, S("translation"), &vt, NULL, NULL, &err) ==
-          BDK_ERR_FAILED);
-    bdk_error_release(err);
-    CHECK(bdk_provider_set_key(t_runtime, S("translation"), S("key"), &err) == BDK_OK);
+          BDK_ERR_INVALID_ARGUMENT);
     CHECK(bdk_provider_register(t_runtime, S("geolocation"), NULL, NULL, NULL, &err) ==
           BDK_ERR_INVALID_ARGUMENT);
 }

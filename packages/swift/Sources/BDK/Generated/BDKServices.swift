@@ -597,6 +597,123 @@ public struct BDKDefaultBrowserStatus: Codable, Sendable, Equatable {
     }
 }
 
+public enum BDKProviderPrivacy: String, Codable, Sendable, Equatable, CaseIterable {
+    case onDevice
+    case remote
+}
+
+public struct BDKProviderDescriptor: Codable, Sendable, Equatable {
+    public var id: String
+    public var name: String
+    public var privacy: BDKProviderPrivacy
+    public var host: String?
+    public var policyUrl: URL?
+    public var protection: String?
+
+    public init(
+        id: String,
+        name: String,
+        privacy: BDKProviderPrivacy,
+        host: String? = nil,
+        policyUrl: URL? = nil,
+        protection: String? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.privacy = privacy
+        self.host = host
+        self.policyUrl = policyUrl
+        self.protection = protection
+    }
+}
+
+public struct BDKLanguagePair: Codable, Sendable, Equatable {
+    public var from: String
+    public var to: String
+    public var installed: Bool
+
+    public init(
+        from: String,
+        to: String,
+        installed: Bool
+    ) {
+        self.from = from
+        self.to = to
+        self.installed = installed
+    }
+}
+
+public struct BDKTranslationPreferences: Codable, Sendable, Equatable {
+    public var target: String
+    public var alwaysTranslate: [String]
+    public var neverTranslate: [String]
+    public var neverSites: [String]
+    public var offers: Bool
+
+    public init(
+        target: String,
+        alwaysTranslate: [String],
+        neverTranslate: [String],
+        neverSites: [String],
+        offers: Bool
+    ) {
+        self.target = target
+        self.alwaysTranslate = alwaysTranslate
+        self.neverTranslate = neverTranslate
+        self.neverSites = neverSites
+        self.offers = offers
+    }
+}
+
+public enum BDKTranslationPhase: String, Codable, Sendable, Equatable, CaseIterable {
+    case unavailable
+    case available
+    case translating
+    case translated
+    case failed
+}
+
+public struct BDKTranslationError: Codable, Sendable, Equatable {
+    public var domain: String
+    public var code: String
+    public var message: String
+
+    public init(
+        domain: String,
+        code: String,
+        message: String
+    ) {
+        self.domain = domain
+        self.code = code
+        self.message = message
+    }
+}
+
+public struct BDKTranslationState: Codable, Sendable, Equatable {
+    public var phase: BDKTranslationPhase
+    public var detected: String?
+    public var from: String?
+    public var to: String?
+    public var progress: Double?
+    public var error: BDKTranslationError?
+
+    public init(
+        phase: BDKTranslationPhase,
+        detected: String? = nil,
+        from: String? = nil,
+        to: String? = nil,
+        progress: Double? = nil,
+        error: BDKTranslationError? = nil
+    ) {
+        self.phase = phase
+        self.detected = detected
+        self.from = from
+        self.to = to
+        self.progress = progress
+        self.error = error
+    }
+}
+
 // MARK: - Services
 
 /// The `autofill` commands.
@@ -2212,6 +2329,132 @@ public struct BDKSystemDefaultBrowser {
     }
 }
 
+/// The `translation` commands.
+@MainActor
+public struct BDKTranslation {
+    let scope: BDKServiceScope
+
+    /// `translation.provider`. Needs the capability `translation.read` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func provider() async throws -> BDKProviderDescriptor {
+        return try await scope.call("translation.provider", BDKVoid(), as: BDKProviderDescriptor.self)
+    }
+
+    /// `translation.languages`. Needs the capability `translation.read` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func languages() async throws -> [BDKLanguagePair] {
+        struct Output: Decodable {
+            var pairs: [BDKLanguagePair]
+        }
+        return try await scope.call("translation.languages", BDKVoid(), as: Output.self).pairs
+    }
+
+    /// `translation.preferences`. Needs the capability `translation.read` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func preferences() async throws -> BDKTranslationPreferences {
+        return try await scope.call("translation.preferences", BDKVoid(), as: BDKTranslationPreferences.self)
+    }
+
+    /// `translation.setPreferences`. Needs the capability `translation.manage` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func setPreferences(
+        target: String? = nil,
+        alwaysTranslate: [String]? = nil,
+        neverTranslate: [String]? = nil,
+        neverSites: [String]? = nil,
+        offers: Bool? = nil
+    ) async throws -> BDKTranslationPreferences {
+        struct Arguments: Encodable {
+            var target: String?
+            var alwaysTranslate: [String]?
+            var neverTranslate: [String]?
+            var neverSites: [String]?
+            var offers: Bool?
+        }
+        return try await scope.call("translation.setPreferences", Arguments(target: target, alwaysTranslate: alwaysTranslate, neverTranslate: neverTranslate, neverSites: neverSites, offers: offers), as: BDKTranslationPreferences.self)
+    }
+
+    /// `translation.downloadModel`. Needs the capability `translation.manage` from a page or a session; a call from Swift is not checked.
+    /// `onProgress` runs on the main actor for each progress report.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func downloadModel(
+        from: String,
+        to: String,
+        onProgress: (@MainActor (Double, String) -> Void)? = nil
+    ) async throws {
+        struct Arguments: Encodable {
+            var from: String
+            var to: String
+        }
+        try await scope.run("translation.downloadModel", Arguments(from: from, to: to), onProgress: onProgress)
+    }
+
+    /// `translation.removeModel`. Needs the capability `translation.manage` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func removeModel(
+        from: String,
+        to: String
+    ) async throws {
+        struct Arguments: Encodable {
+            var from: String
+            var to: String
+        }
+        try await scope.run("translation.removeModel", Arguments(from: from, to: to))
+    }
+
+    /// `translation.*` events. Each is delivered with the event's payload.
+    public enum Event: Sendable, Equatable {
+        case preferencesChanged(BDKTranslationPreferences)
+        case modelsChanged(ModelsChanged)
+        case stateChanged(StateChanged)
+
+        public struct ModelsChanged: Codable, Sendable, Equatable {
+            public var pairs: [BDKLanguagePair]
+
+            public init(
+                pairs: [BDKLanguagePair]
+            ) {
+                self.pairs = pairs
+            }
+        }
+
+        public struct StateChanged: Codable, Sendable, Equatable {
+            public var page: String
+            public var state: BDKTranslationState
+
+            public init(
+                page: String,
+                state: BDKTranslationState
+            ) {
+                self.page = page
+                self.state = state
+            }
+        }
+
+        static let names = ["translation.preferencesChanged", "translation.modelsChanged", "translation.stateChanged"]
+
+        /// Decodes one delivered event; nil for a name this version does not know.
+        static func decode(name: String, payload: String) throws -> Event? {
+            switch name {
+            case "translation.preferencesChanged":
+                return .preferencesChanged(try BDKServiceCoding.decode(BDKTranslationPreferences.self, from: payload))
+            case "translation.modelsChanged":
+                return .modelsChanged(try BDKServiceCoding.decode(ModelsChanged.self, from: payload))
+            case "translation.stateChanged":
+                return .stateChanged(try BDKServiceCoding.decode(StateChanged.self, from: payload))
+            default:
+                return nil
+            }
+        }
+    }
+
+    /// The events of this namespace. Reading the property subscribes at once, so events that happen
+    /// after it are delivered. The stream ends when it is no longer iterated or the runtime shuts down.
+    public var events: AsyncStream<Event> {
+        scope.events(Event.names, decode: Event.decode)
+    }
+}
+
 // MARK: - Entry points
 
 extension BDKProfile {
@@ -2258,6 +2501,11 @@ extension BDKProfile {
     /// The `settings` commands in this profile.
     public var settings: BDKSettings {
         BDKSettings(scope: BDKServiceScope(runtime: runtime, profile: self))
+    }
+
+    /// The `translation` commands in this profile.
+    public var translation: BDKTranslation {
+        BDKTranslation(scope: BDKServiceScope(runtime: runtime, profile: self))
     }
 }
 

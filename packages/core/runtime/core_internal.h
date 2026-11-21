@@ -34,7 +34,8 @@ enum Type : uint8_t {
     T_CALL,
     T_SUB,
     T_SESSION,
-    T_CONTEXT
+    T_CONTEXT,
+    T_PROVIDER_CALL /* providers.cc */
 };
 
 struct Err {
@@ -46,7 +47,8 @@ struct Buf {
 
 struct Runtime;
 struct Contents;
-struct BuiltinCall; /* broker_internal.h */
+struct BuiltinCall;   /* broker_internal.h */
+struct ProviderTable; /* providers.cc */
 
 struct Sub {
     bool active = true;
@@ -238,7 +240,7 @@ struct Runtime {
     std::map<std::string, AppSetting> app_settings;
     std::map<std::string, AppSettingValues> app_values; /* by profile id; "" for the application */
     std::map<std::string, Owned> page_handlers, providers;
-    std::map<std::string, std::string> provider_keys;
+    std::shared_ptr<ProviderTable> provider_table; /* providers_internal.h */
     std::map<uint32_t, UiHandler> ui_handlers;
     std::map<uint32_t, UiMode> ui_modes; /* by surface; a surface not listed is kDefault */
     std::map<std::pair<bdk_contents_t, uint32_t>, UiQueue> ui_queues;

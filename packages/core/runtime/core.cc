@@ -9,6 +9,7 @@
 #include "bdk_abi_hash.h"
 #include "broker_internal.h"
 #include "core_internal.h"
+#include "providers_internal.h"
 
 using namespace bdkcore;
 
@@ -582,6 +583,8 @@ BDK_EXPORT bdk_status_t bdk_runtime_start(const bdk_start_config_t* config, bdk_
     auto rt = std::make_shared<Runtime>();
     if (bdk_status_t s = ui_configure(*rt, resolved, out_error))
         return s;
+    if (bdk_status_t s = providers_configure(*rt, resolved, c, out_error))
+        return s;
     {
         std::lock_guard<std::mutex> lock(g.mutex);
         g.ui_set = true;
@@ -632,6 +635,7 @@ BDK_EXPORT bdk_call_t bdk_runtime_shutdown(bdk_runtime_t h, bdk_result_cb cb, vo
         release_later(kv.second.ctx, kv.second.rel);
     for (auto& kv : rt->page_handlers)
         release_later(kv.second.ctx, kv.second.rel);
+    providers_shutdown(*rt); /* the providers hear of their cancelled calls before release */
     for (auto& kv : rt->providers)
         release_later(kv.second.ctx, kv.second.rel);
     for (auto& kv : rt->ui_handlers)
@@ -656,7 +660,8 @@ BDK_EXPORT bdk_call_t bdk_runtime_shutdown(bdk_runtime_t h, bdk_result_cb cb, vo
     Globals& g = G();
     for (uint32_t i = 0; i < g.slots.size(); ++i) {
         Type t = g.slots[i].type;
-        if (t == T_WINDOW || t == T_SESSION || t == T_CONTEXT || t == T_PROFILE || t == T_SUB) {
+        if (t == T_WINDOW || t == T_SESSION || t == T_CONTEXT || t == T_PROFILE || t == T_SUB ||
+            t == T_PROVIDER_CALL) {
             bdk_handle_t handle = (static_cast<uint64_t>(t) << 56u) |
                                   ((static_cast<uint64_t>(g.slots[i].gen) & kGenMask) << 32u) | i;
             table_free(handle);
@@ -693,6 +698,8 @@ BDK_EXPORT bdk_status_t bdk_runtime_freeze_registrations(bdk_runtime_t h, bdk_er
         return fail(out_error, BDK_DOMAIN_CONFIG, BDK_CODE_REGISTRATION_AFTER_START,
                     "the registrations are already frozen");
     if (bdk_status_t s = ui_check_handlers(*rt, out_error))
+        return s;
+    if (bdk_status_t s = providers_check_registrations(*rt, out_error))
         return s;
     rt->frozen = true;
     emit_runtime_event(rt, BDK_RUNTIME_EVENT_REGISTRATIONS_FROZEN, "{}");
@@ -984,12 +991,7 @@ BDK_EXPORT bdk_status_t bdk_provider_register(bdk_runtime_t h, bdk_string_t serv
         service.length == 0) {
         return BDK_ERR_INVALID_ARGUMENT;
     }
-    std::string s = str(service);
-    if (rt->providers.count(s))
-        return fail(out_error, BDK_DOMAIN_CONFIG, "duplicateName",
-                    "provider '" + s + "' is already registered");
-    rt->providers[s] = Owned{ctx, rel};
-    return BDK_OK;
+    return provider_register(*rt, str(service), *vtable, ctx, rel, out_error);
 }
 
 BDK_EXPORT bdk_status_t bdk_provider_set_key(bdk_runtime_t h, bdk_string_t service,
@@ -1002,12 +1004,12 @@ BDK_EXPORT bdk_status_t bdk_provider_set_key(bdk_runtime_t h, bdk_string_t servi
         return BDK_ERR_STALE_HANDLE;
     if (!string_ok(service) || !string_ok(key))
         return BDK_ERR_INVALID_ARGUMENT;
-    std::string s = str(service);
-    if (!rt->providers.count(s))
-        return fail(out_error, BDK_DOMAIN_CONFIG, "providerMissing",
-                    "no provider registered for '" + s + "'");
-    rt->provider_keys[s] = str(key);
-    return BDK_OK;
+    /* No named provider in this runtime takes a key this way (T-PRV-08); the Google key is part
+       of the start configuration. */
+    return fail(out_error, BDK_DOMAIN_CONFIG, "keyUnused",
+                "no provider of '" + str(service) +
+                    "' in this runtime takes a key; the Google key is google_api_key in the start "
+                    "configuration");
 }
 
 BDK_EXPORT bdk_status_t bdk_session_create(bdk_runtime_t h, bdk_string_t options,

@@ -279,6 +279,50 @@ inline constexpr Field kTypeFields33[] = {
     {"isDefault", {0, Prim::kBool, false, false}},
     {"canBeDefault", {0, Prim::kBool, false, false}},
 };
+inline constexpr const char* kTypeValues34[] = {
+    "onDevice",
+    "remote",
+};
+inline constexpr Field kTypeFields35[] = {
+    {"id", {0, Prim::kString, false, false}},
+    {"name", {0, Prim::kString, false, false}},
+    {"privacy", {34, Prim::kNamed, false, false}},
+    {"host", {0, Prim::kString, false, true}},
+    {"policyUrl", {0, Prim::kUrl, false, true}},
+    {"protection", {0, Prim::kString, false, true}},
+};
+inline constexpr Field kTypeFields36[] = {
+    {"from", {0, Prim::kString, false, false}},
+    {"to", {0, Prim::kString, false, false}},
+    {"installed", {0, Prim::kBool, false, false}},
+};
+inline constexpr Field kTypeFields37[] = {
+    {"target", {0, Prim::kString, false, false}},
+    {"alwaysTranslate", {0, Prim::kString, true, false}},
+    {"neverTranslate", {0, Prim::kString, true, false}},
+    {"neverSites", {0, Prim::kString, true, false}},
+    {"offers", {0, Prim::kBool, false, false}},
+};
+inline constexpr const char* kTypeValues38[] = {
+    "unavailable",
+    "available",
+    "translating",
+    "translated",
+    "failed",
+};
+inline constexpr Field kTypeFields39[] = {
+    {"domain", {0, Prim::kString, false, false}},
+    {"code", {0, Prim::kString, false, false}},
+    {"message", {0, Prim::kString, false, false}},
+};
+inline constexpr Field kTypeFields40[] = {
+    {"phase", {38, Prim::kNamed, false, false}},
+    {"detected", {0, Prim::kString, false, true}},
+    {"from", {0, Prim::kString, false, true}},
+    {"to", {0, Prim::kString, false, true}},
+    {"progress", {0, Prim::kDouble, false, true}},
+    {"error", {39, Prim::kNamed, false, true}},
+};
 inline constexpr TypeDef kTypes[] = {
     {"AddressFields", kTypeFields0, 9, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
     {"AddressInfo", kTypeFields1, 2, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
@@ -314,8 +358,15 @@ inline constexpr TypeDef kTypes[] = {
     {"SettingSource", nullptr, 0, kTypeValues31, 2, {0, Prim::kVoid, false, false}, Kind::kEnum},
     {"SettingInfo", kTypeFields32, 8, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
     {"DefaultBrowserStatus", kTypeFields33, 2, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"ProviderPrivacy", nullptr, 0, kTypeValues34, 2, {0, Prim::kVoid, false, false}, Kind::kEnum},
+    {"ProviderDescriptor", kTypeFields35, 6, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"LanguagePair", kTypeFields36, 3, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"TranslationPreferences", kTypeFields37, 5, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"TranslationPhase", nullptr, 0, kTypeValues38, 5, {0, Prim::kVoid, false, false}, Kind::kEnum},
+    {"TranslationError", kTypeFields39, 3, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"TranslationState", kTypeFields40, 6, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
 };
-inline constexpr size_t kTypeCount = 34;
+inline constexpr size_t kTypeCount = 41;
 
 inline constexpr Field kArgs1[] = {
     {"fields", {0, Prim::kNamed, false, false}},
@@ -564,6 +615,25 @@ inline constexpr Field kArgs82[] = {
 inline constexpr Field kArgs83[] = {
     {"key", {0, Prim::kString, false, false}},
 };
+inline constexpr Field kArgs89[] = {
+    {"target", {0, Prim::kString, false, true}},
+    {"alwaysTranslate", {0, Prim::kString, true, true}},
+    {"neverTranslate", {0, Prim::kString, true, true}},
+    {"neverSites", {0, Prim::kString, true, true}},
+    {"offers", {0, Prim::kBool, false, true}},
+};
+inline constexpr Field kArgs90[] = {
+    {"from", {0, Prim::kString, false, false}},
+    {"to", {0, Prim::kString, false, false}},
+};
+inline constexpr Field kArgs91[] = {
+    {"from", {0, Prim::kString, false, false}},
+    {"to", {0, Prim::kString, false, false}},
+};
+inline constexpr Field kArgs93[] = {
+    {"from", {0, Prim::kString, false, true}},
+    {"to", {0, Prim::kString, false, true}},
+};
 
 inline constexpr CommandDef kCommands[] = {
     {"autofill.addresses.list", "autofill.read", nullptr, nullptr, 0, 1u, 7, 2, 0, 0},
@@ -652,8 +722,18 @@ inline constexpr CommandDef kCommands[] = {
     {"settings.reset", "settings.write", nullptr, kArgs83, 1, 84u, 7, 1, 0, 0},
     {"system.defaultBrowser.status", "system.default-browser", nullptr, nullptr, 0, 85u, 7, 0, 0, 0},
     {"system.defaultBrowser.request", "system.default-browser", nullptr, nullptr, 0, 86u, 7, 0, kGesture, 0},
+    {"translation.provider", "translation.read", nullptr, nullptr, 0, 87u, 7, 2, 0, 0},
+    {"translation.languages", "translation.read", nullptr, nullptr, 0, 88u, 7, 2, 0, 0},
+    {"translation.preferences", "translation.read", nullptr, nullptr, 0, 89u, 7, 2, 0, 0},
+    {"translation.setPreferences", "translation.manage", nullptr, kArgs89, 5, 90u, 7, 2, 0, 0},
+    {"translation.downloadModel", "translation.manage", nullptr, kArgs90, 2, 91u, 7, 2, kProgress, 0},
+    {"translation.removeModel", "translation.manage", nullptr, kArgs91, 2, 92u, 7, 2, 0, 0},
+    {"translation.state", "contents.read", nullptr, nullptr, 0, 93u, 5, 2, 0, 0},
+    {"translation.translate", "contents.control", nullptr, kArgs93, 2, 94u, 5, 2, kProgress, 0},
+    {"translation.revert", "contents.control", nullptr, nullptr, 0, 95u, 5, 2, 0, 0},
+    {"translation.present", "contents.control", nullptr, nullptr, 0, 96u, 5, 2, 0, 13},
 };
-inline constexpr size_t kCommandCount = 86;
+inline constexpr size_t kCommandCount = 96;
 
 inline constexpr EventDef kEvents[] = {
     {"autofill.changed", "autofill.read", 1u},
@@ -678,8 +758,11 @@ inline constexpr EventDef kEvents[] = {
     {"profiles.renamed", "profiles.read", 20u},
     {"profiles.deleted", "profiles.read", 21u},
     {"settings.changed", "settings.read", 22u},
+    {"translation.preferencesChanged", "translation.read", 23u},
+    {"translation.modelsChanged", "translation.read", 24u},
+    {"translation.stateChanged", "contents.read", 25u},
 };
-inline constexpr size_t kEventCount = 22;
+inline constexpr size_t kEventCount = 25;
 
 inline constexpr const char* kNeverForPages[] = {
     "contents.*",

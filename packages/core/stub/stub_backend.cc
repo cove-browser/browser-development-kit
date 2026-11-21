@@ -10,6 +10,7 @@
 #include "../runtime/core_internal.h"
 #include "bdk_abi_hash.h"
 #include "bdk_stub.h"
+#include "stub_providers.h"
 #include "stub_services.h"
 
 using namespace bdkcore;
@@ -17,6 +18,7 @@ using namespace bdkcore;
 namespace {
 
 constexpr int32_t kErrAborted = -3;
+constexpr int32_t kErrBlocked = -20; /* net::ERR_BLOCKED_BY_CLIENT */
 constexpr uint32_t kMainFrame = BDK_EVENT_FLAG_MAIN_FRAME;
 
 struct Nav {
@@ -79,6 +81,69 @@ void cancel_nav(const std::shared_ptr<Contents>& c, const char* why) {
                         std::string("{\"code\":\"") + why + "\"}", kErrAborted, kMainFrame);
 }
 
+/* Commits a navigation the reputation provider let through: an error page for a scripted
+   failure, otherwise the entry, its title and the load. */
+void commit_nav(const std::shared_ptr<Contents>& c, const std::shared_ptr<Nav>& nav,
+                const std::string& url, int target_index, uint32_t flags) {
+    StubContents& d2 = data_of(*c);
+    int32_t net_error = 0;
+    std::string title = url;
+    {
+        auto it = S().scripts.find(url);
+        if (it != S().scripts.end()) {
+            net_error = it->second.first;
+            if (!it->second.second.empty())
+                title = it->second.second;
+        }
+    }
+    if (net_error != 0) {
+        /* As in Chromium, the error page commits as an entry for the URL that failed (a new
+           entry, or the history entry being revisited). */
+        if (target_index < 0) {
+            d2.entries.resize(static_cast<size_t>(d2.current) + 1);
+            d2.entries.push_back(Entry{url, url});
+            d2.current = static_cast<int>(d2.entries.size()) - 1;
+        } else {
+            d2.current = target_index;
+        }
+        d2.nav.reset();
+        d2.loading = false;
+        d2.progress = 1.0;
+        emit_contents_event_now(c, BDK_CONTENTS_EVENT_NAVIGATION_FAILED, url,
+                                "{\"code\":\"netError\"}", net_error,
+                                flags | BDK_EVENT_FLAG_ERROR_PAGE);
+        return;
+    }
+    /* Like Chromium, a title event only when the entry's title changes: a new entry always,
+       a reload or a history navigation only if the title differs. */
+    bool title_changed = true;
+    if (target_index < 0) {
+        d2.entries.resize(static_cast<size_t>(d2.current) + 1);
+        d2.entries.push_back(Entry{url, title});
+        d2.current = static_cast<int>(d2.entries.size()) - 1;
+    } else {
+        d2.current = target_index;
+        Entry& entry = d2.entries[static_cast<size_t>(target_index)];
+        title_changed = entry.title != title;
+        entry.title = title;
+    }
+    d2.progress = 0.8;
+    emit_contents_event_now(c, BDK_CONTENTS_EVENT_NAVIGATION_COMMITTED, url, "{}", 0, flags);
+    if (title_changed) {
+        emit_contents_event_now(c, BDK_CONTENTS_EVENT_TITLE_CHANGED, url,
+                                "{\"title\":\"" + json_escape(title) + "\"}", 0, kMainFrame);
+    }
+    post([c, nav, url, flags] {
+        if (nav->cancelled || c->dead)
+            return;
+        StubContents& d3 = data_of(*c);
+        d3.nav.reset();
+        d3.loading = false;
+        d3.progress = 1.0;
+        emit_contents_event_now(c, BDK_CONTENTS_EVENT_LOAD_FINISHED, url, "{}", 0, flags);
+    });
+}
+
 /* target_index -1: a new entry. Otherwise history navigation (or reload) to that entry. */
 void begin_nav(const std::shared_ptr<Contents>& c, const std::string& url, int target_index) {
     cancel_nav(c, "superseded");
@@ -92,62 +157,19 @@ void begin_nav(const std::shared_ptr<Contents>& c, const std::string& url, int t
     post([c, nav, url, target_index, flags] {
         if (nav->cancelled || c->dead)
             return;
-        StubContents& d2 = data_of(*c);
-        int32_t net_error = 0;
-        std::string title = url;
-        {
-            auto it = S().scripts.find(url);
-            if (it != S().scripts.end()) {
-                net_error = it->second.first;
-                if (!it->second.second.empty())
-                    title = it->second.second;
-            }
-        }
-        if (net_error != 0) {
-            /* As in Chromium, the error page commits as an entry for the URL that failed (a new
-               entry, or the history entry being revisited). */
-            if (target_index < 0) {
-                d2.entries.resize(static_cast<size_t>(d2.current) + 1);
-                d2.entries.push_back(Entry{url, url});
-                d2.current = static_cast<int>(d2.entries.size()) - 1;
-            } else {
-                d2.current = target_index;
-            }
-            d2.nav.reset();
-            d2.loading = false;
-            d2.progress = 1.0;
-            emit_contents_event_now(c, BDK_CONTENTS_EVENT_NAVIGATION_FAILED, url,
-                                    "{\"code\":\"netError\"}", net_error,
-                                    flags | BDK_EVENT_FLAG_ERROR_PAGE);
-            return;
-        }
-        /* Like Chromium, a title event only when the entry's title changes: a new entry always,
-           a reload or a history navigation only if the title differs. */
-        bool title_changed = true;
-        if (target_index < 0) {
-            d2.entries.resize(static_cast<size_t>(d2.current) + 1);
-            d2.entries.push_back(Entry{url, title});
-            d2.current = static_cast<int>(d2.entries.size()) - 1;
-        } else {
-            d2.current = target_index;
-            Entry& entry = d2.entries[static_cast<size_t>(target_index)];
-            title_changed = entry.title != title;
-            entry.title = title;
-        }
-        d2.progress = 0.8;
-        emit_contents_event_now(c, BDK_CONTENTS_EVENT_NAVIGATION_COMMITTED, url, "{}", 0, flags);
-        if (title_changed) {
-            emit_contents_event_now(c, BDK_CONTENTS_EVENT_TITLE_CHANGED, url,
-                                    "{\"title\":\"" + json_escape(title) + "\"}", 0, kMainFrame);
-        }
-        post([c, nav, url, flags] {
+        /* The reputation provider sees the URL before it commits (T-PRV-05). */
+        bdkstub::providers_check_navigation(c, url, [c, nav, url, target_index, flags](bool go) {
             if (nav->cancelled || c->dead)
                 return;
-            StubContents& d3 = data_of(*c);
-            d3.nav.reset();
-            d3.loading = false;
-            d3.progress = 1.0;
-            emit_contents_event_now(c, BDK_CONTENTS_EVENT_LOAD_FINISHED, url, "{}", 0, flags);
+            if (go) {
+                commit_nav(c, nav, url, target_index, flags);
+                return;
+            }
+            StubContents& blocked = data_of(*c);
+            blocked.nav.reset();
+            blocked.loading = false;
+            emit_contents_event_now(c, BDK_CONTENTS_EVENT_NAVIGATION_FAILED, url,
+                                    "{\"code\":\"blocked\"}", kErrBlocked, kMainFrame);
         });
     });
 }
@@ -255,6 +277,7 @@ class StubBackend final : public Backend {
         S().app_settings.clear();
         set_outcome(BDK_STUB_UI_NONE, 0, "", "");
         bdkstub::services_reset();
+        bdkstub::providers_reset();
         return BDK_OK;
     }
 
@@ -511,7 +534,8 @@ class StubBackend final : public Backend {
     void UnregisterWindow(const Window&) override {}
 
     void ExecuteCommand(Runtime& rt, const std::shared_ptr<BuiltinCall>& call) override {
-        bdkstub::services_execute(rt, call);
+        if (!bdkstub::providers_execute(rt, call))
+            bdkstub::services_execute(rt, call);
     }
 
     void Authenticate(Runtime&, const std::string&, std::function<void(bool)> done) override {

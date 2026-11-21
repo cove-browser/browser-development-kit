@@ -23,6 +23,10 @@ source_set("core") {
     "core/runtime/core.cc",
     "core/runtime/core_host.cc",
     "core/runtime/core_internal.h",
+    "core/runtime/providers.cc",
+    "core/runtime/providers_internal.h",
+    "core/runtime/reputation_lists.cc",
+    "core/runtime/translation.cc",
     "core/runtime/ui_router.cc",
   ]
   public_configs = [ ":core_config" ]
