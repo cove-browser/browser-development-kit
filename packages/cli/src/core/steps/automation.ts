@@ -65,15 +65,15 @@ export const automationStep: Step = {
     for (const name of names) {
       const entry = scripts[name] as Entry;
       const output = join(outDir, `${name}.js`);
-      const cached = cache[name];
-      if (isUpToDate(cached, output)) {
+      const entryFile = resolve(project.dir, entry.path);
+      const cached = cache.get(name);
+      if (isUpToDate(cached, entryFile, output)) {
         unchanged.push(name);
         digests.set(name, (cached as { bundle_digest: string }).bundle_digest);
         continue;
       }
       bundler ??= await requireBundler(ctx, project.dir);
       aliases ??= automationAliases(project.dir);
-      const entryFile = resolve(project.dir, entry.path);
       const outcome = await bundleScript(bundler, { script: name, entry: entryFile, aliases });
       diagnostics.push(...outcome.diagnostics);
       if (outcome.code === undefined) continue;
@@ -81,11 +81,12 @@ export const automationStep: Step = {
       await mkdir(outDir, { recursive: true });
       await writeFile(output, bytes);
       const bundleDigest = sha256(bytes);
-      cache[name] = {
+      cache.set(name, {
+        entry: entryFile,
         output,
         bundle_digest: bundleDigest,
         inputs: digestInputs(outcome.inputs),
-      };
+      });
       built.push(name);
       digests.set(name, bundleDigest);
     }
@@ -152,7 +153,7 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 function pruned(cache: Cache, names: readonly string[]): Cache {
-  return Object.fromEntries(Object.entries(cache).filter(([name]) => names.includes(name)));
+  return new Map([...cache].filter(([name]) => names.includes(name)));
 }
 
 /**
@@ -164,15 +165,20 @@ function record(
   scripts: Record<string, Entry>,
   digests: ReadonlyMap<string, string>,
 ): Record<string, unknown> | undefined {
-  const next: Record<string, Entry> = {};
-  for (const [name, entry] of Object.entries(scripts)) {
-    const { bundle: _bundle, bundle_digest: _digest, ...source } = entry;
-    next[name] = {
-      ...source,
-      bundle: `${BUNDLE_DIRECTORY}/${name}.js`,
-      bundle_digest: digests.get(name) as string,
-    };
-  }
+  // fromEntries defines own properties, so a script called `__proto__` stays a key.
+  const next: Record<string, Entry> = Object.fromEntries(
+    Object.entries(scripts).map(([name, entry]) => {
+      const { bundle: _bundle, bundle_digest: _digest, ...source } = entry;
+      return [
+        name,
+        {
+          ...source,
+          bundle: `${BUNDLE_DIRECTORY}/${name}.js`,
+          bundle_digest: digests.get(name) as string,
+        },
+      ];
+    }),
+  );
   const { config_digest: previous, ...body } = resolved;
   const withBundles = {
     ...body,

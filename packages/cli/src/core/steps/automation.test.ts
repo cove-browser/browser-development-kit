@@ -158,6 +158,82 @@ describe("bdk build automation", () => {
     expect(await readFile(file)).not.toEqual(bytes);
   });
 
+  it("rebuilds when the script moves to another directory with the same name", async () => {
+    const { dir, app } = await project(HELLO);
+    await build(dir);
+    expect(await run(["build", "automation", "--bundle", app], real(dir))).toBe(0);
+
+    // The old file stays, unchanged, so only the entry path tells the two builds apart.
+    await write(dir, "Scripts/hello.ts", "export default () => 'moved-script';\n");
+    await write(
+      dir,
+      "bdk.toml",
+      '[browser]\nname = "Demo"\n\n[automation]\nenabled = true\ndirectory = "Scripts"\n',
+    );
+    await build(dir);
+    const ctx = real(dir);
+    expect(await run(["build", "automation", "--bundle", app, "--json"], ctx)).toBe(0);
+    expect(JSON.parse(ctx.out.join("")).result.automation.built).toEqual(["hello"]);
+    const file = join(app, "Contents/Resources/BDK/Automation/hello.js");
+    expect(await readFile(file, "utf8")).toContain("moved-script");
+    const scripts = (await resolvedOf(dir)).automation as {
+      scripts: Record<string, Record<string, string>>;
+    };
+    expect(scripts.scripts.hello).toMatchObject({
+      path: "Scripts/hello.ts",
+      bundle_digest: sha256(await readFile(file)),
+    });
+  });
+
+  it("keeps a script called __proto__ in the resolved file and the cache", async () => {
+    const { dir, app } = await project(HELLO);
+    await write(dir, "Automation/__proto__.ts", "export default () => 'proto';\n");
+    await build(dir);
+    expect(await run(["build", "automation", "--bundle", app], real(dir))).toBe(0);
+    const resolved = await resolvedOf(dir);
+    const scripts = (resolved.automation as { scripts: Record<string, Record<string, string>> })
+      .scripts;
+    expect(Object.keys(scripts).sort()).toEqual(["__proto__", "hello"]);
+    expect(Object.getPrototypeOf(scripts)).toBe(Object.prototype);
+    expect(Object.getOwnPropertyDescriptor(scripts, "__proto__")?.value).toMatchObject({
+      path: "Automation/__proto__.ts",
+      bundle: "BDK/Automation/__proto__.js",
+    });
+
+    const ctx = real(dir);
+    expect(await run(["build", "automation", "--bundle", app, "--json"], ctx)).toBe(0);
+    expect(JSON.parse(ctx.out.join("")).result.automation).toEqual({
+      built: [],
+      unchanged: ["__proto__", "hello"],
+    });
+  });
+
+  it("finds an installed copy whose exports map does not list package.json", async () => {
+    const { dir, app } = await project(HELLO);
+    await write(
+      dir,
+      "node_modules/@bdk/automation/package.json",
+      JSON.stringify({
+        name: "@bdk/automation",
+        type: "module",
+        exports: {
+          ".": "./dist/index.js",
+          "./commands": "./dist/commands.js",
+          "./events": "./dist/events.js",
+        },
+      }),
+    );
+    await write(
+      dir,
+      "node_modules/@bdk/automation/src/commands.ts",
+      'export const commands = { id: "installed-commands" };\n',
+    );
+    await build(dir);
+    expect(await run(["build", "automation", "--bundle", app], real(dir))).toBe(0);
+    const code = await readFile(join(app, "Contents/Resources/BDK/Automation/hello.js"), "utf8");
+    expect(code).toContain("installed-commands");
+  });
+
   it("rebuilds when the bundle on disk no longer has the recorded digest", async () => {
     const { dir, app } = await project(HELLO);
     await build(dir);

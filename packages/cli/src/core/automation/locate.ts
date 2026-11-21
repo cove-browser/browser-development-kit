@@ -1,5 +1,4 @@
 import { existsSync } from "node:fs";
-import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -14,20 +13,27 @@ const ENTRIES: Readonly<Record<string, string>> = {
   "@bdk/events": "events",
 };
 
-/** Where the `@bdk/automation` package is: the project's own copy, else the repository's. */
+/**
+ * Where the `@bdk/automation` package is: the project's own copy, else the repository's.
+ *
+ * The project's copy is found by walking `node_modules` directories up from the project, as Node
+ * does, rather than with `require.resolve`: the package's `exports` map does not list
+ * `package.json`, and resolving an entry instead would need the package to be built.
+ */
 function packageDirectory(projectDir: string): string | undefined {
-  try {
-    const manifest = createRequire(join(projectDir, "package.json")).resolve(
-      `${PACKAGE}/package.json`,
-    );
-    return dirname(manifest);
-  } catch {
-    // Not installed in the project; running from the repository is the other place it can be.
-  }
-  let dir = dirname(fileURLToPath(import.meta.url));
+  const installed = upwards(resolve(projectDir), (dir) => join(dir, "node_modules", PACKAGE));
+  if (installed !== undefined) return installed;
+  return upwards(dirname(fileURLToPath(import.meta.url)), (dir) =>
+    join(dir, "packages", "js", "automation"),
+  );
+}
+
+/** The first `candidate(dir)` holding a `package.json`, from `start` up to the filesystem root. */
+function upwards(start: string, candidate: (dir: string) => string): string | undefined {
+  let dir = start;
   for (;;) {
-    const candidate = join(dir, "packages", "js", "automation");
-    if (existsSync(join(candidate, "package.json"))) return candidate;
+    const found = candidate(dir);
+    if (existsSync(join(found, "package.json"))) return found;
     const parent = dirname(dir);
     if (parent === dir) return undefined;
     dir = parent;
