@@ -17,6 +17,8 @@ jobs:
   checks:
     name: checks
     runs-on: ubuntu-latest
+    # A hung step fails in minutes instead of holding a runner for the six-hour default.
+    timeout-minutes: 30
     env:
       # packages/core builds with clang 18 on Linux, matching the apt packages installed below.
       CC: clang-18
@@ -122,6 +124,7 @@ jobs:
     name: abi-linux
     # Not gated on affected: the public headers and the ABI record are checked on every pull request.
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Check out the pull request
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -187,6 +190,7 @@ jobs:
   swift-macos:
     name: swift-macos
     runs-on: macos-latest
+    timeout-minutes: 30
     steps:
       - name: Check out the pull request
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -244,6 +248,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     steps:
       - name: Check out the pull request
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
