@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "note": "Real third-party extensions for the compatibility suite, fetched from each project's own GitHub releases (never the Chrome Web Store) by real/fetch.ts into $BDK_HOME/extensions-cache/. They are not vendored: their licences differ from the repository's and their code is not ours to review or update. sha256 is null until the first fetch, which prints the digest; record it here in the same change that first uses it, and fetch.ts then refuses any other bytes. This file was written without network access, so no version or asset URL could be checked, and none is invented: version and assetUrl are null until the main session resolves them with `gh release list -R <repo>` and `gh release view <tag> -R <repo> --json assets`. fetch.ts refuses an entry whose version or assetUrl is null.",
+  "extensions": [
+    {
+      "id": "ublock-origin-lite",
+      "class": "content blocker",
+      "name": "uBlock Origin Lite",
+      "upstream": "https://github.com/uBlockOrigin/uBOL-home",
+      "licence": "GPL-3.0",
+      "version": null,
+      "assetName": null,
+      "assetUrl": null,
+      "sha256": null,
+      "note": "A Manifest V3 blocker built on declarativeNetRequest. The project publishes a Chromium zip per release on the upstream repository; its asset name carries the release version (expected form uBOLite_<version>.chromium.zip, unverified). Pick the newest release whose manifest minimum_chrome_version is at most 158."
+    },
+    {
+      "id": "bitwarden",
+      "class": "password manager",
+      "name": "Bitwarden",
+      "upstream": "https://github.com/bitwarden/clients",
+      "licence": "GPL-3.0 (the browser extension; some directories carry the Bitwarden License)",
+      "version": null,
+      "assetName": null,
+      "assetUrl": null,
+      "sha256": null,
+      "note": "A popup, content scripts on all sites, storage, context menus and an offscreen document. Browser releases are tagged browser-v<version> in the monorepo and carry a Chrome zip (expected form dist-chrome-<version>.zip, unverified). Its sign-in needs a Bitwarden server account, so the suite can check loading, the popup, the content script and the context-menu item, not a vault."
+    },
+    {
+      "id": "react-developer-tools",
+      "class": "developer tool",
+      "name": "React Developer Tools",
+      "upstream": "https://github.com/facebook/react",
+      "licence": "MIT",
+      "version": null,
+      "assetName": null,
+      "assetUrl": null,
+      "sha256": null,
+      "note": "A devtools_page with panels. It lives in the facebook/react monorepo under packages/react-devtools-extensions, and whether a release there attaches a Chrome zip is not known to the author. If none does, build it from that tag (its README describes the build) and add the zip to the cache by hand, or choose another developer-tool extension that publishes one."
+    }
+  ]
+}
