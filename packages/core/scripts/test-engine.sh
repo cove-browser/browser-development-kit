@@ -14,6 +14,10 @@ build="$root/packages/core/build-engine"
 cmake -S "$root/packages/core" -B "$build" -G Ninja -DBDK_ENGINE_FRAMEWORK="$frameworks" >/dev/null
 cmake --build "$build" --target bdk_engine_conformance
 app="$build/BDKEngineConformance.app/Contents/MacOS/BDKEngineConformance"
+# The run's data directory (a Chromium profile tree): removed when the app has gone, even if it crashed.
+BDK_ENGINE_DATA_DIR="$(mktemp -d /tmp/bdk-engine-conformance-XXXXXX)"
+export BDK_ENGINE_DATA_DIR
+trap 'rm -rf "$BDK_ENGINE_DATA_DIR"' EXIT
 if [[ $# -gt 0 ]]; then
   "$app" "$@" 2>"$build/engine.log"
   exit $?

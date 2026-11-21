@@ -280,9 +280,15 @@ pthreads, and builds on macOS and Linux.
 it drives the engine through `chromium/bdk/engine/bdk_testing.h`. Chromium starts once per process, so the
 harness keeps it between runtimes (`BDK_ENGINE_KEEP_CHROMIUM`), forgets persistent profiles at each start (the
 suite expects a new data directory) and serves every http(s) load from the engine's interceptor. It needs a
-logged-in Mac. The whole suite runs in one process: a runtime start and stop leaves nothing behind, and a profile
+logged-in Mac. Each run has a new data directory under `/tmp` (`bdk-engine-conformance-*`, a Chromium profile tree): `scripts/test-engine.sh` makes it, passes it as `BDK_ENGINE_DATA_DIR` and removes it once the app has exited, even after a crash. Run directly, the harness makes its own and removes it at exit; a crash then leaves it. The whole suite runs in one process: a runtime start and stop leaves nothing behind, and a profile
 BDK closes is unloaded by Chromium (`engine_a_closed_profile_releases_its_descriptors` counts descriptors). Scenarios that need a key window (an input method's composition) are skipped, with a message,
 when macOS does not let the harness come to the front. `BDK_TEST_TRACE=1` prints every contents event.
+
+`BDK_ENGINE_SILENT=1` (or `nx run core:test-engine:silent`) runs it without getting in the way of whoever is using
+the Mac: the harness never activates, has no Dock icon or menu bar, keeps its windows behind every other window and
+never takes one fullscreen, and Chromium keeps drawing its occluded pages (`disable-backgrounding-occluded-windows`).
+The scenarios that need a key window are skipped, as above. The screen must still be unlocked: with it locked, page
+capture, the accessibility tree and both HTML fullscreen scenarios fail.
 
 A harness implements four hooks besides pumping and acting as Chromium: `bdk_harness_prepare_start_config`,
 `bdk_harness_attach_view` (focus needs a window in a real runtime), `bdk_harness_session_format` (tests that
