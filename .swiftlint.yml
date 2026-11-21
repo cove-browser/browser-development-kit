@@ -34,9 +34,10 @@ opt_in_rules:
   - unused_import
 
 # swift-api.md names `ID` types and the `ui` domain, and nests Navigation.Entry two deep. x and y are
-# coordinates (window features, points).
+# coordinates (window features, points). `to` is the target of a translation (`translate(to:)`, a
+# language pair's `from` and `to`), as swift-api.md 6.7 and 11.2 name it.
 identifier_name:
-  excluded: [id, ui, x, y]
+  excluded: [id, ui, x, y, to]
 type_name:
   excluded: [ID]
 nesting:

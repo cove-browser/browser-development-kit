@@ -5,136 +5,6 @@ import Testing
 
 @testable import BDK
 
-/// A value a provider sets from another thread and a test reads.
-final class ProviderFlag: @unchecked Sendable {
-    private let lock = NSLock()
-    private var stored = false
-
-    var value: Bool {
-        get { lock.withLock { stored } }
-        set { lock.withLock { stored = newValue } }
-    }
-}
-
-/// Translates by upper-casing, for French and German into English.
-struct FakeTranslator: BDKTranslationProvider {
-    var failure: (any Error)?
-    var descriptor = BDKProviderDescriptor(id: "app.fake", name: "Fake", privacy: .onDevice)
-
-    func supportedPairs() async throws -> [BDKLanguagePair] {
-        [
-            BDKLanguagePair(from: "fr", to: "en", installed: true),
-            BDKLanguagePair(from: "de", to: "en", installed: true),
-        ]
-    }
-
-    func translate(
-        _ texts: [String], pair: BDKLanguagePair, context: BDKTranslationContext
-    ) async throws -> [String] {
-        if let failure { throw failure }
-        return texts.map { $0.uppercased() }
-    }
-}
-
-/// A translator with every optional operation: it reports progress, detects French and, for the
-/// translation of "stuck", waits until it is cancelled.
-struct FakeFullTranslator: BDKTranslationModelManaging, BDKLanguageDetecting {
-    var cancelled: ProviderFlag
-    var removed: ProviderFlag
-    var descriptor = BDKProviderDescriptor(id: "app.full", name: "Full", privacy: .onDevice)
-
-    func supportedPairs() async throws -> [BDKLanguagePair] {
-        [BDKLanguagePair(from: "fr", to: "en", installed: false)]
-    }
-
-    func translate(
-        _ texts: [String], pair: BDKLanguagePair, context: BDKTranslationContext
-    ) async throws -> [String] {
-        if texts == ["stuck"] {
-            do {
-                try await Task.sleep(for: .seconds(60))
-            } catch {
-                cancelled.value = true
-                throw error
-            }
-        }
-        return texts.map { $0.uppercased() }
-    }
-
-    func prepare(_ pair: BDKLanguagePair, progress: @Sendable (Double) -> Void) async throws {
-        progress(0.25)
-        progress(1)
-    }
-
-    func removeModel(_ pair: BDKLanguagePair) async throws {
-        removed.value = true
-    }
-
-    func detectLanguage(of sample: String) async throws -> BDKLanguageGuess? {
-        sample.contains("bonjour") ? BDKLanguageGuess(language: "fr", isReliable: true) : nil
-    }
-}
-
-/// Answers `malware` for any address on a host that contains `risky`.
-struct FakeReputation: BDKReputationProvider {
-    var risky = "malware.test"
-    var descriptor = BDKProviderDescriptor(
-        id: "app.rep", name: "Rep", privacy: .remote, host: "rep.example.com",
-        policyUrl: URL(string: "https://rep.example.com/privacy"), protection: "full")
-
-    func check(_ url: URL, context: BDKReputationContext) async -> BDKVerdict {
-        url.host()?.contains(risky) == true ? .malware : .safe
-    }
-}
-
-/// Gives one position, then waits until the watch is stopped.
-struct FakeGeolocation: BDKGeolocationProvider {
-    var terminated: ProviderFlag
-    var failure: BDKError?
-    var descriptor = BDKProviderDescriptor(id: "app.geo", name: "Geo", privacy: .onDevice)
-
-    func positions(_ options: BDKPositionOptions) -> AsyncThrowingStream<BDKPosition, Error> {
-        let terminated = terminated
-        let failure = failure
-        return AsyncThrowingStream { continuation in
-            if let failure {
-                continuation.finish(throwing: failure)
-                return
-            }
-            continuation.yield(
-                BDKPosition(
-                    latitude: 51.5, longitude: -0.12, accuracy: options.highAccuracy ? 5 : 50))
-            continuation.onTermination = { _ in terminated.value = true }
-        }
-    }
-}
-
-/// The resolved configuration with these `services` members, and the providers `body` registers.
-private func configuration(
-    services: String = "", registering body: (inout BDKConfiguration) throws -> Void = { _ in }
-) rethrows -> BDKConfiguration {
-    var configuration = BDKConfiguration(
-        resolvedJSON: services.isEmpty ? "{}" : "{\"services\":{\(services)}}")
-    try body(&configuration)
-    return configuration
-}
-
-private let appTranslation = "\"translation\":{\"provider\":\"app\"}"
-
-/// Pumps the stub until `condition` holds; providers answer from tasks, not from the pump.
-@MainActor
-private func settle(
-    _ runtime: BDKRuntime, sourceLocation: SourceLocation = #_sourceLocation,
-    until condition: () throws -> Bool
-) async throws {
-    for _ in 0..<300 {
-        runtime.stub.pump()
-        if try condition() { return }
-        try await Task.sleep(for: .milliseconds(10))
-    }
-    Issue.record("the condition never held", sourceLocation: sourceLocation)
-}
-
 extension BDKStubTests {
     /// The provider bridge and `page.translation` (T-PRV-01, T-PRV-03, T-PRV-09 on the Swift side), against the
     /// stub's providers and page text. The engine runs the same behaviour on real pages.
@@ -157,14 +27,16 @@ extension BDKStubTests {
         }
 
         @Test func anAppServiceWithNoProviderFailsTheStart() async throws {
-            let missing = try configuration(services: appTranslation)
+            let missing = try providerConfiguration(services: appTranslation)
             await expectError(.config, "providerMissing") { try BDKRuntime.startStub(missing) }
             #expect(!BDKRuntime.isRunning)
             try await awaitStoppedRuntime()
         }
 
         @Test func aProviderForAServiceThatIsNotAppIsRefused() async throws {
-            let wrong = try configuration { $0.services.translation.register(FakeTranslator()) }
+            let wrong = try providerConfiguration {
+                $0.services.translation.register(FakeTranslator())
+            }
             await expectError(.config, "providerNotApp") { try BDKRuntime.startStub(wrong) }
             try await awaitStoppedRuntime()
         }
@@ -172,7 +44,7 @@ extension BDKStubTests {
         @Test func aRemoteProviderNeedsAPolicyURL() async throws {
             let cloud = BDKProviderDescriptor(
                 id: "app.cloud", name: "Cloud", privacy: .remote, host: "mt.example.com")
-            let invalid = try configuration(services: appTranslation) {
+            let invalid = try providerConfiguration(services: appTranslation) {
                 $0.services.translation.register(FakeTranslator(descriptor: cloud))
             }
             await expectError(.config, "descriptorInvalid") { try BDKRuntime.startStub(invalid) }
@@ -181,15 +53,15 @@ extension BDKStubTests {
 
         @Test func aGoogleProviderNeedsTheKeyAndTheKeyNeedsAGoogleProvider() async throws {
             let google = "\"geolocation\":{\"provider\":\"google\"}"
-            let keyless = try configuration(services: google)
+            let keyless = try providerConfiguration(services: google)
             await expectError(.config, "keyMissing") { try BDKRuntime.startStub(keyless) }
             try await awaitStoppedRuntime()
 
-            let unused = try configuration { $0.services.google.apiKey = "AIzaTestKey" }
+            let unused = try providerConfiguration { $0.services.google.apiKey = "AIzaTestKey" }
             await expectError(.config, "keyUnused") { try BDKRuntime.startStub(unused) }
             try await awaitStoppedRuntime()
 
-            let keyed = try configuration(services: google) {
+            let keyed = try providerConfiguration(services: google) {
                 $0.services.google.apiKey = "AIzaTestKey"
             }
             // Chromium takes the key once per process, so only the stub starts with one here.
@@ -201,7 +73,7 @@ extension BDKStubTests {
         // MARK: Translation
 
         @Test func aSwiftProviderTranslatesAPage() async throws {
-            let services = try configuration(services: appTranslation) {
+            let services = try providerConfiguration(services: appTranslation) {
                 $0.services.translation.register(FakeTranslator())
             }
             try await withStubRuntime(services) { runtime in
@@ -233,7 +105,7 @@ extension BDKStubTests {
 
         @Test func theOfferReachesTheHandlerAndItsAnswerTranslates() async throws {
             let box = UIBox()
-            let services = try configuration(services: appTranslation) {
+            let services = try providerConfiguration(services: appTranslation) {
                 $0.services.translation.register(FakeTranslator())
                 try $0.ui.translation.setHandler { request in
                     box.request = request
@@ -266,7 +138,7 @@ extension BDKStubTests {
 
         @Test func neverForAnOfferIsRememberedByThePreferences() async throws {
             let box = UIBox()
-            let services = try configuration(services: appTranslation) {
+            let services = try providerConfiguration(services: appTranslation) {
                 $0.services.translation.register(FakeTranslator())
                 try $0.ui.translation.setHandler { request in
                     box.request = request
@@ -293,7 +165,7 @@ extension BDKStubTests {
             for (failure, code) in [(failing, "quotaExceeded"), (Quota(), "remoteError")]
                 as [(any Error, String)]
             {
-                let services = try configuration(services: appTranslation) {
+                let services = try providerConfiguration(services: appTranslation) {
                     $0.services.translation.register(FakeTranslator(failure: failure))
                 }
                 try await withStubRuntime(services) { runtime in
@@ -311,7 +183,7 @@ extension BDKStubTests {
 
         @Test func optionalOperationsAreOfferedOnlyWhenTheProviderHasThem() async throws {
             let removed = ProviderFlag()
-            let services = try configuration(services: appTranslation) {
+            let services = try providerConfiguration(services: appTranslation) {
                 $0.services.translation.register(
                     FakeFullTranslator(cancelled: ProviderFlag(), removed: removed))
             }
@@ -338,7 +210,7 @@ extension BDKStubTests {
             }
 
             // A provider without the optional protocols has no model to remove.
-            let plain = try configuration(services: appTranslation) {
+            let plain = try providerConfiguration(services: appTranslation) {
                 $0.services.translation.register(FakeTranslator())
             }
             try await withStubRuntime(plain) { runtime in
@@ -351,7 +223,7 @@ extension BDKStubTests {
 
         @Test func cancellingATranslationCancelsTheProvidersTask() async throws {
             let cancelled = ProviderFlag()
-            let services = try configuration(services: appTranslation) {
+            let services = try providerConfiguration(services: appTranslation) {
                 $0.services.translation.register(
                     FakeFullTranslator(cancelled: cancelled, removed: ProviderFlag()))
             }
@@ -370,7 +242,7 @@ extension BDKStubTests {
         }
 
         @Test func preferencesRoundTripThroughTheProfile() async throws {
-            let services = try configuration(services: appTranslation) {
+            let services = try providerConfiguration(services: appTranslation) {
                 $0.services.translation.register(FakeTranslator())
             }
             try await withStubRuntime(services) { runtime in
@@ -397,97 +269,6 @@ extension BDKStubTests {
                 }
                 await expectError(.contents, "stale") { try await page.translation.revert() }
                 await expectError(.contents, "stale") { try await page.translation.present() }
-            }
-        }
-
-        // MARK: Reputation
-
-        @Test func aSwiftVerdictRaisesTheWarningWithTheSwiftDescriptor() async throws {
-            let box = UIBox()
-            let services = try configuration(services: "\"reputation\":{\"provider\":\"app\"}") {
-                $0.services.reputation.register(FakeReputation())
-                try $0.ui.reputationWarnings.setHandler { request in
-                    box.request = request
-                    return .reject
-                }
-            }
-            try await withStubRuntime(services) { runtime in
-                let profile = try await runtime.profiles.open("Reputation")
-                let page = try profile.webContents.create()
-                try await page.navigation.load(URL(string: "https://fine.test/")!)
-                #expect(box.request == nil)
-                await expectError(.navigation, "netError") {
-                    try await page.navigation.load(URL(string: "https://malware.test/")!)
-                }
-                let warning = try #require(box.request as? ReputationWarningRequest)
-                #expect(warning.verdict == .malware)
-                let provider = try #require(warning.provider)
-                #expect(provider.id == "app.rep" && provider.privacy == .remote)
-                #expect(provider.host == "rep.example.com" && provider.protection == "full")
-            }
-        }
-
-        @Test func theDefaultListsStillBlockWithoutASwiftProvider() async throws {
-            let box = UIBox()
-            var services = BDKConfiguration.stub
-            try services.ui.reputationWarnings.setHandler { request in
-                box.request = request
-                return .reject
-            }
-            try await withStubRuntime(services) { runtime in
-                let list = """
-                    {"format":"bdk-reputation-list","version":1,"sequence":1,\
-                    "generated":1700000000000,"expires":4102444800000,"source":"test",\
-                    "entries":[{"expression":"evil.test/","verdict":"phishing"}]}
-                    """
-                try runtime.stub.loadReputationList(list)
-                let page = try await runtime.profiles.open("Reputation").webContents.create()
-                await expectError(.navigation, "netError") {
-                    try await page.navigation.load(URL(string: "https://evil.test/login")!)
-                }
-                let warning = try #require(box.request as? ReputationWarningRequest)
-                #expect(warning.verdict == .phishing)
-                await expectError(.provider, "invalidList") {
-                    try runtime.stub.loadReputationList("{\"format\":\"other\"}")
-                }
-            }
-        }
-
-        // MARK: Geolocation
-
-        @Test func positionsReachThePageAndStoppingTheWatchCancelsTheStream() async throws {
-            let terminated = ProviderFlag()
-            let services = try configuration(services: "\"geolocation\":{\"provider\":\"app\"}") {
-                $0.services.geolocation.register(FakeGeolocation(terminated: terminated))
-            }
-            try await withStubRuntime(services) { runtime in
-                let page = try await runtime.profiles.open("Geolocation").webContents.create()
-                try runtime.stub.startGeolocationWatch(on: page, highAccuracy: true)
-                try await settle(runtime) {
-                    try runtime.stub.lastGeolocation(of: page)?.contains("\"latitude\":51.5")
-                        == true
-                }
-                let last = try #require(try runtime.stub.lastGeolocation(of: page))
-                #expect(last.contains("\"accuracy\":5") && last.contains("\"timestamp\":"))
-                #expect(!terminated.value)
-                try runtime.stub.stopGeolocationWatch(on: page)
-                try await settle(runtime) { terminated.value }
-            }
-        }
-
-        @Test func aPositionErrorIsReportedToThePage() async throws {
-            let denied = BDKError(
-                domain: .provider, code: "permissionDenied", message: "location is off")
-            let services = try configuration(services: "\"geolocation\":{\"provider\":\"app\"}") {
-                $0.services.geolocation.register(
-                    FakeGeolocation(terminated: ProviderFlag(), failure: denied))
-            }
-            try await withStubRuntime(services) { runtime in
-                let page = try await runtime.profiles.open("Geolocation").webContents.create()
-                try runtime.stub.startGeolocationWatch(on: page)
-                try await settle(runtime) {
-                    try runtime.stub.lastGeolocation(of: page)?.contains("permissionDenied") == true
-                }
             }
         }
     }
