@@ -19,15 +19,15 @@ build.
 
 Used by: the BDK engine (//bdk/engine) and the Swift SDK.
 ---
- chrome/app/framework.exports | 86 ++++++++++++++++++++++++++++++++++++
- chrome/app/framework.order   | 86 ++++++++++++++++++++++++++++++++++++
- 2 files changed, 172 insertions(+)
+ chrome/app/framework.exports | 93 ++++++++++++++++++++++++++++++++++++
+ chrome/app/framework.order   | 93 ++++++++++++++++++++++++++++++++++++
+ 2 files changed, 186 insertions(+)
 
 diff --git a/chrome/app/framework.exports b/chrome/app/framework.exports
-index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..12a1cf9db4b630e41af093fa331fcbcca9155c7c 100644
+index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..762b1a6d69feb5ba285443ddca6ec590d2b0a82f 100644
 --- a/chrome/app/framework.exports
 +++ b/chrome/app/framework.exports
-@@ -20,3 +20,89 @@ _ChromeAppModeStart_v8
+@@ -20,3 +20,96 @@ _ChromeAppModeStart_v8
  _ChromeMain
  _ChromeWebAppShortcutCopierMain
  _bdk_overlay_marker
@@ -47,6 +47,10 @@ index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..12a1cf9db4b630e41af093fa331fcbcc
 +_bdk_app_event_declare
 +_bdk_app_event_emit
 +_bdk_app_setting_register
++_bdk_automation_endpoint_close
++_bdk_automation_endpoint_open
++_bdk_automation_hello_accept
++_bdk_automation_hello_refuse
 +_bdk_buffer_bytes
 +_bdk_call_cancel
 +_bdk_contents_close
@@ -105,8 +109,11 @@ index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..12a1cf9db4b630e41af093fa331fcbcc
 +_bdk_session_create
 +_bdk_session_grant_contents
 +_bdk_session_revoke
++_bdk_session_run
 +_bdk_subscribe
 +_bdk_subscribe_named
++_bdk_task_cancel
++_bdk_task_subscribe
 +_bdk_ui_complete
 +_bdk_ui_request_release
 +_bdk_ui_set_handler
@@ -118,10 +125,10 @@ index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..12a1cf9db4b630e41af093fa331fcbcc
 +_OBJC_METACLASS_$_BDKApplicationBase
 +_OBJC_CLASS_$_BDKApplicationBase
 diff --git a/chrome/app/framework.order b/chrome/app/framework.order
-index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..98a61a72a99abdcabd369d8fd682c7638ec56e12 100644
+index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..4b5300db8f65183aaee9c14e9259665765fc675f 100644
 --- a/chrome/app/framework.order
 +++ b/chrome/app/framework.order
-@@ -33,5 +33,91 @@ _ChromeWebAppShortcutCopierMain
+@@ -33,5 +33,98 @@ _ChromeWebAppShortcutCopierMain
  # repository.
  _bdk_overlay_marker
  
@@ -138,6 +145,10 @@ index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..98a61a72a99abdcabd369d8fd682c763
 +_bdk_app_event_declare
 +_bdk_app_event_emit
 +_bdk_app_setting_register
++_bdk_automation_endpoint_close
++_bdk_automation_endpoint_open
++_bdk_automation_hello_accept
++_bdk_automation_hello_refuse
 +_bdk_buffer_bytes
 +_bdk_call_cancel
 +_bdk_contents_close
@@ -196,8 +207,11 @@ index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..98a61a72a99abdcabd369d8fd682c763
 +_bdk_session_create
 +_bdk_session_grant_contents
 +_bdk_session_revoke
++_bdk_session_run
 +_bdk_subscribe
 +_bdk_subscribe_named
++_bdk_task_cancel
++_bdk_task_subscribe
 +_bdk_ui_complete
 +_bdk_ui_request_release
 +_bdk_ui_set_handler

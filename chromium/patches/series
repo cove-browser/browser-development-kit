@@ -12,3 +12,4 @@ bdk-let-an-embedder-supply-the-tabdialogs-of-a-tab.patch
 bdk-let-an-embedder-present-printing.patch
 bdk-let-an-embedder-supply-the-autofill-popup-view.patch
 bdk-reach-the-address-bubble-handler-through-the-browser-s-user-data.patch
+bdk-register-the-automation-host-in-the-utility-process.patch
