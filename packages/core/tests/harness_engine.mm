@@ -8,10 +8,19 @@
    so pumping (a nested run of the run loop) lets Chromium work. Navigations never reach the
    network: every http and https load is served by the engine's test interceptor (bdk_testing.h). */
 #import <AppKit/AppKit.h>
+#include <libproc.h>
 #import <objc/runtime.h>
+#include <unistd.h>
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include <condition_variable>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <string>
 #include <thread>
 
@@ -43,6 +52,9 @@ extern "C" {
 
 /* Set by a test that checks what persists between runtimes. */
 int bdk_harness_engine_keep_profiles = 0;
+/* Set by a test that needs surfaces configured: the value of "surfaces" in the resolved
+   configuration, for example {"notifications":"disabled"}. Cleared by the next start. */
+const char* bdk_harness_engine_surfaces = NULL;
 
 void bdk_harness_prepare_start_config(bdk_start_config_t* config) {
     /* The suite expects each runtime to start with no profiles, as with a new data directory. */
@@ -52,8 +64,18 @@ void bdk_harness_prepare_start_config(bdk_start_config_t* config) {
     bdk_testing_intercept_all(0);
     bdk_testing_intercept_all(1);
     /* The engine needs a browser name for its identity; everything else is the suite's. */
-    config->resolved_config_json = View("{\"browser\":{\"name\":\"BDK Conformance\"}}");
+    static std::string resolved;
+    resolved = "{\"browser\":{\"name\":\"BDK Conformance\"}";
+    if (bdk_harness_engine_surfaces)
+        resolved += std::string(",\"surfaces\":") + bdk_harness_engine_surfaces;
+    resolved += "}";
+    bdk_harness_engine_surfaces = NULL;
+    config->resolved_config_json = View(resolved.c_str());
     config->user_data_path_override = View(g_data_dir.c_str());
+}
+
+int bdk_harness_engine_open_descriptors(void) {
+    return proc_pidinfo(getpid(), PROC_PIDLISTFDS, 0, nullptr, 0) / (int)sizeof(proc_fdinfo);
 }
 
 size_t bdk_harness_pump(void) {
@@ -140,6 +162,80 @@ void bdk_harness_attach_view(bdk_contents_t contents) {
     bdk_harness_pump();
 }
 
+/* Application windows registered with the runtime (bdk_window_register), for the host-context
+   scenarios. A window is its index in this list; closing one leaves a hole. */
+static NSMutableArray<NSWindow*>* RegisteredWindows() {
+    static NSMutableArray<NSWindow*>* windows;
+    if (!windows)
+        windows = [NSMutableArray array];
+    return windows;
+}
+
+static NSMutableDictionary<NSNumber*, NSNumber*>* WindowHandles() {
+    static NSMutableDictionary<NSNumber*, NSNumber*>* handles;
+    if (!handles)
+        handles = [NSMutableDictionary dictionary];
+    return handles;
+}
+
+int bdk_harness_engine_window_open(bdk_runtime_t rt) {
+    NSWindow* window = [[NSWindow alloc] initWithContentRect:NSMakeRect(100, 100, 640, 480)
+                                                   styleMask:NSWindowStyleMaskTitled
+                                                     backing:NSBackingStoreBuffered
+                                                       defer:NO];
+    window.releasedWhenClosed = NO;
+    [window orderFront:nil];
+    bdk_native_handle_t native;
+    memset(&native, 0, sizeof native);
+    native.kind = BDK_NATIVE_NSWINDOW;
+    native.pointer = (__bridge void*)window;
+    bdk_window_t handle = 0;
+    bdk_error_t error = 0;
+    if (bdk_window_register(rt, native, 1, &handle, &error) != BDK_OK)
+        return -1;
+    [RegisteredWindows() addObject:window];
+    int index = (int)RegisteredWindows().count - 1;
+    WindowHandles()[@(index)] = @(handle);
+    return index;
+}
+
+void bdk_harness_engine_window_attach(int window, bdk_contents_t contents) {
+    bdk_native_handle_t view;
+    bdk_error_t error = 0;
+    if (bdk_contents_native_view(contents, &view, &error) != BDK_OK || !view.pointer)
+        return;
+    NSWindow* w = RegisteredWindows()[window];
+    NSView* page = (__bridge NSView*)view.pointer;
+    page.frame = w.contentView.bounds;
+    page.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    /* Adding a view that is in another window's view tree moves it. */
+    [w.contentView addSubview:page];
+    bdk_harness_pump();
+}
+
+void bdk_harness_engine_window_detach(bdk_contents_t contents) {
+    bdk_native_handle_t view;
+    bdk_error_t error = 0;
+    if (bdk_contents_native_view(contents, &view, &error) != BDK_OK || !view.pointer)
+        return;
+    [(__bridge NSView*)view.pointer removeFromSuperview];
+    bdk_harness_pump();
+}
+
+/* Unregisters the window and closes it, as an application does when a window goes. */
+void bdk_harness_engine_window_close(int window) {
+    NSWindow* w = RegisteredWindows()[window];
+    bdk_error_t error = 0;
+    bdk_window_unregister((bdk_window_t)WindowHandles()[@(window)].unsignedLongLongValue, &error);
+    [w orderOut:nil];
+    [w close];
+    bdk_harness_pump();
+}
+
+size_t bdk_harness_engine_app_window_count(void) {
+    return NSApp.windows.count;
+}
+
 const char* bdk_harness_session_format(void) {
     return "BDKC1";
 }
@@ -216,6 +312,55 @@ void bdk_harness_engine_key(bdk_contents_t contents, unsigned short key_code,
         [NSApp sendEvent:event];
     }
     bdk_harness_pump();
+}
+
+/* The event a person's click or key press leaves for a handler to confirm a grant with. kind: 0 a
+   recent mouse-up in the page's window, 1 a recent key-down, 2 a mouse-up a minute old, 3 a
+   mouse-down, 4 a mouse-up that went to no window. */
+bdk_native_handle_t bdk_harness_engine_gesture(bdk_contents_t contents, int kind) {
+    static NSEvent* held;
+    NSWindow* window = WindowOf(contents);
+    NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
+    NSInteger number = kind == 4 ? 0 : window.windowNumber;
+    if (kind == 1) {
+        held = [NSEvent keyEventWithType:NSEventTypeKeyDown
+                                location:NSZeroPoint
+                           modifierFlags:0
+                               timestamp:now
+                            windowNumber:number
+                                 context:nil
+                              characters:@"a"
+             charactersIgnoringModifiers:@"a"
+                               isARepeat:NO
+                                 keyCode:0];
+    } else {
+        held = [NSEvent
+            mouseEventWithType:kind == 3 ? NSEventTypeLeftMouseDown : NSEventTypeLeftMouseUp
+                      location:NSMakePoint(10, 10)
+                 modifierFlags:0
+                     timestamp:kind == 2 ? now - 60 : now
+                  windowNumber:number
+                       context:nil
+                   eventNumber:1
+                    clickCount:1
+                      pressure:1];
+    }
+    bdk_native_handle_t handle;
+    memset(&handle, 0, sizeof handle);
+    handle.kind = BDK_NATIVE_NSEVENT;
+    handle.pointer = (__bridge void*)held;
+    return handle;
+}
+
+/* Answers the sheet a default presenter attached to the page's window: the button at `index`
+   (0 is the first). Returns 0 when there is no sheet. */
+int bdk_harness_engine_answer_sheet(bdk_contents_t contents, int index) {
+    NSWindow* window = WindowOf(contents);
+    NSWindow* sheet = window.attachedSheet;
+    if (!sheet)
+        return 0;
+    [window endSheet:sheet returnCode:NSAlertFirstButtonReturn + index];
+    return 1;
 }
 
 int bdk_harness_engine_window_is_key(bdk_contents_t contents) {
@@ -314,6 +459,92 @@ int bdk_harness_engine_accessibility_text(bdk_contents_t contents, char* out, si
     return web_area;
 }
 
+/* ---- a loopback server whose download stalls ----
+   Serves one file of 200000 bytes: the first 20000, then nothing until released, so a download of
+   it stays in progress for as long as a test needs and can be paused, resumed and cancelled. */
+
+static int g_download_listener = -1;
+static std::mutex g_download_lock;
+static std::condition_variable g_download_wake;
+static bool g_download_released = false;
+static bool g_download_stopped = false;
+
+static void ServeDownload(int connection) {
+    char request[2048];
+    (void)read(connection, request, sizeof request);
+    const char header[] =
+        "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n"
+        "Content-Length: 200000\r\nContent-Disposition: attachment; filename=\"big.bin\"\r\n"
+        "Connection: close\r\n\r\n";
+    std::string chunk(20000, 'a');
+    bool ok = write(connection, header, sizeof header - 1) > 0 &&
+              write(connection, chunk.data(), chunk.size()) > 0;
+    if (ok) {
+        std::unique_lock<std::mutex> lock(g_download_lock);
+        g_download_wake.wait(lock, [] { return g_download_released || g_download_stopped; });
+        if (g_download_released && !g_download_stopped) {
+            lock.unlock();
+            std::string rest(180000, 'b');
+            size_t sent = 0;
+            while (sent < rest.size()) {
+                ssize_t n = write(connection, rest.data() + sent, rest.size() - sent);
+                if (n <= 0)
+                    break;
+                sent += (size_t)n;
+            }
+        }
+    }
+    close(connection);
+}
+
+/* Starts the server on a free loopback port; returns the port, or 0. */
+int bdk_harness_engine_download_server_start(void) {
+    g_download_released = false;
+    g_download_stopped = false;
+    g_download_listener = socket(AF_INET, SOCK_STREAM, 0);
+    sockaddr_in address;
+    memset(&address, 0, sizeof address);
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    socklen_t length = sizeof address;
+    if (g_download_listener < 0 ||
+        bind(g_download_listener, (sockaddr*)&address, sizeof address) != 0 ||
+        listen(g_download_listener, 8) != 0 ||
+        getsockname(g_download_listener, (sockaddr*)&address, &length) != 0)
+        return 0;
+    int listener = g_download_listener;
+    std::thread([listener] {
+        for (;;) {
+            int connection = accept(listener, nullptr, nullptr);
+            if (connection < 0)
+                return;
+            std::thread(ServeDownload, connection).detach();
+        }
+    }).detach();
+    return ntohs(address.sin_port);
+}
+
+/* Lets the stalled responses finish. */
+void bdk_harness_engine_download_server_release(void) {
+    std::lock_guard<std::mutex> lock(g_download_lock);
+    g_download_released = true;
+    g_download_wake.notify_all();
+}
+
+/* Closes the server and any stalled response. */
+void bdk_harness_engine_download_server_stop(void) {
+    {
+        std::lock_guard<std::mutex> lock(g_download_lock);
+        g_download_stopped = true;
+        g_download_wake.notify_all();
+    }
+    if (g_download_listener >= 0) {
+        shutdown(g_download_listener, SHUT_RDWR);
+        close(g_download_listener);
+        g_download_listener = -1;
+    }
+}
+
 } /* extern "C" */
 
 namespace {
@@ -379,11 +610,15 @@ int main(int argc, char** argv) {
         setvbuf(stdout, nullptr, _IOLBF, 0);
         setenv("BDK_ENGINE_KEEP_CHROMIUM", "1", 1);
         setenv("BDK_ENGINE_MOCK_KEYCHAIN", "1", 1);
-        /* Chromium refuses fullscreen to a page whose window is not key. macOS does not let a
-           process make itself frontmost while another application is (cooperative activation), so
-           the harness's window cannot be relied on to be key; the fullscreen scenarios test BDK's
-           requests, not that policy. */
-        setenv("BDK_ENGINE_SWITCHES", "disable-features=SuppressFullscreenFromUnfocusedView", 0);
+        /* Chromium refuses fullscreen to a page whose window is not key, and offers autofill
+           suggestions only to a view that has focus (which on macOS includes being in the key
+           window). macOS does not let a process make itself frontmost while another application
+           is (cooperative activation), so the harness's window cannot be relied on to be key; the
+           scenarios test BDK's requests, not those policies. */
+        setenv("BDK_ENGINE_SWITCHES",
+               "disable-features=SuppressFullscreenFromUnfocusedView,"
+               "RWHVMacHasFocusReturnsFalseForNonKeyWindow",
+               0);
         char dir[] = "/tmp/bdk-engine-conformance-XXXXXX";
         if (!mkdtemp(dir)) {
             perror("mkdtemp");

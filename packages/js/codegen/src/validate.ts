@@ -8,10 +8,14 @@ import {
   type ConstantKind,
   type Definitions,
   type EventDefinition,
+  type FieldDefinition,
   type Policy,
   PRIMITIVES,
   PROFILE_MODES,
+  type ProfileMode,
   REQUIREMENTS,
+  type Requirement,
+  type TypeDefinition,
 } from "./model.js";
 
 /** One interface file as read from disk: its base name and its parsed JSON. */
@@ -52,6 +56,7 @@ const COMMAND_KEYS = [
   "progress",
   "stream",
   "binary",
+  "authenticateWhen",
   "since",
 ];
 const EVENT_KEYS = ["name", "capability", "payload", "since"];
@@ -67,6 +72,10 @@ function isObject(value: unknown): value is Json {
 
 function quote(value: unknown): string {
   return JSON.stringify(value);
+}
+
+function fieldsOf(body: Json): FieldDefinition[] {
+  return Object.entries(body).map(([name, type]) => ({ name, type: String(type) }));
 }
 
 /** The macro fragment for a dotted name: `history.deleteAll` becomes `HISTORY_DELETE_ALL`. */
@@ -133,6 +142,7 @@ export function validate(files: readonly SourceFile[], context: ValidationContex
   const constants: ConstantGroup[] = [];
   const commands: Command[] = [];
   const events: EventDefinition[] = [];
+  const typeDefinitions: TypeDefinition[] = [];
 
   const types = new Map<string, TypeInfo>();
   const commandNames = new Map<string, string>();
@@ -429,8 +439,31 @@ export function validate(files: readonly SourceFile[], context: ValidationContex
         }
       }
 
+      if (entry.authenticateWhen !== undefined) {
+        const field = entry.authenticateWhen;
+        if (typeof field !== "string" || !isObject(entry.args) || !(field in entry.args))
+          add(`${path}.authenticateWhen`, `must name a field of args; got ${quote(field)}`);
+        else if (Array.isArray(entry.requires) && entry.requires.includes("authentication"))
+          add(`${path}.authenticateWhen`, 'is redundant: requires already has "authentication"');
+      }
+
       if (name !== undefined) {
-        commands.push({ name, capability, callers });
+        commands.push({
+          name,
+          capability,
+          callers,
+          profile: entry.profile as ProfileMode,
+          requires: (Array.isArray(entry.requires) ? entry.requires : []) as Requirement[],
+          raises: typeof entry.raises === "string" ? entry.raises : undefined,
+          paginated: entry.paginated === true,
+          progress: entry.progress === true,
+          stream: entry.stream === true,
+          binary: entry.binary === true,
+          authenticateWhen:
+            typeof entry.authenticateWhen === "string" ? entry.authenticateWhen : undefined,
+          args: isObject(entry.args) ? fieldsOf(entry.args) : [],
+          result: isObject(entry.result) ? fieldsOf(entry.result) : String(entry.result),
+        });
       }
     });
 
@@ -453,12 +486,17 @@ export function validate(files: readonly SourceFile[], context: ValidationContex
           claimMacro(file, `${path}.name`, `BDK_EVENT_${macroFragment(name)}`);
         }
       }
-      checkCapability(file, `${path}.capability`, entry.capability, true);
+      const eventCapability = checkCapability(file, `${path}.capability`, entry.capability, true);
       checkSince(file, `${path}.since`, entry.since);
       if (entry.payload === undefined) add(`${path}.payload`, "is required");
       else if (isObject(entry.payload)) checkFields(file, `${path}.payload`, entry.payload);
       else checkTypeExpression(file, `${path}.payload`, entry.payload, false);
-      if (name !== undefined) events.push({ name });
+      if (name !== undefined && eventCapability !== undefined)
+        events.push({
+          name,
+          capability: eventCapability,
+          payload: isObject(entry.payload) ? fieldsOf(entry.payload) : String(entry.payload),
+        });
     });
   }
 
@@ -468,8 +506,10 @@ export function validate(files: readonly SourceFile[], context: ValidationContex
     if (!isObject(table)) continue;
     for (const [name, body] of Object.entries(table)) {
       const path = `$.types.${name}`;
-      if (typeof body === "string") checkTypeExpression(file, path, body, false);
-      else if (isObject(body) && "enum" in body) {
+      if (typeof body === "string") {
+        checkTypeExpression(file, path, body, false);
+        typeDefinitions.push({ name, kind: "alias", target: body });
+      } else if (isObject(body) && "enum" in body) {
         checkUnknownKeys(file, path, body, ["enum"]);
         const values = body.enum;
         if (!Array.isArray(values) || values.length === 0) {
@@ -495,9 +535,12 @@ export function validate(files: readonly SourceFile[], context: ValidationContex
               });
             seen.add(value);
           });
+          typeDefinitions.push({ name, kind: "enum", values: values as string[] });
         }
-      } else if (isObject(body)) checkFields(file, path, body);
-      else
+      } else if (isObject(body)) {
+        checkFields(file, path, body);
+        typeDefinitions.push({ name, kind: "struct", fields: fieldsOf(body) });
+      } else
         issues.push({
           file,
           path,
@@ -506,7 +549,7 @@ export function validate(files: readonly SourceFile[], context: ValidationContex
     }
   }
 
-  return { issues, definitions: { constants, commands, events } };
+  return { issues, definitions: { constants, types: typeDefinitions, commands, events } };
 
   function checkConstantGroup(
     file: string,

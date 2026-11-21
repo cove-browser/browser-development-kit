@@ -1,0 +1,111 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BDK Patches <patches@bdk.invalid>
+Date: Thu, 19 Nov 2026 14:54:35 -0800
+Subject: [PATCH] bdk: let an embedder supply the BrowserWindow of a Browser
+
+BrowserWindow::CreateBrowserWindow() chooses between BrowserView and
+WebUIBrowserWindow, and BrowserWindowCreateParams::window, which supplies a
+window, is a test-only parameter (Browser's constructor CHECKs
+CHECK_IS_TEST) that cannot work for an embedder anyway: a window is
+constructed with the Browser it belongs to, which does not exist until the
+constructor runs. BDK keeps every page as a tab of a Browser (a host
+context) whose window has no views and no toolbar, and so needs its own
+BrowserWindow.
+
+Add embedder_browser_window_factory.h, a small header with a settable
+factory (no new target: it is inline), and ask it first in
+CreateBrowserWindow(). A null return declines and the usual window is
+created, so Chrome is unchanged; BDK's factory is set before the first
+Browser exists. BrowserWindow::FromBrowser() already falls back to
+Browser::GetWindow(), so nothing else needs to know about the new window
+type. Only the factory file and the new header are touched, so nothing
+widely included changes. IsSet() lets code that tolerates a Browser
+without views for tests only (see the next patch) tolerate this one too.
+
+Used by: the BDK engine (//bdk/engine/host_context.cc,
+//bdk/engine/bdk_browser_window.cc).
+---
+ .../public/embedder_browser_window_factory.h  | 47 +++++++++++++++++++
+ .../ui/views/frame/browser_window_factory.cc  |  9 ++++
+ 2 files changed, 56 insertions(+)
+
+diff --git a/chrome/browser/ui/browser_window/public/embedder_browser_window_factory.h b/chrome/browser/ui/browser_window/public/embedder_browser_window_factory.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..4035dd0bfe09f1aff813a2e1220efe3200fba36d
+--- /dev/null
++++ b/chrome/browser/ui/browser_window/public/embedder_browser_window_factory.h
+@@ -0,0 +1,47 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_BROWSER_WINDOW_PUBLIC_EMBEDDER_BROWSER_WINDOW_FACTORY_H_
++#define CHROME_BROWSER_UI_BROWSER_WINDOW_PUBLIC_EMBEDDER_BROWSER_WINDOW_FACTORY_H_
++
++#include <memory>
++
++#include "base/functional/callback.h"
++#include "base/no_destructor.h"
++#include "chrome/browser/ui/browser_window_deleter.h"
++
++class BrowserWindow;
++class BrowserWindowInterface;
++
++// A hook for Chromium embedders that supply their own BrowserWindow. When a
++// factory is set, BrowserWindow::CreateBrowserWindow() asks it first and uses
++// the window it returns; a null return declines, and the usual window is
++// created. Only embedders set one, once, before any Browser is created.
++namespace embedder_browser_window_factory {
++
++using Factory = base::RepeatingCallback<
++    std::unique_ptr<BrowserWindow, BrowserWindowDeleter>(
++        BrowserWindowInterface* browser,
++        bool user_gesture,
++        bool in_tab_dragging)>;
++
++inline Factory& GetFactory() {
++  static base::NoDestructor<Factory> factory;
++  return *factory;
++}
++
++inline void SetFactory(Factory factory) {
++  GetFactory() = std::move(factory);
++}
++
++// Whether an embedder supplies the windows of Browsers. Such a window has no
++// views, like WebUIBrowserWindow, so code that guards a missing view or side
++// panel for tests only treats it as a supported configuration.
++inline bool IsSet() {
++  return !!GetFactory();
++}
++
++}  // namespace embedder_browser_window_factory
++
++#endif  // CHROME_BROWSER_UI_BROWSER_WINDOW_PUBLIC_EMBEDDER_BROWSER_WINDOW_FACTORY_H_
+diff --git a/chrome/browser/ui/views/frame/browser_window_factory.cc b/chrome/browser/ui/views/frame/browser_window_factory.cc
+index ad579aa818666d92ca6f5446c8251b4e841c0b1b..7410b22b7d20aaf55a2852d02e1442e7576408fa 100644
+--- a/chrome/browser/ui/views/frame/browser_window_factory.cc
++++ b/chrome/browser/ui/views/frame/browser_window_factory.cc
+@@ -5,6 +5,7 @@
+ #include <memory>
+ 
+ #include "build/build_config.h"
++#include "chrome/browser/ui/browser_window/public/embedder_browser_window_factory.h"
+ #include "chrome/browser/ui/browser_window_deleter.h"
+ #include "chrome/browser/ui/fullscreen/browser_window_fullscreen_controller.h"
+ #include "chrome/browser/ui/views/frame/browser_native_widget_factory.h"
+@@ -32,6 +33,14 @@ std::unique_ptr<BrowserWindow, BrowserWindowDeleter>
+ BrowserWindow::CreateBrowserWindow(BrowserWindowInterface* browser,
+                                    bool user_gesture,
+                                    bool in_tab_dragging) {
++  if (const auto& embedder_factory =
++          embedder_browser_window_factory::GetFactory()) {
++    if (auto window =
++            embedder_factory.Run(browser, user_gesture, in_tab_dragging)) {
++      return window;
++    }
++  }
++
+   if (webui_browser::IsWebUIBrowserEnabled() &&
+       browser->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL) {
+     return std::unique_ptr<BrowserWindow, BrowserWindowDeleter>(

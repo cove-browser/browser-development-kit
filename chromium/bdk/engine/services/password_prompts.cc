@@ -1,0 +1,211 @@
+// Copyright 2026 The BDK Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "bdk/engine/services/password_prompts.h"
+
+#include <utility>
+
+#include "base/functional/bind.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/values.h"
+#include "bdk/core/include/bdk/bdk_ids.h"
+#include "bdk/engine/engine_contents.h"
+#include "bdk/engine/ui_presenters.h"
+#include "bdk/engine/ui_request.h"
+#include "chrome/browser/ui/passwords/manage_passwords_ui_controller.h"
+#include "components/password_manager/core/browser/password_form.h"
+#include "components/password_manager/core/common/password_manager_ui.h"
+#include "url/gurl.h"
+
+namespace bdk {
+
+namespace {
+
+using password_manager::ui::State;
+
+ManagePasswordsUIController* ControllerOf(content::WebContents* contents) {
+  return contents ? ManagePasswordsUIController::FromWebContents(contents)
+                  : nullptr;
+}
+
+bool WaitsForAnswer(State state, bool is_update) {
+  return state == (is_update ? State::PENDING_PASSWORD_UPDATE_STATE
+                             : State::PENDING_PASSWORD_STATE);
+}
+
+}  // namespace
+
+BdkTabDialogs::BdkTabDialogs(tabs::TabInterface& tab,
+                             content::WebContents* contents)
+    : TabDialogsViews(tab, contents), contents_(contents->GetWeakPtr()) {}
+
+BdkTabDialogs::~BdkTabDialogs() {
+  if (request_) {
+    bdkcore::withdraw_ui_request(*request_);
+  }
+  if (dismiss_) {
+    std::move(dismiss_).Run();
+  }
+}
+
+void BdkTabDialogs::ShowManagePasswordsBubble(bool user_action) {
+  content::WebContents* contents = contents_.get();
+  ManagePasswordsUIController* controller = ControllerOf(contents);
+  EngineContents* page = EngineContents::FromWebContents(contents);
+  if (!controller || !page) {
+    return;
+  }
+  // Only the two states that ask a question are a request. The management
+  // list, the confirmation and the sign-in states have no counterpart in the
+  // surface.
+  const State state = controller->GetState();
+  const bool is_update = state == State::PENDING_PASSWORD_UPDATE_STATE;
+  if (!is_update && state != State::PENDING_PASSWORD_STATE) {
+    return;
+  }
+  if (answered_ || (request_ && !request_->finished) || dismiss_) {
+    return;
+  }
+  const password_manager::PasswordForm& pending =
+      controller->GetPendingPassword();
+  // The password is not in the request: a presenter never sees it.
+  base::DictValue payload;
+  payload.Set("origin", controller->GetOrigin().GetURL().spec());
+  payload.Set("username", base::UTF16ToUTF8(pending.username_value));
+  payload.Set("isUpdate", is_update);
+  controller->OnBubbleShown();
+  base::WeakPtr<BdkTabDialogs> self = weak_factory_.GetWeakPtr();
+  request_ = RaiseUiRequest(*page, BDK_SURFACE_PASSWORDS, payload,
+                            base::BindOnce(
+                                [](base::WeakPtr<BdkTabDialogs> self,
+                                   bool is_update, const UiResult& result) {
+                                  if (self) {
+                                    self->Finished(is_update, result);
+                                  }
+                                },
+                                self, is_update));
+  if (!request_) {
+    controller->OnNoInteraction();
+    controller->OnBubbleHidden();
+  }
+}
+
+void BdkTabDialogs::OnPageNavigated() {
+  // A new page may ask a new question.
+  answered_ = false;
+  // The password manager may already hold one, about the credentials the
+  // person typed into the page that was left: it keeps that "save?" state
+  // across the navigation (its fallback) but only ever shows an icon for it,
+  // which a BDK window has none of. Ask it now, once the password manager has
+  // handled the navigation itself.
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce(&BdkTabDialogs::ShowManagePasswordsBubble,
+                                weak_factory_.GetWeakPtr(), false));
+}
+
+void BdkTabDialogs::HideManagePasswordsBubble() {
+  // Chromium closes its bubble when the page moves on; the request goes with
+  // it. The password manager was told already, so nothing is applied.
+  if (request_) {
+    bdkcore::withdraw_ui_request(*request_);
+    request_.reset();
+  }
+  if (dismiss_) {
+    std::move(dismiss_).Run();
+  }
+}
+
+void BdkTabDialogs::Finished(bool is_update, const UiResult& result) {
+  request_.reset();
+  switch (result.outcome) {
+    case bdkcore::UiOutcome::kCompleted:
+      if (result.completion == "grant") {
+        Apply(is_update, Choice::kSave);
+      } else if (result.args.FindBool("never").value_or(false)) {
+        Apply(is_update, Choice::kNever);
+      } else {
+        Apply(is_update, Choice::kNotNow);
+      }
+      return;
+    case bdkcore::UiOutcome::kDefaulted: {
+      content::WebContents* contents = contents_.get();
+      ManagePasswordsUIController* controller = ControllerOf(contents);
+      EngineContents* page = EngineContents::FromWebContents(contents);
+      if (!controller || !page) {
+        return;
+      }
+      const std::string host = controller->GetOrigin().host();
+      const std::string username =
+          base::UTF16ToUTF8(controller->GetPendingPassword().username_value);
+      Alert alert;
+      alert.title = is_update ? "Update password?" : "Save password?";
+      alert.message = username + " on " + host;
+      alert.buttons.push_back({"save", is_update ? "Update" : "Save"});
+      alert.buttons.push_back({"notNow", "Not now"});
+      if (!is_update) {
+        alert.buttons.push_back({"never", "Never for this site"});
+      }
+      dismiss_ = UiPresenters::Get().ShowAlert(
+          "passwords", &page->host_view(), std::move(alert),
+          base::BindOnce(
+              [](base::WeakPtr<BdkTabDialogs> self, bool is_update, int index) {
+                if (!self) {
+                  return;
+                }
+                self->dismiss_.Reset();
+                self->Apply(is_update, index == 0   ? Choice::kSave
+                                       : index == 1 ? Choice::kNotNow
+                                       : index == 2 ? Choice::kNever
+                                                    : Choice::kNoInteraction);
+              },
+              weak_factory_.GetWeakPtr(), is_update));
+      return;
+    }
+    case bdkcore::UiOutcome::kWithdrawn:
+      return;  // Chromium moved on
+    default:   // rejected, dropped, or the surface is disabled
+      Apply(is_update, Choice::kNoInteraction);
+      return;
+  }
+}
+
+void BdkTabDialogs::Apply(bool is_update, Choice choice) {
+  ManagePasswordsUIController* controller = ControllerOf(contents_.get());
+  if (!controller || !WaitsForAnswer(controller->GetState(), is_update)) {
+    return;
+  }
+  switch (choice) {
+    case Choice::kSave: {
+      const password_manager::PasswordForm& pending =
+          controller->GetPendingPassword();
+      controller->SavePassword(pending.username_value, pending.password_value);
+      break;
+    }
+    case Choice::kNotNow:
+      if (is_update) {
+        controller->OnNopeUpdateClicked();
+      } else {
+        controller->OnNotNowClicked();
+      }
+      break;
+    case Choice::kNever:
+      controller->NeverSavePassword();
+      break;
+    case Choice::kNoInteraction:
+      controller->OnNoInteraction();
+      break;
+  }
+  answered_ = true;
+  controller->OnBubbleHidden();
+}
+
+void OnPageNavigatedForPasswords(content::WebContents* contents) {
+  if (auto* dialogs =
+          static_cast<BdkTabDialogs*>(TabDialogs::FromWebContents(contents))) {
+    dialogs->OnPageNavigated();
+  }
+}
+
+}  // namespace bdk

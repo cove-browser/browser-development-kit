@@ -1,0 +1,38 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BDK Patches <patches@bdk.invalid>
+Date: Thu, 19 Nov 2026 15:13:40 -0800
+Subject: [PATCH] bdk: allow a Browser in a BDK private profile
+
+OTRProfileID::AllowsBrowserWindows() bans Browsers in every non-primary
+off-the-record profile except DevTools, Media Router and (on ChromeOS)
+captive portal ones, and Browser::Create() CHECKs that the profile
+allows one. BDK's private profiles are each an off-the-record profile of
+their own, so that cookies, storage and permissions stay apart between
+them (a single primary profile would share them), and BDK keeps every
+page as a tab of a Browser (a host context) so Chrome's tab helpers
+attach. Add BDK's profile ID prefix to the exceptions. The prefix is
+BDK's own and nothing else in Chromium creates a profile with it.
+
+Used by: the BDK engine (//bdk/engine/engine_backend.cc creates the
+profile, //bdk/engine/host_context.cc creates its Browser).
+---
+ chrome/browser/profiles/profile.cc | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/chrome/browser/profiles/profile.cc b/chrome/browser/profiles/profile.cc
+index 82b9a6f4010bcffe31e2c30c680761dee80c88e9..81ad937dcca67a32c85ab8302f2420318e9d27db 100644
+--- a/chrome/browser/profiles/profile.cc
++++ b/chrome/browser/profiles/profile.cc
+@@ -129,6 +129,12 @@ bool Profile::OTRProfileID::AllowsBrowserWindows() const {
+                        base::CompareCase::SENSITIVE)) {
+     return true;
+   }
++  // BDK's private profiles (//bdk/engine/engine_backend.cc): each is an OTR
++  // profile of its own, and each keeps its pages as tabs of a Browser.
++  if (base::StartsWith(profile_id_, "BDK::Private",
++                       base::CompareCase::SENSITIVE)) {
++    return true;
++  }
+ #if BUILDFLAG(IS_CHROMEOS)
+   if (base::StartsWith(profile_id_, kCaptivePortalOTRProfileIDPrefix,
+                        base::CompareCase::SENSITIVE)) {

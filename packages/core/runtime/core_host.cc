@@ -1,10 +1,11 @@
 /* Runtime core: profiles, WebContents, views, windows and UI requests. The checks and the
    bookkeeping are here; what a page does is the backend's. */
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 
-#include "core_internal.h"
+#include "broker_internal.h"
 
 using namespace bdkcore;
 
@@ -23,6 +24,7 @@ void close_profile(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Pro
     table_free(p->handle);
     p->handle = 0;
     backend().CloseProfile(*rt, *p);
+    app_settings_forget(*rt, p->id);
     if (p->ephemeral) {
         rt->profiles.erase(std::remove(rt->profiles.begin(), rt->profiles.end(), p),
                            rt->profiles.end());
@@ -92,82 +94,6 @@ void release_withdrawn(Request& r) {
     r.wrel = nullptr;
 }
 
-namespace {
-
-void finish_request(Request& r, UiOutcome outcome, const std::string& completion = "",
-                    const std::string& args = "") {
-    r.finished = true;
-    release_withdrawn(r);
-    if (r.on_finish) {
-        auto on_finish = std::move(r.on_finish);
-        r.on_finish = nullptr;
-        on_finish(outcome, completion, args);
-    }
-}
-
-} // namespace
-
-/* contents 0 withdraws every unfinished request. The withdrawn callback runs only here, then the
-   release. */
-void withdraw_contents_requests(const std::shared_ptr<Runtime>& rt, bdk_contents_t contents) {
-    for (auto& r : std::vector<std::shared_ptr<Request>>(rt->requests)) {
-        if (r->finished || (contents && r->contents != contents))
-            continue;
-        if (r->withdrawn) {
-            void (*cb)(void*) = r->withdrawn;
-            void* ctx = r->wctx;
-            post([cb, ctx] { cb(ctx); });
-        }
-        finish_request(*r, UiOutcome::kWithdrawn);
-    }
-}
-
-std::shared_ptr<Request> raise_ui_request(const std::shared_ptr<Runtime>& rt,
-                                          std::shared_ptr<Request> r) {
-    if (!r->profile && r->contents) {
-        auto c = contents_of(r->contents);
-        r->profile = c && c->profile ? c->profile->handle : 0;
-    }
-    r->handle = table_make(T_REQUEST, r);
-    rt->requests.erase(std::remove_if(rt->requests.begin(), rt->requests.end(),
-                                      [](const std::shared_ptr<Request>& q) {
-                                          return q->finished && table_type(q->handle) == T_NONE;
-                                      }),
-                       rt->requests.end());
-    rt->requests.push_back(r);
-    post([rt, r] {
-        if (rt->shutting)
-            return;
-        auto it = rt->ui_handlers.find(r->surface);
-        if (r->finished || it == rt->ui_handlers.end()) {
-            /* Never handed to the application, so nothing else will release the handle. */
-            if (!r->finished)
-                finish_request(*r, UiOutcome::kDefaulted);
-            table_free(r->handle);
-            return;
-        }
-        bdk_ui_request_info_t info;
-        memset(&info, 0, sizeof info);
-        info.struct_size = sizeof info;
-        info.request = r->handle;
-        info.surface = r->surface;
-        info.contents = r->contents;
-        info.window = r->window;
-        info.profile = r->profile;
-        info.payload_json = view(r->payload);
-        memcpy(info.anchor, r->anchor, sizeof info.anchor);
-        info.secure_view = r->secure_view;
-        bdk_ui_response_t resp = it->second.cb(it->second.ctx, &info);
-        r->delivered = true;
-        if (resp == BDK_UI_USE_DEFAULT && !r->finished) {
-            finish_request(*r, UiOutcome::kDefaulted);
-        } else if (resp == BDK_UI_REJECT && !r->finished) {
-            finish_request(*r, UiOutcome::kRejected);
-        }
-    });
-    return r;
-}
-
 } // namespace bdkcore
 
 namespace {
@@ -227,10 +153,6 @@ bdk_status_t nav_to_index(const std::shared_ptr<Contents>& c, int64_t index, bdk
     if (index < 0 || index >= static_cast<int64_t>(entries.size()))
         return BDK_ERR_INVALID_ARGUMENT;
     return backend().GoToIndex(c, static_cast<int>(index), err);
-}
-
-bool granting(const std::string& completion) {
-    return completion == "grant";
 }
 
 std::shared_ptr<Request> request_of(bdk_request_t h, std::shared_ptr<Runtime>* rt) {
@@ -365,7 +287,7 @@ BDK_EXPORT bdk_status_t bdk_profile_open_private(bdk_runtime_t h, bdk_profile_t*
     p->id = "ephemeral:" + std::to_string(rt->next_id++);
     p->name = "Private";
     p->ephemeral = true;
-    if (bdk_status_t s = backend().OpenPrivateProfile(*rt, *p, err))
+    if (bdk_status_t s = backend().OpenPrivateProfile(*rt, p, err))
         return s;
     p->open = true;
     p->handle = table_make(T_PROFILE, p);
@@ -697,6 +619,64 @@ BDK_EXPORT bdk_status_t bdk_contents_set_auto_discardable(bdk_contents_t h, uint
     return backend().SetAutoDiscardable(*c, discardable != 0, err);
 }
 
+BDK_EXPORT bdk_status_t bdk_contents_find_start(bdk_contents_t h, bdk_string_t text,
+                                                const bdk_find_options_t* options,
+                                                bdk_error_t* err) {
+    bdk_status_t st;
+    auto c = open_contents_for(h, err, &st);
+    if (!c)
+        return st;
+    if (!string_ok(text) || (options && options->struct_size < sizeof(size_t)))
+        return BDK_ERR_INVALID_ARGUMENT;
+    /* Only the bytes the caller declared are read; match_case is missing (0) in a smaller struct */
+    bool match_case = options &&
+                      options->struct_size >=
+                          offsetof(bdk_find_options_t, match_case) + sizeof options->match_case &&
+                      options->match_case != 0;
+    return backend().FindStart(c, str(text), match_case, err);
+}
+
+BDK_EXPORT bdk_status_t bdk_contents_find_next(bdk_contents_t h, bdk_error_t* err) {
+    bdk_status_t st;
+    auto c = open_contents_for(h, err, &st);
+    if (!c)
+        return st;
+    return backend().FindNext(c, true, err);
+}
+
+BDK_EXPORT bdk_status_t bdk_contents_find_previous(bdk_contents_t h, bdk_error_t* err) {
+    bdk_status_t st;
+    auto c = open_contents_for(h, err, &st);
+    if (!c)
+        return st;
+    return backend().FindNext(c, false, err);
+}
+
+BDK_EXPORT bdk_status_t bdk_contents_find_stop(bdk_contents_t h, uint8_t clear_selection,
+                                               bdk_error_t* err) {
+    bdk_status_t st;
+    auto c = open_contents_for(h, err, &st);
+    if (!c)
+        return st;
+    return backend().FindStop(c, clear_selection != 0, err);
+}
+
+BDK_EXPORT bdk_status_t bdk_contents_find_present(bdk_contents_t h, bdk_error_t* err) {
+    bdk_status_t st;
+    auto c = open_contents_for(h, err, &st);
+    if (!c)
+        return st;
+    return backend().FindPresent(c, err);
+}
+
+BDK_EXPORT bdk_status_t bdk_contents_print(bdk_contents_t h, bdk_error_t* err) {
+    bdk_status_t st;
+    auto c = open_contents_for(h, err, &st);
+    if (!c)
+        return st;
+    return backend().Print(c, err);
+}
+
 BDK_EXPORT bdk_subscription_t bdk_contents_subscribe(bdk_contents_t h, bdk_contents_event_cb cb,
                                                      void* ctx, bdk_release_cb rel) {
     bdk_status_t st;
@@ -820,14 +800,7 @@ BDK_EXPORT bdk_status_t bdk_ui_complete(bdk_request_t h, bdk_string_t completion
     std::string c = str(completion), a = str(args);
     if (!a.empty() && !valid_json(a))
         return BDK_ERR_INVALID_ARGUMENT;
-    if (r->finished)
-        return fail(err, BDK_DOMAIN_UI, BDK_CODE_REQUEST_COMPLETED,
-                    "the request is already completed");
-    if (granting(c) && gesture.kind == 0)
-        return fail(err, BDK_DOMAIN_UI, BDK_CODE_GESTURE_REQUIRED,
-                    "a granting completion needs the gesture event");
-    finish_request(*r, UiOutcome::kCompleted, c, a);
-    return BDK_OK;
+    return ui_complete(*r, c, a, gesture, err);
 }
 
 BDK_EXPORT bdk_status_t bdk_ui_use_default(bdk_request_t h, bdk_error_t* err) {
@@ -838,11 +811,7 @@ BDK_EXPORT bdk_status_t bdk_ui_use_default(bdk_request_t h, bdk_error_t* err) {
     auto r = request_of(h, &rt);
     if (!r || !rt)
         return BDK_ERR_STALE_HANDLE;
-    if (r->finished)
-        return fail(err, BDK_DOMAIN_UI, BDK_CODE_REQUEST_COMPLETED,
-                    "the request is already completed");
-    finish_request(*r, UiOutcome::kDefaulted);
-    return BDK_OK;
+    return ui_use_default(*r, err);
 }
 
 BDK_EXPORT void bdk_ui_set_withdrawn_handler(bdk_request_t h, void (*cb)(void*), void* ctx,
@@ -865,8 +834,7 @@ BDK_EXPORT void bdk_ui_request_release(bdk_request_t h) {
     auto r = request_of(h, &rt);
     if (!r || !rt)
         return;
-    if (!r->finished)
-        finish_request(*r, UiOutcome::kCancelled);
+    ui_release(*r);
     table_free(h);
 }
 

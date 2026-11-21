@@ -219,6 +219,35 @@ Notarization and a real Developer ID identity are not M2 work: they happen when 
 
 Seven patches are in the series (`chromium/patches`); each message says why. Three behaviours of the suite moved towards Chromium's: a failed navigation commits an error page for its URL, a title event follows only a title change, and the stub's text session format is tested only against the stub.
 
+### 2.13 Host contexts built in M3 (2026-11-19)
+
+M3 Phase 1 added the host contexts that 2.12 left for it (T-ADP-01 to T-ADP-03): every page is a tab of a `Browser`. The C ABI did not change. Where the build departs from architecture 4.1 and 4.2, feasibility 1 and tasks T-ADP-01 to T-ADP-03:
+
+| Planned | Built | Why |
+|---|---|---|
+| A third branch in `BrowserWindow::CreateBrowserWindow` and in `BrowserWindow::FromBrowser` | One patch: a settable factory (`embedder_browser_window_factory.h`) that `CreateBrowserWindow` asks first. `FromBrowser` needed nothing: it already falls back to `Browser::GetWindow()` | `BrowserWindowCreateParams::window` is test-only and cannot work for an embedder (a window is built with its `Browser`). The factory touches one `.cc` and adds one header that nothing widely included sees |
+| A third arm in `BrowserWindowFeatures` initialisation | None. `BrowserWindowFeatures` already guards a missing `BrowserView` and a missing `WebUIBrowserWindow` (`StubBrowserFocusController`, null checks) | Found by running it: Browser creation, tab insertion, moves and closing worked with those |
+| "Null guards where non-Views code casts to `BrowserView`" | One patch (a side-panel `CHECK_IS_TEST` that upstream relaxes only for Webium), plus real objects in the window | See the list below |
+| One host context per window | One per window **per profile**, plus one parking context per profile | A `Browser` belongs to one profile; a window may show pages of several |
+| Private profiles unchanged | One patch: `OTRProfileID::AllowsBrowserWindows` accepts BDK's profile ID prefix | Chromium bans a `Browser` in every non-primary off-the-record profile except DevTools, Media Router and captive portal; BDK's private profiles are each their own off-the-record profile, so a shared primary profile was not an option |
+| BDK as the page's delegate | Unchanged: after every insertion, move and replacement the engine sets BDK's delegate again, because the `Browser` takes it with the tab. Chrome's `BrowserWebContentsDelegate` is not forwarded to yet | Keeps every M2 behaviour (new-window requests, fullscreen, context menus, keys, `window.close()`) without Chrome's delegate opening windows. Phase 2 forwards the calls a service needs |
+
+Found by running it (T-ADP-02; the Chromium `browser_tests` filters were not run, since no test build exists):
+
+| Where | What | Handling |
+|---|---|---|
+| `ReadAnythingSidePanelController::TabWillDetach` | `CHECK_IS_TEST()` when a detached, active tab's `Browser` has no `SidePanelUI`, unless Webium is on. Crashed the first tab removal | Patch: also accepted when an embedder supplies windows |
+| `Browser::OnTabDeactivated` | Calls `window_->GetLocationBar()->SaveStateToContents()` without a null check | `HostLocationBar`, a stub `LocationBar` |
+| `~BrowserWindow` contract | A window must call `Browser::GetFeatures().TearDownPreBrowserWindowDestruction()` before it goes, or `BrowserLiveTabContext` holds a dangling `raw_ref` to it (dangling-pointer detection aborts) | Done in `~BdkBrowserWindow`, as `WebUIBrowserWindow` and `BrowserWidget` do |
+| `Browser::TabStripEmpty` | Calls `window_->Close()` whenever the tab strip empties, which happens at every move out of a context | `Close()` does nothing; BDK closes a context itself (`BrowserManagerService::SynchronouslyDestroyBrowser`) |
+| `Profile::AllowsBrowserWindows` | See the private-profile row | Patch |
+| `ExclusiveAccessContext`, find bar, tab-modal dialog host | Dereferenced where a feature starts | Stub implementations; behaviour is Phase 2 |
+| `tab_strip_model_event_bridge.cc:111` | Upstream `NOTIMPLEMENTED` on a tab strip change | Not ours; logged once |
+
+No `BdkBrowserWindow` method that logs (`NOTIMPLEMENTED_LOG_ONCE`) was reached by the 144 conformance and engine tests.
+
+Four patches were added or changed: the series is ten (the test-hook export patch also lists `bdk_testing_host_context_count` and `bdk_testing_tab_info`).
+
 ## 3. Tasks and workflows
 
 | Task | Change |

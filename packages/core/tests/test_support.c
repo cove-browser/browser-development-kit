@@ -221,9 +221,12 @@ bdk_contents_t t_new_contents(bdk_profile_t profile) {
 /* ---- runner ---- */
 
 static const t_test_t* const kTables[] = {
-    t_base_tests,   t_runtime_tests, t_broker_tests, t_profile_tests, t_contents_tests, t_ui_tests,
+    t_base_tests,          t_runtime_tests,  t_broker_tests,
+    t_profile_tests,       t_contents_tests, t_ui_tests,
 #ifdef BDK_HARNESS_ENGINE_TESTS
-    t_engine_tests, /* scenarios only a real engine can run (tests_engine.c) */
+    t_engine_tests,        /* scenarios only a real engine can run (tests_engine.c) */
+    t_engine_ui_tests,     /* browser-owned surfaces on the engine (tests_engine_ui.c) */
+    t_engine_prompt_tests, /* services and prompts (tests_engine_prompts.c) */
 #endif
 };
 
@@ -245,6 +248,17 @@ static int run_one(const t_test_t* t) {
     return g_failures_in_test == 0;
 }
 
+/* `pattern` is a test name, or a prefix followed by '*' for every test that starts with it; a
+   leading '!' selects every test that does not match the rest. */
+static int t_name_matches(const char* pattern, const char* name) {
+    if (pattern[0] == '!')
+        return !t_name_matches(pattern + 1, name);
+    size_t n = strlen(pattern);
+    if (n > 0 && pattern[n - 1] == '*')
+        return strncmp(pattern, name, n - 1) == 0;
+    return strcmp(pattern, name) == 0;
+}
+
 /* A harness whose runtime must own the process's main thread first (an application event loop)
    defines BDK_HARNESS_OWNS_MAIN and calls this from its own main. */
 #ifdef BDK_HARNESS_OWNS_MAIN
@@ -260,7 +274,7 @@ int main(int argc, char** argv) {
         else if (strcmp(argv[i], "--run") == 0 && i + 1 < argc)
             only = argv[++i];
         else {
-            fprintf(stderr, "usage: %s [--list] [--run <test>]\n", argv[0]);
+            fprintf(stderr, "usage: %s [--list] [--run <test, prefix* or !pattern>]\n", argv[0]);
             return 2;
         }
     }
@@ -271,7 +285,7 @@ int main(int argc, char** argv) {
                 printf("%s\n", t->name);
                 continue;
             }
-            if (only && strcmp(only, t->name) != 0)
+            if (only && !t_name_matches(only, t->name))
                 continue;
             ++total;
             if (!run_one(t))

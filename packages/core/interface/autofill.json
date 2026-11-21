@@ -1,0 +1,149 @@
+{
+  "namespace": "autofill",
+  "since": 1,
+  "types": {
+    "AddressFields": {
+      "fullName": "string?",
+      "organization": "string?",
+      "street": "string?",
+      "city": "string?",
+      "region": "string?",
+      "postalCode": "string?",
+      "country": "string?",
+      "phone": "string?",
+      "email": "string?"
+    },
+    "AddressInfo": {
+      "id": "string",
+      "fields": "AddressFields"
+    },
+    "CardInfo": {
+      "id": "string",
+      "holder": "string",
+      "network": "string",
+      "lastFour": "string",
+      "expiryMonth": "int",
+      "expiryYear": "int"
+    },
+    "CardInput": {
+      "holder": "string",
+      "number": "string",
+      "expiryMonth": "int",
+      "expiryYear": "int"
+    },
+    "CardUpdate": {
+      "holder": "string?",
+      "number": "string?",
+      "expiryMonth": "int?",
+      "expiryYear": "int?"
+    }
+  },
+  "commands": [
+    {
+      "name": "autofill.addresses.list",
+      "capability": "autofill.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {},
+      "result": {
+        "items": "AddressInfo[]"
+      }
+    },
+    {
+      "name": "autofill.addresses.add",
+      "capability": "autofill.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "fields": "AddressFields"
+      },
+      "result": "AddressInfo"
+    },
+    {
+      "name": "autofill.addresses.update",
+      "capability": "autofill.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string",
+        "fields": "AddressFields"
+      },
+      "result": "AddressInfo"
+    },
+    {
+      "name": "autofill.addresses.remove",
+      "capability": "autofill.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string"
+      },
+      "result": "void"
+    },
+    {
+      "name": "autofill.cards.list",
+      "capability": "autofill.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {},
+      "result": {
+        "items": "CardInfo[]"
+      }
+    },
+    {
+      "name": "autofill.cards.add",
+      "capability": "autofill.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "card": "CardInput"
+      },
+      "result": "CardInfo"
+    },
+    {
+      "name": "autofill.cards.update",
+      "capability": "autofill.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string",
+        "card": "CardUpdate"
+      },
+      "result": "CardInfo"
+    },
+    {
+      "name": "autofill.cards.remove",
+      "capability": "autofill.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string"
+      },
+      "result": "void"
+    },
+    {
+      "name": "autofill.cards.reveal",
+      "capability": "passwords.reveal",
+      "callers": ["swift", "page"],
+      "profile": "required",
+      "requires": ["authentication"],
+      "args": {
+        "id": "string"
+      },
+      "result": {
+        "number": "string"
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "autofill.changed",
+      "capability": "autofill.read",
+      "payload": {
+        "kind": "string",
+        "id": "string",
+        "source": "ChangeSource"
+      }
+    }
+  ]
+}

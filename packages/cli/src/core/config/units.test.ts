@@ -155,6 +155,43 @@ describe("the schema", () => {
   });
 });
 
+describe("the surface modes", () => {
+  // The runtime core validates the resolved configuration again at start, from its own table
+  // (packages/core/runtime/ui_router.cc). The two must agree on every surface the schema names.
+  const router = readFileSync(
+    new URL("../../../../core/runtime/ui_router.cc", import.meta.url),
+    "utf8",
+  );
+  const coreModes = new Map<string, string[]>();
+  for (const [, name, modes] of router.matchAll(/^\s*\{"([a-z_]+)", BDK_SURFACE_\w+, k(DCX?),/gm)) {
+    coreModes.set(
+      name as string,
+      [...(modes as string)].map(
+        (m) => ({ D: "default", C: "custom", X: "disabled" })[m] as string,
+      ),
+    );
+  }
+  type Defs = Record<string, { enum: string[] }>;
+  const defs = (
+    schema as {
+      $defs: Defs & {
+        ui: { properties: { surfaces: { properties: Record<string, { $ref: string }> } } };
+      };
+    }
+  ).$defs;
+  const surfaces = defs.ui.properties.surfaces.properties;
+
+  it("reads the core's table", () => expect(coreModes.size).toBeGreaterThan(20));
+
+  it.each(Object.entries(surfaces))(
+    "%s allows the same modes in the schema and the core",
+    (name, ref) => {
+      const allowed = defs[ref.$ref.replace("#/$defs/", "")]?.enum;
+      expect(coreModes.get(name), `${name} is missing from the core's table`).toEqual(allowed);
+    },
+  );
+});
+
 describe("aliases and routes through the resolver", () => {
   it("resolves an alias to its target and shares the target's capabilities", async () => {
     const result = await resolveConfig({

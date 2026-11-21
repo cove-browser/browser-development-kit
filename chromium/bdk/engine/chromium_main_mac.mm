@@ -7,6 +7,8 @@
 #import <AppKit/AppKit.h>
 
 #include <memory>
+#include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 
@@ -159,9 +161,22 @@ bool StartChromium(const ChromiumStartOptions& options, std::string* error) {
   state.args.push_back("--no-startup-window");
   state.args.push_back("--no-first-run");
   state.args.push_back("--no-default-browser-check");
+  // Chromium copies its bundle to a temporary directory at every launch
+  // (MacAppCodeSignClone) so that an in-place update cannot invalidate the
+  // running code's signature. BDK never updates itself, and a copy left by a
+  // process that does not exit cleanly is never removed: engine test runs
+  // left gigabytes. Chromium reads only the last --disable-features, so the
+  // caller's list is merged into one switch.
+  std::string disabled_features = "MacAppCodeSignClone";
+  constexpr std::string_view kDisableFeatures = "disable-features=";
   for (const std::string& s : options.switches) {
+    if (s.starts_with(kDisableFeatures)) {
+      disabled_features += "," + s.substr(kDisableFeatures.size());
+      continue;
+    }
     state.args.push_back("--" + s);
   }
+  state.args.push_back("--disable-features=" + disabled_features);
   for (const std::string& a : state.args) {
     state.argv.push_back(a.c_str());
   }

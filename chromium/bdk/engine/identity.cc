@@ -5,10 +5,10 @@
 #include "bdk/engine/identity.h"
 
 #include "base/environment.h"
-#include "base/json/json_reader.h"
 #include "base/strings/string_split.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
+#include "bdk/engine/json_util.h"
 #include "build/build_config.h"
 #include "chrome/grit/branded_strings.h"
 #include "ui/base/resource/resource_bundle.h"
@@ -20,8 +20,7 @@
 namespace bdk {
 
 std::optional<Identity> ParseIdentity(const std::string& resolved_json) {
-  std::optional<base::DictValue> resolved = base::JSONReader::ReadDict(
-      resolved_json, base::JSON_PARSE_CHROMIUM_EXTENSIONS);
+  std::optional<base::DictValue> resolved = ParseJsonDict(resolved_json);
   if (!resolved) {
     return std::nullopt;
   }

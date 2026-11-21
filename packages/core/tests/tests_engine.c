@@ -3,6 +3,7 @@
    the engine conformance app (BDK_HARNESS_ENGINE_TESTS); pages are driven through the engine's test
    hooks (bdk_testing.h), and every http(s) load is served by the engine's test interceptor. */
 #include <stdlib.h>
+#include <unistd.h>
 
 #include "bdk_testing.h"
 #include "test_support.h"
@@ -18,6 +19,14 @@ void bdk_harness_engine_key(bdk_contents_t contents, unsigned short key_code,
 int bdk_harness_engine_compose(bdk_contents_t contents, const char* marked, const char* text);
 int bdk_harness_engine_window_is_key(bdk_contents_t contents);
 int bdk_harness_engine_accessibility_text(bdk_contents_t contents, char* out, size_t n);
+/* From harness_engine.mm: an application window registered with the runtime (returns its index,
+   or -1), its page views added to it or removed from it, and the window unregistered and closed;
+   and how many NSWindows the application has. */
+int bdk_harness_engine_window_open(bdk_runtime_t rt);
+void bdk_harness_engine_window_attach(int window, bdk_contents_t contents);
+void bdk_harness_engine_window_detach(bdk_contents_t contents);
+void bdk_harness_engine_window_close(int window);
+size_t bdk_harness_engine_app_window_count(void);
 /* From harness_engine.mm: while set, a new runtime keeps the persistent profiles of the last one.
  */
 extern int bdk_harness_engine_keep_profiles;
@@ -40,6 +49,8 @@ typedef struct {
 } ui_log_t;
 
 static ui_log_t g_new_windows, g_menus, g_fullscreen;
+/* The profile start_with_page opened. */
+static bdk_profile_t g_page_profile;
 
 static bdk_ui_response_t record(void* ctx, const bdk_ui_request_info_t* info) {
     ui_log_t* log = (ui_log_t*)ctx;
@@ -79,7 +90,8 @@ static bdk_contents_t start_with_page(void) {
     REQUIRE(bdk_ui_set_handler(t_runtime, BDK_SURFACE_FULLSCREEN, record, &g_fullscreen, NULL,
                                &err) == BDK_OK);
     t_freeze();
-    bdk_contents_t c = t_new_contents(t_new_profile("Engine"));
+    g_page_profile = t_new_profile("Engine");
+    bdk_contents_t c = t_new_contents(g_page_profile);
     REQUIRE(bdk_contents_load(c, S(OPENER), &err) == BDK_OK);
     t_pump();
     return c;
@@ -183,8 +195,9 @@ static void test_engine_a_right_click_on_a_link_raises_a_context_menu_with_link_
     memset(&none, 0, sizeof none);
     bdk_error_t err = 0;
     g_new_windows.complete = "accept";
-    REQUIRE(bdk_ui_complete(g_menus.request, S("perform"), S("{\"id\":\"openLinkInNewPage\"}"),
-                            none, &err) == BDK_OK);
+    REQUIRE(bdk_ui_complete(g_menus.request, S("accept"),
+                            S("{\"action\":\"perform\",\"item\":\"openLinkInNewPage\"}"), none,
+                            &err) == BDK_OK);
     t_pump();
     REQUIRE(g_new_windows.calls == 1);
     CHECK(strstr(g_new_windows.payload, "\"kind\":\"newPage\"") != NULL);
@@ -220,8 +233,9 @@ static void test_engine_inspect_opens_devtools_through_a_new_window_request(void
     bdk_native_handle_t none;
     memset(&none, 0, sizeof none);
     bdk_error_t err = 0;
-    REQUIRE(bdk_ui_complete(g_menus.request, S("perform"), S("{\"id\":\"inspect\"}"), none, &err) ==
-            BDK_OK);
+    REQUIRE(bdk_ui_complete(g_menus.request, S("accept"),
+                            S("{\"action\":\"perform\",\"item\":\"inspect\"}"), none,
+                            &err) == BDK_OK);
     t_pump();
     REQUIRE(g_new_windows.calls == 1);
     CHECK(g_new_windows.contents == c);
@@ -248,7 +262,7 @@ static void test_engine_inspect_opens_devtools_through_a_new_window_request(void
 
 static void test_engine_html_fullscreen_enters_and_exits_through_requests(void) {
     reset_logs();
-    g_fullscreen.complete = "allow";
+    g_fullscreen.complete = "accept";
     bdk_contents_t c = start_with_page();
     bdk_harness_engine_show(c, 1);
     /* Chromium refuses fullscreen to a page that does not have focus. */
@@ -260,12 +274,12 @@ static void test_engine_html_fullscreen_enters_and_exits_through_requests(void) 
                1);
     REQUIRE(wait_for_title(c, "in"));
     REQUIRE(g_fullscreen.calls == 1);
-    CHECK(strstr(g_fullscreen.payload, "\"entering\":true") != NULL);
+    CHECK(strstr(g_fullscreen.payload, "\"isEntering\":true") != NULL);
     CHECK(strstr(g_fullscreen.payload, "\"origin\":\"https://bdk.test\"") != NULL);
     run_script(c, "document.exitFullscreen()", 1);
     REQUIRE(wait_for_title(c, "out"));
     CHECK(g_fullscreen.calls == 2);
-    CHECK(strstr(g_fullscreen.payload, "\"entering\":false") != NULL);
+    CHECK(strstr(g_fullscreen.payload, "\"isEntering\":false") != NULL);
     bdk_harness_engine_show(c, 0);
 }
 
@@ -279,7 +293,7 @@ static void test_engine_a_denied_page_ends_up_not_fullscreen(void) {
     REQUIRE(bdk_contents_focus(c) == BDK_OK);
     run_script(c, "document.documentElement.requestFullscreen().catch(()=>{})", 1);
     REQUIRE(g_fullscreen.calls >= 1);
-    CHECK(strstr(g_fullscreen.payload, "\"entering\"") != NULL);
+    CHECK(strstr(g_fullscreen.payload, "\"isEntering\"") != NULL);
     for (int i = 0; i < 10; ++i)
         t_pump();
     run_script(c, "document.title=document.fullscreenElement?'fullscreen':'not-fullscreen'", 0);
@@ -439,6 +453,190 @@ static void test_engine_the_accessibility_tree_exposes_page_content(void) {
     bdk_harness_engine_show(c, 0);
 }
 
+/* ---- host contexts (T-ADP-01 to T-ADP-03) ---- */
+
+static bdk_testing_tab_info_t tab_info_of(bdk_contents_t c) {
+    bdk_testing_tab_info_t info;
+    memset(&info, 0, sizeof info);
+    info.struct_size = sizeof info;
+    REQUIRE(bdk_testing_tab_info(c, &info) == BDK_OK);
+    return info;
+}
+
+/* A runtime with the engine's UI handlers, and two pages of one profile that have loaded the
+   opener page. */
+static void start_with_two_pages(bdk_contents_t* a, bdk_contents_t* b) {
+    reset_logs();
+    *a = start_with_page();
+    bdk_error_t err = 0;
+    *b = t_new_contents(g_page_profile);
+    REQUIRE(bdk_contents_load(*b, S(OPENER), &err) == BDK_OK);
+    t_pump();
+}
+
+static void test_engine_a_new_page_is_a_tab_of_a_parking_context(void) {
+    reset_logs();
+    t_start_frozen();
+    size_t windows = bdk_harness_engine_app_window_count();
+    bdk_profile_t profile = t_new_profile("Parked");
+    bdk_contents_t first = t_new_contents(profile);
+    t_pump();
+    bdk_testing_tab_info_t info = tab_info_of(first);
+    CHECK(info.is_tab);
+    CHECK(info.parking);
+    CHECK(!info.has_native_window);
+    CHECK(info.tab_id > 0);
+    CHECK(info.context_id > 0);
+    CHECK(info.tab_count == 1);
+    CHECK(bdk_testing_host_context_count() == 1);
+    /* No Chrome window of its own is shown, and the application gained no window. */
+    CHECK(bdk_testing_chrome_window_count() == 0);
+    CHECK(bdk_harness_engine_app_window_count() == windows);
+    /* A second page of the profile is a second tab of the same context; a page of another profile
+       has a parking context of its own. */
+    bdk_contents_t second = t_new_contents(profile);
+    bdk_contents_t elsewhere = t_new_contents(t_new_profile("Elsewhere"));
+    bdk_testing_tab_info_t a = tab_info_of(first), b = tab_info_of(second),
+                           e = tab_info_of(elsewhere);
+    CHECK(a.parking && b.parking && e.parking);
+    CHECK(a.context_id == b.context_id);
+    CHECK(a.tab_id != b.tab_id);
+    CHECK(a.tab_count == 2);
+    CHECK(e.context_id != a.context_id);
+    CHECK(bdk_testing_host_context_count() == 2);
+    CHECK(bdk_testing_chrome_window_count() == 0);
+}
+
+static void test_engine_attaching_a_page_to_a_registered_window_moves_it_into_its_context(void) {
+    reset_logs();
+    bdk_contents_t c = start_with_page();
+    bdk_testing_tab_info_t parked = tab_info_of(c);
+    REQUIRE(parked.parking);
+    int window = bdk_harness_engine_window_open(t_runtime);
+    REQUIRE(window >= 0);
+    bdk_harness_engine_window_attach(window, c);
+    bdk_testing_tab_info_t placed = tab_info_of(c);
+    CHECK(placed.is_tab);
+    CHECK(!placed.parking);
+    CHECK(placed.has_native_window);
+    CHECK(placed.context_id != parked.context_id);
+    CHECK(placed.tab_id == parked.tab_id);
+    CHECK(placed.tab_count == 1);
+    /* The move did not reload the page. */
+    char title[256];
+    title_of(c, title, sizeof title);
+    CHECK(strcmp(title, OPENER) == 0);
+    CHECK(bdk_testing_chrome_window_count() == 0);
+    bdk_harness_engine_window_close(window);
+}
+
+static void test_engine_moving_a_page_between_windows_keeps_its_tab_history_and_renderer(void) {
+    reset_logs();
+    bdk_contents_t c = start_with_page();
+    bdk_error_t err = 0;
+    REQUIRE(bdk_contents_load(c, S("https://bdk.test/second"), &err) == BDK_OK);
+    t_pump();
+    run_script(c, "window.bdkMarker = 42", 0);
+    bdk_testing_tab_info_t parked = tab_info_of(c);
+    int first = bdk_harness_engine_window_open(t_runtime);
+    int second = bdk_harness_engine_window_open(t_runtime);
+    REQUIRE(first >= 0 && second >= 0);
+    bdk_harness_engine_window_attach(first, c);
+    bdk_testing_tab_info_t in_first = tab_info_of(c);
+    bdk_harness_engine_window_attach(second, c);
+    bdk_testing_tab_info_t in_second = tab_info_of(c);
+    CHECK(in_first.is_tab && !in_first.parking);
+    CHECK(in_second.is_tab && !in_second.parking);
+    CHECK(in_first.context_id != in_second.context_id);
+    CHECK(in_first.context_id != parked.context_id);
+    CHECK(in_first.tab_id == parked.tab_id);
+    CHECK(in_second.tab_id == parked.tab_id);
+    CHECK(in_second.tab_count == 1);
+    /* History and the page's own state came along: the renderer was never replaced. */
+    bdk_buffer_t entries = 0;
+    REQUIRE(bdk_contents_entries(c, &entries, &err) == BDK_OK);
+    char text[512];
+    t_buffer_text(entries, text, sizeof text);
+    CHECK(strstr(text, "\"current\":1") != NULL);
+    CHECK(strstr(text, OPENER) != NULL);
+    bdk_release(entries);
+    run_script(c, "document.title = 'marker:' + window.bdkMarker", 0);
+    CHECK(wait_for_title(c, "marker:42"));
+    /* And back again. */
+    bdk_harness_engine_window_attach(first, c);
+    bdk_testing_tab_info_t back = tab_info_of(c);
+    CHECK(back.context_id == in_first.context_id);
+    CHECK(back.tab_id == parked.tab_id);
+    CHECK(bdk_testing_chrome_window_count() == 0);
+    bdk_harness_engine_window_close(first);
+    bdk_harness_engine_window_close(second);
+}
+
+static void test_engine_a_detached_page_stays_a_background_tab_of_its_last_window(void) {
+    bdk_contents_t a, b;
+    start_with_two_pages(&a, &b);
+    int window = bdk_harness_engine_window_open(t_runtime);
+    REQUIRE(window >= 0);
+    bdk_harness_engine_window_attach(window, a);
+    bdk_testing_tab_info_t first = tab_info_of(a);
+    bdk_harness_engine_window_detach(a);
+    bdk_testing_tab_info_t detached = tab_info_of(a);
+    /* No view in any window: the page is still a tab of the window it was last in. */
+    CHECK(detached.is_tab);
+    CHECK(!detached.parking);
+    CHECK(detached.context_id == first.context_id);
+    CHECK(detached.tab_id == first.tab_id);
+    CHECK(bdk_testing_chrome_window_count() == 0);
+    bdk_harness_engine_window_close(window);
+}
+
+static void test_engine_closing_a_window_parks_its_pages(void) {
+    bdk_contents_t a, b;
+    start_with_two_pages(&a, &b);
+    int window = bdk_harness_engine_window_open(t_runtime);
+    REQUIRE(window >= 0);
+    bdk_harness_engine_window_attach(window, a);
+    bdk_testing_tab_info_t placed = tab_info_of(a);
+    REQUIRE(!placed.parking);
+    size_t contexts = bdk_testing_host_context_count();
+    bdk_harness_engine_window_close(window);
+    bdk_testing_tab_info_t parked = tab_info_of(a);
+    CHECK(parked.is_tab);
+    CHECK(parked.parking);
+    CHECK(parked.tab_id == placed.tab_id);
+    /* The window's context closed; the page's own state is intact. */
+    CHECK(bdk_testing_host_context_count() == contexts - 1);
+    char title[256];
+    title_of(a, title, sizeof title);
+    CHECK(strcmp(title, OPENER) == 0);
+    CHECK(bdk_testing_chrome_window_count() == 0);
+}
+
+static void test_engine_focusing_a_page_activates_its_tab_and_destroying_it_closes_the_tab(void) {
+    bdk_contents_t a, b;
+    start_with_two_pages(&a, &b);
+    int window = bdk_harness_engine_window_open(t_runtime);
+    REQUIRE(window >= 0);
+    bdk_harness_engine_window_attach(window, a);
+    bdk_harness_engine_window_attach(window, b);
+    CHECK(tab_info_of(a).context_id == tab_info_of(b).context_id);
+    CHECK(tab_info_of(a).tab_count == 2);
+    REQUIRE(bdk_contents_focus(b) == BDK_OK);
+    t_pump();
+    CHECK(tab_info_of(b).active);
+    CHECK(!tab_info_of(a).active);
+    REQUIRE(bdk_contents_focus(a) == BDK_OK);
+    t_pump();
+    CHECK(tab_info_of(a).active);
+    CHECK(!tab_info_of(b).active);
+    /* Destroying a page closes its tab. */
+    REQUIRE(bdk_contents_destroy(a) == BDK_OK);
+    t_pump();
+    CHECK(tab_info_of(b).tab_count == 1);
+    CHECK(bdk_testing_chrome_window_count() == 0);
+    bdk_harness_engine_window_close(window);
+}
+
 /* ---- codecs (decision D7, T-CHR-12) ---- */
 
 /* The runtime is built with Chromium's open codecs only: no bundled H.264, AAC or HEVC decoder
@@ -534,6 +732,515 @@ static void test_engine_persistent_profiles_outlive_the_runtime(void) {
     CHECK(strstr(cap.json, id) != NULL);
 }
 
+/* A profile the application closes is unloaded by Chromium, with its databases and the descriptors
+   they hold; one that is opened again afterwards loads from the same files. */
+int bdk_harness_engine_open_descriptors(void);
+
+static void test_engine_a_closed_profile_releases_its_descriptors(void) {
+    t_start_frozen();
+    char id[64];
+    t_create_profile("Reopened", id, sizeof id);
+    enum { kWarmup = 2, kRounds = 6 };
+    int before = 0;
+    for (int i = 0; i < kWarmup + kRounds; ++i) {
+        char fresh[64], name[32];
+        snprintf(name, sizeof name, "Opened once %d", i);
+        t_create_profile(name, fresh, sizeof fresh);
+        bdk_profile_t p = t_open_profile(fresh);
+        bdk_contents_t c = t_new_contents(p);
+        t_pump();
+        REQUIRE(bdk_contents_destroy(c) == BDK_OK);
+        REQUIRE(bdk_profile_close(p, NULL) == BDK_OK);
+        t_pump();
+        if (i == kWarmup - 1)
+            before = bdk_harness_engine_open_descriptors();
+    }
+    /* A leaked profile held about eighty descriptors. */
+    CHECK(bdk_harness_engine_open_descriptors() - before < 40);
+    /* The same profile, closed and opened at once, is one instance again. */
+    for (int i = 0; i < 3; ++i) {
+        bdk_profile_t p = t_open_profile(id);
+        bdk_contents_t c = t_new_contents(p);
+        t_pump();
+        REQUIRE(bdk_contents_destroy(c) == BDK_OK);
+        REQUIRE(bdk_profile_close(p, NULL) == BDK_OK);
+    }
+}
+
+/* ---- built-in services (T-SVC-02, T-SVC-03, T-SVC-06) ---- */
+
+int bdk_harness_engine_download_server_start(void);
+void bdk_harness_engine_download_server_release(void);
+void bdk_harness_engine_download_server_stop(void);
+
+/* One built-in command by the host, run to its end. Chromium's services answer from other threads,
+   so this pumps until the result arrives. */
+static void svc(const char* command, const char* args, bdk_profile_t profile, t_capture_t* cap) {
+    bdk_invoke_options_t o;
+    memset(&o, 0, sizeof o);
+    o.struct_size = sizeof o;
+    o.profile = profile;
+    t_cap_init(cap);
+    REQUIRE(bdk_invoke_named(t_runtime, S(command), S(args), &o, t_on_result, t_on_progress, cap,
+                             t_on_release) != 0);
+    for (int i = 0; i < 1000 && cap->results == 0; ++i) {
+        t_pump();
+        bdk_testing_run_for(0.01);
+    }
+    CHECK(cap->results == 1);
+}
+
+static int failed_with(const t_capture_t* cap, const char* domain, const char* code) {
+    return cap->has_error && strcmp(cap->domain, domain) == 0 && strcmp(cap->code, code) == 0;
+}
+
+static void command(const char* name, const char* args, char* out, size_t n) {
+    REQUIRE(bdk_testing_command(t_runtime, S(name), S(args), out, n) == BDK_OK);
+}
+
+/* The member `key` of a one-member JSON object the test hook wrote, without the braces and, for a
+   string, without its quotes. */
+static void value_of_member(const char* json, const char* key, char* out, size_t n) {
+    char pattern[32];
+    snprintf(pattern, sizeof pattern, "\"%s\":", key);
+    const char* at = strstr(json, pattern);
+    REQUIRE(at != NULL);
+    at += strlen(pattern);
+    size_t len = strlen(at);
+    while (len > 0 && at[len - 1] == '}')
+        --len;
+    if (len >= 2 && at[0] == '"' && at[len - 1] == '"') {
+        ++at;
+        len -= 2;
+    }
+    REQUIRE(len < n);
+    memcpy(out, at, len);
+    out[len] = '\0';
+}
+
+static void value_of(const char* json, char* out, size_t n) {
+    value_of_member(json, "value", out, n);
+}
+
+/* Reads a preference of the page's profile as Chromium holds it. */
+static void pref_of(bdk_contents_t page, const char* name, char* out, size_t n) {
+    char args[256], json[512];
+    snprintf(args, sizeof args, "{\"contents\":\"%llu\",\"name\":\"%s\"}", (unsigned long long)page,
+             name);
+    command("pref.json", args, json, sizeof json);
+    value_of(json, out, n);
+}
+
+static void content_setting_of(bdk_contents_t page, const char* url, const char* kind, char* out,
+                               size_t n) {
+    char args[256], json[128];
+    snprintf(args, sizeof args, "{\"contents\":\"%llu\",\"origin\":\"%s\",\"kind\":\"%s\"}",
+             (unsigned long long)page, url, kind);
+    command("permission.get", args, json, sizeof json);
+    value_of(json, out, n);
+}
+
+static void test_engine_history_is_searched_paginated_and_cleared(void) {
+    t_start_frozen();
+    bdk_profile_t p = t_new_profile("History");
+    t_capture_t cap;
+    const char* urls[] = {"https://a.example/", "https://b.example/", "https://c.example/"};
+    for (int i = 0; i < 3; ++i) {
+        char args[128];
+        snprintf(args, sizeof args, "{\"url\":\"%s\",\"title\":\"page %d\"}", urls[i], i);
+        svc("history.add", args, p, &cap);
+        CHECK(!cap.has_error);
+    }
+    svc("history.search", "{\"limit\":2}", p, &cap);
+    CHECK(!cap.has_error && strstr(cap.json, "c.example") && strstr(cap.json, "b.example"));
+    CHECK(strstr(cap.json, "a.example") == NULL);
+    char cursor[64], next[128];
+    REQUIRE(t_json_string(cap.json, "nextCursor", cursor, sizeof cursor));
+    snprintf(next, sizeof next, "{\"limit\":2,\"cursor\":\"%s\"}", cursor);
+    svc("history.search", next, p, &cap);
+    CHECK(strstr(cap.json, "a.example") && strstr(cap.json, "\"nextCursor\":null"));
+    svc("history.search", "{\"cursor\":\"nonsense\"}", p, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+    svc("history.search", "{\"text\":\"page 1\"}", p, &cap);
+    CHECK(strstr(cap.json, "b.example") && !strstr(cap.json, "c.example"));
+    svc("history.visits", "{\"url\":\"https://a.example/\"}", p, &cap);
+    CHECK(strstr(cap.json, "\"transition\""));
+    svc("history.deleteUrls", "{\"urls\":[\"https://b.example/\"]}", p, &cap);
+    CHECK(!cap.has_error);
+    svc("history.search", "{}", p, &cap);
+    CHECK(!strstr(cap.json, "b.example") && strstr(cap.json, "a.example"));
+    svc("privacy.clear", "{\"types\":[\"history\"]}", p, &cap);
+    CHECK(!cap.has_error);
+    svc("history.search", "{}", p, &cap);
+    CHECK(strstr(cap.json, "\"items\":[]") != NULL);
+}
+
+static void test_engine_bookmarks_nest_move_and_remove(void) {
+    t_start_frozen();
+    bdk_profile_t p = t_new_profile("Bookmarks");
+    t_capture_t cap;
+    svc("bookmarks.roots", "{}", p, &cap);
+    CHECK(!cap.has_error);
+    char bar[32], other[32];
+    REQUIRE(t_json_string(cap.json, "id", bar, sizeof bar));
+    const char* second = strstr(cap.json, "},{");
+    REQUIRE(second != NULL);
+    REQUIRE(t_json_string(second, "id", other, sizeof other));
+    char args[256], a[32], b[32], c[32], mark[32];
+    snprintf(args, sizeof args, "{\"parentId\":\"%s\",\"title\":\"A\"}", bar);
+    svc("bookmarks.createFolder", args, p, &cap);
+    REQUIRE(t_json_string(cap.json, "id", a, sizeof a));
+    snprintf(args, sizeof args, "{\"parentId\":\"%s\",\"title\":\"B\"}", a);
+    svc("bookmarks.createFolder", args, p, &cap);
+    REQUIRE(t_json_string(cap.json, "id", b, sizeof b));
+    snprintf(args, sizeof args,
+             "{\"parentId\":\"%s\",\"title\":\"Example\",\"url\":\"https://bm.example/\"}", b);
+    svc("bookmarks.create", args, p, &cap);
+    CHECK(!cap.has_error && strstr(cap.json, "\"isFolder\":false"));
+    REQUIRE(t_json_string(cap.json, "id", mark, sizeof mark));
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", a);
+    svc("bookmarks.subtree", args, p, &cap);
+    CHECK(strstr(cap.json, "\"title\":\"B\"") != NULL);
+    svc("bookmarks.forUrl", "{\"url\":\"https://bm.example/\"}", p, &cap);
+    CHECK(strstr(cap.json, "Example") != NULL);
+    svc("bookmarks.search", "{\"query\":\"Example\"}", p, &cap);
+    CHECK(strstr(cap.json, "bm.example") != NULL);
+    /* Move B, with its bookmark, to the other bookmarks. */
+    snprintf(args, sizeof args, "{\"id\":\"%s\",\"parentId\":\"%s\"}", b, other);
+    svc("bookmarks.move", args, p, &cap);
+    CHECK(!cap.has_error && strstr(cap.json, other) != NULL);
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", other);
+    svc("bookmarks.children", args, p, &cap);
+    CHECK(strstr(cap.json, "\"title\":\"B\"") != NULL);
+    /* A folder cannot move into its own descendant. */
+    snprintf(args, sizeof args, "{\"parentId\":\"%s\",\"title\":\"C\"}", a);
+    svc("bookmarks.createFolder", args, p, &cap);
+    REQUIRE(t_json_string(cap.json, "id", c, sizeof c));
+    snprintf(args, sizeof args, "{\"id\":\"%s\",\"parentId\":\"%s\"}", a, c);
+    svc("bookmarks.move", args, p, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+    snprintf(args, sizeof args, "{\"id\":\"%s\",\"title\":\"Renamed\"}", mark);
+    svc("bookmarks.update", args, p, &cap);
+    CHECK(strstr(cap.json, "Renamed") != NULL);
+    /* Removing a folder removes what is in it. */
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", b);
+    svc("bookmarks.remove", args, p, &cap);
+    CHECK(!cap.has_error);
+    svc("bookmarks.forUrl", "{\"url\":\"https://bm.example/\"}", p, &cap);
+    CHECK(strstr(cap.json, "\"items\":[]") != NULL);
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", other);
+    svc("bookmarks.remove", args, p, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+}
+
+#define BOOKMARKS_FIXTURE                                                                          \
+    "<!DOCTYPE NETSCAPE-Bookmark-file-1>\n"                                                        \
+    "<META HTTP-EQUIV=\"Content-Type\" CONTENT=\"text/html; charset=UTF-8\">\n"                    \
+    "<TITLE>Bookmarks</TITLE>\n<H1>Bookmarks</H1>\n<DL><p>\n"                                      \
+    "<DT><H3>Fixtures</H3>\n<DL><p>\n"                                                             \
+    "<DT><A HREF=\"https://import-one.example/\">Import One</A>\n"                                 \
+    "<DT><A HREF=\"https://import-two.example/page\">Import Two</A>\n"                             \
+    "</DL><p>\n<DT><A HREF=\"https://import-top.example/\">Import Top</A>\n</DL><p>\n"
+
+static void write_text_file(const char* path, const char* text) {
+    FILE* f = fopen(path, "w");
+    REQUIRE(f != NULL);
+    fputs(text, f);
+    fclose(f);
+}
+
+static void test_engine_bookmarks_are_imported_and_exported_as_html(void) {
+    t_start_frozen();
+    bdk_profile_t p = t_new_profile("Bookmark files");
+    bdk_profile_t other = t_new_profile("Bookmark files other");
+    char dir[] = "/tmp/bdk-engine-bookmarks-XXXXXX";
+    REQUIRE(mkdtemp(dir) != NULL);
+    char in[96], out[96], args[256];
+    snprintf(in, sizeof in, "%s/in.html", dir);
+    snprintf(out, sizeof out, "%s/out.html", dir);
+    write_text_file(in, BOOKMARKS_FIXTURE);
+
+    t_capture_t cap;
+    snprintf(args, sizeof args, "{\"path\":\"%s\"}", in);
+    svc("bookmarks.import", args, p, &cap);
+    CHECK(!cap.has_error);
+    CHECK(strstr(cap.json, "\"imported\":3") != NULL);
+    CHECK(cap.progress >= 1);
+
+    /* The bookmarks landed in a folder of the other bookmarks, keeping the file's folder. */
+    char parent[32], folder[32];
+    svc("bookmarks.search", "{\"query\":\"Import One\"}", p, &cap);
+    REQUIRE(t_json_string(cap.json, "parentId", parent, sizeof parent));
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", parent);
+    svc("bookmarks.get", args, p, &cap);
+    CHECK(strstr(cap.json, "\"title\":\"Fixtures\"") != NULL);
+    REQUIRE(t_json_string(cap.json, "parentId", folder, sizeof folder));
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", folder);
+    svc("bookmarks.get", args, p, &cap);
+    CHECK(strstr(cap.json, "\"title\":\"Imported bookmarks\"") != NULL);
+    svc("bookmarks.forUrl", "{\"url\":\"https://import-top.example/\"}", p, &cap);
+    CHECK(strstr(cap.json, "Import Top") != NULL);
+
+    /* Another profile has none of them. */
+    svc("bookmarks.search", "{\"query\":\"Import\"}", other, &cap);
+    CHECK(strstr(cap.json, "\"items\":[]") != NULL);
+
+    /* What cannot be read as bookmarks is refused. */
+    snprintf(args, sizeof args, "{\"path\":\"%s/missing.html\"}", dir);
+    svc("bookmarks.import", args, p, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+
+    /* An export reads back as the same bookmarks. */
+    snprintf(args, sizeof args, "{\"path\":\"%s\"}", out);
+    svc("bookmarks.export", args, p, &cap);
+    CHECK(!cap.has_error);
+    char text[4096] = "";
+    FILE* f = fopen(out, "r");
+    REQUIRE(f != NULL);
+    size_t n = fread(text, 1, sizeof text - 1, f);
+    text[n] = 0;
+    fclose(f);
+    CHECK(strstr(text, "NETSCAPE-Bookmark-file-1") != NULL);
+    CHECK(strstr(text, "https://import-one.example/") != NULL);
+    CHECK(strstr(text, "https://import-two.example/page") != NULL);
+    CHECK(strstr(text, "Import Top") != NULL);
+    CHECK(strstr(text, "Fixtures") != NULL);
+
+    /* Round trip: the export imports into the other profile with the same count. */
+    snprintf(args, sizeof args, "{\"path\":\"%s\"}", out);
+    svc("bookmarks.import", args, other, &cap);
+    CHECK(!cap.has_error && strstr(cap.json, "\"imported\":3") != NULL);
+    unlink(in);
+    unlink(out);
+    rmdir(dir);
+}
+
+/* The first time the item's state is `state`, within a time limit. */
+static int wait_for_download_state(bdk_profile_t p, const char* id, const char* state) {
+    char args[64], want[48];
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", id);
+    snprintf(want, sizeof want, "\"state\":\"%s\"", state);
+    for (int i = 0; i < 300; ++i) {
+        t_capture_t cap;
+        svc("downloads.get", args, p, &cap);
+        if (strstr(cap.json, want))
+            return 1;
+        bdk_testing_run_for(0.05);
+    }
+    return 0;
+}
+
+static void test_engine_a_download_completes_and_is_controllable(void) {
+    int port = bdk_harness_engine_download_server_start();
+    REQUIRE(port != 0);
+    t_start_frozen();
+    bdk_profile_t p = t_new_profile("Downloads");
+    char dir[] = "/tmp/bdk-engine-downloads-XXXXXX";
+    REQUIRE(mkdtemp(dir) != NULL);
+    t_capture_t cap;
+    char args[256], url[96], first[32], second[32];
+    snprintf(url, sizeof url, "http://127.0.0.1:%d/big.bin", port);
+    snprintf(args, sizeof args, "{\"url\":\"%s\",\"path\":\"%s/one.bin\"}", url, dir);
+    svc("downloads.start", args, p, &cap);
+    REQUIRE(!cap.has_error);
+    REQUIRE(t_json_string(cap.json, "id", first, sizeof first));
+    snprintf(args, sizeof args, "{\"url\":\"%s\",\"path\":\"%s/two.bin\"}", url, dir);
+    svc("downloads.start", args, p, &cap);
+    REQUIRE(!cap.has_error);
+    REQUIRE(t_json_string(cap.json, "id", second, sizeof second));
+    /* The first is paused and resumed. */
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", first);
+    svc("downloads.pause", args, p, &cap);
+    CHECK(!cap.has_error);
+    CHECK(wait_for_download_state(p, first, "paused"));
+    svc("downloads.resume", args, p, &cap);
+    CHECK(!cap.has_error);
+    CHECK(wait_for_download_state(p, first, "inProgress"));
+    /* The second is cancelled. */
+    char second_args[64];
+    snprintf(second_args, sizeof second_args, "{\"id\":\"%s\"}", second);
+    svc("downloads.cancel", second_args, p, &cap);
+    CHECK(!cap.has_error);
+    CHECK(wait_for_download_state(p, second, "cancelled"));
+    svc("downloads.list", "{\"state\":\"inProgress\"}", p, &cap);
+    CHECK(strstr(cap.json, url) != NULL);
+    /* The server lets the first finish. */
+    bdk_harness_engine_download_server_release();
+    CHECK(wait_for_download_state(p, first, "complete"));
+    svc("downloads.get", args, p, &cap);
+    CHECK(strstr(cap.json, "one.bin") != NULL && strstr(cap.json, "\"receivedBytes\":200000"));
+    svc("downloads.remove", args, p, &cap);
+    CHECK(!cap.has_error);
+    svc("downloads.get", args, p, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+    svc("downloads.clear", "{}", p, &cap);
+    CHECK(!cap.has_error);
+    svc("downloads.list", "{}", p, &cap);
+    CHECK(strstr(cap.json, "\"items\":[]") != NULL);
+    bdk_harness_engine_download_server_stop();
+}
+
+/* Waits for Chromium to record a visit to the page's URL, as the helper of each page does after a
+   commit. */
+static int history_has(bdk_profile_t p, const char* text) {
+    for (int i = 0; i < 100; ++i) {
+        t_capture_t cap;
+        svc("history.search", "{}", p, &cap);
+        if (strstr(cap.json, text))
+            return 1;
+        bdk_testing_run_for(0.05);
+    }
+    return 0;
+}
+
+static void test_engine_profiles_keep_their_data_apart_and_private_ones_record_no_history(void) {
+    t_start_frozen();
+    bdk_profile_t a = t_new_profile("Apart A");
+    bdk_profile_t b = t_new_profile("Apart B");
+    bdk_profile_t priv = 0;
+    bdk_error_t err = 0;
+    REQUIRE(bdk_profile_open_private(t_runtime, &priv, &err) == BDK_OK);
+    t_capture_t cap;
+    bdk_contents_t in_a = t_new_contents(a);
+    bdk_contents_t in_priv = t_new_contents(priv);
+    REQUIRE(bdk_contents_load(in_a, S("https://visited.test/in-a"), &err) == BDK_OK);
+    REQUIRE(bdk_contents_load(in_priv, S("https://visited.test/in-private"), &err) == BDK_OK);
+    CHECK(history_has(a, "visited.test/in-a"));
+    svc("history.search", "{}", b, &cap);
+    CHECK(strstr(cap.json, "visited.test") == NULL);
+    svc("history.search", "{}", priv, &cap);
+    CHECK(strstr(cap.json, "in-private") == NULL);
+    svc("history.add", "{\"url\":\"https://added.test/private\"}", priv, &cap);
+    CHECK(!cap.has_error);
+    svc("history.search", "{}", priv, &cap);
+    CHECK(strstr(cap.json, "added.test") == NULL);
+    /* Settings and site permissions are per profile. */
+    svc("settings.set", "{\"key\":\"appearance.fontSize\",\"value\":21}", a, &cap);
+    CHECK(!cap.has_error);
+    svc("settings.get", "{\"key\":\"appearance.fontSize\"}", b, &cap);
+    CHECK(strstr(cap.json, "\"value\":21") == NULL);
+    svc("permissions.set",
+        "{\"origin\":\"https://x.example\",\"kind\":\"camera\","
+        "\"value\":\"allow\"}",
+        a, &cap);
+    CHECK(!cap.has_error);
+    svc("permissions.get", "{\"origin\":\"https://x.example\",\"kind\":\"camera\"}", priv, &cap);
+    CHECK(strstr(cap.json, "\"source\":\"default\"") != NULL);
+    svc("profiles.current", "{}", priv, &cap);
+    CHECK(strstr(cap.json, "\"isPrivate\":true") != NULL);
+}
+
+static void test_engine_settings_and_permissions_round_trip_to_chromium(void) {
+    t_start_frozen();
+    bdk_profile_t p = t_new_profile("Settings");
+    bdk_contents_t page = t_new_contents(p);
+    t_capture_t cap;
+    char value[128];
+    svc("settings.set", "{\"key\":\"appearance.fontSize\",\"value\":23}", p, &cap);
+    CHECK(!cap.has_error);
+    svc("settings.get", "{\"key\":\"appearance.fontSize\"}", p, &cap);
+    CHECK(strstr(cap.json, "\"value\":23") != NULL);
+    pref_of(page, "webkit.webprefs.default_font_size", value, sizeof value);
+    CHECK(strcmp(value, "23") == 0);
+    svc("settings.describe", "{\"key\":\"appearance.fontSize\"}", p, &cap);
+    CHECK(strstr(cap.json, "\"source\":\"user\"") != NULL);
+    svc("settings.reset", "{\"key\":\"appearance.fontSize\"}", p, &cap);
+    pref_of(page, "webkit.webprefs.default_font_size", value, sizeof value);
+    CHECK(strcmp(value, "23") != 0);
+    svc("settings.set", "{\"key\":\"privacy.cookies.thirdParty\",\"value\":\"block\"}", p, &cap);
+    pref_of(page, "profile.cookie_controls_mode", value, sizeof value);
+    CHECK(strcmp(value, "1") == 0);
+    svc("settings.set", "{\"key\":\"privacy.cookies.thirdParty\",\"value\":\"sideways\"}", p, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+    svc("settings.set", "{\"key\":\"no.such.key\",\"value\":1}", p, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+    svc("settings.get", "{\"key\":\"no.such.key\"}", p, &cap);
+    CHECK(strstr(cap.json, "{\"value\":null}") != NULL);
+    /* Site permissions. */
+    char setting[16];
+    svc("permissions.set",
+        "{\"origin\":\"https://perm.example\",\"kind\":\"geolocation\","
+        "\"value\":\"allow\"}",
+        p, &cap);
+    CHECK(!cap.has_error);
+    content_setting_of(page, "https://perm.example/", "geolocation", setting, sizeof setting);
+    CHECK(strcmp(setting, "allow") == 0);
+    svc("permissions.get", "{\"origin\":\"https://perm.example\",\"kind\":\"geolocation\"}", p,
+        &cap);
+    CHECK(strstr(cap.json, "\"value\":\"allow\"") && strstr(cap.json, "\"source\":\"user\""));
+    svc("permissions.exceptions", "{\"kind\":\"geolocation\"}", p, &cap);
+    CHECK(strstr(cap.json, "perm.example") != NULL);
+    svc("permissions.set",
+        "{\"origin\":\"https://perm.example\",\"kind\":\"javascript\","
+        "\"value\":\"ask\"}",
+        p, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+    svc("permissions.setDefault", "{\"kind\":\"notifications\",\"value\":\"block\"}", p, &cap);
+    content_setting_of(page, "https://other.example/", "notifications", setting, sizeof setting);
+    CHECK(strcmp(setting, "block") == 0);
+    svc("permissions.getDefault", "{\"kind\":\"notifications\"}", p, &cap);
+    CHECK(strstr(cap.json, "\"value\":\"block\"") != NULL);
+    svc("permissions.reset", "{\"origin\":\"https://perm.example\"}", p, &cap);
+    content_setting_of(page, "https://perm.example/", "geolocation", setting, sizeof setting);
+    CHECK(strcmp(setting, "allow") != 0);
+}
+
+static void test_engine_the_default_browser_status_is_answered(void) {
+    t_start_frozen();
+    t_capture_t cap;
+    svc("system.defaultBrowser.status", "{}", 0, &cap);
+    CHECK(!cap.has_error && strstr(cap.json, "\"isDefault\":") &&
+          strstr(cap.json, "\"canBeDefault\":"));
+    svc("runtime.info", "{}", 0, &cap);
+    CHECK(strstr(cap.json, "\"chromiumVersion\":\"") != NULL);
+}
+
+static void start_capture(bdk_contents_t c, const char* path, const char* format) {
+    char args[256];
+    snprintf(args, sizeof args, "{\"contents\":\"%llu\",\"path\":\"%s\",\"format\":\"%s\"}",
+             (unsigned long long)c, path, format);
+    command("capture.start", args, NULL, 0);
+}
+
+static int wait_for_capture(void) {
+    for (int i = 0; i < 400; ++i) {
+        char json[32], state[8];
+        command("capture.state", "{}", json, sizeof json);
+        value_of_member(json, "state", state, sizeof state);
+        if (state[0] != '0')
+            return state[0] == '1';
+        bdk_testing_run_for(0.05);
+    }
+    return 0;
+}
+
+static size_t file_prefix(const char* path, char* out, size_t n) {
+    FILE* f = fopen(path, "rb");
+    if (!f)
+        return 0;
+    size_t got = fread(out, 1, n, f);
+    fclose(f);
+    return got;
+}
+
+static void test_engine_a_page_is_captured_as_an_image_and_as_a_pdf(void) {
+    bdk_contents_t c = start_with_page();
+    bdk_harness_engine_show(c, 1);
+    for (int i = 0; i < 20; ++i)
+        bdk_testing_run_for(0.05);
+    char dir[] = "/tmp/bdk-engine-capture-XXXXXX";
+    REQUIRE(mkdtemp(dir) != NULL);
+    char png[96], pdf[96], head[8];
+    snprintf(png, sizeof png, "%s/page.png", dir);
+    snprintf(pdf, sizeof pdf, "%s/page.pdf", dir);
+    start_capture(c, png, "png");
+    CHECK(wait_for_capture());
+    CHECK(file_prefix(png, head, 4) == 4 && memcmp(head, "\x89PNG", 4) == 0);
+    start_capture(c, pdf, "pdf");
+    CHECK(wait_for_capture());
+    CHECK(file_prefix(pdf, head, 4) == 4 && memcmp(head, "%PDF", 4) == 0);
+}
+
 const t_test_t t_engine_tests[] = {
     {"engine_window_open_with_features_raises_a_popup_request",
      test_engine_window_open_with_features_raises_a_popup_request},
@@ -560,10 +1267,38 @@ const t_test_t t_engine_tests[] = {
      test_engine_an_input_method_composes_text_in_the_page},
     {"engine_the_accessibility_tree_exposes_page_content",
      test_engine_the_accessibility_tree_exposes_page_content},
+    {"engine_a_new_page_is_a_tab_of_a_parking_context",
+     test_engine_a_new_page_is_a_tab_of_a_parking_context},
+    {"engine_attaching_a_page_to_a_registered_window_moves_it_into_its_context",
+     test_engine_attaching_a_page_to_a_registered_window_moves_it_into_its_context},
+    {"engine_moving_a_page_between_windows_keeps_its_tab_history_and_renderer",
+     test_engine_moving_a_page_between_windows_keeps_its_tab_history_and_renderer},
+    {"engine_a_detached_page_stays_a_background_tab_of_its_last_window",
+     test_engine_a_detached_page_stays_a_background_tab_of_its_last_window},
+    {"engine_closing_a_window_parks_its_pages", test_engine_closing_a_window_parks_its_pages},
+    {"engine_focusing_a_page_activates_its_tab_and_destroying_it_closes_the_tab",
+     test_engine_focusing_a_page_activates_its_tab_and_destroying_it_closes_the_tab},
     {"engine_only_open_codecs_are_offered", test_engine_only_open_codecs_are_offered},
     {"engine_session_state_restores_chromium_history_into_a_new_page",
      test_engine_session_state_restores_chromium_history_into_a_new_page},
     {"engine_persistent_profiles_outlive_the_runtime",
      test_engine_persistent_profiles_outlive_the_runtime},
+    {"engine_a_closed_profile_releases_its_descriptors",
+     test_engine_a_closed_profile_releases_its_descriptors},
+    {"engine_history_is_searched_paginated_and_cleared",
+     test_engine_history_is_searched_paginated_and_cleared},
+    {"engine_bookmarks_nest_move_and_remove", test_engine_bookmarks_nest_move_and_remove},
+    {"engine_bookmarks_are_imported_and_exported_as_html",
+     test_engine_bookmarks_are_imported_and_exported_as_html},
+    {"engine_a_download_completes_and_is_controllable",
+     test_engine_a_download_completes_and_is_controllable},
+    {"engine_profiles_keep_their_data_apart_and_private_ones_record_no_history",
+     test_engine_profiles_keep_their_data_apart_and_private_ones_record_no_history},
+    {"engine_settings_and_permissions_round_trip_to_chromium",
+     test_engine_settings_and_permissions_round_trip_to_chromium},
+    {"engine_the_default_browser_status_is_answered",
+     test_engine_the_default_browser_status_is_answered},
+    {"engine_a_page_is_captured_as_an_image_and_as_a_pdf",
+     test_engine_a_page_is_captured_as_an_image_and_as_a_pdf},
     {NULL, NULL},
 };

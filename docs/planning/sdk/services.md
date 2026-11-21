@@ -2,7 +2,7 @@
 
 Status: proposal, 2026-11-15. The broker is defined in [../architecture.md](../architecture.md) section 9. This document lists how a call behaves, every capability, every command and event, and the settings catalogue. Names are placeholders; `settings.get`, `settings.set` and the capability names in the spec are kept. Status labels are in [README.md](README.md) section 2. Tasks: T-ABI-03, T-SVC-01 to T-SVC-06.
 
-The catalogue is the planned content of `packages/core/interface/`. The Swift wrappers, the TypeScript declarations, the stub runtime and the capability table are all generated from it, so a command exists in every surface or in none.
+The catalogue is the planned content of `packages/core/interface/`. The M3 namespaces are there (2026-11-19): where this document and the definitions differ, the definitions are what is built, and this file should be fixed. The Swift wrappers, the TypeScript declarations, the stub runtime and the capability table are all generated from it, so a command exists in every surface or in none.
 
 ## 1. One definition, three callers
 
@@ -20,13 +20,13 @@ Extensions and ordinary web pages are not callers. They never receive a broker i
 |---|---|
 | Request | A command name, one arguments object, and a call identifier. The profile is implied by the caller (section 3) unless the caller is Swift. |
 | Result | One value, or an error with domain, code, message and details |
-| Check order | Caller identity, then capability, then scope, then gesture or authentication requirement, then argument validation, then the service. A caller without the capability learns nothing about whether the arguments were valid. |
+| Check order | Caller identity, then capability, then scope, then gesture or authentication requirement, then argument validation, then the service. A caller without the capability learns nothing about whether the arguments were valid. Implemented in T-SVC-01; the details (the `capability` error codes, `authenticateWhen`, what a page's gesture is) are in `packages/core/docs/conventions.md`, "The broker". |
 | Unknown command | `broker.unknownCommand`. Never silently ignored. |
 | Cancellation | Every call can be cancelled. A cancelled call returns `broker.cancelled` and the service stops work where it can. |
 | Progress | A command marked "progress" reports fraction and message while it runs |
 | Streams | A command marked "stream" delivers a sequence of results until it completes or is cancelled |
 | Pagination | List commands take `limit` and `cursor` and return `items` and `nextCursor`. A cursor is opaque and valid only for the same arguments. |
-| Limits | Arguments and results are capped at a few megabytes each, exact figure set in T-SVC-01. Larger data, such as a screenshot, a PDF or an export, is a binary result outside the JSON value, or a file the caller names. |
+| Limits | Arguments and results are each capped at 4 MiB (4194304 bytes) of JSON, set in T-SVC-01; more is `broker.payloadTooLarge`. Larger data, such as a screenshot, a PDF or an export, is a binary result outside the JSON value, or a file the caller names. |
 | Ordering | Calls from one caller start in the order sent. Results arrive when ready. |
 | Timeouts | None imposed by the broker. The caller cancels. |
 | Teardown | When a page navigates or closes, or a session is revoked, its outstanding calls are cancelled and its subscriptions end. |
@@ -226,6 +226,8 @@ Events: `permissions.changed`.
 
 Events: `cookies.changed` (session callers with `cookies.values` only), `privacy.cleared`.
 
+Built (M3, T-SVC-07; `cookies_service.cc`): `cookies.changed` comes from a change listener on the profile's default storage partition cookie manager. The payload is `{cookie, removed, source}` with `cookie` a `CookieValue` (the value included, which is why the event needs `cookies.values`), `removed` true when the cookie was deleted (explicitly, by expiry or by eviction) and false when it was inserted or replaced. Replacing a cookie is one event with `removed` false, not a removal followed by an insertion; an overwrite that changed nothing is not reported. The network service does not say who changed a cookie, so `source` is always `application`. The engine emits to subscriptions of the profile; delivering the event to session callers only is the broker's job when sessions can subscribe (it checks the event's `cookies.values` capability).
+
 ### 5.9 `passwords` (Plan, M3, T-SVC-04)
 
 | Command | Capability | Marks | Does |
@@ -261,6 +263,8 @@ Storage: encrypted with a key held in the Keychain item named in `[storage]` ([c
 
 Events: `passwords.changed`, `passwords.issuesChanged` (Added, S16).
 
+Built (M3, T-SVC-04; `chromium/bdk/engine/services/passwords_service.cc`). Shapes: `passwords.list` and `passwords.forOrigin` answer `{items: [{id, origin, username, created, lastUsed}]}`; `created` and `lastUsed` are milliseconds since the Unix epoch, `lastUsed` null when never used; `origin` is the serialised origin with a trailing slash. `id` is the store's key as a decimal string. It is stable while the login is edited in place (a new password) but changes when the username changes, because the username is part of the store's key; `passwords.update` answers with the login under its new `id`. `passwords.add` takes an http or https origin and stores a manually added login in the profile store. `passwords.reveal` answers `{password}`; it and an update that sets `password` ask the operating system through `Backend::Authenticate` (LocalAuthentication: Touch ID or the account password), and a refusal is `capability.reauthenticationFailed`. `passwords.neverSaved` answers `{origins}`. `passwords.export` writes a CSV (`name,url,username,password,note`) and `passwords.import` reads one by column name (`url`, `username`, `password`) and answers `{imported}`. With no leak-check provider `passwords.check` fails with `provider.unavailable`, `passwords.issues` is empty, and `dismissIssue` and `restoreIssue` fail with `broker.invalidArguments`. A private profile has no password store: its commands fail with `broker.unavailable`. `passwords.changed` is `{id, change, source}`: one event per login the store reports as added, updated or removed (`change` is `added`, `updated` or `removed`; `id` as in `passwords.list`; `source` is `application`; never a password). A username change is a removal and an addition, because the username is part of the key. Sites the user chose never to save are not reported. `passwords.issuesChanged` (payload `{}`) is emitted when a store change touches the insecure-credential flags of a login. Without a leak-check provider nothing sets those flags, so it cannot fire until the provider exists (M6); the observer is in place and no command-level scenario can drive it. Passwords are encrypted by Chromium's OS crypt under the application's Keychain item (`[storage] keychain_item`, set at start-up from the resolved configuration; `BDK_ENGINE_MOCK_KEYCHAIN=1` in tests); a scenario checks they survive a relaunch of the runtime.
+
 ### 5.10 `autofill` (Plan, M3, T-SVC-04)
 
 | Command | Capability | Marks | Does |
@@ -273,6 +277,8 @@ Events: `passwords.changed`, `passwords.issuesChanged` (Added, S16).
 Server-side card storage and payment-account features are Google services and are excluded.
 
 Events: `autofill.changed`.
+
+Built (M3, T-SVC-04; `autofill_service.cc`). Addresses map `AddressFields` onto Chromium's address model (`fullName` to the full name, `street` to the street address, `region` to the state, `postalCode` to the ZIP, `country` to the country, `phone` to the whole phone number); a new address is a local profile with the country code `US` until its fields say otherwise. Cards are local cards (server cards and Google payments are excluded): `autofill.cards.list` answers holder, network, `lastFour`, `expiryMonth`, `expiryYear` and never the number; `autofill.cards.reveal` answers `{number}` after operating-system authentication. Chromium writes this data asynchronously; a command answers when the change shows. A private profile has no autofill data (`broker.unavailable`). `autofill.changed` is `{kind, id, source}`: Chromium's data managers report only that their data changed once pending writes finished, not which entry, so `kind` is `address` or `card`, `id` is the empty string and `source` is `application`; the event carries no field values. It fires for changes made by any means (the commands, a saved form, sync), once per batch of writes.
 
 ### 5.11 `extensions`
 
@@ -424,7 +430,7 @@ Planned keys for the `settings.*` commands, `[settings.defaults]` and `@bdk/inte
 | `performance.memorySaver.exceptions` | array of site patterns | A | Added (S15). Sites whose pages are never discarded automatically |
 | `extensions.developerMode` | boolean | P | When `[extensions] developer_mode = "user"` |
 | `devtools.dock` | enum | P | The user's last dock choice |
-| `app.*` | declared in Swift | P or A | Application settings ([swift-api.md](swift-api.md) 12.3) |
+| `app.*` | declared in Swift | P or A | Application settings ([swift-api.md](swift-api.md) 12.3). Answered by the core: the default is the declared one, and a key declared with `exposedToPages: false` is refused (`capability.denied`) to every page and session, whatever its capabilities |
 
 Rules:
 
@@ -456,6 +462,21 @@ The spec excludes any built-in sync and says an application may build its own on
 | Passwords | Reading them in clear needs operating-system authentication each time unless the application caches its own key. That is the application's design, and its risk. |
 | Open pages and layout | The application's own data. BDK has none. |
 
+## 8A. Decisions from the Chromium implementation (T-SVC-02, T-SVC-03, T-SVC-06)
+
+- Results are exactly the types of `packages/core/interface/*.json`; timestamps are integer milliseconds; void commands answer `null`. A list's cursor is an opaque string valid for the same arguments.
+- `settings.get` and `getMany` answer `null` for a key the catalogue does not list. `settings.set`, `reset` and `describe` reject it with `broker.invalidArguments`. The engine maps 16 catalogue keys and every `content.<kind>.default`; the rest of section 6 is not reachable yet.
+- Permission kinds are named `camera`, `microphone`, `geolocation`, `notifications`, `popups`, `javascript`, `images`, `cookies`, `sound`, `automaticDownloads`, `clipboard`, `midi`, `usb`, `bluetooth`, `hid`, `serial`, `windowManagement`, `fileSystemAccess`. A value a kind does not accept (for example `ask` for `javascript`) is `broker.invalidArguments`. `permissions.exceptions` reports Chromium's rule pattern (such as `https://[*.]example.com:443`) as `origin`. The `embargo` source is not reported yet.
+- A private profile reads and deletes in its parent's history and records none (`history.add` does nothing); it reads and writes its parent's bookmarks; its cookies, content-setting exceptions, preferences and downloads list are its own; content-setting defaults are set on the parent's map.
+- `cookies.sites` reports `storageBytes` as 0: only cookies are counted. A cookie's `sameSite` is `none`, `lax`, `strict` or `null`.
+- `privacy.clear` cannot stop a removal that has begun: a cancelled call is answered cancelled and the removal runs on. `privacy.estimate` counts history, cookies and downloads within the call's `range` and `origins` (history and downloads by the origin of their URL, cookies by domain match on the origin's host and by creation time, downloads by start time); the other types report 0 items.
+- `downloads.start` starts the download directly; the downloads UI request it is marked with belongs to the downloads surface work. `downloads.retry` resumes an interrupted download that can resume and otherwise starts again from the URL.
+- Built-in events are emitted through the core (conventions.md, "The broker", item 12). `history.visited` says `application` for a visit added with `history.add` and `user` for a navigation.
+- Screenshots and PDFs are not commands until M7; the engine has the functions (`capture_service.cc`).
+- `bookmarks.import` (T-SVC-07) reads the file with Chromium's `ContentBookmarkParser`, which runs the Netscape-format HTML parser in a utility process as Chromium's own import does, then adds the entries itself. They go into a new folder titled "Imported bookmarks" at the end of the other bookmarks (never the bar, and the profile's existing bookmarks are untouched), keeping the file's folders; an entry with an invalid URL is skipped. It answers `{imported}`, the number of bookmarks (folders are not counted), and reports progress (0 on starting to read, 0.5 once parsed, then every 100 added). A path that is empty, unreadable or not bookmarks HTML fails with `broker.invalidArguments`. A private profile imports into its parent's bookmarks.
+- `bookmarks.export` (T-SVC-07) writes the profile's bookmarks with Chromium's `bookmark_html_writer`, favicons included. It answers `null`; a file that cannot be written fails with `platform.failed`, and a second export while one runs for the same bookmarks with `platform.busy`.
+- `permissions.certificateExceptions` answers `{hosts}`: the hosts (sorted, no port) where a certificate error was proceeded past and the decision still holds, from Chromium's `StatefulSSLHostStateDelegate` (T-SVC-07). `permissions.revokeCertificateException` takes `{host}`, forgets the decision (and closes idle connections, so the next visit meets the error again) and answers `null`, also when there was none. Each profile keeps its own; a private profile's go with it.
+
 ## 9. Where definitions live
 
 `packages/core/interface/` holds one file per namespace. The format is in [c-abi.md](c-abi.md) section 7. From those files the build generates:
@@ -467,5 +488,7 @@ The spec excludes any built-in sync and says an application may build its own on
 | TypeScript declarations and thin clients | `@bdk/internal/*`, `@bdk/automation` |
 | The capability table | The engine's broker and the `bdk.toml` schema |
 | Reference documentation | `apps/docs` |
+
+The Swift wrappers are generated, not written by hand (T-SVC-02 to T-SVC-06, decided 2026-11-19). `packages/js/codegen` (`src/swift.ts`) writes `packages/swift/Sources/BDK/Generated/BDKServices.swift`, which is committed; `nx run js-codegen:codegen-check` fails when a definition changed and the file did not, as it does for `bdk_ids.h` and the broker table. A command therefore exists in Swift when it is defined and `callers` includes `swift`. Swift-only naming (a method renamed, a label, a parameter order, the namespaces the SDK implements natively) is a small table at the top of `swift.ts`, never a second definition. The mapping rules are in `packages/swift/README.md`, "Services".
 
 A command that needs Chromium is implemented in `chromium/bdk`. Its argument validation, capability mapping and pagination logic live in `packages/core`, where hosted CI tests them without a Chromium build (tooling document 10.1).

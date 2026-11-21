@@ -7,9 +7,11 @@ import Testing
 /// Starts the stub runtime, runs `body` and always shuts the runtime down.
 @MainActor
 func withStubRuntime(
-    freezingRegistrations: Bool = true, _ body: (BDKRuntime) async throws -> Void
+    _ configuration: BDKConfiguration = .stub, freezingRegistrations: Bool = true,
+    _ body: (BDKRuntime) async throws -> Void
 ) async throws {
-    let runtime = try BDKRuntime.startStub(freezingRegistrations: freezingRegistrations)
+    let runtime = try BDKRuntime.startStub(
+        configuration, freezingRegistrations: freezingRegistrations)
     do {
         try await body(runtime)
     } catch {

@@ -1,0 +1,91 @@
+{
+  "namespace": "settings",
+  "since": 1,
+  "types": {
+    "SettingScope": {
+      "enum": ["profile", "application"]
+    },
+    "SettingSource": {
+      "enum": ["product", "user"]
+    },
+    "SettingInfo": {
+      "key": "string",
+      "type": "string",
+      "default": "json",
+      "value": "json",
+      "allowed": "json?",
+      "scope": "SettingScope",
+      "source": "SettingSource",
+      "locked": "bool"
+    }
+  },
+  "commands": [
+    {
+      "name": "settings.get",
+      "capability": "settings.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "optional",
+      "args": {
+        "key": "string"
+      },
+      "result": {
+        "value": "json"
+      }
+    },
+    {
+      "name": "settings.getMany",
+      "capability": "settings.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "optional",
+      "args": {
+        "keys": "string[]"
+      },
+      "result": {
+        "values": "json"
+      }
+    },
+    {
+      "name": "settings.describe",
+      "capability": "settings.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "optional",
+      "args": {
+        "key": "string"
+      },
+      "result": "SettingInfo"
+    },
+    {
+      "name": "settings.set",
+      "capability": "settings.write",
+      "callers": ["swift", "page", "session"],
+      "profile": "optional",
+      "args": {
+        "key": "string",
+        "value": "json"
+      },
+      "result": "void"
+    },
+    {
+      "name": "settings.reset",
+      "capability": "settings.write",
+      "callers": ["swift", "page", "session"],
+      "profile": "optional",
+      "args": {
+        "key": "string"
+      },
+      "result": "void"
+    }
+  ],
+  "events": [
+    {
+      "name": "settings.changed",
+      "capability": "settings.read",
+      "payload": {
+        "key": "string",
+        "oldValue": "json",
+        "newValue": "json",
+        "source": "ChangeSource"
+      }
+    }
+  ]
+}

@@ -78,9 +78,71 @@ BDK_EXPORT void bdk_testing_run_for(double seconds);
    stays on disk under identifiers that are not reused. */
 BDK_EXPORT void bdk_testing_forget_profiles(void);
 
-/* How many Chrome browser windows (Browser objects) exist. BDK never creates
-   one, so anything above 0 means Chromium opened a window on its own. */
+/* How many Chrome browser windows (Browser objects) exist that are not host
+   contexts. BDK's host contexts are Browsers with no native window of their
+   own, so they are not counted: anything above 0 means Chromium opened a window
+   on its own. */
 BDK_EXPORT size_t bdk_testing_chrome_window_count(void);
+
+/* How many host contexts (the Browsers BDK keeps its pages' tabs in) exist. */
+BDK_EXPORT size_t bdk_testing_host_context_count(void);
+
+typedef struct bdk_testing_tab_info {
+  size_t struct_size;
+  uint8_t is_tab;            /* the page is a tab of a host context */
+  uint8_t parking;           /* ... of a parking context (no window) */
+  uint8_t active;            /* ... and the active tab of it */
+  uint8_t has_native_window; /* the context's window has a native window */
+  int32_t tab_id;     /* the tab's session identifier: the extension tab id */
+  int32_t context_id; /* the context's window identifier (Browser session id) */
+  uint32_t tab_count; /* tabs in the context */
+  uint32_t reserved;
+} bdk_testing_tab_info_t;
+
+/* Where the page's tab is. */
+BDK_EXPORT bdk_status_t bdk_testing_tab_info(bdk_contents_t,
+                                             bdk_testing_tab_info_t* out);
+
+/* Drives and inspects the browser-owned surfaces and the services: one
+   function, so that the framework's export list needs one name for all of it.
+   `command` names what to do, `args_json` is an object ("contents" is a decimal
+   handle string), and `out` receives the JSON object the command writes (empty
+   for most). BDK_ERR_INVALID_ARGUMENT for an unknown command, bad arguments, or
+   a result that does not fit `out_size`. Commands:
+
+   present.script {"surface", "answer"}  while scripted, the surface's default
+   presenter shows nothing and answers as `answer` (an object) says: permissions
+       {"choice": "allow" | "allowThisVisit" | "block" | "dismiss"},
+       javascript_dialogs {"accept", "text", "suppress"}, http_auth
+       {"username", "password"} (none: cancel), file_pickers {"paths": [...]},
+       notifications {"event": "clicked" | "closed" | "timeout", "action"},
+       passwords {"answer": "save" | "notNow" | "never"} (the key of the
+   button), downloads {"answer": "keep" | "discard"} for a dangerous download or
+   a path (or "cancel") for where to save, printing {"answer": "systemDialog"}
+   (no panel opens); an answer with "none": true is never given, as a person who
+   has not decided present.clear   ends all scripts and forgets what was
+   recorded present.record {"surface"} -> {"shown", "dismissed", "payload"} what
+   the default presenter was asked to show, and how often it was taken down
+   find.present / find.start {"text", "matchCase"} / find.next {"forward"} /
+   find.stop / find.result {"contents"} -> {"ordinal", "count", "presented"}
+   permission.get {"contents", "origin", "kind"} -> {"value": "allow" | "block"
+   | "ask"} the page's profile's site setting pref.json {"contents", "name"} ->
+   {"value": <the preference's JSON value>} capture.start {"contents", "path",
+   "format": "png" | "pdf"} writes the page to the file in the background;
+   capture.state -> {"state": 0 (running, or none started) | 1 (written) | 2
+   (failed)} authentication {"answer": "allow" | "deny" | "ask"}  what the
+   operating system's authentication prompt answers ("ask" is the real prompt,
+   the default); authentication.count -> {"count"}  how many times a command
+   asked for it downloads.ask {"on"}  every loaded profile asks where to save,
+   as the setting does downloads.danger {"on"}  every download is held as
+   dangerous content (this build has no Safe Browsing or file-type policy to
+   flag a real one before M6) script_page {"url", "body", "contentType",
+   "headers"}  serves later navigations to url with this content */
+BDK_EXPORT bdk_status_t bdk_testing_command(bdk_runtime_t,
+                                            bdk_string_t command,
+                                            bdk_string_t args_json,
+                                            char* out,
+                                            size_t out_size);
 
 /* Work the engine has queued or started for the application: BDK tasks not yet
    run plus pages still loading. A harness pumps until it reads 0. */

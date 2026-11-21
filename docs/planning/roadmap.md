@@ -124,12 +124,34 @@ Exit criteria: the multi-page sample survives a renderer crash and an applicatio
 
 | Work | Tasks | Acceptance |
 |---|---|---|
-| Broker | T-SVC-01, T-SVC-05 | Commands are defined once, checked per caller, cancellable. Application commands register from Swift. |
-| Services | T-SVC-02, T-SVC-03, T-SVC-04, T-SVC-06 | History, bookmarks with folders and moves, downloads, site settings, cookies, permissions, passwords and autofill with Keychain storage, print to PDF, screenshots, default-browser registration. |
-| UI requests and defaults | T-UIR-01 to T-UIR-06, T-SWF-04 | Every surface works with no handler registered. Each can be replaced from Swift. Handled, use-default and reject behave as specified. |
+| Broker | T-SVC-01, T-SVC-05, T-SVC-08 | Commands are defined once, checked per caller, cancellable. Application commands register from Swift. |
+| Services | T-SVC-02, T-SVC-03, T-SVC-04, T-SVC-06, T-SVC-07 | History, bookmarks with folders and moves, downloads, site settings, cookies, permissions, passwords and autofill with Keychain storage, print to PDF, screenshots, default-browser registration. |
+| UI requests and defaults | T-UIR-01 to T-UIR-06, T-SWF-04, T-SWF-07 | Every surface works with no handler registered. Each can be replaced from Swift. Handled, use-default and reject behave as specified. |
 | Security flows | T-UIR-05 | Certificate and reputation interstitials cannot be disabled or bypassed. A permission cannot be granted without a user gesture. |
 
 Exit criteria: a browser built with no custom UI code is usable for everyday browsing, including passwords, autofill, downloads, printing and permission prompts.
+
+**Status, 2026-11-20: the exit criteria are met on Chromium 158, by the engine scenarios; nobody has browsed with the minimal browser by hand.** Every page is now a tab of a `Browser` host context ([amendments.md](amendments.md) section 2.13), which M2 had left out (section 2.12). The engine suite was 279 of 279 in one process on an unlocked screen (`nx run core:test-engine`). After T-SVC-07, T-SVC-08 and T-SWF-07 joined M3 it is 300 tests, run with the screen locked: 296 pass, and the 4 that fail need an unlocked screen and a key window (HTML fullscreen twice, the accessibility tree, page capture), as before. The stub suites, Swift (133 tests) and codegen pass. The patch series is 14 patches; each message says why.
+
+| Task | Status | Where it is recorded |
+|---|---|---|
+| T-ADP-01 to T-ADP-03 | Done: a BDK `BrowserWindow` (no `BrowserView`), a parking context per profile and a context per window and profile; attach, move, detach, window close, focus and destroy go through the tab model, and a move keeps the tab identifier, history and renderer. The `browser_tests` filters of T-ADP-02 were not run (no test build): T-ADP-09, M9. | `chromium/bdk/README.md`; amendments 2.13 |
+| T-ADP-04 | Done as engine scenarios rather than a one-off table: a visit is recorded in history, a bookmark saved, a download completes, a permission prompt is answered, a JavaScript dialog shows, find works. Print preview is not hosted (it needs a parent widget); printing uses the system print panel: T-UIR-08, M4. | `packages/core/tests/tests_engine*.c`; [feasibility.md](feasibility.md) section 11 |
+| T-SVC-01, T-SVC-05 | Done: 86 commands and 26 events defined once in `packages/core/interface/`, checked in the order of services.md section 2, cancellable, with progress and a 4 MiB limit; application commands and events from Swift. Page and session callers exist inside the core for M4 and M7. | `packages/core/docs/conventions.md` (the broker) |
+| T-SVC-02, T-SVC-03, T-SVC-06 | Done on Chromium's services, with events: history, bookmarks (folders, moves, import and export as HTML), downloads, settings (16 preferences and the content defaults), site settings, cookies (with `cookies.changed`), certificate exceptions, clearing data, profiles, default-browser status (`bookmarks.import`/`export`, the certificate-exception commands and `cookies.changed` came with T-SVC-07). Screenshots and PDFs work in the engine but have no command until `contents.*`: T-SVC-09, M7. | [sdk/services.md](sdk/services.md) section 8A |
+| T-SVC-04 | Done: passwords and autofill commands and their events (`passwords.changed`, `passwords.issuesChanged`, `autofill.changed`, T-SVC-07); reveal and password changes ask for Touch ID or the login password; stored passwords survive a relaunch under the application's Keychain item. No scenario fires `passwords.issuesChanged`: nothing flags a login as insecure before the leak-check provider (S16, M6). `autofill.changed` carries no entry id, because Chromium's data managers do not say which entry changed. | services.md 5.9, 5.10 |
+| T-UIR-01, T-SWF-04 | Done: per-surface `default`, `custom` and `disabled` from the resolved configuration; a custom surface with no handler fails the freeze; requests on one surface and page reach the handler one at a time; typed Swift requests for 24 surfaces. | conventions.md (the UI request router); `packages/swift/README.md` |
+| T-UIR-02 | Done: permissions (persisted per profile, private profiles apart), JavaScript dialogs, file pickers. HTTP authentication is built but has no end-to-end test: scripted navigations cannot answer 401 (T-UIR-07, M4). | [sdk/ui-requests.md](sdk/ui-requests.md) 8.1 |
+| T-UIR-03 | Done: where to save and dangerous downloads; context menus and new windows from M2. | ui-requests.md |
+| T-UIR-04 | Done: the password save and update prompt (asked when a page finishes a navigation with a question pending), autofill save prompts and the suggestion popup, `window.print()`. The leaked-password request waits for the leak-check provider (S16, M6). The card autofill prompt has no scenario (T-UIR-07, M4). | ui-requests.md 5.7 to 5.9 |
+| T-UIR-05 | Done: certificate and Safe Browsing interstitials only go back or proceed; disabling fails at start; reject, drop and release go back; proceed needs a gesture and an overridable error. Tested with a real TLS server with an untrusted certificate. The non-overridable case (HSTS, pinning) is not tested end to end (T-UIR-07, M4). | ui-requests.md; `tests_engine_prompts.c` |
+| T-UIR-06 | Done: find (started by the application too: `page.find` and `page.print()`, T-SWF-07, done in M3), fullscreen, notifications (in-window banner: the system notification centre needs entitlements). | ui-requests.md 8.1 |
+| T-MAC-04 (M0, settled here) | Default presenters are AppKit, not Chromium's views, which need a Views widget to anchor to. Decided from the source and from what the engine needed, not from a spike. | feasibility.md section 11 |
+| Exit criterion | Met by the scenarios with no handler registered for passwords, autofill, downloads, printing and permission prompts. Not checked by hand in `apps/examples/minimal-browser` (T-UIR-07, M4). | engine suite |
+
+Typed application settings (`BDKSettingKey`, `config.settings.register`, T-SVC-08) and `page.find` and `page.print()` (T-SWF-07) are done in M3. Swift API from swift-api.md that M3 did not build, each now a task: page commands, setting zoom and mute, leaving picture-in-picture, all left over from M2 (T-SWF-06, M4); address-bar services, `profile.search` (S1, T-SVC-10, M4); `page.capture` (T-SVC-09, M7); public window registration and anchors (S11, T-SWF-08, M5).
+
+Also fixed in M3: a persistent profile stayed loaded in Chromium after the application closed it, keeping about 87 file descriptors; it is now unloaded, and reopening waits for Chromium to finish destroying it.
 
 ### M4 — Internal pages and privileged SDK
 
@@ -139,6 +161,7 @@ Exit criteria: a browser built with no custom UI code is usable for everyday bro
 | Bundled pages | T-WUI-03, T-CLI-04 | `Pages/Settings` is discovered, built with the Vite preset and served under the standard content security policy. |
 | Capability broker | T-WUI-04 | A granted page reads and writes settings through `@bdk/internal`; Swift sees the same values. An ungranted page, a subframe, an extension and a web page are refused. A wrong-page interface request terminates the renderer. An alias carries its target's grants. |
 | SDK and generation | T-JS-01, T-JS-02, T-JS-03 | Declarations are generated locally from interface definitions and registered commands. Nothing is published to npm. |
+| Left over from M2 and M3 | T-SVC-10, T-SWF-06, T-UIR-07, T-UIR-08 | Page commands, zoom, mute and address-bar services work from Swift. The M3 scenarios left open pass, print preview is hosted or the system panel is recorded as the default, and the M3 exit criterion is checked by hand. (T-SVC-07, T-SVC-08 and T-SWF-07 were planned here and done in M3.) |
 
 ### M5 — Extensions (public v1 gate)
 
@@ -149,6 +172,7 @@ Exit criteria: a browser built with no custom UI code is usable for everyday bro
 | Installation | T-EXT-05, T-EXT-09 | Unpacked, CRX and self-hosted update sources work with Chromium's install prompt. Sources are configurable. The store source follows decision D4. |
 | Compatibility checks | T-EXT-06 | A manifest requiring a disabled surface is rejected with a reason, at install and at update. A disabled API is absent, not silently accepted. |
 | Suite and matrix | T-EXT-07, T-EXT-08 | The probe suite and a set of real extensions run in CI. The matrix is generated from results and lists known gaps. |
+| Window registration | T-SWF-08 | Extensions see the window kind the application registered; default presenters attach to the application's anchors. |
 
 Exit criteria: representative real extensions, including a content blocker, a password manager and a developer tool, install and work. Every known difference from Chrome is documented.
 
@@ -173,6 +197,7 @@ Exit criteria: representative real extensions, including a content blocker, a pa
 | External channel | T-AUT-04 | Off by default. With it on, a second process connects with a token; a wrong token is refused. Nothing listens on a network port. |
 | SDK | T-JS-04 | `@bdk/automation` bundles with Rolldown. Its entry point is separate from `@bdk/internal`. |
 | DevTools | T-AUT-05 | Default, modified and replaced front ends work. |
+| Capture | T-SVC-09 | Screenshots, PDFs and saved pages through `contents.*` and `page.capture`. |
 
 Exit criteria: a downstream application can build a CLI or agent wrapper using sessions, capability sets and events, with its own authentication and policy.
 
@@ -203,6 +228,7 @@ Exit criteria: every scenario passes in CI, and no requirement in the brief's Co
 | Security process | T-REL-01 | A written process and a measured rehearsal for shipping a runtime after an upstream security release. |
 | Developer path | T-CLI-01, T-CLI-02, T-CLI-03, T-REP-06 | `bdk init` produces an application that runs from Xcode. `bdk doctor` reports toolchain, runtime compatibility and signature problems. Source mode builds with a custom patch. Documentation is published. |
 | Robustness | T-REL-03 | Long-run, crash-recovery and memory tests pass. |
+| Chromium's own tests | T-ADP-09 | The `browser_tests` filters named in T-ADP-02 pass on the BDK window, or each failure is recorded. Needed for the process-isolation gate. |
 | Cross-platform review | T-XPL-01 | The ABI and service contracts are reviewed against Windows and Linux host requirements and a future .NET binding; findings are resolved or recorded. |
 | Legal | T-REL-02 | Third-party notices ship. The legal review covers the store source (D4), component data (D5) and system codecs (D7). Widevine is deferred and not part of v1 unless the product owner decides otherwise. |
 

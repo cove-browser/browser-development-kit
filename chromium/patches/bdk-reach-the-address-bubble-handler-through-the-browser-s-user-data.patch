@@ -1,0 +1,109 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Ethan Krich <ektechworld@gmail.com>
+Date: Thu, 19 Nov 2026 18:13:07 -0800
+Subject: [PATCH] bdk: reach the address bubble handler through the Browser's
+ user data
+
+The save, update and sign-in promo address bubbles ask
+BrowserWindow::FindBrowserWindowWithWebContents() for the window's
+AutofillBubbleHandler. That function is defined in browser_view.cc and
+returns a BrowserView or null, so a window that is not a BrowserView, such
+as BDK's host contexts, gets a null window and the call crashes. The
+card, IBAN and offer bubbles already find the handler in the Browser's
+user data, where a BrowserView registers it and an embedder's window can
+too (the TODO above ShowSignInPromo asks for the same). Find it there for
+the address bubbles as well.
+
+AddressBubblesController::MaybeShowIOSDektopAddressPromo(), which runs
+after the person accepted a save-address prompt, calls
+AsBrowserView()->browser() and crashes the same way; return when there
+is no BrowserView, as the promo is about Chrome's own toolbar.
+
+Only address_bubbles_controller.cc changes.
+
+Used by: the BDK engine's autofill save prompts
+(//bdk/engine/services/autofill_prompts.cc).
+---
+ .../ui/autofill/address_bubbles_controller.cc | 35 +++++++++++++------
+ 1 file changed, 25 insertions(+), 10 deletions(-)
+
+diff --git a/chrome/browser/ui/autofill/address_bubbles_controller.cc b/chrome/browser/ui/autofill/address_bubbles_controller.cc
+index f422e81db87d9c62c03651ace737f7bc6ceb05eb..68fed4c2764ae43dc8e3c8e46b646a6a977857d9 100644
+--- a/chrome/browser/ui/autofill/address_bubbles_controller.cc
++++ b/chrome/browser/ui/autofill/address_bubbles_controller.cc
+@@ -43,12 +43,26 @@
+ #include "components/signin/public/identity_manager/account_info.h"
+ #include "components/strings/grit/components_strings.h"
+ #include "components/sync/base/user_selectable_type.h"
++#include "components/tabs/public/tab_interface.h"
+ #include "ui/base/l10n/l10n_util.h"
+ 
+ namespace autofill {
+ 
+ namespace {
+ 
++// The handler of the Browser that shows the tab of `web_contents`. A
++// BrowserView registers its handler in the Browser's user data, and so does
++// an embedder's window; asking BrowserWindow::FindBrowserWindowWithWebContents()
++// instead finds only a BrowserView.
++AutofillBubbleHandler* GetBubbleHandler(content::WebContents* web_contents) {
++  tabs::TabInterface* tab =
++      tabs::TabInterface::MaybeGetFromContents(web_contents);
++  BrowserWindowInterface* browser =
++      tab ? tab->GetBrowserWindowInterface() : nullptr;
++  CHECK(browser);
++  return AutofillBubbleHandler::Get(browser->GetUnownedUserDataHost());
++}
++
+ AutofillBubbleBase* ShowSaveBubble(
+     const AutofillProfile& profile,
+     AutofillClient::SaveAddressBubbleType save_address_bubble_type,
+@@ -58,8 +72,7 @@ AutofillBubbleBase* ShowSaveBubble(
+   auto controller = std::make_unique<SaveAddressBubbleController>(
+       delegate, web_contents, profile, save_address_bubble_type);
+ 
+-  return BrowserWindow::FindBrowserWindowWithWebContents(web_contents)
+-      ->GetAutofillBubbleHandler()
++  return GetBubbleHandler(web_contents)
+       ->ShowSaveAddressProfileBubble(web_contents, std::move(controller),
+                                      shown_by_user_gesture);
+ }
+@@ -72,8 +85,7 @@ AutofillBubbleBase* ShowUpdateBubble(
+     base::WeakPtr<AddressBubbleControllerDelegate> delegate) {
+   auto update_controller = std::make_unique<UpdateAddressBubbleController>(
+       delegate, web_contents, profile, original_profile);
+-  return BrowserWindow::FindBrowserWindowWithWebContents(web_contents)
+-      ->GetAutofillBubbleHandler()
++  return GetBubbleHandler(web_contents)
+       ->ShowUpdateAddressProfileBubble(
+           web_contents, std::move(update_controller), shown_by_user_gesture);
+ }
+@@ -83,8 +95,7 @@ AutofillBubbleBase* ShowSignInPromo(content::WebContents* web_contents,
+                                     const AutofillProfile& autofill_profile) {
+   // TODO(crbug.com/381390420): Expose the `AutofillBubbleHandler` in
+   // `BrowserWindowInterface` and use that instead.
+-  return BrowserWindow::FindBrowserWindowWithWebContents(web_contents)
+-      ->GetAutofillBubbleHandler()
++  return GetBubbleHandler(web_contents)
+       ->ShowAddressSignInPromo(web_contents, autofill_profile);
+ }
+ #endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
+@@ -313,10 +324,14 @@ void AddressBubblesController::SetUpBubble(
+ }
+ 
+ void AddressBubblesController::MaybeShowIOSDektopAddressPromo() {
+-  BrowserWindowInterface* browser =
+-      BrowserWindow::FindBrowserWindowWithWebContents(web_contents())
+-          ->AsBrowserView()
+-          ->browser();
++  BrowserWindow* window =
++      BrowserWindow::FindBrowserWindowWithWebContents(web_contents());
++  // A window that is not a BrowserView (an embedder's) has no promo to show.
++  BrowserView* browser_view = window ? window->AsBrowserView() : nullptr;
++  if (!browser_view) {
++    return;
++  }
++  BrowserWindowInterface* browser = browser_view->browser();
+ 
+   // Verify if user is eligible for iOS promo, and attempt showing if they are.
+   ios_promos_utils::VerifyIOSPromoEligibility(

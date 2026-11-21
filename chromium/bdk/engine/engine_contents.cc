@@ -4,22 +4,33 @@
 
 #include "bdk/engine/engine_contents.h"
 
+#include <algorithm>
 #include <array>
 #include <utility>
 #include <vector>
 
 #include "base/containers/span.h"
 #include "base/functional/bind.h"
-#include "base/json/json_reader.h"
-#include "base/json/json_writer.h"
+#include "base/no_destructor.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/values.h"
 #include "bdk/engine/devtools_frontend.h"
+#include "bdk/engine/host_context.h"
 #include "bdk/engine/host_view.h"
 #include "bdk/engine/identity.h"
+#include "bdk/engine/json_util.h"
+#include "bdk/engine/services/interstitial_prompts.h"
+#include "bdk/engine/services/password_prompts.h"
 #include "bdk/engine/session_state.h"
+#include "bdk/engine/testing.h"
+#include "bdk/engine/ui_dialogs.h"
+#include "bdk/engine/ui_find.h"
+#include "bdk/engine/ui_permissions.h"
+#include "bdk/engine/ui_request.h"
+#include "chrome/browser/history/history_tab_helper.h"
+#include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
 #include "chrome/browser/profiles/profile.h"
 #include "components/input/native_web_keyboard_event.h"
 #include "content/public/browser/context_menu_params.h"
@@ -50,8 +61,9 @@ namespace {
 
 constexpr uint32_t kMainFrame = BDK_EVENT_FLAG_MAIN_FRAME;
 
-std::string Json(const base::DictValue& dict) {
-  return base::WriteJson(dict).value_or("{}");
+std::vector<EngineContents*>& Registry() {
+  static base::NoDestructor<std::vector<EngineContents*>> registry;
+  return *registry;
 }
 
 std::string Disposition(WindowOpenDisposition disposition) {
@@ -133,6 +145,42 @@ base::ListValue MenuItems(const content::ContextMenuParams& params,
   return items;
 }
 
+// The menu the host view shows for `items`, as the engine offered them or as
+// the application arranged them (BDKMenuItem: "isEnabled", "kind",
+// "children"). The host view's menu is flat, so a submenu's items are shown in
+// its place. An entry that is not an object is skipped.
+void AppendMenuItems(const base::ListValue& items, std::vector<MenuItem>& out) {
+  for (const base::Value& v : items) {
+    const base::DictValue* d = v.GetIfDict();
+    if (!d) {
+      continue;
+    }
+    const std::string* kind = d->FindString("kind");
+    if (kind && *kind == "separator") {
+      out.push_back(MenuItem());
+      continue;
+    }
+    if (kind && *kind == "submenu") {
+      if (const base::ListValue* children = d->FindList("children")) {
+        AppendMenuItems(*children, out);
+      }
+      continue;
+    }
+    const std::string* id = d->FindString("id");
+    if (!id || id->empty()) {
+      continue;
+    }
+    MenuItem item;
+    item.id = *id;
+    if (const std::string* title = d->FindString("title")) {
+      item.title = *title;
+    }
+    item.enabled = d->FindBool("isEnabled")
+                       .value_or(d->FindBool("enabled").value_or(true));
+    out.push_back(std::move(item));
+  }
+}
+
 }  // namespace
 
 EngineProfile::EngineProfile() = default;
@@ -146,10 +194,19 @@ EngineContents::EngineContents(
     const std::shared_ptr<bdkcore::Contents>& contents,
     std::unique_ptr<content::WebContents> web_contents)
     : core_(contents), host_view_(HostView::Create()) {
+  Registry().push_back(this);
+  host_view_->SetWindowChangedCallback(base::BindRepeating(
+      &EngineContents::OnHostViewWindowChanged, weak_factory_.GetWeakPtr()));
+  dialogs_ = std::make_unique<PageDialogs>(*this);
+  find_ = std::make_unique<PageFind>(*this);
   Attach(std::move(web_contents));
 }
 
 EngineContents::~EngineContents() {
+  std::erase(Registry(), this);
+  // Dialogs and find UI go while the page is whole.
+  find_.reset();
+  dialogs_.reset();
   // The bindings belong to the front end's WebUI, which goes with the page.
   devtools_.reset();
   Observe(nullptr);
@@ -158,7 +215,13 @@ EngineContents::~EngineContents() {
   }
   // The host view lets go of the page's view before the page goes.
   host_view_.reset();
-  web_contents_.reset();
+  if (web_contents_) {
+    // Nothing of ours refers to the page when its tab destroys it.
+    content::WebContents* contents = web_contents_.ExtractAsDangling();
+    if (HostContext* context = HostContexts::Get().ContextOf(contents)) {
+      context->Destroy(contents);
+    }
+  }
 }
 
 // static
@@ -166,30 +229,132 @@ EngineContents* EngineContents::From(const bdkcore::Contents& contents) {
   return static_cast<EngineContents*>(contents.data.get());
 }
 
+// static
+EngineContents* EngineContents::FromWebContents(
+    content::WebContents* contents) {
+  for (EngineContents* page : Registry()) {
+    if (page->web_contents_ == contents) {
+      return page;
+    }
+  }
+  return nullptr;
+}
+
+// static
+const std::vector<EngineContents*>& EngineContents::All() {
+  return Registry();
+}
+
 void EngineContents::Attach(
     std::unique_ptr<content::WebContents> web_contents) {
+  content::WebContents* fresh = web_contents.get();
+  std::unique_ptr<content::WebContents> old;
   if (web_contents_) {
+    // What the old page asked for is withdrawn with it.
+    dialogs_->CancelDialogs(web_contents_, /*reset_state=*/true);
+    find_->OnNavigated();
     web_contents_->SetDelegate(nullptr);
+    // The page keeps its tab; the tab model swaps the contents.
+    old = HostContexts::Get()
+              .ContextOf(web_contents_)
+              ->Replace(web_contents_, std::move(web_contents));
+  } else {
+    // A new page is a background tab of its profile's parking context: no
+    // window of Chromium's is shown, and no registered window yet holds it.
+    HostContexts::Get()
+        .Parking(ProfileOf(*core()))
+        .Add(std::move(web_contents));
   }
-  std::unique_ptr<content::WebContents> old = std::move(web_contents_);
-  web_contents_ = std::move(web_contents);
+  web_contents_ = fresh;
+  // The Browser took the delegate with the tab.
   web_contents_->SetDelegate(this);
   // Settings that belong to the page, not to one WebContents, before it is
   // shown or loads.
   if (muted_) {
     web_contents_->SetAudioMuted(true);
   }
-  Observe(web_contents_.get());
+  Observe(web_contents_);
+  // Visits are recorded in history, except in a private profile (the helper
+  // has no history service there). Creating it again does nothing.
+  HistoryTabHelper::CreateForWebContents(web_contents_);
   // A DevTools front end moves its bindings to the new front-end WebContents
   // before the old one goes.
   if (devtools_) {
-    devtools_->SetFrontend(web_contents_.get());
+    devtools_->SetFrontend(web_contents_);
   }
-  host_view_->SetWebContents(web_contents_.get());
+  host_view_->SetWebContents(web_contents_);
   if (!user_agent_.empty()) {
     SetUserAgent(user_agent_);
   }
+  // Prompts and find follow the page's WebContents.
+  InstallPermissionPrompts(*this, web_contents_);
+  find_->Attach(web_contents_);
   // `old` goes after the host view shows the new page.
+}
+
+void EngineContents::MoveTo(HostContext& context) {
+  HostContext* from = HostContexts::Get().ContextOf(web_contents_);
+  if (from == &context) {
+    return;
+  }
+  HostContexts::Get().Move(web_contents_, context);
+  // The Browser took the delegate with the tab.
+  web_contents_->SetDelegate(this);
+  if (focused_) {
+    ActivateTab();
+  }
+}
+
+void EngineContents::Park() {
+  MoveTo(HostContexts::Get().Parking(ProfileOf(*core())));
+}
+
+void EngineContents::Reconcile() {
+  const bdk_native_handle_t native = host_view_->Window();
+  const bdkcore::Window* window = HostContexts::Get().FindWindow(native);
+  if (!window) {
+    // In no registered window: the page stays where it is, a background tab
+    // of its last context.
+    return;
+  }
+  MoveTo(HostContexts::Get().ForWindow(window, native, ProfileOf(*core())));
+}
+
+bool EngineContents::IsInWindow(const bdkcore::Window* window) {
+  HostContext* context = HostContexts::Get().ContextOf(web_contents_);
+  return context && context->window() == window;
+}
+
+void EngineContents::OnHostViewWindowChanged() {
+  if (reconcile_pending_) {
+    return;
+  }
+  reconcile_pending_ = true;
+  // Not from inside the application's own call (a view added to its window).
+  NoteTaskPosted();
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce(
+                     [](base::WeakPtr<EngineContents> self) {
+                       NoteTaskRun();
+                       if (self) {
+                         self->reconcile_pending_ = false;
+                         self->Reconcile();
+                       }
+                     },
+                     weak_factory_.GetWeakPtr()));
+}
+
+void EngineContents::Focus() {
+  LoadIfDiscarded();
+  web_contents_->Focus();
+  ActivateTab();
+}
+
+void EngineContents::ActivateTab() {
+  HostContext* context = HostContexts::Get().ContextOf(web_contents_);
+  if (context && !context->IsActive(web_contents_)) {
+    context->Activate(web_contents_);
+  }
 }
 
 void EngineContents::ReplaceWebContents(
@@ -344,7 +509,7 @@ EngineContents* EngineContents::RequestNewWindow(
     bool user_gesture) {
   std::shared_ptr<bdkcore::Contents> opener = core();
   std::shared_ptr<bdkcore::Runtime> rt = opener ? opener->rt.lock() : nullptr;
-  if (!rt || rt->shutting) {
+  if (!rt || rt->shutting || !HostContexts::CanHost(ProfileOf(*opener))) {
     return nullptr;
   }
   auto page = std::make_shared<bdkcore::Contents>();
@@ -378,28 +543,26 @@ EngineContents* EngineContents::RequestNewWindow(
     payload.Set("features", std::move(f));
   }
 
-  auto request = std::make_shared<bdkcore::Request>();
-  request->surface = BDK_SURFACE_NEW_WINDOWS;
-  request->contents = opener->handle;
-  request->payload = Json(payload);
-  std::weak_ptr<bdkcore::Contents> weak_page = page;
-  request->on_finish = [weak_page](bdkcore::UiOutcome outcome,
-                                   const std::string& completion,
-                                   const std::string&) {
-    std::shared_ptr<bdkcore::Contents> p = weak_page.lock();
-    if (!p || p->dead) {
-      return;
-    }
-    if (outcome == bdkcore::UiOutcome::kCompleted && completion == "accept") {
-      return;  // the application placed the new page
-    }
-    // Rejected, cancelled, withdrawn, or no handler: BDK has no window of its
-    // own to put the page in (the default presenter is T-UIR-03, M3).
-    if (auto runtime = p->rt.lock()) {
-      bdkcore::destroy_contents(runtime, p);
-    }
-  };
-  bdkcore::raise_ui_request(rt, request);
+  RaiseUiRequest(opener, BDK_SURFACE_NEW_WINDOWS, payload,
+                 base::BindOnce(
+                     [](std::weak_ptr<bdkcore::Contents> weak_page,
+                        const UiResult& result) {
+                       std::shared_ptr<bdkcore::Contents> p = weak_page.lock();
+                       if (!p || p->dead) {
+                         return;
+                       }
+                       if (result.outcome == bdkcore::UiOutcome::kCompleted &&
+                           result.completion == "accept") {
+                         return;  // the application placed the new page
+                       }
+                       // Rejected, cancelled, withdrawn, or no handler: BDK has
+                       // no window of its own to put the page in (the default
+                       // presenter is T-UIR-03, M3).
+                       if (auto runtime = p->rt.lock()) {
+                         bdkcore::destroy_contents(runtime, p);
+                       }
+                     },
+                     std::weak_ptr<bdkcore::Contents>(page)));
   return raw;
 }
 
@@ -477,55 +640,53 @@ bool EngineContents::HandleContextMenu(
   payload.Set("context", std::move(context));
   payload.Set("items", items.Clone());
 
-  auto request = std::make_shared<bdkcore::Request>();
-  request->surface = BDK_SURFACE_CONTEXT_MENUS;
-  request->contents = c->handle;
-  request->payload = Json(payload);
-  // The anchor is the point the menu was asked for, in window coordinates.
-  const std::array<double, 4> frame = host_view_->FrameInWindow();
-  base::span<double, 4> anchor(request->anchor);
-  anchor[0] = frame[0] + params.x;
-  anchor[1] = frame[1] + params.y;
-  anchor[2] = 0;
-  anchor[3] = 0;
-  base::WeakPtr<EngineContents> self = weak_factory_.GetWeakPtr();
-  auto shared_items = std::make_shared<base::ListValue>(std::move(items));
-  request->on_finish = [self, params, shared_items](
-                           bdkcore::UiOutcome outcome,
-                           const std::string& completion,
-                           const std::string& args) {
-    if (!self) {
-      return;
-    }
-    if (outcome == bdkcore::UiOutcome::kCompleted && completion == "perform") {
-      std::optional<base::DictValue> parsed = base::JSONReader::ReadDict(
-          args, base::JSON_PARSE_CHROMIUM_EXTENSIONS);
-      if (parsed) {
-        if (const std::string* id = parsed->FindString("id")) {
-          self->PerformMenuItem(params, *id);
-        }
-      }
-      return;
-    }
-    if (outcome != bdkcore::UiOutcome::kDefaulted) {
-      return;  // dismissed, rejected or gone
-    }
-    std::vector<MenuItem> menu;
-    for (const base::Value& v : *shared_items) {
-      const base::DictValue& d = v.GetDict();
-      MenuItem item;
-      item.id = *d.FindString("id");
-      if (const std::string* title = d.FindString("title")) {
-        item.title = *title;
-      }
-      item.enabled = d.FindBool("enabled").value_or(true);
-      menu.push_back(std::move(item));
-    }
-    self->host_view_->ShowMenu(
-        menu, params.x, params.y,
-        base::BindOnce(&EngineContents::PerformMenuItem, self, params));
-  };
-  bdkcore::raise_ui_request(rt, request);
+  // The anchor is the point the menu was asked for.
+  RaiseUiRequest(
+      c, BDK_SURFACE_CONTEXT_MENUS, payload,
+      base::BindOnce(
+          [](base::WeakPtr<EngineContents> self,
+             content::ContextMenuParams params, base::ListValue items,
+             const UiResult& result) {
+            if (!self) {
+              return;
+            }
+            double x = params.x;
+            double y = params.y;
+            const base::ListValue* shown = &items;
+            if (result.outcome == bdkcore::UiOutcome::kCompleted &&
+                result.completion == "accept") {
+              // ui-requests.md section 5: accept {"action":"perform","item"}
+              // runs one of the engine's items; accept {"action":"show",
+              // "items","at"?} shows the application's arrangement of them.
+              const std::string* action = result.args.FindString("action");
+              if (action && *action == "perform") {
+                if (const std::string* id = result.args.FindString("item")) {
+                  self->PerformMenuItem(params, *id);
+                }
+                return;
+              }
+              const base::ListValue* arranged = result.args.FindList("items");
+              if (!action || *action != "show" || !arranged) {
+                return;
+              }
+              shown = arranged;
+              if (const base::DictValue* at = result.args.FindDict("at")) {
+                x = at->FindDouble("x").value_or(x);
+                y = at->FindDouble("y").value_or(y);
+              }
+            } else if (result.outcome != bdkcore::UiOutcome::kDefaulted) {
+              return;  // dismissed, rejected or gone
+            }
+            std::vector<MenuItem> menu;
+            AppendMenuItems(*shown, menu);
+            self->host_view_->ShowMenu(
+                menu, x, y,
+                base::BindOnce(&EngineContents::PerformMenuItem, self, params));
+          },
+          weak_factory_.GetWeakPtr(), params, std::move(items)),
+      host_view_.get(),
+      std::array<double, 2>{static_cast<double>(params.x),
+                            static_cast<double>(params.y)});
   return true;
 }
 
@@ -584,7 +745,8 @@ bool EngineContents::HandleKeyboardEvent(
 
 bool EngineContents::CanEnterFullscreenModeForTab(
     content::RenderFrameHost* requesting_frame) {
-  return true;
+  // A disabled surface denies: the Fullscreen API rejects.
+  return SurfaceAvailable(core(), BDK_SURFACE_FULLSCREEN);
 }
 
 void EngineContents::SetFullscreen(bool fullscreen) {
@@ -607,33 +769,30 @@ void EngineContents::EnterFullscreenModeForTab(
   // refusal (only CanEnterFullscreenModeForTab, which must answer at once),
   // so a denial makes the page leave fullscreen again.
   SetFullscreen(true);
-  auto request = std::make_shared<bdkcore::Request>();
-  request->surface = BDK_SURFACE_FULLSCREEN;
-  request->contents = c->handle;
-  request->payload = Json(
+  RaiseUiRequest(
+      c, BDK_SURFACE_FULLSCREEN,
       base::DictValue()
           .Set("origin", requesting_frame->GetLastCommittedOrigin().Serialize())
-          .Set("entering", true));
-  base::WeakPtr<EngineContents> self = weak_factory_.GetWeakPtr();
-  request->on_finish = [self](bdkcore::UiOutcome outcome,
-                              const std::string& completion,
-                              const std::string&) {
-    if (!self) {
-      return;
-    }
-    if (!self->fullscreen_) {
-      return;  // the page already left fullscreen
-    }
-    if (outcome == bdkcore::UiOutcome::kCompleted && completion == "allow") {
-      return;  // the application makes the page fill the screen
-    }
-    if (outcome == bdkcore::UiOutcome::kDefaulted) {
-      self->host_view_->SetWindowFullscreen(true);
-      return;
-    }
-    self->web_contents_->ExitFullscreen(/*will_cause_resize=*/true);
-  };
-  bdkcore::raise_ui_request(rt, request);
+          .Set("isEntering", true),
+      base::BindOnce(
+          [](base::WeakPtr<EngineContents> self, const UiResult& result) {
+            if (!self) {
+              return;
+            }
+            if (!self->fullscreen_) {
+              return;  // the page already left fullscreen
+            }
+            if (result.outcome == bdkcore::UiOutcome::kCompleted &&
+                result.completion == "accept") {
+              return;  // the application makes the page fill the screen
+            }
+            if (result.outcome == bdkcore::UiOutcome::kDefaulted) {
+              self->host_view_->SetWindowFullscreen(true);
+              return;
+            }
+            self->web_contents_->ExitFullscreen(/*will_cause_resize=*/true);
+          },
+          weak_factory_.GetWeakPtr()));
 }
 
 void EngineContents::ExitFullscreenModeForTab(content::WebContents* source) {
@@ -648,21 +807,57 @@ void EngineContents::ExitFullscreenModeForTab(content::WebContents* source) {
     return;
   }
   // Tells a custom presenter to restore its layout; nothing to answer.
-  auto request = std::make_shared<bdkcore::Request>();
-  request->surface = BDK_SURFACE_FULLSCREEN;
-  request->contents = c->handle;
-  request->payload =
-      Json(base::DictValue()
-               .Set("origin", web_contents_->GetPrimaryMainFrame()
-                                  ->GetLastCommittedOrigin()
-                                  .Serialize())
-               .Set("entering", false));
-  bdkcore::raise_ui_request(rt, request);
+  RaiseUiRequest(c, BDK_SURFACE_FULLSCREEN,
+                 base::DictValue()
+                     .Set("origin", web_contents_->GetPrimaryMainFrame()
+                                        ->GetLastCommittedOrigin()
+                                        .Serialize())
+                     .Set("isEntering", false),
+                 UiFinish());
 }
 
 bool EngineContents::IsFullscreenForTabOrPending(
     const content::WebContents* web_contents) {
   return fullscreen_;
+}
+
+content::JavaScriptDialogManager* EngineContents::GetJavaScriptDialogManager(
+    content::WebContents* source) {
+  return dialogs_.get();
+}
+
+void EngineContents::RunFileChooser(
+    content::RenderFrameHost* render_frame_host,
+    scoped_refptr<content::FileSelectListener> listener,
+    const blink::mojom::FileChooserParams& params) {
+  dialogs_->RunFileChooser(render_frame_host, std::move(listener), params);
+}
+
+void EngineContents::EnumerateDirectory(
+    content::WebContents* web_contents,
+    scoped_refptr<content::FileSelectListener> listener,
+    const base::FilePath& path) {
+  dialogs_->EnumerateDirectory(std::move(listener), path);
+}
+
+// Camera and microphone go through Chrome's media capture logic, which asks
+// the page's permission request manager (ui_permissions.h) before it opens a
+// device.
+void EngineContents::RequestMediaAccessPermission(
+    content::WebContents* web_contents,
+    const content::MediaStreamRequest& request,
+    content::MediaResponseCallback callback) {
+  MediaCaptureDevicesDispatcher::GetInstance()->ProcessMediaAccessRequest(
+      web_contents, request, std::move(callback), /*extension=*/nullptr);
+}
+
+bool EngineContents::CheckMediaAccessPermission(
+    content::RenderFrameHost* render_frame_host,
+    const url::Origin& security_origin,
+    blink::mojom::MediaStreamType type) {
+  return MediaCaptureDevicesDispatcher::GetInstance()
+      ->CheckMediaAccessPermission(render_frame_host, security_origin, type,
+                                   /*extension=*/nullptr);
 }
 
 // content::WebContentsObserver -----------------------------------------------
@@ -686,6 +881,10 @@ void EngineContents::DidFinishNavigation(content::NavigationHandle* handle) {
   if (!handle->IsInPrimaryMainFrame()) {
     return;
   }
+  if (!handle->IsSameDocument()) {
+    OnPrimaryNavigationFinished(*this, handle);  // security interstitials
+    OnPageNavigatedForPasswords(web_contents_.get());
+  }
   uint32_t flags = kMainFrame;
   if (handle->IsSameDocument()) {
     flags |= BDK_EVENT_FLAG_SAME_DOCUMENT;
@@ -694,6 +893,10 @@ void EngineContents::DidFinishNavigation(content::NavigationHandle* handle) {
     flags |= BDK_EVENT_FLAG_USER_INITIATED;
   }
   const std::string url = handle->GetURL().spec();
+  if (handle->HasCommitted() && !handle->IsSameDocument()) {
+    dialogs_->OnNavigated();
+    find_->OnNavigated();
+  }
   if (!handle->IsSameDocument()) {
     last_navigation_failed_ = !handle->HasCommitted() || handle->IsErrorPage();
   }
@@ -710,9 +913,9 @@ void EngineContents::DidFinishNavigation(content::NavigationHandle* handle) {
   }
   const char* code = net_error == net::ERR_ABORTED ? "aborted" : "netError";
   Emit(BDK_CONTENTS_EVENT_NAVIGATION_FAILED, url,
-       Json(base::DictValue()
-                .Set("code", code)
-                .Set("description", net::ErrorToShortString(net_error))),
+       ToJson(base::DictValue()
+                  .Set("code", code)
+                  .Set("description", net::ErrorToShortString(net_error))),
        net_error, flags);
 }
 
@@ -733,7 +936,7 @@ void EngineContents::TitleWasSet(content::NavigationEntry* entry) {
     return;
   }
   Emit(BDK_CONTENTS_EVENT_TITLE_CHANGED, entry->GetURL().spec(),
-       Json(base::DictValue().Set(
+       ToJson(base::DictValue().Set(
            "title", base::UTF16ToUTF8(web_contents_->GetTitle()))),
        0, kMainFrame);
 }
@@ -742,7 +945,7 @@ void EngineContents::PrimaryMainFrameRenderProcessGone(
     base::TerminationStatus status) {
   Emit(BDK_CONTENTS_EVENT_RENDERER_GONE,
        web_contents_->GetLastCommittedURL().spec(),
-       Json(base::DictValue().Set("reason", TerminationReason(status))), 0,
+       ToJson(base::DictValue().Set("reason", TerminationReason(status))), 0,
        kMainFrame);
 }
 
@@ -750,15 +953,16 @@ void EngineContents::OnWebContentsFocused(
     content::RenderWidgetHost* render_widget_host) {
   LoadIfDiscarded();
   focused_ = true;
+  ActivateTab();
   Emit(BDK_CONTENTS_EVENT_FOCUS_CHANGED, "",
-       Json(base::DictValue().Set("focused", true)), 0, 0);
+       ToJson(base::DictValue().Set("focused", true)), 0, 0);
 }
 
 void EngineContents::OnWebContentsLostFocus(
     content::RenderWidgetHost* render_widget_host) {
   focused_ = false;
   Emit(BDK_CONTENTS_EVENT_FOCUS_CHANGED, "",
-       Json(base::DictValue().Set("focused", false)), 0, 0);
+       ToJson(base::DictValue().Set("focused", false)), 0, 0);
 }
 
 void EngineContents::OnVisibilityChanged(content::Visibility visibility) {
@@ -767,7 +971,7 @@ void EngineContents::OnVisibilityChanged(content::Visibility visibility) {
     LoadIfDiscarded();
   }
   Emit(BDK_CONTENTS_EVENT_VISIBILITY_CHANGED, "",
-       Json(base::DictValue().Set("visible", visible)), 0, 0);
+       ToJson(base::DictValue().Set("visible", visible)), 0, 0);
 }
 
 }  // namespace bdk

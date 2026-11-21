@@ -26,9 +26,14 @@
 #include "base/task/current_thread.h"
 #include "base/time/time.h"
 #include "bdk/core/runtime/core_internal.h"
+#include "bdk/engine/bdk_browser_window.h"
 #include "bdk/engine/bdk_testing.h"
 #include "bdk/engine/engine_contents.h"
+#include "bdk/engine/host_context.h"
+#include "bdk/engine/host_window.h"
+#include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
+#include "components/sessions/content/session_tab_helper.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_widget_host.h"
 #include "content/public/browser/render_widget_host_view.h"
@@ -55,6 +60,11 @@ namespace {
 struct Script {
   int32_t net_error = 0;
   std::string title;
+  // A page with content of its own (ScriptPageForTesting): when `body` is not
+  // empty it is served as `content_type` with the extra response headers.
+  std::string body;
+  std::string content_type;
+  std::string headers;
 };
 
 // Read on the UI thread by the interceptor and written by the hooks, also on
@@ -110,13 +120,21 @@ void Serve(Script script,
   }
   const std::string title =
       script.title.empty() ? request.url.spec() : script.title;
-  const std::string body = "<!doctype html><title>" +
-                           base::EscapeForHTML(title) + "</title><body></body>";
+  const bool custom = !script.body.empty();
+  const std::string content_type = custom && !script.content_type.empty()
+                                       ? script.content_type
+                                       : "text/html";
+  const std::string body = custom ? script.body
+                                  : "<!doctype html><title>" +
+                                        base::EscapeForHTML(title) +
+                                        "</title><body></body>";
   auto head = network::mojom::URLResponseHead::New();
   head->headers = net::HttpResponseHeaders::TryToCreate(
-      "HTTP/1.1 200 OK\nContent-Type: text/html; charset=utf-8\n");
-  head->mime_type = "text/html";
+      "HTTP/1.1 200 OK\nContent-Type: " + content_type + "; charset=utf-8\n" +
+      script.headers);
+  head->mime_type = content_type;
   head->charset = "utf-8";
+  head->content_length = static_cast<int64_t>(body.size());
   mojo::ScopedDataPipeProducerHandle producer;
   mojo::ScopedDataPipeConsumerHandle consumer;
   if (mojo::CreateDataPipe(static_cast<uint32_t>(body.size()), producer,
@@ -136,6 +154,13 @@ class ScriptedNavigationInterceptor
   void MaybeCreateLoader(const network::ResourceRequest& request,
                          content::BrowserContext* browser_context,
                          LoaderCallback callback) override {
+    // Loopback addresses are the test's own servers (a TLS server with a
+    // certificate nobody trusts, for the interstitial scenarios): the network
+    // serves them.
+    if (request.url.HostIsIPAddress() && request.url.host() == "127.0.0.1") {
+      std::move(callback).Run({});
+      return;
+    }
     std::optional<Script> script;
     {
       Scripts& scripts = GetScripts();
@@ -170,6 +195,19 @@ CreateScriptedNavigationInterceptor() {
     return nullptr;
   }
   return std::make_unique<ScriptedNavigationInterceptor>();
+}
+
+void ScriptPageForTesting(const std::string& url,
+                          const std::string& body,
+                          const std::string& content_type,
+                          const std::string& headers) {
+  Scripts& scripts = GetScripts();
+  base::AutoLock lock(scripts.lock);
+  Script script;
+  script.body = body;
+  script.content_type = content_type;
+  script.headers = headers;
+  scripts.by_url[GURL(url).spec()] = std::move(script);
 }
 
 void NoteTaskPosted() {
@@ -356,11 +394,41 @@ BDK_EXPORT bdk_status_t bdk_testing_click(bdk_contents_t contents,
 BDK_EXPORT size_t bdk_testing_chrome_window_count(void) {
   size_t count = 0;
   ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
-      [&count](BrowserWindowInterface*) {
-        ++count;
+      [&count](BrowserWindowInterface* browser) {
+        if (!bdk::HostContexts::Get().IsHostContext(browser)) {
+          ++count;
+        }
         return true;
       });
   return count;
+}
+
+BDK_EXPORT size_t bdk_testing_host_context_count(void) {
+  return bdk::HostContexts::Get().ContextCount();
+}
+
+BDK_EXPORT bdk_status_t bdk_testing_tab_info(bdk_contents_t handle,
+                                             bdk_testing_tab_info_t* out) {
+  std::shared_ptr<bdkcore::Contents> c = bdkcore::contents_of(handle);
+  if (!c || !out || out->struct_size < sizeof *out) {
+    return BDK_ERR_INVALID_ARGUMENT;
+  }
+  *out = bdk_testing_tab_info_t{};
+  out->struct_size = sizeof *out;
+  content::WebContents* contents =
+      bdk::EngineContents::From(*c)->web_contents();
+  bdk::HostContext* context = bdk::HostContexts::Get().ContextOf(contents);
+  if (!context) {
+    return BDK_OK;
+  }
+  out->is_tab = 1;
+  out->parking = context->is_parking();
+  out->active = context->IsActive(contents);
+  out->tab_id = sessions::SessionTabHelper::IdForTab(contents).id();
+  out->context_id = context->browser()->GetSessionID().id();
+  out->tab_count = static_cast<uint32_t>(context->tab_count());
+  out->has_native_window = context->browser_window()->host_window() != nullptr;
+  return BDK_OK;
 }
 
 BDK_EXPORT void bdk_testing_forget_profiles(void) {

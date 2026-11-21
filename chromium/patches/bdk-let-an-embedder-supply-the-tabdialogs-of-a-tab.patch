@@ -1,0 +1,103 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BDK Patches <patches@bdk.invalid>
+Date: Thu, 19 Nov 2026 15:56:38 -0800
+Subject: [PATCH] bdk: let an embedder supply the TabDialogs of a tab
+
+A tab's passwords bubble (the save and update prompt) is shown through
+TabDialogs::ShowManagePasswordsBubble(), and TabDialogs::Create() always
+makes TabDialogsViews, whose bubble anchors to the toolbar of a
+BrowserView. BDK pages are tabs of Browsers whose window has no views, so
+that bubble is never shown and the password manager's prompt goes
+unanswered. BDK raises the prompt as a UI request instead, so that the
+application can show its own UI, and shows a native sheet as the default.
+
+Add embedder_tab_dialogs_factory.h, a small header with a settable
+factory (inline, no new target), and ask it first in
+TabDialogs::Create(). A null return declines and TabDialogsViews is
+created, so Chrome is unchanged; BDK's factory is set before the first
+tab exists, and returns a TabDialogsViews subclass that overrides the two
+passwords methods. Only tab_dialogs_views.cc and the new header change,
+so nothing widely included is touched.
+
+Used by: the BDK engine (//bdk/engine/services/password_prompts.cc).
+---
+ .../ui/views/embedder_tab_dialogs_factory.h   | 45 +++++++++++++++++++
+ chrome/browser/ui/views/tab_dialogs_views.cc  |  7 +++
+ 2 files changed, 52 insertions(+)
+
+diff --git a/chrome/browser/ui/views/embedder_tab_dialogs_factory.h b/chrome/browser/ui/views/embedder_tab_dialogs_factory.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..caf9943e1d2eccb17ab3160a6914d08963e767a6
+--- /dev/null
++++ b/chrome/browser/ui/views/embedder_tab_dialogs_factory.h
+@@ -0,0 +1,45 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_EMBEDDER_TAB_DIALOGS_FACTORY_H_
++#define CHROME_BROWSER_UI_VIEWS_EMBEDDER_TAB_DIALOGS_FACTORY_H_
++
++#include <memory>
++
++#include "base/functional/callback.h"
++#include "base/no_destructor.h"
++
++class TabDialogs;
++
++namespace content {
++class WebContents;
++}  // namespace content
++
++namespace tabs {
++class TabInterface;
++}  // namespace tabs
++
++// A hook for Chromium embedders that show the tab-modal dialogs and bubbles
++// of TabDialogs (the passwords bubble among them) in UI of their own. When a
++// factory is set, TabDialogs::Create() asks it first and uses the object it
++// returns; a null return declines, and TabDialogsViews is created, so Chrome
++// is unchanged. Only embedders set one, once, before any tab exists.
++namespace embedder_tab_dialogs_factory {
++
++using Factory = base::RepeatingCallback<std::unique_ptr<TabDialogs>(
++    tabs::TabInterface& tab,
++    content::WebContents* contents)>;
++
++inline Factory& GetFactory() {
++  static base::NoDestructor<Factory> factory;
++  return *factory;
++}
++
++inline void SetFactory(Factory factory) {
++  GetFactory() = std::move(factory);
++}
++
++}  // namespace embedder_tab_dialogs_factory
++
++#endif  // CHROME_BROWSER_UI_VIEWS_EMBEDDER_TAB_DIALOGS_FACTORY_H_
+diff --git a/chrome/browser/ui/views/tab_dialogs_views.cc b/chrome/browser/ui/views/tab_dialogs_views.cc
+index d5ca624f097e2fc0e0264503e1bcac723b80716a..bf4e1e562f1c46759e93eddd40fe4cb3706dd3dc 100644
+--- a/chrome/browser/ui/views/tab_dialogs_views.cc
++++ b/chrome/browser/ui/views/tab_dialogs_views.cc
+@@ -8,6 +8,7 @@
+ #include <utility>
+ 
+ #include "build/build_config.h"
++#include "chrome/browser/ui/views/embedder_tab_dialogs_factory.h"
+ #include "chrome/browser/ui/views/hung_renderer_view.h"
+ #include "chrome/browser/ui/views/passwords/password_bubble_view_base.h"
+ #include "chrome/browser/ui/views/site_data/page_specific_site_data_dialog_controller.h"
+@@ -23,6 +24,12 @@
+ std::unique_ptr<TabDialogs> TabDialogs::Create(tabs::TabInterface& tab,
+                                                content::WebContents* contents) {
+   CHECK(contents, base::NotFatalUntil::M162);
++  if (const auto& embedder_factory =
++          embedder_tab_dialogs_factory::GetFactory()) {
++    if (auto dialogs = embedder_factory.Run(tab, contents)) {
++      return dialogs;
++    }
++  }
+   return std::make_unique<TabDialogsViews>(tab, contents);
+ }
+ 

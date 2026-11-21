@@ -13,4 +13,9 @@ fi
 build="$root/packages/core/build-engine"
 cmake -S "$root/packages/core" -B "$build" -G Ninja -DBDK_ENGINE_FRAMEWORK="$frameworks" >/dev/null
 cmake --build "$build" --target bdk_engine_conformance
-"$build/BDKEngineConformance.app/Contents/MacOS/BDKEngineConformance" "$@" 2>"$build/engine.log"
+app="$build/BDKEngineConformance.app/Contents/MacOS/BDKEngineConformance"
+if [[ $# -gt 0 ]]; then
+  "$app" "$@" 2>"$build/engine.log"
+  exit $?
+fi
+"$app" 2>"$build/engine.log"

@@ -103,9 +103,9 @@ W = works with a bare WebContents and profile. T = needs a tab object. B = needs
 | Downloads core | W | `download_core_service_impl.cc` | Works. |
 | Download UI | B+V | `download_bubble_ui_controller.cc:94-98` | BDK presents downloads over the existing model. |
 | Password manager and autofill logic | T | `tab_features.cc:440-445` | Needs the tab object. |
-| Autofill and password bubbles | T+V | `chrome_autofill_client.cc:787-789`; `browser_window.h:259` | BDK implements or stubs the bubble handler. |
+| Autofill and password bubbles | T+V | `chrome_autofill_client.cc:787-789`; `browser_window.h:259` | BDK implements or stubs the bubble handler. Run (M3): the password bubble goes through `TabDialogs::ShowManagePasswordsBubble` (patched factory); it is shown only for the active tab of an active context (`BubbleManagerImpl` queues it otherwise). The address and card bubbles still need `GetAutofillBubbleHandler`. |
 | Permission prompts | T+V | `permission_prompt_factory.cc:44-103` | Anchoring needs a location-bar object; Webium uses a stub. |
-| Printing and print preview | T+V | `print_preview_dialog_controller.cc:136-140, 266-275` | Needs a modal-dialog host from the BDK window. |
+| Printing and print preview | T+V | `print_preview_dialog_controller.cc:136-140, 266-275` | Needs a modal-dialog host from the BDK window. Run (M3): with the stub window, `window.print()` reached `ShowConstrainedWebDialog` and aborted in `NativeWidgetMac::InitModalType` (a tab-modal widget needs a parent window). BDK therefore asks before the dialog is created (a small patch in `PrintViewManager`, both entries) and prints through the system panel; hosting the preview still needs the host view as the modal parent. |
 | Translate | T+B+V | `chrome_translate_client.cc:608-631` | UI is shown only for the active tab of the last-active window. |
 | Safe Browsing interstitials | W | `chrome_safe_browsing_blocking_page_factory.cc` | Works at content level. |
 | DevTools | B, docked V | `devtools_window.cc:2139-2141` | Undocked DevTools creates a window through the same factory. |
@@ -128,7 +128,7 @@ Estimated upstream patch footprint for this strategy: five to ten files, plus ne
 
 ### Not verified
 
-- Whether a BDK window with stubbed methods survives startup, session restore, DevTools, print preview and permission prompts without a null dereference in the 44 non-Views files that cast to `BrowserView`.
+- Whether a BDK window with stubbed methods survives startup, session restore, DevTools, print preview and permission prompts without a null dereference in the 44 non-Views files that cast to `BrowserView`. (2026-11-19, M3: it survives Browser creation, tab insertion, moves between contexts, activation, discard, restore, popups, DevTools and closing, as exercised by the engine scenarios; print preview, permission prompts, session restore of windows, translate and find are not yet run. The crashes found and their handling are in [amendments.md](amendments.md) section 2.13.)
 - Whether the Webium window is complete enough on macOS to copy from.
 - Whether every caller honours a hidden tab strip.
 
@@ -593,6 +593,21 @@ This is a property of the reference application, not of BDK, which has no space 
 Milestone M0's last step: on the first working build, a throwaway Swift window with a sidebar, two spaces and a two-pane split. Run the MV3 probe and record exactly what `tabs.query`, `tabs.onActivated`, `windows.getAll` and the attach and detach events report under each of the two mappings for off-screen pages.
 
 ---
+
+## 11. Default presenters on a native window (T-MAC-04, 2026-11-19)
+
+**Result: AppKit presenters, not Chromium's dialog and bubble views.** Decided in M3 phase 2, from the source and from what the engine needed to run, not from a throwaway spike. Risk R7 is therefore realised in its "write platform-native presenters" form; the request model does not change.
+
+| Question | Finding |
+|---|---|
+| Can Chromium's own permission bubble be used? | Its views anchor to the `BrowserView`'s location bar or chip (`GetChipAnchor`, `bubble_anchor_util`), which return Views types. A `BdkBrowserWindow` has no Views widget, so there is no anchor to give. The request manager's prompt interface (`permissions::PermissionPrompt`) is the seam and is used: BDK supplies its own prompt object that raises the request. |
+| JavaScript dialogs? | Chrome's tab-modal manager shows a Views dialog through `WebContentsModalDialogHost`, which needs a Views widget to parent it. Not attempted: BDK's `JavaScriptDialogManager` raises a request and the default is an `NSAlert` sheet. |
+| File pickers? | Chrome's `FileSelectHelper` uses `ui::SelectFileDialog`, and a folder upload adds a Views confirmation. BDK implements `RunFileChooser` itself; the default is `NSOpenPanel` or `NSSavePanel` as a sheet. |
+| Authentication, find, notifications? | Chrome's are Views (login prompt, find bar) or the system's (notifications, which need the alert helper and entitlements). BDK raises requests; defaults are an `NSAlert` sheet, a find bar view in the page view and an in-window banner. |
+| What it costs | One AppKit file per platform (`chromium/bdk/engine/presenters_mac.mm`) behind `UiPresenters` (`ui_presenters.h`), which carries only the request payload and callbacks. No Chromium patch is needed for any of it. |
+| Not verified | That a Views widget can be parented to an `NSWindow` that is not a Views widget. Only the cost of finding out and the dependency on Chrome's anchor types stopped the attempt; it stays an option if a surface (the extensions menu, M5) needs Chromium's own views. |
+
+Sheets are attached to the window of the page's host view, one at a time per window as AppKit queues them, and wait for the page to be in a window. Default presenters are replaceable per surface by a scripted presenter in tests (`bdk_testing_command`, `present.script`), so no test blocks on a panel; one test answers a real sheet.
 
 ## Open items carried into the plan
 

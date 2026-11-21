@@ -62,6 +62,8 @@ extension BDKWebContents {
         case rendererGone(reason: String)
         /// The page became visible or hidden: its view entered or left a visible window.
         case visibilityChanged(Bool)
+        /// A result of the search `find.start` began.
+        case findResult(FindSession.Result)
         /// A kind this version does not know, from a newer runtime.
         case unknown(kind: UInt32)
     }
@@ -110,7 +112,17 @@ extension BDKWebContents.Event {
         case BDK_CONTENTS_EVENT_VISIBILITY_CHANGED:
             self = .visibilityChanged(detail?.bool("visible") ?? false)
         default:
-            self = .unknown(kind: event.kind)
+            self = Self.laterKind(event.kind, detail)
+        }
+    }
+
+    /// The kinds beyond navigation and lifecycle, kept apart so that `init` stays simple.
+    private static func laterKind(_ kind: UInt32, _ detail: BDKJSValue?) -> Self {
+        switch kind {
+        case BDK_CONTENTS_EVENT_FIND_RESULT:
+            .findResult(FindSession.Result(detail))
+        default:
+            .unknown(kind: kind)
         }
     }
 }

@@ -406,10 +406,10 @@ let image = try await page.capture.screenshot(.visible)                 // .visi
 let pdf   = try await page.capture.pdf(.init(paper: .a4, landscape: false, printBackground: true))
 try await page.capture.save(to: fileURL, as: .completePage)             // .htmlOnly, .completePage, .singleFile
 
-// Find in page — M3, T-UIR-06
-for await result in page.find.start("needle", options: .init(matchCase: false)) { … }   // matchCount, activeIndex, rect
-page.find.next(); page.find.previous(); page.find.stop(.clearSelection)
-page.find.present()                    // ask for the find surface; default presenter or the application's handler
+// Find in page — M3, T-UIR-06; started by the application, T-SWF-07
+for await result in try page.find.start("needle", options: .init(matchCase: false)) { … }   // matchCount, activeIndex, rect, isFinal
+try page.find.next(); try page.find.previous(); try page.find.stop(.clearSelection)
+try page.find.present()                // ask for the find surface; default presenter or the application's handler
 
 // Zoom
 try page.zoom.set(1.25, scope: .site)  // .site (Chromium's per-site default) or .page
@@ -425,10 +425,12 @@ try await page.translation.revert()
 page.translation.present()             // ask for the translation surface
 
 // Printing — M3, T-UIR-04
-page.print()                           // goes through the printing surface
+try page.print()                       // goes through the printing surface
 ```
 
 `present()` on find, translation and DevTools, and `print()`, are how an application-owned menu item or shortcut starts a flow whose UI is a browser-owned surface. The request then takes the normal path in [ui-requests.md](ui-requests.md).
+
+Not built at the end of M3 (2026-11-20): `page.capture` (T-SVC-09, M7, with the `contents.*` commands); `page.zoom.set`, a settable `isMuted` and `exitPictureInPicture()` (T-SWF-06, M4). `page.zoom` and `page.isMuted` can be read. Find and printing are built (T-SWF-07): the calls throw `contents.stale` on a closed page, like the other page calls. `find.start` returns the results of that search as a stream: one report when it starts and one for each move of the active match, each with `matchCount`, `activeIndex` (from 1, 0 for none), `rect` in the page view's coordinates and `isFinal` (the engine reports while it is still counting). The stream ends at `stop`, at the next `start` and when the page closes. `FindRequest.session` is the same `page.find`. The stub renders nothing, so its searches always report zero matches.
 
 ### 6.8 Session state
 
@@ -482,7 +484,7 @@ There is no BDK window, tab strip, toolbar or split-view type. A split is two vi
 
 Nothing, by default. The first time a page view is added to an `NSWindow`, BDK creates a host context for that window and keeps it until the window closes.
 
-Registration is optional and adds three things (Added, S11):
+Registration is optional and adds three things (Added, S11). Not built at the end of M3: windows are registered automatically and internally, and none of this is public yet (T-SWF-08, M5).
 
 ```swift
 let window = runtime.windows.register(nsWindow, .init(kind: .normal))   // .normal, .popup
@@ -585,6 +587,8 @@ public enum PageCommand {
 }
 ```
 
+`canPerform` and `perform` are not built at the end of M3 (T-SWF-06, M4).
+
 The standard AppKit edit actions (`cut:`, `copy:`, `paste:`, `selectAll:`, `undo:`, `redo:`) are expected to work through the responder chain when the page is first responder, so an ordinary Edit menu needs no BDK call. Unverified outside Chromium's own window.
 
 ## 10. UI request handlers
@@ -625,6 +629,8 @@ runtime.ui.permissions.setHandler { request in
 - A handler returns synchronously. Presentation is asynchronous, through the request object.
 - A request the application took and then dropped without completing is cancelled when the object is released. It is never granted.
 
+Settled in T-SWF-04 (2026-11-19), against the stub: `BDKUIRequest` is a base class with a subclass per surface, not a protocol; `Surface.setHandler` throws, because the ABI refuses `bdk_ui_set_handler` after the freeze (`config.registrationAfterStart`). A handler set on `config.ui` is installed at start. After the freeze, `runtime.ui` can replace or clear the handler of a surface that had one at start, but cannot add one to another surface; the "default mode, any time" rule above needs the core to allow handler registration after the freeze. `window` is an `NSWindow?` until `BDKWindow` exists. The completions and payload encoding are in [ui-requests.md](ui-requests.md) section 8 and `packages/swift/README.md`.
+
 ## 11. Services and providers
 
 ### 11.1 Services
@@ -661,7 +667,7 @@ try await profile.privacy.clear([.history, .cookies, .cache], since: .lastHour)
 let entries = try await profile.passwords.list()
 let secret = try await profile.passwords.reveal(entries[0].id)   // prompts with Touch ID or the login password
 
-// Search and address bar (Added, S1)
+// Search and address bar (Added, S1) — not built: T-SVC-10, M4
 let kind = try await profile.search.classify("swift.org")          // .url(URL), .search(URL, engine)
 for await batch in profile.search.suggestions(for: "swi", in: page) { … }
 
@@ -669,6 +675,16 @@ for await batch in profile.search.suggestions(for: "swi", in: page) { … }
 let isDefault = await runtime.system.defaultBrowser.status()
 try await runtime.system.defaultBrowser.request()                  // macOS asks the user
 ```
+
+Settled in T-SVC-02 to T-SVC-06 (2026-11-19), against the stub: the wrappers are generated (services.md 9) and follow the interface definitions mechanically, with a few names from this section kept by a table in the generator.
+
+- A namespace is a `struct` (`BDKHistory`, `BDKBookmarks`, ...). Profile-scoped namespaces hang on `BDKProfile` (`profile.history`), application-scoped ones on `BDKRuntime`. `settings` has both: `profile.settings` and `runtime.settings` (the application's own store). `runtime.info` is `runtime.about.info()`, because `BDKRuntime.info` is the ABI version. `system.defaultBrowser.status` is `runtime.system.defaultBrowser.status()`; `autofill.cards.list` is `profile.autofill.cards.list()`.
+- `profiles.*` has no generated wrapper: `runtime.profiles` and `BDKProfile` use the ABI's own profile functions.
+- Named types carry the `BDK` prefix (`BDKHistoryEntry`, `BDKTimeRange`, `BDKPermissionValue`). `timestamp` is `Date` (milliseconds on the wire), `url` is `URL`, `json` is `BDKJSValue`, `bytes` is `Data`. Enums are `String` enums without a case for a value a newer runtime might add; one that does not decode fails the call with `runtime.malformedResult`.
+- A result with one field returns that field (`history.visits` returns `[BDKHistoryVisit]`, `passwords.reveal` returns `String`); one with several returns a nested struct (`BDKHistory.SearchResult`, with `items` and `nextCursor`). A paginated command takes `limit` and `cursor` and the caller loops.
+- Names that differ from the examples above: `history.search(_ text, in: range, limit:, cursor:)`, `history.delete(urls:)`, `bookmarks.roots()` (there is no `root(.bar)`), `bookmarks.create(url:, title:, in:, at:)`, `bookmarks.createFolder(_ title, in:, at:)`, `bookmarks.move(_ id, to:, at:)`, `settings.get(_ key) -> BDKJSValue` with `get(_ key, as: Value.self)` and `set(_ key, _ value)` for any `Codable` value (keys are strings; typed `BDKSettingKey` waits for T-SVC-05's setting registration), `permissions.set(origin:, kind:, value:)` (the kind is a string, not an enum), `privacy.clear(types:, range:, origins:, onProgress:)`, `passwords.reveal(_ id)`.
+- Marks. A command marked P takes `onProgress`. A command marked G (gesture) needs nothing from Swift: the gesture is a page's, and the host never needs one, so no `NSEvent` parameter exists. A command marked A (authentication) shows the operating system's prompt whoever calls; a refusal throws `capability.reauthenticationFailed`. Cancelling the Swift task cancels the call (`broker.cancelled`).
+- Events: `profile.history.events` is an `AsyncStream<BDKHistory.Event>`. Reading the property subscribes at once (unlike `BDKEventSequence`, which subscribes when iterated), so events after that point are delivered; the stream ends when it is dropped or the runtime shuts down.
 
 The generic entry point exists for commands a wrapper does not cover, including `app.` commands:
 
@@ -808,6 +824,8 @@ runtime.commands.emit(TabsChanged(count: 12), to: .profile(profile))   // .all, 
 
 A page or session receives an application event only if it holds the capability with the event's name.
 
+Settled in T-SVC-05 (2026-11-19): a `BDKCommand` also states the `input` and `output` shape (`BDKShape`, `BDKType`, `types`), because Swift cannot reflect a `Codable` type's fields; `requiresUserGesture`, `profile` and `reportsProgress` are static properties too. Registration goes on `config.commands` (a value, so code generation can build one without a runtime) and names are validated at start. `runtime.commands` invokes by type or by name, subscribes with `events(_:)`, and emits with `emit(_:to:)`. `BDKDeclarations.write(to:)` writes the JSON that the generator reads; the format is in `packages/swift/README.md`.
+
 ### 12.3 Settings
 
 ```swift
@@ -816,6 +834,15 @@ config.settings.register(
 ```
 
 Application settings are stored with browser settings and read through the same `settings.get` and `settings.set` commands. `exposedToPages: false` keeps a key out of reach of every page, whatever its capabilities.
+
+Settled in T-SVC-08 (2026-11-20):
+
+- `BDKSettingKey<Value>` (`Value: Codable & Sendable`) names a setting; `config.settings` is a value (`BDKSettingRegistry`) like `config.commands`, `scope` defaults to `.profile` and `exposedToPages` to `false`. The name must start with `app.` (`config.nameNotApp`), a name registered twice is `config.duplicateName`, and a default that cannot be encoded is `config.settingDefaultInvalid`; all are start errors, and the core checks the first two again in `bdk_app_setting_register`.
+- The type of a key is the JSON kind of its default (`boolean`, `number`, `string`, `array`, `object`; a null default makes it `json`, which takes any value). `settings.set` with another kind is `broker.invalidArguments`.
+- `profile.settings.get(key)`, `set(key, value)`, `reset(key)` and `describe(key)` sit beside the string overloads, on `profile.settings` and on `runtime.settings`. A `profile` scoped key needs a profile; an `application` scoped key has one value for every profile.
+- The shared core answers `app.` keys, so the stub and the engine behave the same; the engine only keeps the values, in `BDK App Settings.json` in the profile's directory (profile scope) or in the user data directory (application scope). A private profile keeps none. An unregistered `app.` key reads as `null` and is refused for `set`, `reset` and `describe`. `settings.changed` is emitted for a change.
+- `exposedToPages: false` refuses every page and every session with `capability.denied`, whatever capabilities it holds, for all five `settings.*` commands (`getMany` too, if any key is hidden). Swift calls are never refused. One `getMany` cannot mix `app.` keys with browser keys.
+- `config.declarations` (`BDKDeclarations`) lists commands, events and `settings` (`key`, `type`, `default`, `scope`, `exposedToPages`) for code generation.
 
 ## 13. Automation
 
@@ -923,12 +950,12 @@ public struct BDKError: Error, Sendable {
 | `profile` | `notFound`, `inUse`, `nameTaken`, `isPrivate` |
 | `contents` | `stale`, `crashed`, `stateTooNew`, `internalPage` |
 | `navigation` | `aborted`, `superseded`, `blocked`, `handledNatively`, `netError` |
-| `broker` | `unknownCommand`, `invalidArguments`, `cancelled`, `timeout`, `payloadTooLarge` |
+| `broker` | `unknownCommand`, `invalidArguments`, `cancelled`, `timeout`, `payloadTooLarge`, `notImplemented` |
 | `capability` | `denied`, `gestureRequired`, `reauthenticationFailed`, `outOfScope` |
 | `extension` | `incompatible`, `sourceNotAllowed`, `notFound`, `surfaceDisabled`, `installCancelled` |
 | `provider` | `unavailable`, `unsupportedPair`, `modelDownloadFailed`, `remoteError` |
 | `automation` | `disabled`, `hostGone`, `sessionRevoked`, `scriptNotFound`, `scriptFailed` |
-| `ui` | `requestCompleted`, `gestureRequired`, `surfaceDisabled` |
+| `ui` | `requestCompleted`, `gestureRequired`, `surfaceDisabled`, `surfaceMode`, `surfaceUnknown`, `completionNotAllowed`, `notOverridable`, `widensRequest` |
 | `devtools` | `disabled`, `protocolDisabled`, `alreadyAttached` |
 | `platform` | `keychainUnavailable`, `notDefaultBrowserCandidate` |
 

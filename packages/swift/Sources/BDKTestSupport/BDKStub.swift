@@ -5,8 +5,11 @@ import CBDKStub
 import Foundation
 
 extension BDKConfiguration {
-    /// A configuration the stub runtime accepts: an empty resolved configuration.
-    public static let stub = BDKConfiguration(resolvedJSON: "{}")
+    /// A configuration the stub runtime accepts: an empty resolved configuration. Each access
+    /// returns a new one, because a configuration's `ui` handlers are shared by its copies.
+    public static var stub: BDKConfiguration {
+        BDKConfiguration(resolvedJSON: "{}")
+    }
 }
 
 extension BDKRuntime {
@@ -75,6 +78,7 @@ public struct BDKStub {
         case rejected
         case cancelled
         case withdrawn
+        case disabled
     }
 
     /// What happened to the most recently raised UI request.
@@ -148,6 +152,7 @@ public struct BDKStub {
                 BDK_STUB_UI_NONE: .none, BDK_STUB_UI_COMPLETED: .completed,
                 BDK_STUB_UI_DEFAULTED: .defaulted, BDK_STUB_UI_REJECTED: .rejected,
                 BDK_STUB_UI_CANCELLED: .cancelled, BDK_STUB_UI_WITHDRAWN: .withdrawn,
+                BDK_STUB_UI_DISABLED: .disabled,
             ]
             return UIOutcome(
                 kind: kinds[abi.kind] ?? .none, surface: abi.surface,
@@ -165,6 +170,54 @@ public struct BDKStub {
             pointer: Unmanaged.passUnretained(event).toOpaque(), id: UInt64(event.timestamp))
         try check(bdk_stub_simulate_key(page.handle, native, &reserved))
         return reserved != 0
+    }
+
+    // MARK: Services
+
+    /// How the stub's operating system answers an authentication request.
+    public enum Authentication: UInt32, Sendable {
+        /// The user cancels the prompt: the call fails with `capability.reauthenticationFailed`.
+        case refuse = 0
+        case accept = 1
+        /// The prompt stays open until `answerAuthentication(granted:)`.
+        case wait = 2
+    }
+
+    /// The counters of `serviceCount`.
+    public enum ServiceCount: UInt32, Sendable {
+        /// Calls that reached a service.
+        case executed = 0
+        /// Calls a service is holding.
+        case held = 1
+        /// Calls a service was told to stop.
+        case stopped = 2
+        /// Times the operating system was asked to authenticate.
+        case authentications = 3
+    }
+
+    /// How the operating system answers the next authentication requests. The default is `.refuse`.
+    public func setAuthentication(_ mode: Authentication) throws {
+        try check(bdk_stub_set_authentication(try runtime.liveHandle(), mode.rawValue))
+    }
+
+    /// Answers the authentication request that waits in `.wait` mode.
+    public func answerAuthentication(granted: Bool) throws {
+        try check(bdk_stub_answer_authentication(try runtime.liveHandle(), granted ? 1 : 0))
+    }
+
+    /// While held, the stub's services take every built-in command and never answer it, so a test
+    /// can cancel it.
+    public func holdServices(_ hold: Bool) throws {
+        try check(bdk_stub_hold_services(try runtime.liveHandle(), hold ? 1 : 0))
+    }
+
+    /// Answers every held command, late.
+    public func releaseHeldCommands() throws {
+        try check(bdk_stub_release_held_commands(try runtime.liveHandle()))
+    }
+
+    public func serviceCount(_ which: ServiceCount) throws -> UInt32 {
+        bdk_stub_service_count(try runtime.liveHandle(), which.rawValue)
     }
 
     // MARK: Helpers

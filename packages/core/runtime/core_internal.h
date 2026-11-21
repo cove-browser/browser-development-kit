@@ -7,16 +7,20 @@
 #ifndef BDK_CORE_INTERNAL_H_
 #define BDK_CORE_INTERNAL_H_
 
+#include <deque>
 #include <functional>
 #include <map>
 #include <memory>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "bdk/bdk.h"
 
 namespace bdkcore {
+
+struct Request;
 
 enum Type : uint8_t {
     T_NONE = 0,
@@ -42,6 +46,7 @@ struct Buf {
 
 struct Runtime;
 struct Contents;
+struct BuiltinCall; /* broker_internal.h */
 
 struct Sub {
     bool active = true;
@@ -54,6 +59,7 @@ struct Sub {
     bdk_event_cb ecb = nullptr;
     uint32_t event_id = 0;
     std::string event_name;
+    bdk_profile_t profile = 0; /* events of this profile only; 0 for every profile */
 };
 
 struct Call {
@@ -68,11 +74,26 @@ struct Call {
     /* Runs once, from bdk_call_cancel, before the cancelled result is delivered: undoes what the
        call already handed out. */
     std::function<void()> on_cancel;
+    /* Runs once when the call is cancelled, or torn down with its caller or the runtime, before
+       the cancelled result is delivered: tells the service to stop. */
+    std::function<void()> on_stop;
 };
+
+/* Runs the call's on_stop, if it has one and has not run it yet. */
+inline void run_on_stop(const std::shared_ptr<Call>& c) {
+    if (c->on_stop) {
+        auto stop = std::move(c->on_stop);
+        c->on_stop = nullptr;
+        stop();
+    }
+}
+
+struct Profile;
 
 struct CallCtx {
     std::shared_ptr<Call> call;
     std::string caller = "{\"caller\":\"host\"}";
+    std::weak_ptr<Profile> profile; /* the profile the call addresses, if any */
 };
 
 /* What a backend keeps per profile or per page. */
@@ -140,7 +161,19 @@ enum class UiOutcome : uint8_t {
     kDefaulted = 2,
     kRejected = 3,
     kCancelled = 4,
-    kWithdrawn = 5
+    kWithdrawn = 5,
+    kDisabled =
+        6 /* the surface is disabled in the configuration: deny, report the API unavailable */
+};
+
+/* The configured mode of a surface (ui-requests.md section 4, configuration.md 3.6). */
+enum class UiMode : uint8_t { kDefault = 0, kCustom = 1, kDisabled = 2 };
+
+/* The requests of one kind for one page: Chromium queues them and the handler sees one at a time.
+ */
+struct UiQueue {
+    bool busy = false;
+    std::deque<std::shared_ptr<Request>> waiting;
 };
 
 struct Request {
@@ -152,7 +185,12 @@ struct Request {
     std::string payload;
     double anchor[4] = {0, 0, 0, 0};
     bdk_native_handle_t secure_view{};
+    /* The gesture event of the completion being applied, for on_finish to check further (a
+       recent mouse-up or key-down of this application). Borrowed: set only while on_finish runs
+       for a completion, empty otherwise. */
+    bdk_native_handle_t gesture{};
     bool delivered = false, finished = false;
+    bool holds_slot = false; /* it is the one request of its kind and page the handler sees */
     void (*withdrawn)(void*) = nullptr;
     void* wctx = nullptr;
     bdk_release_cb wrel = nullptr;
@@ -170,6 +208,22 @@ struct Session {
     std::set<bdk_contents_t> contents;
 };
 
+/* An application setting (`app.`), declared with bdk_app_setting_register. */
+struct AppSetting {
+    std::string key;
+    std::string type;         /* boolean, number, string, array, object or json (any value) */
+    std::string default_json; /* normalised JSON */
+    bool application = false; /* scope: the whole application, not one profile */
+    bool exposed = false;     /* exposedToPages: reachable by pages and sessions */
+};
+
+/* The values of one scope, kept by the core so that every backend behaves the same. The backend
+   only persists them (Backend::LoadAppSettings, SaveAppSettings). */
+struct AppSettingValues {
+    bool loaded = false;
+    std::map<std::string, std::string> values; /* key -> JSON */
+};
+
 struct Runtime {
     bdk_runtime_t handle = 0;
     bool frozen = false, shutting = false;
@@ -181,10 +235,13 @@ struct Runtime {
     std::map<std::string, Command> commands;
     std::map<std::string, uint32_t> events; /* declared application events -> identifier */
     uint32_t next_event_id = 0x80000000u;
-    std::vector<std::string> settings;
+    std::map<std::string, AppSetting> app_settings;
+    std::map<std::string, AppSettingValues> app_values; /* by profile id; "" for the application */
     std::map<std::string, Owned> page_handlers, providers;
     std::map<std::string, std::string> provider_keys;
     std::map<uint32_t, UiHandler> ui_handlers;
+    std::map<uint32_t, UiMode> ui_modes; /* by surface; a surface not listed is kDefault */
+    std::map<std::pair<bdk_contents_t, uint32_t>, UiQueue> ui_queues;
     std::vector<std::shared_ptr<Request>> requests;
     bdk_log_cb log_cb = nullptr;
     void* log_ctx = nullptr;
@@ -217,7 +274,7 @@ class Backend {
     /* Profiles. The core keeps the list and the names; the backend keeps what is on disk. */
     virtual void ProfilesChanged(Runtime& rt) = 0;
     virtual void OpenProfile(Runtime& rt, const std::shared_ptr<Profile>& profile, Done done) = 0;
-    virtual bdk_status_t OpenPrivateProfile(Runtime& rt, Profile& profile,
+    virtual bdk_status_t OpenPrivateProfile(Runtime& rt, const std::shared_ptr<Profile>& profile,
                                             bdk_error_t* out_error) = 0;
     /* After the profile's contents are destroyed. */
     virtual void CloseProfile(Runtime& rt, Profile& profile) = 0;
@@ -251,6 +308,19 @@ class Backend {
     virtual bdk_status_t Discard(Contents& contents, bdk_error_t* out_error) = 0;
     virtual bdk_status_t SetAutoDiscardable(Contents& contents, bool discardable,
                                             bdk_error_t* out_error) = 0;
+    /* Find in page and printing, started by the application. Results are
+       BDK_CONTENTS_EVENT_FIND_RESULT events. */
+    virtual bdk_status_t FindStart(const std::shared_ptr<Contents>& contents,
+                                   const std::string& text, bool match_case,
+                                   bdk_error_t* out_error) = 0;
+    virtual bdk_status_t FindNext(const std::shared_ptr<Contents>& contents, bool forward,
+                                  bdk_error_t* out_error) = 0;
+    virtual bdk_status_t FindStop(const std::shared_ptr<Contents>& contents, bool clear_selection,
+                                  bdk_error_t* out_error) = 0;
+    virtual bdk_status_t FindPresent(const std::shared_ptr<Contents>& contents,
+                                     bdk_error_t* out_error) = 0;
+    virtual bdk_status_t Print(const std::shared_ptr<Contents>& contents,
+                               bdk_error_t* out_error) = 0;
 
     /* Views and windows. */
     virtual bdk_status_t NativeView(Contents& contents, bdk_native_handle_t* out,
@@ -259,6 +329,23 @@ class Backend {
     virtual bdk_status_t RegisterWindow(Runtime& rt, const Window& window,
                                         bdk_error_t* out_error) = 0;
     virtual void UnregisterWindow(const Window& window) = 0;
+
+    /* Built-in commands (interface/<namespace>.json). The core has already found the command and
+       checked the caller, the scope, the gesture and the arguments (broker_internal.h); the backend
+       only does the work and answers through call->control, now or later, on the UI thread, exactly
+       once. The default answers broker.notImplemented, so a backend implements commands one by one.
+     */
+    virtual void ExecuteCommand(Runtime& rt, const std::shared_ptr<BuiltinCall>& call);
+    /* Application settings (`app.`) are answered by the core (app_settings.cc); the backend only
+       keeps them. LoadAppSettings returns the JSON object last saved for the profile, or for the
+       application when profile is null, and an empty string for none. SaveAppSettings stores the
+       whole object. Neither is called for a private profile. The defaults keep nothing. */
+    virtual std::string LoadAppSettings(Runtime& rt, const Profile* profile);
+    virtual void SaveAppSettings(Runtime& rt, const Profile* profile, const std::string& json);
+    /* Asks the user to authenticate with the operating system (a command marked A). done(true) if
+       they did. Runs on the UI thread, later. The default refuses. */
+    virtual void Authenticate(Runtime& rt, const std::string& reason,
+                              std::function<void(bool)> done);
 };
 
 /* The runtime that links the core defines this. */
@@ -308,6 +395,9 @@ std::shared_ptr<Contents> contents_of(bdk_contents_t);
 void release_withdrawn(Request&);
 /* Withdraws every unfinished request raised for the contents (0: every request). */
 void withdraw_contents_requests(const std::shared_ptr<Runtime>&, bdk_contents_t);
+/* Withdraws one request if it is unfinished: the application's withdrawn-handler fires and the
+   raiser learns kWithdrawn. For a backend whose own UI went away (a login delegate destroyed). */
+void withdraw_ui_request(Request&);
 
 /* For backends. */
 /* Delivers a contents event later, in order, unless the page is gone by then. */
@@ -317,10 +407,28 @@ void emit_contents_event(const std::shared_ptr<Contents>&, uint32_t kind, const 
 void emit_contents_event_now(const std::shared_ptr<Contents>&, uint32_t kind,
                              const std::string& url, const std::string& detail, int32_t net_error,
                              uint32_t flags);
-/* Raises a UI request: the handler for the surface is called later; with none, the request is
-   defaulted. on_finish gets the outcome exactly once. */
+/* Raises a UI request (ui_router.cc). The router decides by the surface's mode: disabled finishes
+   it as kDisabled with no handler called; otherwise the handler for the surface is called later,
+   one request of a kind per page at a time, and with no handler the request is defaulted (the
+   backend shows its default presenter). on_finish gets the outcome exactly once, always on a later
+   task. A request with no on_finish is a notice: it is delivered at once and never queued. */
 std::shared_ptr<Request> raise_ui_request(const std::shared_ptr<Runtime>&,
                                           std::shared_ptr<Request>);
+/* Whether `completion` grants on `surface` (ui-requests.md section 5), and so needs a gesture. */
+bool completion_grants(uint32_t surface, const std::string& completion);
+/* Reads [ui.surfaces] from the resolved configuration; fails with ui.surfaceUnknown or
+   ui.surfaceMode. Called by bdk_runtime_start before the backend starts. */
+bdk_status_t ui_configure(Runtime&, const std::string& resolved_config, bdk_error_t* out_error);
+/* Fails with config.handlerMissing when a custom surface has no handler. Called at the freeze. */
+bdk_status_t ui_check_handlers(const Runtime&, bdk_error_t* out_error);
+/* False when the configuration disables the surface: the web or extension API behind it must
+   report itself unavailable instead of raising a request. */
+bool ui_surface_available(const Runtime&, uint32_t surface);
+/* bdk_ui_complete, bdk_ui_use_default and bdk_ui_request_release, after the handle checks. */
+bdk_status_t ui_complete(Request&, const std::string& completion, const std::string& arguments,
+                         bdk_native_handle_t gesture, bdk_error_t* out_error);
+bdk_status_t ui_use_default(Request&, bdk_error_t* out_error);
+void ui_release(Request&);
 /* The keyboard handler of the page: the reserve answer, and the unhandled report. */
 bool reserve_key(Contents&, bdk_native_handle_t key_event);
 void report_unhandled_key(Contents&, bdk_native_handle_t key_event);

@@ -45,6 +45,7 @@ public final class BDKWebContents: Identifiable {
     package private(set) var handle: bdk_contents_t
     let broadcaster = EventBroadcaster<Event>()
     private var hostView: BDKWebView?
+    var findSession: FindSession?
     private var lastState = State()
 
     /// False once the page was destroyed, or its profile or runtime went away.
@@ -92,6 +93,16 @@ public final class BDKWebContents: Identifiable {
                 throw error
             }
         }
+        return contents
+    }
+
+    /// Wraps a page the engine created for a request (a new window, a print preview). The page is
+    /// the application's from here on, as one made with `create`.
+    static func adopt(handle: bdk_contents_t, in profile: BDKProfile) -> BDKWebContents {
+        if let existing = profile.runtime.webContents(handle: handle) { return existing }
+        let contents = BDKWebContents(profile: profile, handle: handle)
+        contents.installBridges()
+        profile.runtime.register(contents)
         return contents
     }
 

@@ -5,3 +5,10 @@ bdk-let-the-embedding-application-name-its-keychain-item.patch
 bdk-export-the-bdk-c-abi-from-the-framework.patch
 bdk-let-an-embedder-supply-its-chromecontentbrowserclient.patch
 bdk-export-the-bdk-engine-s-test-hooks-from-the-framework.patch
+bdk-let-an-embedder-supply-the-browserwindow-of-a-browser.patch
+bdk-accept-a-browser-whose-window-has-no-side-panel-ui-outside-tests.patch
+bdk-allow-a-browser-in-a-bdk-private-profile.patch
+bdk-let-an-embedder-supply-the-tabdialogs-of-a-tab.patch
+bdk-let-an-embedder-present-printing.patch
+bdk-let-an-embedder-supply-the-autofill-popup-view.patch
+bdk-reach-the-address-bubble-handler-through-the-browser-s-user-data.patch

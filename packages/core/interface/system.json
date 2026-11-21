@@ -1,0 +1,29 @@
+{
+  "namespace": "system",
+  "since": 1,
+  "types": {
+    "DefaultBrowserStatus": {
+      "isDefault": "bool",
+      "canBeDefault": "bool"
+    }
+  },
+  "commands": [
+    {
+      "name": "system.defaultBrowser.status",
+      "capability": "system.default-browser",
+      "callers": ["swift", "page", "session"],
+      "profile": "none",
+      "args": {},
+      "result": "DefaultBrowserStatus"
+    },
+    {
+      "name": "system.defaultBrowser.request",
+      "capability": "system.default-browser",
+      "callers": ["swift", "page", "session"],
+      "profile": "none",
+      "requires": ["gesture"],
+      "args": {},
+      "result": "void"
+    }
+  ]
+}

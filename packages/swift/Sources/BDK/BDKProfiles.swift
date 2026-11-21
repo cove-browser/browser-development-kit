@@ -112,6 +112,11 @@ public final class BDKProfiles {
         return profile
     }
 
+    /// The open profile with this handle, if Swift holds it.
+    func loaded(handle: bdk_profile_t) -> BDKProfile? {
+        handle == 0 ? nil : registry[handle]?.value
+    }
+
     func forget(_ handle: bdk_profile_t) {
         registry[handle] = nil
     }

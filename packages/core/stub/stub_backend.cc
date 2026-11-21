@@ -10,6 +10,7 @@
 #include "../runtime/core_internal.h"
 #include "bdk_abi_hash.h"
 #include "bdk_stub.h"
+#include "stub_services.h"
 
 using namespace bdkcore;
 
@@ -28,6 +29,8 @@ struct StubContents : BackendData {
     std::string user_agent;
     bool loading = false, muted = false, focused = false;
     bool auto_discardable = true, discarded = false;
+    std::string find_text;  /* the search in progress; empty when none */
+    bool find_open = false; /* a find request is outstanding */
     double progress = 0.0, zoom = 1.0;
     std::shared_ptr<Nav> nav;
 };
@@ -42,6 +45,9 @@ struct StubState {
     std::deque<std::function<void()>> queue;
     std::map<std::string, std::pair<int32_t, std::string>> scripts;
     bdk_stub_ui_outcome_t outcome{};
+    /* What the stub keeps of application settings, by profile id ("" for the application): its
+       stand-in for the disk, so a closed and reopened profile gets its values back. */
+    std::map<std::string, std::string> app_settings;
 };
 
 StubState& S() {
@@ -246,7 +252,9 @@ class StubBackend final : public Backend {
     bdk_status_t Start(Runtime&, const bdk_start_config_t&, const std::string&,
                        bdk_error_t*) override {
         S().scripts.clear();
+        S().app_settings.clear();
         set_outcome(BDK_STUB_UI_NONE, 0, "", "");
+        bdkstub::services_reset();
         return BDK_OK;
     }
 
@@ -268,13 +276,24 @@ class StubBackend final : public Backend {
         post([done] { done("", ""); });
     }
 
-    bdk_status_t OpenPrivateProfile(Runtime&, Profile&, bdk_error_t*) override {
+    bdk_status_t OpenPrivateProfile(Runtime&, const std::shared_ptr<Profile>&,
+                                    bdk_error_t*) override {
         return BDK_OK;
     }
 
     void CloseProfile(Runtime&, Profile&) override {}
 
-    void DeleteProfile(Runtime&, const Profile&, Done done) override {
+    std::string LoadAppSettings(Runtime&, const Profile* profile) override {
+        auto it = S().app_settings.find(profile ? profile->id : std::string());
+        return it == S().app_settings.end() ? std::string() : it->second;
+    }
+
+    void SaveAppSettings(Runtime&, const Profile* profile, const std::string& json) override {
+        S().app_settings[profile ? profile->id : std::string()] = json;
+    }
+
+    void DeleteProfile(Runtime&, const Profile& profile, Done done) override {
+        S().app_settings.erase(profile.id);
         done("", "");
     }
 
@@ -400,6 +419,70 @@ class StubBackend final : public Backend {
         return BDK_OK;
     }
 
+    /* The stub renders nothing, so every search finds no match: one final result with zero
+       matches, no active match and an empty rect, for each start and each move. */
+    void report_find(const std::shared_ptr<Contents>& c) {
+        emit_contents_event(c, BDK_CONTENTS_EVENT_FIND_RESULT, "",
+                            "{\"matchCount\":0,\"activeIndex\":0,\"rect\":{\"x\":0,\"y\":0,"
+                            "\"width\":0,\"height\":0},\"final\":true}",
+                            0, 0);
+    }
+
+    bdk_status_t FindStart(const std::shared_ptr<Contents>& c, const std::string& text, bool,
+                           bdk_error_t*) override {
+        data_of(*c).find_text = text;
+        report_find(c);
+        return BDK_OK;
+    }
+
+    bdk_status_t FindNext(const std::shared_ptr<Contents>& c, bool, bdk_error_t*) override {
+        if (!data_of(*c).find_text.empty())
+            report_find(c);
+        return BDK_OK;
+    }
+
+    bdk_status_t FindStop(const std::shared_ptr<Contents>& c, bool, bdk_error_t*) override {
+        data_of(*c).find_text.clear();
+        return BDK_OK;
+    }
+
+    /* A request raised for the page, as the engine raises its own. */
+    static void raise_for(const std::shared_ptr<Contents>& c, uint32_t surface,
+                          const std::string& payload, const std::function<void()>& on_end) {
+        auto rt = c->rt.lock();
+        if (!rt)
+            return;
+        auto r = std::make_shared<Request>();
+        r->surface = surface;
+        r->contents = c->handle;
+        r->payload = payload;
+        r->on_finish = [on_end](UiOutcome, const std::string&, const std::string&) {
+            if (on_end)
+                on_end();
+        };
+        raise_ui_request(rt, r);
+    }
+
+    bdk_status_t FindPresent(const std::shared_ptr<Contents>& c, bdk_error_t*) override {
+        StubContents& d = data_of(*c);
+        if (d.find_open)
+            return BDK_OK; /* only one find UI is open per page */
+        d.find_open = true;
+        std::weak_ptr<Contents> weak = c;
+        const std::string payload =
+            d.find_text.empty() ? "{}" : "{\"initialText\":\"" + json_escape(d.find_text) + "\"}";
+        raise_for(c, BDK_SURFACE_FIND, payload, [weak] {
+            if (auto p = weak.lock())
+                data_of(*p).find_open = false;
+        });
+        return BDK_OK;
+    }
+
+    bdk_status_t Print(const std::shared_ptr<Contents>& c, bdk_error_t*) override {
+        raise_for(c, BDK_SURFACE_PRINTING, "{\"isUserInitiated\":true}", nullptr);
+        return BDK_OK;
+    }
+
     bdk_status_t NativeView(Contents&, bdk_native_handle_t*, bdk_error_t* err) override {
         return fail(err, BDK_DOMAIN_PLATFORM, "unsupported",
                     "the stub runtime has no native views");
@@ -426,6 +509,14 @@ class StubBackend final : public Backend {
     }
 
     void UnregisterWindow(const Window&) override {}
+
+    void ExecuteCommand(Runtime& rt, const std::shared_ptr<BuiltinCall>& call) override {
+        bdkstub::services_execute(rt, call);
+    }
+
+    void Authenticate(Runtime&, const std::string&, std::function<void(bool)> done) override {
+        bdkstub::services_authenticate(std::move(done));
+    }
 };
 
 } // namespace

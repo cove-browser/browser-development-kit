@@ -42,6 +42,10 @@ public final class BDKRuntime {
 
     public let info: Info
     public private(set) lazy var profiles = BDKProfiles(runtime: self)
+    /// The UI-request handlers the runtime delivers to.
+    public private(set) lazy var ui = BDKUIHandlers()
+    /// Application commands and events, and invocation of any command by name.
+    public private(set) lazy var commands = BDKCommands(runtime: self)
     public private(set) var areRegistrationsFrozen = false
 
     package private(set) var handle: bdk_runtime_t
@@ -77,6 +81,8 @@ public final class BDKRuntime {
         _ configuration: BDKConfiguration, host: HostABI = .current,
         freezingRegistrations: Bool = true
     ) throws -> BDKRuntime {
+        try configuration.commands.validate()
+        try configuration.settings.validate()
         var handle: bdk_runtime_t = 0
         var error: bdk_error_t = 0
         let strings = [
@@ -111,9 +117,25 @@ public final class BDKRuntime {
                 abiVersion: bdk_abi_version(), abiHash: swiftString(bdk_abi_hash())))
         current = runtime
         runtime.subscribeToEvents()
-        if freezingRegistrations { try runtime.freezeRegistrations() }
+        do {
+            // The core checks some registrations only now (a custom UI surface needs its handler
+            // by the freeze), after the native runtime has started.
+            try runtime.register(configuration)
+            if freezingRegistrations { try runtime.freezeRegistrations() }
+        } catch {
+            runtime.stopAfterFailedStart()
+            throw error
+        }
         EventLoop.kick()
         return runtime
+    }
+
+    /// Keeps the promise of `start` when it fails after the native runtime started: the runtime is
+    /// no longer current at once, and it shuts down on the main actor, as `shutdown()` does.
+    private func stopAfterFailedStart() {
+        if Self.current === self { Self.current = nil }
+        terminate(completion: {})
+        EventLoop.kick()
     }
 
     /// An ABI error that names what the host and the runtime each have, so that the fix is clear.
@@ -135,6 +157,14 @@ public final class BDKRuntime {
     }
 
     // MARK: Registrations
+
+    /// Hands the configuration's UI handlers, commands, events and settings to the runtime. Both are
+    /// registrations, so this runs before the freeze.
+    private func register(_ configuration: BDKConfiguration) throws {
+        try ui.attach(to: self, from: configuration)
+        try commands.adopt(configuration.commands)
+        try configuration.settings.adopt(into: self)
+    }
 
     /// Freezes the route and capability tables. Registrations after this fail with
     /// `config.registrationAfterStart`, and a second freeze does too.
@@ -236,7 +266,13 @@ public final class BDKRuntime {
         liveContents.keys.sorted().compactMap { liveContents[$0]?.value }
     }
 
+    /// The page with this handle, if the application has one for it.
+    func webContents(handle: UInt64) -> BDKWebContents? {
+        handle == 0 ? nil : liveContents[handle]?.value
+    }
+
     private func invalidateChildren() {
+        commands.invalidate()
         for contents in webContents { contents.invalidate() }
         for profile in profiles.loaded { profile.invalidate() }
         windows.removeAll()

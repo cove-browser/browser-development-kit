@@ -51,12 +51,14 @@ extension BDKError {
         case runtime
         case profile
         case contents
+        case request
 
         var domain: Domain {
             switch self {
             case .runtime: .runtime
             case .profile: .profile
             case .contents: .contents
+            case .request: .ui
             }
         }
 
@@ -65,6 +67,7 @@ extension BDKError {
             case .runtime: "runtime"
             case .profile: "profile"
             case .contents: "contents"
+            case .request: "request"
             }
         }
     }

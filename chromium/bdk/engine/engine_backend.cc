@@ -18,25 +18,39 @@
 #include "base/environment.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
+#include "base/files/important_file_writer.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
-#include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
+#include "base/memory/weak_ptr.h"
 #include "base/no_destructor.h"
 #include "base/path_service.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "base/task/thread_pool.h"
+#include "base/time/time.h"
 #include "base/values.h"
 #include "bdk/core/generated/bdk_abi_hash.h"
 #include "bdk/core/runtime/core_internal.h"
 #include "bdk/engine/chromium_main.h"
 #include "bdk/engine/engine_contents.h"
+#include "bdk/engine/host_context.h"
 #include "bdk/engine/host_view.h"
 #include "bdk/engine/identity.h"
+#include "bdk/engine/json_util.h"
+#include "bdk/engine/services/authentication.h"
+#include "bdk/engine/services/download_prompts.h"
+#include "bdk/engine/services/events.h"
+#include "bdk/engine/services/passwords_service.h"
+#include "bdk/engine/services/print_prompts.h"
+#include "bdk/engine/services/prompt_hooks.h"
+#include "bdk/engine/services/services.h"
 #include "bdk/engine/session_state.h"
 #include "bdk/engine/testing.h"
+#include "bdk/engine/ui_find.h"
+#include "bdk/engine/ui_notifications.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/profiles/delete_profile_helper.h"
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
@@ -65,9 +79,19 @@ using bdkcore::Contents;
 using bdkcore::Done;
 using bdkcore::Runtime;
 
+// How often a profile open waits to see its profile destroyed.
+constexpr base::TimeDelta kUnloadPoll = base::Milliseconds(10);
+
 // Lists the persistent profiles and the next free identifier number, in the
 // user data directory, next to Chromium's own Local State.
 constexpr char kRegistryFile[] = "BDK Profiles.json";
+
+// Application settings (`app.` keys), one file per profile in its directory
+// and one for the application's own in the user data directory. The core
+// answers the settings commands; the engine only keeps the file. The UI thread
+// may not block, so a profile's file is read while it opens and the text is
+// kept in memory; a change is written on the registry writer's sequence.
+constexpr char kAppSettingsFile[] = "BDK App Settings.json";
 
 // Test only: a runtime shutdown leaves Chromium running, so that one process
 // can start and stop many runtimes (the conformance suite does). Chromium can
@@ -144,6 +168,7 @@ class EngineBackend final : public bdkcore::Backend {
       // The UI thread may not block once Chromium runs: read the registry now
       // and keep it in memory from here on.
       registry_ = ReadRegistry(user_data_dir_);
+      app_settings_text_[""] = ReadAppSettings(user_data_dir_);
       ApplyIdentityBeforeStart(*identity);
       ChromiumStartOptions options;
       base::PathService::Get(base::FILE_EXE, &options.program);
@@ -155,11 +180,18 @@ class EngineBackend final : public bdkcore::Backend {
                              error);
       }
       ApplyIdentityAfterStart(*identity);
+      InstallPromptHooks();
       chromium_tasks_.store(true);
       registry_writer_ = base::ThreadPool::CreateSequencedTaskRunner(
           {base::MayBlock(), base::TaskShutdownBehavior::BLOCK_SHUTDOWN});
     }
-    base_profile_ = ProfileManager::GetLastUsedProfileIfLoaded();
+    SetRuntimeInfo(resolved);
+    // The profile Chromium started with. A runtime started in a Chromium that
+    // is still running (BDK_ENGINE_KEEP_CHROMIUM) keeps it: the last used
+    // profile may by then be one BDK opened and closed, which is unloaded.
+    if (!base_profile_) {
+      base_profile_ = ProfileManager::GetLastUsedProfileIfLoaded();
+    }
     if (!base_profile_) {
       return bdkcore::fail(out_error, BDK_DOMAIN_RUNTIME, "startFailed",
                            "Chromium loaded no profile");
@@ -181,6 +213,8 @@ class EngineBackend final : public bdkcore::Backend {
       c->data.reset();
     }
     rt.contents.clear();
+    // Every page is gone: the contexts that held them go before the profiles.
+    HostContexts::Get().DestroyAll();
     for (auto& p : rt.profiles) {
       if (p->data) {
         ReleaseProfile(*p);
@@ -190,6 +224,10 @@ class EngineBackend final : public bdkcore::Backend {
              ->GetVar(kKeepChromiumEnv)
              .value_or("")
              .empty()) {
+      // Chromium stays, but nothing of this runtime's profiles does.
+      while (!loaded_.empty()) {
+        UnloadWhenClosed(loaded_.begin()->first);
+      }
       done();
       return;
     }
@@ -202,14 +240,23 @@ class EngineBackend final : public bdkcore::Backend {
   }
 
   std::string ManifestJson() override {
-    return base::WriteJson(
-               base::DictValue()
-                   .Set("bdk", "0.0.0")
-                   .Set("chromium", version_info::GetVersionNumber())
-                   .Set("digest", base::Value())
-                   .Set("abiVersion", BDK_ABI_VERSION)
-                   .Set("abiHash", BDK_ABI_HASH))
-        .value_or("{}");
+    return ToJson(base::DictValue()
+                      .Set("bdk", "0.0.0")
+                      .Set("chromium", version_info::GetVersionNumber())
+                      .Set("digest", base::Value())
+                      .Set("abiVersion", BDK_ABI_VERSION)
+                      .Set("abiHash", BDK_ABI_HASH));
+  }
+
+  // Built-in commands, service by service (engine/services): passwords and
+  // autofill first, then the rest.
+  void ExecuteCommand(
+      Runtime& rt,
+      const std::shared_ptr<bdkcore::BuiltinCall>& call) override {
+    if (ExecutePasswordsOrAutofillCommand(rt, call)) {
+      return;
+    }
+    ExecuteBuiltinCommand(rt, call);
   }
 
   void ProfilesChanged(Runtime& rt) override {
@@ -241,8 +288,31 @@ class EngineBackend final : public bdkcore::Backend {
   void OpenProfile(Runtime& rt,
                    const std::shared_ptr<bdkcore::Profile>& profile,
                    Done done) override {
+    LoadProfile(profile, std::move(done));
+  }
+
+  void LoadProfile(const std::shared_ptr<bdkcore::Profile>& profile,
+                   Done done) {
     const base::FilePath path = user_data_dir_.AppendASCII(profile->id);
+    if (IsUnloading(path)) {
+      NoteTaskPosted();
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+          FROM_HERE,
+          base::BindOnce(
+              [](EngineBackend* backend,
+                 const std::shared_ptr<bdkcore::Profile>& profile, Done done) {
+                NoteTaskRun();
+                backend->LoadProfile(profile, std::move(done));
+              },
+              base::Unretained(this), profile, std::move(done)),
+          kUnloadPoll);
+      return;
+    }
     std::weak_ptr<bdkcore::Profile> weak = profile;
+    // The open counts as pending work until its result is delivered: the
+    // profile loads asynchronously and its settings file is read on another
+    // sequence, neither of which is a BDK task on the UI thread.
+    NoteTaskPosted();
     g_browser_process->profile_manager()->CreateProfileAsync(
         path, base::BindOnce(
                   [](EngineBackend* backend, base::FilePath path,
@@ -250,25 +320,36 @@ class EngineBackend final : public bdkcore::Backend {
                      Profile* loaded) {
                     std::shared_ptr<bdkcore::Profile> p = weak.lock();
                     if (!loaded) {
+                      NoteTaskRun();
                       done("openFailed", "Chromium could not load the profile");
                       return;
                     }
                     if (!p || !p->open) {
+                      // Loaded for nobody: let it unload, as a closed one.
+                      backend->KeepLoaded(path, loaded);
+                      backend->UnloadWhenClosed(path);
+                      NoteTaskRun();
                       done("openFailed", "the profile was closed");
                       return;
                     }
                     backend->KeepLoaded(path, loaded);
+                    // Web notifications become UI requests
+                    // (ui_notifications.h).
+                    InstallNotificationDisplay(loaded);
+                    InstallDownloadPrompts(loaded);
                     auto data = std::make_unique<EngineProfile>();
                     data->profile = loaded;
+                    data->events = CreateServiceEvents(loaded, p);
                     p->data = std::move(data);
-                    done("", "");
+                    backend->LoadAppSettingsThenDone(p, std::move(done));
                   },
                   base::Unretained(this), path, weak, std::move(done)));
   }
 
-  bdk_status_t OpenPrivateProfile(Runtime& rt,
-                                  bdkcore::Profile& profile,
-                                  bdk_error_t* out_error) override {
+  bdk_status_t OpenPrivateProfile(
+      Runtime& rt,
+      const std::shared_ptr<bdkcore::Profile>& profile,
+      bdk_error_t* out_error) override {
     // Each private profile is its own off-the-record profile: cookies, cache,
     // storage and permissions are kept apart from every other profile, and
     // nothing is written to disk.
@@ -279,14 +360,59 @@ class EngineBackend final : public bdkcore::Backend {
       return bdkcore::fail(out_error, BDK_DOMAIN_PROFILE, "openFailed",
                            "Chromium could not create a private profile");
     }
+    InstallDownloadPrompts(otr);
     auto data = std::make_unique<EngineProfile>();
     data->profile = otr;
-    profile.data = std::move(data);
+    // Cookie and download events; ProfileEvents leaves out the history and
+    // bookmarks an off-the-record profile shares with its original.
+    data->events = CreateServiceEvents(otr, profile);
+    profile->data = std::move(data);
     return BDK_OK;
   }
 
   void CloseProfile(Runtime& rt, bdkcore::Profile& profile) override {
+    // The profile's pages are destroyed; the contexts that held them go before
+    // the profile may.
+    if (profile.data) {
+      HostContexts::Get().DestroyProfileContexts(ProfileData(profile).profile);
+      UnloadWhenClosed(user_data_dir_.AppendASCII(profile.id));
+    }
     ReleaseProfile(profile);
+  }
+
+  std::string LoadAppSettings(Runtime& rt,
+                              const bdkcore::Profile* profile) override {
+    auto it = app_settings_text_.find(profile ? profile->id : std::string());
+    return it == app_settings_text_.end() ? std::string() : it->second;
+  }
+
+  void SaveAppSettings(Runtime& rt,
+                       const bdkcore::Profile* profile,
+                       const std::string& json) override {
+    app_settings_text_[profile ? profile->id : std::string()] = json;
+    registry_writer_->PostTask(
+        FROM_HERE, base::BindOnce(
+                       [](base::FilePath path, std::string json) {
+                         base::ImportantFileWriter::WriteFileAtomically(path,
+                                                                        json);
+                       },
+                       AppSettingsPath(profile), json));
+  }
+
+  // Reads the profile's application settings off the UI thread, then opens it.
+  void LoadAppSettingsThenDone(const std::shared_ptr<bdkcore::Profile>& profile,
+                               Done done) {
+    registry_writer_->PostTaskAndReplyWithResult(
+        FROM_HERE,
+        base::BindOnce(&ReadAppSettings, AppSettingsDir(profile.get())),
+        base::BindOnce(
+            [](EngineBackend* backend, std::string id, Done done,
+               std::string text) {
+              backend->app_settings_text_[id] = std::move(text);
+              NoteTaskRun();
+              done("", "");
+            },
+            base::Unretained(this), profile->id, std::move(done)));
   }
 
   void DeleteProfile(Runtime& rt,
@@ -315,6 +441,10 @@ class EngineBackend final : public bdkcore::Backend {
       return bdkcore::fail(out_error, BDK_DOMAIN_PROFILE, "notOpen",
                            "the profile is not loaded yet");
     }
+    if (!HostContexts::CanHost(profile)) {
+      return bdkcore::fail(out_error, BDK_DOMAIN_PROFILE, "notOpen",
+                           "Chromium cannot open a page in this profile");
+    }
     // With its renderer from the start: a page can take focus and receive
     // input before its first navigation, as the stub's pages can.
     content::WebContents::CreateParams params(profile);
@@ -330,6 +460,15 @@ class EngineBackend final : public bdkcore::Backend {
 
   void CloseContents(const std::shared_ptr<Contents>& c) override {
     Page(*c).Close();
+  }
+
+  void Authenticate(Runtime& rt,
+                    const std::string& reason,
+                    std::function<void(bool)> done) override {
+    AuthenticateUser(
+        reason, base::BindOnce([](std::function<void(bool)> done,
+                                  bool authenticated) { done(authenticated); },
+                               std::move(done)));
   }
 
   void DestroyContents(Runtime& rt, Contents& c) override { c.data.reset(); }
@@ -491,6 +630,42 @@ class EngineBackend final : public bdkcore::Backend {
     return BDK_OK;
   }
 
+  bdk_status_t FindStart(const std::shared_ptr<Contents>& c,
+                         const std::string& text,
+                         bool match_case,
+                         bdk_error_t* out_error) override {
+    Page(*c).find().Start(text, match_case);
+    return BDK_OK;
+  }
+
+  bdk_status_t FindNext(const std::shared_ptr<Contents>& c,
+                        bool forward,
+                        bdk_error_t* out_error) override {
+    Page(*c).find().Next(forward);
+    return BDK_OK;
+  }
+
+  bdk_status_t FindStop(const std::shared_ptr<Contents>& c,
+                        bool clear_selection,
+                        bdk_error_t* out_error) override {
+    Page(*c).find().Stop(clear_selection);
+    return BDK_OK;
+  }
+
+  bdk_status_t FindPresent(const std::shared_ptr<Contents>& c,
+                           bdk_error_t* out_error) override {
+    Page(*c).find().Present();
+    return BDK_OK;
+  }
+
+  bdk_status_t Print(const std::shared_ptr<Contents>& c,
+                     bdk_error_t* out_error) override {
+    // The path the print command takes: a `printing` request, then the
+    // application's choice or the default presenter.
+    OnPrintRequested(Page(*c).web_contents(), /*is_user_initiated=*/true);
+    return BDK_OK;
+  }
+
   bdk_status_t NativeView(Contents& c,
                           bdk_native_handle_t* out,
                           bdk_error_t* out_error) override {
@@ -499,18 +674,30 @@ class EngineBackend final : public bdkcore::Backend {
   }
 
   bdk_status_t Focus(Runtime& rt, const std::shared_ptr<Contents>& c) override {
-    Page(*c).LoadIfDiscarded();
-    Page(*c).web_contents()->Focus();
+    Page(*c).Focus();
     return BDK_OK;
   }
 
   bdk_status_t RegisterWindow(Runtime& rt,
                               const bdkcore::Window& window,
                               bdk_error_t* out_error) override {
+    HostContexts::Get().RegisterWindow(&window, window.native);
+    // Pages whose views are already in the window move into its contexts.
+    for (EngineContents* page : EngineContents::All()) {
+      page->Reconcile();
+    }
     return BDK_OK;
   }
 
-  void UnregisterWindow(const bdkcore::Window& window) override {}
+  void UnregisterWindow(const bdkcore::Window& window) override {
+    // The window's pages go to parking, then its contexts close.
+    for (EngineContents* page : EngineContents::All()) {
+      if (page->IsInWindow(&window)) {
+        page->Park();
+      }
+    }
+    HostContexts::Get().UnregisterWindow(&window);
+  }
 
   // Keeps a persistent profile loaded for the life of the runtime, from its
   // first open. Closing it in BDK does not unload it in Chromium: an unload
@@ -519,9 +706,40 @@ class EngineBackend final : public bdkcore::Backend {
   // first still holds.
   void KeepLoaded(const base::FilePath& path, Profile* profile) {
     if (!loaded_.contains(path)) {
-      loaded_[path] = std::make_unique<ScopedProfileKeepAlive>(
-          profile, ProfileKeepAliveOrigin::kBrowserWindow);
+      loaded_[path] = {profile->GetWeakPtr(),
+                       std::make_unique<ScopedProfileKeepAlive>(
+                           profile, ProfileKeepAliveOrigin::kBrowserWindow)};
     }
+  }
+
+  // Lets Chromium unload a persistent profile that BDK has closed. Its
+  // destruction is asynchronous, so the path is remembered until the Profile
+  // object is gone (IsUnloading); without this every profile a runtime ever
+  // opened would stay loaded, with its databases and file descriptors, until
+  // the runtime stopped.
+  void UnloadWhenClosed(const base::FilePath& path) {
+    auto it = loaded_.find(path);
+    if (it == loaded_.end()) {
+      return;
+    }
+    unloading_[path] = it->second.profile;
+    loaded_.erase(it);
+  }
+
+  // True while Chromium has unloaded the profile at `path` but not yet
+  // destroyed it. A profile Chromium still holds loaded (another keep-alive)
+  // is not unloading: opening it again gets the same instance.
+  bool IsUnloading(const base::FilePath& path) {
+    auto it = unloading_.find(path);
+    if (it == unloading_.end()) {
+      return false;
+    }
+    if (!it->second ||
+        g_browser_process->profile_manager()->GetProfileByPath(path)) {
+      unloading_.erase(it);
+      return false;
+    }
+    return true;
   }
 
   // For bdk_testing_forget_profiles().
@@ -540,6 +758,20 @@ class EngineBackend final : public bdkcore::Backend {
     }
   }
 
+  base::FilePath AppSettingsDir(const bdkcore::Profile* profile) const {
+    return profile ? user_data_dir_.AppendASCII(profile->id) : user_data_dir_;
+  }
+
+  base::FilePath AppSettingsPath(const bdkcore::Profile* profile) const {
+    return AppSettingsDir(profile).AppendASCII(kAppSettingsFile);
+  }
+
+  static std::string ReadAppSettings(const base::FilePath& dir) {
+    std::string text;
+    base::ReadFileToString(dir.AppendASCII(kAppSettingsFile), &text);
+    return text;
+  }
+
   struct Registry {
     uint64_t next_id = 1;
     std::vector<std::pair<std::string, std::string>> profiles;  // id, name
@@ -552,8 +784,7 @@ class EngineBackend final : public bdkcore::Backend {
                                 &text)) {
       return registry;
     }
-    std::optional<base::DictValue> dict =
-        base::JSONReader::ReadDict(text, base::JSON_PARSE_CHROMIUM_EXTENSIONS);
+    std::optional<base::DictValue> dict = ParseJsonDict(text);
     if (!dict) {
       return registry;
     }
@@ -582,8 +813,17 @@ class EngineBackend final : public bdkcore::Backend {
   base::FilePath requested_user_data_dir_;
   raw_ptr<Profile> base_profile_ = nullptr;
   scoped_refptr<base::SequencedTaskRunner> registry_writer_;
+  // The text of each scope's application settings file, by profile id ("" for
+  // the application's).
+  std::map<std::string, std::string> app_settings_text_;
   Registry registry_;
-  std::map<base::FilePath, std::unique_ptr<ScopedProfileKeepAlive>> loaded_;
+  struct LoadedProfile {
+    base::WeakPtr<Profile> profile;
+    std::unique_ptr<ScopedProfileKeepAlive> keep_alive;
+  };
+  std::map<base::FilePath, LoadedProfile> loaded_;
+  // Persistent profiles BDK closed that Chromium is still destroying.
+  std::map<base::FilePath, base::WeakPtr<Profile>> unloading_;
 };
 
 }  // namespace

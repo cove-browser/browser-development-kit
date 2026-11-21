@@ -99,6 +99,7 @@ final class CallBox {
     var call: bdk_call_t = 0
     var isFinished = false
     var isCancelRequested = false
+    var progress: (@MainActor (Double, String) -> Void)?
 
     func finish(_ outcome: Result<String, BDKError>) {
         isFinished = true
@@ -127,6 +128,13 @@ private let resultCallback: bdk_result_cb = { context, error, json, _ in
     MainActor.assumeIsolated { box.finish(outcome) }
 }
 
+private let progressCallback: bdk_progress_cb = { context, fraction, message in
+    guard let context else { return }
+    let box = Unmanaged<CallBox>.fromOpaque(context).takeUnretainedValue()
+    let text = swiftString(message)
+    MainActor.assumeIsolated { box.progress?(fraction, text) }
+}
+
 private let releaseCallback: bdk_release_cb = { context in
     guard let context else { return }
     Unmanaged<CallBox>.fromOpaque(context).release()
@@ -142,12 +150,25 @@ func abiAsync(
     _ subject: BDKError.Subject,
     _ issue: (UnsafeMutableRawPointer, bdk_result_cb, bdk_release_cb) -> bdk_call_t
 ) async throws -> String {
+    try await abiAsync(subject, progress: nil) { context, result, _, release in
+        issue(context, result, release)
+    }
+}
+
+/// `abiAsync` for a call that reports progress: `progress` runs on the main actor, before the
+/// result, with the fraction and the message.
+@MainActor
+func abiAsync(
+    _ subject: BDKError.Subject, progress: (@MainActor (Double, String) -> Void)?,
+    _ issue: (UnsafeMutableRawPointer, bdk_result_cb, bdk_progress_cb, bdk_release_cb) -> bdk_call_t
+) async throws -> String {
     let box = CallBox()
+    box.progress = progress
     return try await withTaskCancellationHandler {
         try await withCheckedThrowingContinuation { continuation in
             box.continuation = continuation
             let context = Unmanaged.passRetained(box).toOpaque()
-            let handle = issue(context, resultCallback, releaseCallback)
+            let handle = issue(context, resultCallback, progressCallback, releaseCallback)
             EventLoop.kick()
             if handle == 0 {
                 Unmanaged<CallBox>.fromOpaque(context).release()

@@ -173,7 +173,7 @@ The functions behind the Swift objects in [swift-api.md](swift-api.md) sections 
 | `bdk_contents_session_state`, `bdk_contents_restore` | Serialised navigation state, as a buffer |
 | `bdk_contents_set_muted`, `_set_zoom`, `_set_user_agent`, `_perform_command`, `_can_perform_command` | Page controls |
 | `bdk_contents_discard`, `_set_auto_discardable` | Added (S15). Discard a hidden page's renderer; exempt a page from Chromium's automatic discarding. The `bdk_contents_t` handle stays valid across a discard, including when Chromium replaces the underlying WebContents. |
-| `bdk_contents_find_start`, `_find_next`, `_find_stop` | Find in page |
+| `bdk_contents_find_start`, `_find_next`, `_find_previous`, `_find_stop`, `_find_present`, `bdk_contents_print` | Find in page and printing, started by the application (T-SWF-07). `find_start` takes the text and an optional size-prefixed options struct (`match_case`); `find_stop` takes whether to clear the selection. Results arrive as `BDK_CONTENTS_EVENT_FIND_RESULT` events with `{"matchCount","activeIndex","rect","final"}`. `find_present` and `print` raise a `find` and a `printing` UI request. |
 | `bdk_contents_set_host_context` | Conditional on decision D1 |
 
 Scripting, capture, translation and DevTools go through broker commands, not host functions, because automation uses them too.
@@ -260,9 +260,11 @@ typedef void (*bdk_app_command_cb)(void* context, bdk_context_t call_context, bd
 BDK_EXPORT void bdk_app_command_progress(bdk_context_t, double fraction, bdk_string_t message);
 BDK_EXPORT void bdk_app_command_resolve(bdk_context_t, bdk_string_t output_json);
 BDK_EXPORT void bdk_app_command_reject(bdk_context_t, bdk_string_t domain, bdk_string_t code, bdk_string_t message);
-/* And can ask who called and whether the call was cancelled: */
-BDK_EXPORT bdk_string_t bdk_app_command_caller_json(bdk_context_t);
-BDK_EXPORT uint8_t      bdk_app_command_is_cancelled(bdk_context_t);
+/* And can ask who called, which profile the call addresses (0 for none) and whether the call was
+   cancelled: */
+BDK_EXPORT bdk_string_t  bdk_app_command_caller_json(bdk_context_t);
+BDK_EXPORT bdk_profile_t bdk_app_command_profile(bdk_context_t);
+BDK_EXPORT uint8_t       bdk_app_command_is_cancelled(bdk_context_t);
 
 BDK_EXPORT bdk_status_t bdk_app_command_register(bdk_runtime_t, bdk_string_t name, bdk_string_t declaration_json,
                                                  bdk_app_command_cb, void* ctx, bdk_release_cb, bdk_error_t*);
@@ -273,6 +275,8 @@ BDK_EXPORT bdk_status_t bdk_app_setting_register(bdk_runtime_t, bdk_string_t dec
 BDK_EXPORT bdk_status_t bdk_page_handler_register(bdk_runtime_t, bdk_string_t route, uint32_t mode,
                                                   bdk_native_page_cb, void* ctx, bdk_release_cb, bdk_error_t*);
 ```
+
+`declaration_json` of `bdk_app_setting_register` is `{"key": "app.…", "default": <json>, "scope": "profile" | "application", "exposedToPages": bool}`; `default` defaults to null, `scope` to `profile` and `exposedToPages` to false. A key that does not start with `app.` is `config.nameNotApp`, a second registration of a key is `config.duplicateName`. The core answers `settings.*` for `app.` keys itself and keeps the values through `Backend::LoadAppSettings` and `SaveAppSettings` (packages/core/docs/conventions.md).
 
 All registration functions must be called between `bdk_runtime_start` and `bdk_runtime_freeze_registrations`.
 
@@ -343,7 +347,8 @@ Decisions taken in T-ABI-03 where this section was silent (2026-11-18). The impl
 - `raises` names a surface in lower case, from the `surfaces` constants group.
 - `constants` holds the identifier families of the ABI itself (error domains and codes, event kinds, flags, security and visibility values, surfaces) as groups with a macro prefix and explicit values. They generate `#define` lines in `bdk_ids.h` and are recorded in the registry like command identifiers.
 - `ids.json` is the registry of every identifier ever assigned. Commands and events are numbered from 1 in the order they first appear (files in name order). A removed name is marked `retired` and its identifier is not reused. The generated macros are `BDK_COMMAND_<NAME>` and `BDK_EVENT_<NAME>`.
-- No commands or events are defined yet. services.md gives names and capabilities but not argument and result types, and the broker that serves them is M3 (T-SVC-01).
+- The M3 namespaces are defined (T-SVC-01, 2026-11-19): runtime, profiles, settings, history, bookmarks, downloads, permissions, cookies, privacy, passwords, autofill, system, with the argument and result types services.md gives. The generator also writes `generated/bdk_command_table.inc`, the tables the broker reads (identifier, capability, callers, profile mode, marks, argument types, and the policy lists). A command key `authenticateWhen` names an argument that makes the call need authentication only when it is present (`passwords.update`). The checks the broker makes, the argument rules, the 4 MiB cap and the new error codes are in `packages/core/docs/conventions.md`, "The broker".
+- `bdk_invoke` has full authority and an identifier or a name finds a built-in command as well as an `app.` command. A `void` result is the JSON value `null`.
 
 ## 8. UI requests
 
