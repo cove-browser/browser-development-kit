@@ -22,6 +22,7 @@
 #include "bdk/core/runtime/core_internal.h"
 #include "bdk/engine/bdk_testing.h"
 #include "bdk/engine/engine_contents.h"
+#include "bdk/engine/extensions/extension_ui_testing.h"
 #include "bdk/engine/json_util.h"
 #include "bdk/engine/services/authentication.h"
 #include "bdk/engine/services/capture_service.h"
@@ -209,6 +210,9 @@ bool Run(const std::string& name,
   if (name == "downloads.danger") {
     ForceDangerousDownloadsForTesting(args.FindBool("on").value_or(true));
     return true;
+  }
+  if (name.starts_with("extui.")) {
+    return RunExtensionUiTestCommand(name, args, result);
   }
   if (name == "script_page") {
     // A page with content: {"url", "body", "contentType", "headers"}.

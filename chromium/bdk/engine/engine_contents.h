@@ -21,6 +21,7 @@ class Profile;
 namespace bdk {
 
 class DevToolsFrontend;
+class ExtensionMenuItems;
 class HostContext;
 class HostView;
 class PageDialogs;
@@ -80,6 +81,22 @@ class EngineContents : public bdkcore::BackendData,
 
   // Every page of the engine, in creation order.
   static const std::vector<EngineContents*>& All();
+
+  // Wraps `new_contents` as a page of `profile` and asks the application where
+  // it goes (a new-window request of `kind`). `opener` is the page that asked,
+  // or null when none did (an extension's options page opened by a command);
+  // `initiator_extension_id` names the extension that asked, or is empty.
+  // Returns the new page, or null when the profile cannot host one.
+  static EngineContents* RequestNewPage(
+      const std::shared_ptr<bdkcore::Profile>& profile,
+      const std::shared_ptr<bdkcore::Contents>& opener,
+      std::unique_ptr<content::WebContents> new_contents,
+      const std::string& kind,
+      WindowOpenDisposition disposition,
+      const GURL& target_url,
+      const blink::mojom::WindowFeatures* features,
+      bool user_gesture,
+      const std::string& initiator_extension_id);
 
   // Moves the page's tab into `context`. A page with a focus keeps being the
   // active tab of the context it moves into.
@@ -211,6 +228,9 @@ class EngineContents : public bdkcore::BackendData,
   raw_ptr<content::WebContents> web_contents_ = nullptr;
   // For a DevTools front-end page: the bindings to the page it inspects.
   std::unique_ptr<DevToolsFrontend> devtools_;
+  // The extension items of the context menu raised last, kept until a later
+  // menu replaces them so that performing one can run it.
+  std::unique_ptr<ExtensionMenuItems> extension_menu_items_;
   std::string user_agent_;
   bool muted_ = false;
   double zoom_ = 1.0;

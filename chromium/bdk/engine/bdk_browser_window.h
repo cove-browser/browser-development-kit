@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "base/memory/raw_ptr.h"
+#include "bdk/core/include/bdk/bdk_base.h"
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/unload_controller.h"
 #include "ui/gfx/geometry/rect.h"
@@ -25,6 +26,7 @@ class WebContentsModalDialogHost;
 
 namespace bdk {
 
+class BdkExtensionsContainer;
 class HostLocationBar;
 class HostWindow;
 
@@ -53,6 +55,15 @@ class BdkBrowserWindow : public BrowserWindow {
   // the Browser's user data). Once the Browser exists: the handler registers
   // itself with it.
   void InstallAutofillBubbleHandler();
+
+  // Gives the window of a registered native window its extensions container
+  // (extensions/extensions_container.h): the object Chromium asks for popups,
+  // so chrome.action.openPopup works. Once the Browser exists. Not made when
+  // the configuration disables actions and popups.
+  void InstallExtensionsContainer(bdk_native_handle_t native);
+  BdkExtensionsContainer* extensions_container() const {
+    return extensions_container_.get();
+  }
 
   // BrowserWindow:
   gfx::NativeWindow GetNativeWindow() const override;
@@ -189,6 +200,7 @@ class BdkBrowserWindow : public BrowserWindow {
   const raw_ptr<BrowserWindowInterface> browser_;
   std::unique_ptr<HostWindow> host_window_;
   std::unique_ptr<autofill::AutofillBubbleHandler> autofill_bubble_handler_;
+  std::unique_ptr<BdkExtensionsContainer> extensions_container_;
   mutable std::unique_ptr<HostLocationBar> location_bar_;
   std::unique_ptr<ExclusiveAccessContext> exclusive_access_context_;
   std::unique_ptr<web_modal::WebContentsModalDialogHost> modal_dialog_host_;

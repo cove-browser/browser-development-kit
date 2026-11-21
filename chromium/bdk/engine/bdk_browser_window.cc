@@ -9,6 +9,7 @@
 
 #include "base/notimplemented.h"
 #include "base/observer_list.h"
+#include "bdk/engine/extensions/extensions_container.h"
 #include "bdk/engine/host_window.h"
 #include "bdk/engine/services/autofill_prompts.h"
 #include "chrome/browser/themes/theme_service.h"
@@ -216,6 +217,8 @@ BdkBrowserWindow::BdkBrowserWindow(BrowserWindowInterface* browser)
       modal_dialog_host_(std::make_unique<HostModalDialogHost>()) {}
 
 BdkBrowserWindow::~BdkBrowserWindow() {
+  // Its popup and view models use the Browser's tab list.
+  extensions_container_.reset();
   autofill_bubble_handler_.reset();
   // A window implementation tears the Browser's window-scoped features down
   // before it goes (WebUIBrowserWindow and BrowserWidget do the same).
@@ -224,6 +227,10 @@ BdkBrowserWindow::~BdkBrowserWindow() {
 
 void BdkBrowserWindow::InstallAutofillBubbleHandler() {
   autofill_bubble_handler_ = CreateAutofillBubbleHandler(browser_);
+}
+
+void BdkBrowserWindow::InstallExtensionsContainer(bdk_native_handle_t native) {
+  extensions_container_ = BdkExtensionsContainer::Create(browser_, native);
 }
 
 void BdkBrowserWindow::SetHostWindow(std::unique_ptr<HostWindow> host_window) {
@@ -358,7 +365,9 @@ bool BdkBrowserWindow::IsTabStripEditable() const {
 void BdkBrowserWindow::DisableTabStripEditingForTesting() {}
 
 bool BdkBrowserWindow::IsToolbarVisible() const {
-  return false;
+  // chrome.action.openPopup asks: a window with an extensions container is the
+  // window a popup can open in.
+  return extensions_container_ != nullptr;
 }
 
 bool BdkBrowserWindow::IsToolbarShowing() const {

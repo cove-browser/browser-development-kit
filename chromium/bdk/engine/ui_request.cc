@@ -16,6 +16,11 @@
 
 namespace bdk {
 
+OpenRequest::OpenRequest() = default;
+OpenRequest::OpenRequest(OpenRequest&&) = default;
+OpenRequest& OpenRequest::operator=(OpenRequest&&) = default;
+OpenRequest::~OpenRequest() = default;
+
 bool SurfaceAvailable(const std::shared_ptr<bdkcore::Contents>& contents,
                       uint32_t surface) {
   std::shared_ptr<bdkcore::Runtime> rt =
@@ -30,35 +35,13 @@ bool SurfaceHasHandler(const std::shared_ptr<bdkcore::Contents>& contents,
   return rt && rt->ui_handlers.count(surface) > 0;
 }
 
-std::shared_ptr<bdkcore::Request> RaiseUiRequest(
-    const std::shared_ptr<bdkcore::Contents>& contents,
-    uint32_t surface,
-    const base::DictValue& payload,
-    UiFinish finish,
-    HostView* anchor_view,
-    std::optional<std::array<double, 2>> point_in_view) {
-  std::shared_ptr<bdkcore::Runtime> rt =
-      contents ? contents->rt.lock() : nullptr;
-  if (!rt || rt->shutting) {
-    return nullptr;
-  }
-  auto request = std::make_shared<bdkcore::Request>();
-  request->surface = surface;
-  request->contents = contents->handle;
-  request->payload = ToJson(payload);
-  if (anchor_view) {
-    const std::array<double, 4> frame = anchor_view->FrameInWindow();
-    base::span<double, 4> anchor(request->anchor);
-    anchor[0] = frame[0];
-    anchor[1] = frame[1];
-    anchor[2] = frame[2];
-    anchor[3] = 0;
-    if (point_in_view) {
-      anchor[0] += (*point_in_view)[0];
-      anchor[1] += (*point_in_view)[1];
-      anchor[2] = 0;
-    }
-  }
+namespace {
+
+// Raises the prepared `request` through the router.
+std::shared_ptr<bdkcore::Request> Raise(
+    const std::shared_ptr<bdkcore::Runtime>& rt,
+    std::shared_ptr<bdkcore::Request> request,
+    UiFinish finish) {
   // With no finish the request is a notice (a fullscreen exit, say): it has
   // no on_finish, so the router delivers it at once instead of queueing it
   // behind a request the handler still holds.
@@ -97,6 +80,67 @@ std::shared_ptr<bdkcore::Request> RaiseUiRequest(
     }
   };
   return bdkcore::raise_ui_request(rt, request);
+}
+
+}  // namespace
+
+std::shared_ptr<bdkcore::Request> RaiseUiRequest(
+    const std::shared_ptr<bdkcore::Contents>& contents,
+    uint32_t surface,
+    const base::DictValue& payload,
+    UiFinish finish,
+    HostView* anchor_view,
+    std::optional<std::array<double, 2>> point_in_view,
+    std::optional<OpenRequest> open) {
+  std::shared_ptr<bdkcore::Runtime> rt =
+      contents ? contents->rt.lock() : nullptr;
+  if (!rt || rt->shutting) {
+    return nullptr;
+  }
+  auto request = std::make_shared<bdkcore::Request>();
+  request->surface = surface;
+  request->contents = contents->handle;
+  request->payload = ToJson(payload);
+  if (anchor_view) {
+    const std::array<double, 4> frame = anchor_view->FrameInWindow();
+    base::span<double, 4> anchor(request->anchor);
+    anchor[0] = frame[0];
+    anchor[1] = frame[1];
+    anchor[2] = frame[2];
+    anchor[3] = 0;
+    if (point_in_view) {
+      anchor[0] += (*point_in_view)[0];
+      anchor[1] += (*point_in_view)[1];
+      anchor[2] = 0;
+    }
+  }
+  if (open) {
+    request->secure_view = open->secure_view;
+    request->window = open->window;
+    if (open->on_update) {
+      request->on_update =
+          [on_update = std::move(open->on_update)](const std::string& update) {
+            on_update.Run(update);
+          };
+    }
+  }
+  return Raise(rt, std::move(request), std::move(finish));
+}
+
+std::shared_ptr<bdkcore::Request> RaiseUiRequest(
+    const std::shared_ptr<bdkcore::Profile>& profile,
+    uint32_t surface,
+    const base::DictValue& payload,
+    UiFinish finish) {
+  std::shared_ptr<bdkcore::Runtime> rt = bdkcore::current_runtime();
+  if (!profile || !rt || rt->shutting) {
+    return nullptr;
+  }
+  auto request = std::make_shared<bdkcore::Request>();
+  request->surface = surface;
+  request->profile = profile->handle;
+  request->payload = ToJson(payload);
+  return Raise(rt, std::move(request), std::move(finish));
 }
 
 std::shared_ptr<bdkcore::Request> RaiseUiRequest(EngineContents& page,

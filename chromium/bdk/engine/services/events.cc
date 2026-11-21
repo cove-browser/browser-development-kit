@@ -13,6 +13,7 @@
 #include "base/no_destructor.h"
 #include "base/scoped_observation.h"
 #include "base/strings/string_number_conversions.h"
+#include "bdk/engine/extensions/action_service.h"
 #include "bdk/engine/services/services.h"
 #include "chrome/browser/bookmarks/bookmark_model_factory.h"
 #include "chrome/browser/history/history_service_factory.h"
@@ -247,6 +248,7 @@ class ProfileEvents : public ServiceEvents {
     cookies_ = CreateCookieEvents(profile, bdk_profile);
     passwords_ = CreatePasswordEvents(profile, bdk_profile);
     autofill_ = CreateAutofillEvents(profile, bdk_profile);
+    extension_actions_ = CreateExtensionActionEvents(profile, bdk_profile);
   }
 
  private:
@@ -256,6 +258,7 @@ class ProfileEvents : public ServiceEvents {
   std::unique_ptr<ServiceEvents> cookies_;
   std::unique_ptr<ServiceEvents> passwords_;
   std::unique_ptr<ServiceEvents> autofill_;
+  std::unique_ptr<ServiceEvents> extension_actions_;
 };
 
 }  // namespace

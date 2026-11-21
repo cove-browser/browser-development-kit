@@ -5,6 +5,8 @@
 #include <utility>
 
 #include "base/no_destructor.h"
+#include "bdk/engine/extensions/action_service.h"
+#include "bdk/engine/extensions/options_page.h"
 #include "bdk/engine/services/services.h"
 
 namespace bdk {
@@ -23,6 +25,8 @@ const HandlerTable& Handlers() {
     AddPrivacyHandlers(t);
     AddProfilesHandlers(t);
     AddSystemHandlers(t);
+    AddExtensionActionHandlers(t);
+    AddOptionsPageHandlers(t);
     return t;
   }());
   return *table;
