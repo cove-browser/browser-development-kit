@@ -50,6 +50,82 @@ bool ip_literal(const std::string& host) {
     });
 }
 
+int hex_value(char ch) {
+    if (ch >= '0' && ch <= '9')
+        return ch - '0';
+    if (ch >= 'a' && ch <= 'f')
+        return ch - 'a' + 10;
+    if (ch >= 'A' && ch <= 'F')
+        return ch - 'A' + 10;
+    return -1;
+}
+
+/* Percent-unescapes until nothing changes, as Safe Browsing canonicalization does. */
+std::string unescape_fully(std::string s) {
+    for (bool changed = true; changed;) {
+        changed = false;
+        std::string out;
+        for (size_t i = 0; i < s.size(); ++i) {
+            const int hi = i + 2 < s.size() ? hex_value(s[i + 1]) : -1;
+            const int lo = i + 2 < s.size() ? hex_value(s[i + 2]) : -1;
+            if (s[i] == '%' && hi >= 0 && lo >= 0) {
+                out += static_cast<char>(hi * 16 + lo);
+                i += 2;
+                changed = true;
+            } else {
+                out += s[i];
+            }
+        }
+        s = std::move(out);
+    }
+    return s;
+}
+
+/* Escapes the characters Safe Browsing escapes in a canonical URL: <= ' ', >= 0x7f, '#', '%'. */
+std::string escape_canonical(const std::string& s) {
+    static const char* kHex = "0123456789ABCDEF";
+    std::string out;
+    for (unsigned char ch : s) {
+        if (ch <= ' ' || ch >= 0x7f || ch == '#' || ch == '%') {
+            out += '%';
+            out += kHex[ch / 16];
+            out += kHex[ch % 16];
+        } else {
+            out += static_cast<char>(ch);
+        }
+    }
+    return out;
+}
+
+/* Resolves "/./" and "/../" and collapses runs of '/', keeping a trailing '/'. */
+std::string normalize_path(const std::string& path) {
+    std::vector<std::string> segments;
+    size_t start = 1;
+    bool trailing = false;
+    while (start <= path.size()) {
+        size_t slash = path.find('/', start);
+        std::string seg =
+            path.substr(start, slash == std::string::npos ? std::string::npos : slash - start);
+        trailing = true;
+        if (seg == "..") {
+            if (!segments.empty())
+                segments.pop_back();
+        } else if (!seg.empty() && seg != ".") {
+            segments.push_back(seg);
+            trailing = slash != std::string::npos;
+        }
+        if (slash == std::string::npos)
+            break;
+        start = slash + 1;
+    }
+    std::string out = "/";
+    for (size_t i = 0; i < segments.size(); ++i)
+        out += (i ? "/" : "") + segments[i];
+    if (trailing && !segments.empty())
+        out += '/';
+    return out;
+}
+
 } // namespace
 
 bool reputation_list_parse(const std::string& json, ReputationList* out, std::string* message) {
@@ -112,6 +188,9 @@ std::vector<std::string> reputation_expressions(const std::string& url) {
     else
         return {};
     rest = rest.substr(0, rest.find('#'));
+    rest.erase(std::remove_if(rest.begin(), rest.end(),
+                              [](char ch) { return ch == '\t' || ch == '\r' || ch == '\n'; }),
+               rest.end());
     size_t end = rest.find_first_of("/?");
     std::string authority = rest.substr(0, end);
     std::string path_and_query = end == std::string::npos ? "/" : rest.substr(end);
@@ -125,9 +204,14 @@ std::vector<std::string> reputation_expressions(const std::string& url) {
     } else if (size_t colon = host.find(':'); colon != std::string::npos) {
         host = host.substr(0, colon);
     }
-    host = lower(host);
+    host = lower(unescape_fully(host));
+    while (!host.empty() && host.front() == '.')
+        host.erase(0, 1);
     while (!host.empty() && host.back() == '.')
         host.pop_back();
+    for (size_t dots; (dots = host.find("..")) != std::string::npos;)
+        host.erase(dots, 1);
+    host = escape_canonical(host);
     if (host.empty())
         return {};
 
@@ -153,7 +237,15 @@ std::vector<std::string> reputation_expressions(const std::string& url) {
         }
     }
 
-    std::string path = path_and_query.substr(0, path_and_query.find('?'));
+    /* Canonicalized as Safe Browsing does, so an escaped or dotted path finds its entry. */
+    size_t question = path_and_query.find('?');
+    std::string path =
+        escape_canonical(normalize_path(unescape_fully(path_and_query.substr(0, question))));
+    if (question != std::string::npos)
+        path_and_query =
+            path + "?" + escape_canonical(unescape_fully(path_and_query.substr(question + 1)));
+    else
+        path_and_query = path;
     std::vector<std::string> paths = {path_and_query};
     if (path != path_and_query)
         paths.push_back(path);

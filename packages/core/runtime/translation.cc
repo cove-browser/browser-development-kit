@@ -202,6 +202,25 @@ void translation_set_state(const std::shared_ptr<Contents>& c, const Translation
                            ",\"state\":" + after + "}");
 }
 
+std::string translation_detect_input(const std::vector<std::string>& texts) {
+    std::string sample;
+    for (const std::string& t : texts) {
+        if (sample.size() > 2048)
+            break;
+        sample += t + "\n";
+    }
+    return "{\"sample\":" + json_quoted(sample) + "}";
+}
+
+std::string translation_detected(const ProviderReply& reply) {
+    if (!reply.ok() || reply.result_json == "null")
+        return "";
+    JsonValue v;
+    json_parse(reply.result_json, &v);
+    const JsonValue* l = v.find("language");
+    return l ? l->text : "";
+}
+
 TranslationDecision translation_decide(const TranslationPreferences& p, const std::string& language,
                                        const std::string& site) {
     TranslationDecision d;
@@ -262,8 +281,12 @@ class Job final : public TranslationJob, public std::enable_shared_from_this<Job
 
     void Begin() {
         for (size_t i = 0; i < spec_.texts.size(); ++i) {
-            if (!blank(spec_.texts[i]))
-                pending_.push_back(i);
+            if (blank(spec_.texts[i]))
+                continue;
+            for (std::string& piece : split_piece(spec_.texts[i])) {
+                pending_.push_back(pieces_.size());
+                pieces_.push_back({i, std::move(piece)});
+            }
         }
         total_ = pending_.size();
         auto self = shared_from_this();
@@ -342,8 +365,41 @@ class Job final : public TranslationJob, public std::enable_shared_from_this<Job
         return "{\"from\":" + json_quoted(spec_.from) + ",\"to\":" + json_quoted(spec_.to) + "}";
     }
 
+    /* A text longer than a batch's byte limit, split into pieces that each fit: at the last space
+       before the limit, or else at the last UTF-8 character boundary. */
+    static std::vector<std::string> split_piece(const std::string& text) {
+        std::vector<std::string> out;
+        size_t start = 0;
+        while (text.size() - start > kTranslationBatchBytes) {
+            size_t end = start + kTranslationBatchBytes;
+            size_t space = text.rfind(' ', end - 1);
+            if (space != std::string::npos && space > start) {
+                end = space + 1;
+            } else {
+                /* Back off a UTF-8 continuation byte, 10xxxxxx. */
+                auto continuation = [&](size_t at) {
+                    const auto ch = static_cast<unsigned char>(text[at]);
+                    return ch >= 0x80 && ch < 0xC0;
+                };
+                while (end > start + 1 && continuation(end))
+                    --end;
+            }
+            out.push_back(text.substr(start, end - start));
+            start = end;
+        }
+        out.push_back(text.substr(start));
+        return out;
+    }
+
     void NextBatch() {
         if (pending_.empty()) {
+            std::vector<bool> started(out_.size(), false);
+            for (const Piece& p : pieces_) {
+                if (!started[p.text])
+                    out_[p.text].clear();
+                started[p.text] = true;
+                out_[p.text] += p.translated;
+            }
             ProviderReply ok;
             Finish(ok);
             return;
@@ -351,7 +407,7 @@ class Job final : public TranslationJob, public std::enable_shared_from_this<Job
         batch_.clear();
         size_t bytes = 0;
         while (!pending_.empty() && batch_.size() < kTranslationBatchTexts) {
-            const std::string& text = spec_.texts[pending_.front()];
+            const std::string& text = pieces_[pending_.front()].translated;
             if (!batch_.empty() && bytes + text.size() > kTranslationBatchBytes)
                 break;
             bytes += text.size();
@@ -360,7 +416,7 @@ class Job final : public TranslationJob, public std::enable_shared_from_this<Job
         }
         std::string texts = "[";
         for (size_t i = 0; i < batch_.size(); ++i)
-            texts += (i ? "," : "") + json_quoted(spec_.texts[batch_[i]]);
+            texts += (i ? "," : "") + json_quoted(pieces_[batch_[i]].translated);
         texts += ']';
         std::string input = "{\"from\":" + json_quoted(spec_.from) +
                             ",\"to\":" + json_quoted(spec_.to) + ",\"texts\":" + texts +
@@ -374,7 +430,7 @@ class Job final : public TranslationJob, public std::enable_shared_from_this<Job
         json_parse(r.result_json, &v);
         const JsonValue* texts = v.find("texts");
         for (size_t i = 0; i < batch_.size() && texts && i < texts->items.size(); ++i)
-            out_[batch_[i]] = texts->items[i].text;
+            pieces_[batch_[i]].translated = texts->items[i].text;
         done_ += batch_.size();
         if (spec_.progress && total_)
             spec_.progress(0.1 + 0.9 * static_cast<double>(done_) / static_cast<double>(total_));
@@ -391,8 +447,16 @@ class Job final : public TranslationJob, public std::enable_shared_from_this<Job
             done(r, r.ok() ? out_ : std::vector<std::string>{});
     }
 
+    /* A segment, or a piece of one too long for a batch: its text and, once answered, the
+       translation (until then, the original). */
+    struct Piece {
+        size_t text;
+        std::string translated;
+    };
+
     std::shared_ptr<Runtime> rt_;
     TranslationJobSpec spec_;
+    std::vector<Piece> pieces_;
     std::vector<std::string> out_;
     std::deque<size_t> pending_;
     std::vector<size_t> batch_;

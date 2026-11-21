@@ -36,7 +36,8 @@ bdk_status_t bdk_harness_page_text_set(bdk_contents_t c, const char* language,
 
 bdk_status_t bdk_harness_page_text(bdk_contents_t c, char* out, size_t cap) {
     bdk_buffer_t buffer = 0;
-    return Copy(bdk_stub_page_text(c, &buffer), buffer, out, cap);
+    bdk_status_t s = bdk_stub_page_text(c, &buffer);
+    return Copy(s, buffer, out, cap);
 }
 
 bdk_status_t bdk_harness_reputation_list_load(bdk_runtime_t rt, const char* list_json,
@@ -50,7 +51,8 @@ bdk_status_t bdk_harness_geolocation_watch(bdk_contents_t c, int high_accuracy) 
 
 bdk_status_t bdk_harness_geolocation_last(bdk_contents_t c, char* out, size_t cap) {
     bdk_buffer_t buffer = 0;
-    return Copy(bdk_stub_geolocation_last(c, &buffer), buffer, out, cap);
+    bdk_status_t s = bdk_stub_geolocation_last(c, &buffer);
+    return Copy(s, buffer, out, cap);
 }
 
 bdk_status_t bdk_harness_geolocation_stop(bdk_contents_t c) {

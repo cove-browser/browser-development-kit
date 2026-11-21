@@ -17,6 +17,7 @@ struct Page {
     std::vector<std::string> original, shown;
     std::string language; /* as the page declared it */
     std::shared_ptr<TranslationJob> job;
+    uint64_t attempt = 0; /* the current translation; a revert or navigation moves it on */
     std::shared_ptr<ProviderRequest> watch;
     std::string last_position;
 };
@@ -119,6 +120,7 @@ void start_translation(const std::shared_ptr<Runtime>& rt, const std::shared_ptr
                             "the page is already in " + dst);
         return;
     }
+    const uint64_t attempt = ++pg.attempt;
     if (pg.job)
         pg.job->Cancel();
     pg.shown = pg.original;
@@ -146,7 +148,8 @@ void start_translation(const std::shared_ptr<Runtime>& rt, const std::shared_ptr
         if (control)
             control->Progress(f, "translating");
     };
-    spec.done = [weak, control](const ProviderReply& reply, const std::vector<std::string>& texts) {
+    spec.done = [weak, control, attempt](const ProviderReply& reply,
+                                         const std::vector<std::string>& texts) {
         auto page = weak.lock();
         if (!page) {
             if (control)
@@ -154,6 +157,13 @@ void start_translation(const std::shared_ptr<Runtime>& rt, const std::shared_ptr
             return;
         }
         Page& p = page_of(*page);
+        if (p.attempt != attempt) {
+            /* A later translation, revert or navigation owns the page's job and state now. */
+            if (control)
+                control->Reject(BDK_DOMAIN_BROKER, BDK_CODE_CANCELLED,
+                                "the translation was cancelled");
+            return;
+        }
         p.job.reset();
         TranslationState now = translation_state(*page);
         now.progress = -1;
@@ -192,6 +202,7 @@ void start_translation(const std::shared_ptr<Runtime>& rt, const std::shared_ptr
 
 void revert(const std::shared_ptr<Contents>& c) {
     Page& pg = page_of(*c);
+    ++pg.attempt;
     if (pg.job)
         pg.job->Cancel();
     pg.job.reset();
@@ -308,31 +319,17 @@ void page_loaded(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Conte
         decide(language);
         return;
     }
-    std::string sample;
-    for (const std::string& t : page_of(*c).original) {
-        if (sample.size() > 2048)
-            break;
-        sample += t + "\n";
-    }
     ProviderHandlers h;
-    h.done = [decide](const ProviderReply& reply) {
-        std::string detected;
-        if (reply.ok() && reply.result_json != "null") {
-            JsonValue v;
-            json_parse(reply.result_json, &v);
-            if (const JsonValue* l = v.find("language"))
-                detected = l->text;
-        }
-        decide(detected);
-    };
-    provider_invoke(rt, Service::kTranslation, "detect", "{\"sample\":" + json_quoted(sample) + "}",
-                    std::move(h));
+    h.done = [decide](const ProviderReply& reply) { decide(translation_detected(reply)); };
+    provider_invoke(rt, Service::kTranslation, "detect",
+                    translation_detect_input(page_of(*c).original), std::move(h));
 }
 
 /* The page navigates: its text, state and translation go. */
 void reset_page(const std::shared_ptr<Contents>& c) {
     auto it = st().pages.find(c->handle);
     if (it != st().pages.end()) {
+        ++it->second.attempt;
         if (it->second.job)
             it->second.job->Cancel();
         it->second.job.reset();

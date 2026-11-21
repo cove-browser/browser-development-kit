@@ -22,6 +22,7 @@ typedef struct fake {
     const char* risky_host; /* check_url answers `verdict` for a URL containing this */
     const char* verdict;
     bdk_context_t watch;
+    size_t longest_input; /* the longest translate input seen */
 } fake_t;
 
 static fake_t F;
@@ -64,11 +65,15 @@ static void fake_translate(void* ctx, bdk_context_t call, bdk_string_t input) {
         bdk_provider_reject(call, S("broker"), S("timeout"), S("upstream timed out"));
         return;
     }
-    char text[4096];
-    snprintf(text, sizeof text, "%.*s", (int)input.length, input.data);
+    if (input.length > F.longest_input)
+        F.longest_input = input.length;
+    char* text = malloc(input.length + 1);
+    REQUIRE(text != NULL);
+    snprintf(text, input.length + 1, "%.*s", (int)input.length, input.data);
     char* start = strstr(text, "\"texts\":[");
     char* end = start ? strchr(start, ']') : NULL;
     if (!start || !end) {
+        free(text);
         bdk_provider_reject(call, S("provider"), S("remoteError"), S("no texts"));
         return;
     }
@@ -83,9 +88,13 @@ static void fake_translate(void* ctx, bdk_context_t call, bdk_string_t input) {
             last[1] = '\0';
         }
     }
-    char out[4200];
-    snprintf(out, sizeof out, "{\"texts\":%s}", start);
+    size_t cap = strlen(start) + 16;
+    char* out = malloc(cap);
+    REQUIRE(out != NULL);
+    snprintf(out, cap, "{\"texts\":%s}", start);
+    free(text);
     bdk_provider_resolve(call, S(out));
+    free(out);
 }
 
 static void fake_detect(void* ctx, bdk_context_t call, bdk_string_t input) {
@@ -670,6 +679,33 @@ static void test_the_provider_detects_an_undeclared_language(void) {
     CHECK(str_has(S(cap.json), "\"phase\":\"unavailable\""));
 }
 
+/* A segment longer than a batch goes as pieces that fit, at spaces, and comes back joined. */
+static void test_a_segment_over_the_batch_limit_is_split_and_joined(void) {
+    if (!bdk_harness_provider_hooks())
+        return;
+    bdk_contents_t c = translation_page(0);
+    enum { kWords = 10000 }; /* "abc " each: 40000 bytes, three pieces of at most 16 KiB */
+    static char texts[4 * kWords + 8], want[4 * kWords + 8], got[4 * kWords + 8];
+    strcpy(texts, "[\"");
+    strcpy(want, "[\"");
+    for (int i = 0; i < kWords; ++i) {
+        strcat(texts, i ? " abc" : "abc");
+        strcat(want, i ? " ABC" : "ABC");
+    }
+    strcat(texts, "\"]");
+    strcat(want, "\"]");
+    REQUIRE(bdk_harness_page_text_set(c, "fr", texts) == BDK_OK);
+    t_pump();
+    t_capture_t cap;
+    REQUIRE(invoke("translation.translate", "{}", 0, c, &cap) != 0);
+    t_pump();
+    CHECK(cap.results == 1 && !cap.has_error);
+    CHECK(F.translates == 3);                  /* each piece nearly fills a batch on its own */
+    CHECK(F.longest_input <= 16 * 1024 + 256); /* a piece, and the request around it */
+    REQUIRE(bdk_harness_page_text(c, got, sizeof got) == BDK_OK);
+    CHECK(strcmp(got, want) == 0);
+}
+
 static void test_a_long_page_goes_in_batches_and_a_bad_batch_fails_it(void) {
     if (!bdk_harness_provider_hooks())
         return;
@@ -739,6 +775,35 @@ static void test_navigating_away_cancels_the_translation(void) {
     CHECK(str_has(S(cap.json), "\"phase\":\"unavailable\""));
 }
 
+/* A translation replaced by a newer one: the old one's late answer leaves the new one alone. */
+static void test_a_replaced_translation_does_not_disturb_the_new_one(void) {
+    if (!bdk_harness_provider_hooks())
+        return;
+    bdk_contents_t c = translation_page(0);
+    REQUIRE(bdk_harness_page_text_set(c, "fr", "[\"bonjour\"]") == BDK_OK);
+    t_pump();
+    F.hold = 1;
+    t_capture_t first, second, cap;
+    REQUIRE(invoke("translation.translate", "{}", 0, c, &first) != 0);
+    t_pump();
+    REQUIRE(F.held != 0);
+    bdk_context_t old = F.held;
+    F.held = 0;
+    REQUIRE(invoke("translation.translate", "{}", 0, c, &second) != 0);
+    t_pump();
+    REQUIRE(F.held != 0 && F.held != old);
+    CHECK(failed_with(&first, "broker", "cancelled"));
+    REQUIRE(invoke("translation.state", "{}", 0, c, &cap) != 0);
+    t_pump();
+    CHECK(str_has(S(cap.json), "\"phase\":\"translating\""));
+    bdk_provider_resolve(F.held, S("{\"texts\":[\"BONJOUR\"]}"));
+    t_pump();
+    CHECK(second.results == 1 && !second.has_error);
+    char text[128];
+    page_text(c, text, sizeof text);
+    CHECK(strcmp(text, "[\"BONJOUR\"]") == 0);
+}
+
 /* ---- Reputation (T-PRV-05) ----------------------------------------------------------------- */
 
 static int g_rep_calls;
@@ -805,8 +870,13 @@ static void test_the_default_lists_block_a_listed_url_with_a_warning(void) {
     CHECK(navigate(c, "https://files.example.test/bad/a/b.exe") == 0);
     CHECK(str_has(S(g_rep_payload), "\"verdict\":\"malware\""));
     CHECK(navigate(c, "https://files.example.test/good/b.exe") == 1);
+    /* Escaped, dotted or doubled paths are canonicalized before the lookup. */
+    CHECK(navigate(c, "https://files.example.test/%62ad/file") == 0);
+    CHECK(navigate(c, "https://files.example.test/%2562ad/file") == 0);
+    CHECK(navigate(c, "https://files.example.test/good/../bad/file") == 0);
+    CHECK(navigate(c, "https://files.example.test//bad/./file") == 0);
     CHECK(navigate(c, "https://notevil.test/") == 1);
-    CHECK(g_rep_calls == 2);
+    CHECK(g_rep_calls == 6);
 }
 
 static void test_proceeding_past_a_warning_needs_a_gesture(void) {
@@ -963,10 +1033,13 @@ const t_test_t t_provider_tests[] = {
      test_the_offer_reaches_the_handler_and_its_answer_translates},
     {"translation.never_and_always", test_never_and_always_decide_without_asking},
     {"translation.provider_detects_language", test_the_provider_detects_an_undeclared_language},
+    {"translation.long_segment_split", test_a_segment_over_the_batch_limit_is_split_and_joined},
     {"translation.batches_and_bad_batch",
      test_a_long_page_goes_in_batches_and_a_bad_batch_fails_it},
     {"translation.unsupported_pair", test_a_pair_the_provider_does_not_offer_is_refused},
     {"translation.navigation_cancels", test_navigating_away_cancels_the_translation},
+    {"translation.replaced_attempt_ignored",
+     test_a_replaced_translation_does_not_disturb_the_new_one},
     {"reputation.default_lists_block_listed_url",
      test_the_default_lists_block_a_listed_url_with_a_warning},
     {"reputation.proceed_needs_gesture", test_proceeding_past_a_warning_needs_a_gesture},

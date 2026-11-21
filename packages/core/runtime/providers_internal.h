@@ -139,6 +139,12 @@ struct TranslationDecision {
 TranslationDecision translation_decide(const TranslationPreferences&, const std::string& language,
                                        const std::string& site);
 
+/* The provider's detect operation, for a page that declares no language: its input, a sample of
+   the page's text segments (about the first 2 KiB), and the language its answer names (empty for
+   null, a failure or no language). */
+std::string translation_detect_input(const std::vector<std::string>& texts);
+std::string translation_detected(const ProviderReply& reply);
+
 /* A language code BDK accepts: two or three letters, optionally followed by -subtags of letters and
    digits (BCP 47 shape, not checked against a registry). */
 bool translation_language_ok(const std::string& code);
@@ -147,8 +153,10 @@ bool translation_language_ok(const std::string& code);
    translated out. Segments that are empty or only whitespace are not sent. The provider is asked
    for its pairs first (provider.unsupportedPair when the pair is not offered), then to prepare a
    pair that is not installed, then for the segments in batches (at most kTranslationBatchTexts
-   segments and kTranslationBatchBytes bytes each), one at a time. Progress is the share of
-   segments done. Cancel stops at the next answer and reports broker.cancelled. */
+   segments and kTranslationBatchBytes bytes each), one at a time. A segment longer than
+   kTranslationBatchBytes is sent as pieces that fit (split at a space where one is near, else at a
+   character boundary) and its translation is the pieces' answers joined. Progress is the share of
+   pieces done. Cancel stops at the next answer and reports broker.cancelled. */
 constexpr size_t kTranslationBatchTexts = 64;
 constexpr size_t kTranslationBatchBytes = size_t{16} * 1024;
 

@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -242,10 +243,7 @@ class PageTranslation
       }
       return;
     }
-    if (job_) {
-      job_->Cancel();
-      job_.reset();
-    }
+    const uint64_t attempt = NextAttempt();
     state.phase = "translating";
     state.from = src;
     state.to = dst;
@@ -255,15 +253,12 @@ class PageTranslation
     web_contents()->GetPrimaryMainFrame()->ExecuteJavaScriptInIsolatedWorld(
         kExtractScript,
         base::BindOnce(&PageTranslation::OnExtracted,
-                       weak_factory_.GetWeakPtr(), src, dst, call),
+                       weak_factory_.GetWeakPtr(), attempt, src, dst, call),
         ISOLATED_WORLD_ID_TRANSLATE);
   }
 
   void Revert() {
-    if (job_) {
-      job_->Cancel();
-      job_.reset();
-    }
+    NextAttempt();
     web_contents()->GetPrimaryMainFrame()->ExecuteJavaScriptInIsolatedWorld(
         kRevertScript, base::DoNothing(), ISOLATED_WORLD_ID_TRANSLATE);
     std::shared_ptr<bdkcore::Contents> core = Core();
@@ -321,10 +316,7 @@ class PageTranslation
   // content::WebContentsObserver: a new page has no translation; one in
   // progress is cancelled (swift-api.md 11.2, "Cancellation").
   void PrimaryPageChanged(content::Page& page) override {
-    if (job_) {
-      job_->Cancel();
-      job_.reset();
-    }
+    NextAttempt();
     std::shared_ptr<bdkcore::Contents> core = Core();
     if (core && bdkcore::translation_state(*core).phase != "unavailable") {
       bdkcore::translation_set_state(core, bdkcore::TranslationState{});
@@ -347,10 +339,56 @@ class PageTranslation
     }
     // Chromium reports "und" when neither the page nor its detector knows;
     // its detection model is a Google download BDK does not fetch, so
-    // detection rests on what the page declares (feasibility.md 6).
+    // detection rests on what the page declares (feasibility.md 6), or else
+    // on the provider's detect operation when it has one.
     std::string language = details.adopted_language;
     if (language == "und") {
       language.clear();
+    }
+    if (language.empty() &&
+        bdkcore::provider_has_operation(*rt, bdkcore::Service::kTranslation,
+                                        "detect")) {
+      web_contents()->GetPrimaryMainFrame()->ExecuteJavaScriptInIsolatedWorld(
+          kExtractScript,
+          base::BindOnce(&PageTranslation::OnSampleExtracted,
+                         weak_factory_.GetWeakPtr(), attempt_),
+          ISOLATED_WORLD_ID_TRANSLATE);
+      return;
+    }
+    Decide(language);
+  }
+
+  // Asks the provider for the language of a page that declares none.
+  void OnSampleExtracted(uint64_t attempt, base::Value result) {
+    std::shared_ptr<bdkcore::Runtime> rt = bdkcore::current_runtime();
+    if (attempt != attempt_ || !rt) {
+      return;
+    }
+    std::vector<std::string> texts;
+    const base::DictValue* dict = result.GetIfDict();
+    if (const base::ListValue* list =
+            dict ? dict->FindList("texts") : nullptr) {
+      for (const base::Value& text : *list) {
+        texts.push_back(text.is_string() ? text.GetString() : "");
+      }
+    }
+    bdkcore::ProviderHandlers handlers;
+    handlers.done = [self = weak_factory_.GetWeakPtr(),
+                     attempt](const bdkcore::ProviderReply& reply) {
+      if (self && attempt == self->attempt_) {
+        self->Decide(bdkcore::translation_detected(reply));
+      }
+    };
+    bdkcore::provider_invoke(rt, bdkcore::Service::kTranslation, "detect",
+                             bdkcore::translation_detect_input(texts),
+                             std::move(handlers));
+  }
+
+  // Records the page's language, then offers or automatically translates it.
+  void Decide(const std::string& language) {
+    std::shared_ptr<bdkcore::Contents> core = Core();
+    if (!core) {
+      return;
     }
     bdkcore::TranslationState state;
     state.detected = language;
@@ -368,10 +406,19 @@ class PageTranslation
     }
   }
 
-  void OnExtracted(const std::string& from,
+  void OnExtracted(uint64_t attempt,
+                   const std::string& from,
                    const std::string& to,
                    std::shared_ptr<ServiceCall> call,
                    base::Value result) {
+    if (attempt != attempt_) {
+      // Reverted, navigated or replaced while the text was being read.
+      if (call) {
+        call->Reject(BDK_DOMAIN_BROKER, BDK_CODE_CANCELLED,
+                     "the translation was cancelled");
+      }
+      return;
+    }
     std::shared_ptr<bdkcore::Runtime> rt = bdkcore::current_runtime();
     const base::DictValue* dict = result.GetIfDict();
     const base::ListValue* list = dict ? dict->FindList("texts") : nullptr;
@@ -401,11 +448,11 @@ class PageTranslation
         call->Progress(f, "translating");
       }
     };
-    spec.done = [self = weak_factory_.GetWeakPtr(), call](
+    spec.done = [self = weak_factory_.GetWeakPtr(), attempt, call](
                     const bdkcore::ProviderReply& reply,
                     const std::vector<std::string>& texts) {
       if (self) {
-        self->OnTranslated(reply, texts, call);
+        self->OnTranslated(attempt, reply, texts, call);
       } else if (call) {
         call->Reject(BDK_DOMAIN_CONTENTS, BDK_CODE_STALE, "the page is gone");
       }
@@ -421,9 +468,18 @@ class PageTranslation
     }
   }
 
-  void OnTranslated(const bdkcore::ProviderReply& reply,
+  void OnTranslated(uint64_t attempt,
+                    const bdkcore::ProviderReply& reply,
                     const std::vector<std::string>& texts,
                     std::shared_ptr<ServiceCall> call) {
+    if (attempt != attempt_) {
+      // A later translation, revert or navigation owns the job and the state.
+      if (call) {
+        call->Reject(BDK_DOMAIN_BROKER, BDK_CODE_CANCELLED,
+                     "the translation was cancelled");
+      }
+      return;
+    }
     job_.reset();
     std::shared_ptr<bdkcore::Contents> core = Core();
     if (!core) {
@@ -617,8 +673,20 @@ class PageTranslation
             weak_factory_.GetWeakPtr()));
   }
 
+  // Ends the current attempt, cancelling its job, and starts the next: a
+  // callback from an earlier attempt sees a different number and is ignored.
+  uint64_t NextAttempt() {
+    ++attempt_;
+    if (job_) {
+      std::shared_ptr<bdkcore::TranslationJob> job = std::move(job_);
+      job->Cancel();
+    }
+    return attempt_;
+  }
+
   raw_ptr<translate::TranslateDriver> driver_ = nullptr;
   std::shared_ptr<bdkcore::TranslationJob> job_;
+  uint64_t attempt_ = 0;
   base::WeakPtrFactory<PageTranslation> weak_factory_{this};
 
   WEB_CONTENTS_USER_DATA_KEY_DECL();

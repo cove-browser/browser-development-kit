@@ -290,7 +290,8 @@ original in the message. A backend's own provider (the default translation engin
 
 Translation. `translation_job_start` sends a page's text segments: the provider's pairs first
 (`provider.unsupportedPair`; languages match on the primary subtag), `prepare` for a pair that is not installed, then
-batches of at most 64 segments and 16 KiB, one at a time; blank segments are not sent. The page's state
+batches of at most 64 segments and 16 KiB, one at a time; blank segments are not sent, and a segment over 16 KiB goes as
+pieces that fit (split at a space, else at a character boundary) whose answers are joined. The page's state
 (`translation_set_state`) is reported as a `BDK_CONTENTS_EVENT_TRANSLATION` event (detail: the `TranslationState` JSON)
 and as `translation.stateChanged` (`page` is the contents handle as a decimal string, provisional until M7's page
 identifiers). `translation_decide`: no offer for an undetermined language or the target; a language on the always list
