@@ -7,7 +7,7 @@
     "build": {
       "executor": "nx:run-commands",
       "cache": false,
-      "dependsOn": [{ "projects": ["js-internal"], "target": "build" }],
+      "dependsOn": [{ "projects": ["js-internal", "js-vite"], "target": "build" }],
       "inputs": [
         "default",
         "nativeToolchain",
