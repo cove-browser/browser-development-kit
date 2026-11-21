@@ -59,7 +59,7 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
    generated identifier, so they could not be observed otherwise.
 9. `bdk_provider_register` and `bdk_provider_set_key` take a `bdk_runtime_t` (c-abi.md omits it). The vtable has no
    callbacks yet because their signatures are not specified.
-10. Application command, event and page-route names must start with `app.` (`config.nameNotApp`). Duplicates fail
+10. Application command and event names must start with `app.` (`config.nameNotApp`). Duplicates fail
     with `config.duplicateName` (not in the swift-api error table).
 10a. Application settings (`bdk_app_setting_register`, T-SVC-08): the broker, not the backend, answers `settings.get`,
     `getMany`, `describe`, `set` and `reset` for `app.` keys (`runtime/app_settings.cc`), so every runtime behaves the
@@ -100,6 +100,17 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
 14. A surface's mode comes from `surfaces` in the resolved configuration. A surface that is not listed is `default`
     (the resolver lists them all). `[ui] default_browser_surfaces` is already folded into the listed modes by the
     resolver, so the core never reads it.
+
+15. Logical routes (`runtime/routes.{h,cc}`, M4). The core reads `browser.internal_scheme`, `routes` and `aliases`
+    at start and owns every rule of architecture.md section 8: `bdk_page_handler_register` sets a route's mode before
+    the freeze (`config.noBuiltin`, `routeUnknown`, `routeInvalid`, `routeMode`; `config.handlerMissing` at the
+    freeze for a native route with no handler), `resolve_navigation` says what a URL becomes (load the internal URL,
+    native, blocked with `ERR_BLOCKED_BY_CLIENT` for a disabled route and `ERR_INVALID_URL` for an unknown one, or
+    dropped when a web page asks), `display_url` gives the branded form a backend must report, `page_caller_bind`
+    makes a bundled page's caller, and `broker_subscribe_as` subscribes it to events it holds (sessions subscribe in
+    M7). An alias is shown as its target route. The built-in routes and their Chromium hosts are a table in
+    `routes.cc`, checked at the pin; packages/cli lists the same routes. Internal pages are not recorded in history,
+    as in Chrome. Page subscriptions take no filter yet.
 
 ### The UI request router
 

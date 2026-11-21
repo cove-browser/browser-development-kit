@@ -1,0 +1,37 @@
+// Copyright 2026 The BDK Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module bdk.mojom;
+
+// The broker as one internal page reaches it (architecture.md section 9.2).
+// Bound only for BDK's bundled-page WebUI controller, through the per-WebUI
+// interface broker, so any other page that asks for it has its renderer
+// terminated. Authority comes from the page's route in the resolved
+// configuration, never from these messages: the browser checks the frame on
+// every call. The JavaScript side is packages/js/internal (mojo-transport.ts).
+interface PageBroker {
+  // The page's client, for progress and events. Called once, first.
+  SetClient(pending_remote<PageClient> client);
+
+  // Runs a broker command as this page. On success `ok` is true and
+  // `result_json` is the result. Otherwise `result_json` is
+  // {"domain","code","message","details"}.
+  Invoke(uint64 call_id, string command, string arguments_json)
+      => (bool ok, string result_json);
+
+  // Cancels a call started with Invoke; its answer is then broker.cancelled.
+  Cancel(uint64 call_id);
+
+  // Subscribes to a browser or app. event the page holds the capability for.
+  // On failure `error_json` is {"domain","code","message"}.
+  Subscribe(uint64 subscription_id, string event, string filter_json)
+      => (bool ok, string error_json);
+
+  Unsubscribe(uint64 subscription_id);
+};
+
+interface PageClient {
+  OnProgress(uint64 call_id, double fraction, string message);
+  OnEvent(uint64 subscription_id, string payload_json);
+};

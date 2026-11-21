@@ -590,4 +590,13 @@ bool bundled_source(const Runtime& rt, const std::string& host, BundledSource* o
     return false;
 }
 
+std::vector<std::string> bundled_hosts(const Runtime& rt) {
+    std::vector<std::string> hosts{builtin_host("new-tab")};
+    for (const auto& [route, entry] : table_of(rt).bundled) {
+        if (entry.host != hosts.front())
+            hosts.push_back(entry.host);
+    }
+    return hosts;
+}
+
 } // namespace bdkcore

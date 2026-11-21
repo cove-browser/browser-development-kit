@@ -139,6 +139,10 @@ struct BundledSource {
 };
 bool bundled_source(const Runtime& rt, const std::string& host, BundledSource* out);
 
+/* Every host the table can serve a bundled page at, or BDK's new-tab page: the bundled pages of
+   the resolved file and bdk-new-tab. A backend registers what serves them at start. */
+std::vector<std::string> bundled_hosts(const Runtime& rt);
+
 } // namespace bdkcore
 
 #endif /* BDK_ROUTES_H_ */
