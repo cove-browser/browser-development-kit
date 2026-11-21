@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "Panel Side Panel",
+  "version": "1.0",
+  "permissions": ["sidePanel", "tabs"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "Panel Side Panel" },
+  "side_panel": { "default_path": "panel.html" }
+}

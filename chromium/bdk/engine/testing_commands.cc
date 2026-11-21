@@ -23,6 +23,7 @@
 #include "bdk/engine/bdk_testing.h"
 #include "bdk/engine/engine_contents.h"
 #include "bdk/engine/extensions/extension_testing.h"
+#include "bdk/engine/extensions/panel_testing.h"
 #include "bdk/engine/json_util.h"
 #include "bdk/engine/services/authentication.h"
 #include "bdk/engine/services/capture_service.h"
@@ -210,6 +211,13 @@ bool Run(const std::string& name,
   if (name == "downloads.danger") {
     ForceDangerousDownloadsForTesting(args.FindBool("on").value_or(true));
     return true;
+  }
+  // Windows, side panels, anchored prompts and loading extension fixtures
+  // (extensions.load, extensions.eval); first, because every other extensions.
+  // verb is the install tests'.
+  if (std::optional<bool> handled =
+          RunExtensionPanelCommand(name, args, result)) {
+    return *handled;
   }
   if (name.starts_with("extensions.")) {
     return RunExtensionTestingCommand(name, args, result);

@@ -7,7 +7,9 @@
 #include <memory>
 #include <utility>
 
+#include "base/values.h"
 #include "chrome/browser/devtools/devtools_ui_bindings.h"
+#include "chrome/browser/extensions/extension_tab_util.h"
 #include "chrome/browser/ui/webui/devtools/devtools_ui.h"
 #include "content/public/browser/devtools_agent_host.h"
 #include "content/public/browser/navigation_handle.h"
@@ -49,7 +51,11 @@ class BindingsDelegate : public DevToolsUIBindings::Delegate {
   void SetEyeDropperActive(bool active) override {}
   void OpenNodeFrontend() override {}
   void InspectedContentsClosing() override { CloseWindow(); }
-  void OnLoadCompleted() override {}
+  void OnLoadCompleted() override {
+    if (frontend_) {
+      frontend_->SeedInspectedTabId();
+    }
+  }
   void ReadyForTest() override {}
   void ConnectionReady() override {}
   void SetOpenNewWindowForPopups(bool value) override {}
@@ -118,6 +124,15 @@ void DevToolsFrontend::Attach() {
   attached_bindings_ = reinterpret_cast<uintptr_t>(bindings);
   bindings->SetDelegate(new BindingsDelegate(weak_factory_.GetWeakPtr()));
   bindings->AttachTo(content::DevToolsAgentHost::GetOrCreateForTab(inspected_));
+}
+
+void DevToolsFrontend::SeedInspectedTabId() {
+  DevToolsUIBindings* bindings = Bindings();
+  if (bindings && inspected_) {
+    bindings->CallClientMethod(
+        "DevToolsAPI", "setInspectedTabId",
+        base::Value(extensions::ExtensionTabUtil::GetTabId(inspected_)));
+  }
 }
 
 void DevToolsFrontend::OpenInNewTab(const std::string& url) {

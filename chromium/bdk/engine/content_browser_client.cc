@@ -6,11 +6,55 @@
 
 #include <utility>
 
+#include "bdk/core/include/bdk/bdk_ids.h"
+#include "bdk/core/runtime/core_internal.h"
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_auth.h"
+#include "content/public/browser/navigation_handle.h"
+#include "content/public/browser/navigation_throttle.h"
+#include "content/public/browser/navigation_throttle_registry.h"
+#include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/url_loader_request_interceptor.h"
+#include "extensions/common/constants.h"
 
 namespace bdk {
+
+namespace {
+
+// The DevTools front end loads an extension's `devtools_page` in a frame of
+// its own and the extension adds its panels from there, so a front end whose
+// frames cannot load extension pages shows no extension panel. Chromium adds
+// the extensions to the front end itself and offers no switch to stop it.
+class DevToolsExtensionThrottle : public content::NavigationThrottle {
+ public:
+  explicit DevToolsExtensionThrottle(
+      content::NavigationThrottleRegistry& registry)
+      : content::NavigationThrottle(registry) {}
+
+  ThrottleCheckResult WillStartRequest() override {
+    content::NavigationHandle* handle = navigation_handle();
+    if (handle->IsInMainFrame() ||
+        !handle->GetURL().SchemeIs(extensions::kExtensionScheme)) {
+      return PROCEED;
+    }
+    content::RenderFrameHost* parent = handle->GetParentFrame();
+    if (!parent || !parent->GetLastCommittedURL().SchemeIs("devtools")) {
+      return PROCEED;
+    }
+    std::shared_ptr<bdkcore::Runtime> rt = bdkcore::current_runtime();
+    if (rt &&
+        !bdkcore::ui_surface_available(*rt, BDK_SURFACE_EXTENSION_DEVTOOLS)) {
+      return BLOCK_REQUEST_AND_COLLAPSE;
+    }
+    return PROCEED;
+  }
+
+  const char* GetNameForLogging() override {
+    return "BdkDevToolsExtensionThrottle";
+  }
+};
+
+}  // namespace
 
 BdkContentBrowserClient::BdkContentBrowserClient() = default;
 BdkContentBrowserClient::~BdkContentBrowserClient() = default;
@@ -33,6 +77,12 @@ BdkContentBrowserClient::WillCreateURLLoaderRequestInterceptors(
     interceptors.insert(interceptors.begin(), std::move(scripted));
   }
   return interceptors;
+}
+
+void BdkContentBrowserClient::CreateThrottlesForNavigation(
+    content::NavigationThrottleRegistry& registry) {
+  ChromeContentBrowserClient::CreateThrottlesForNavigation(registry);
+  registry.AddThrottle(std::make_unique<DevToolsExtensionThrottle>(registry));
 }
 
 std::unique_ptr<content::LoginDelegate>

@@ -40,8 +40,21 @@ class HostWindow {
   virtual bool IsMinimized() = 0;
   virtual bool IsMaximized() = 0;
   virtual bool IsFullscreen() = 0;
-  // Makes the window the key window and brings it to the front.
+  // Makes the window the key window and brings it to the front, restoring it
+  // first if it is minimised.
   virtual void Activate() = 0;
+
+  // What a window request the application left to BDK does to the native
+  // window (bdk_window.h: setFrame, minimize, zoom, enterFullscreen,
+  // exitFullscreen, close).
+  // `bounds` are in screen coordinates, origin top left.
+  virtual void SetFrame(const gfx::Rect& bounds) = 0;
+  virtual void Minimize() = 0;
+  // Toggles the window between its zoomed and its standard size.
+  virtual void ToggleZoom() = 0;
+  virtual void SetFullscreen(bool fullscreen) = 0;
+  // Closes the window the way its close button does when it has one.
+  virtual void Close() = 0;
 };
 
 }  // namespace bdk

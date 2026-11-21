@@ -1,0 +1,7 @@
+{
+  "manifest_version": 3,
+  "name": "Panel DevTools",
+  "version": "1.0",
+  "devtools_page": "devtools.html",
+  "background": { "service_worker": "background.js" }
+}

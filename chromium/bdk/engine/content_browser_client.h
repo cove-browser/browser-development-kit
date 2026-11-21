@@ -30,6 +30,11 @@ class BdkContentBrowserClient : public ChromeContentBrowserClient {
       scoped_refptr<base::SequencedTaskRunner> navigation_response_task_runner)
       override;
 
+  // Keeps a DevTools front end from loading extension pages when
+  // `[extensions.ui] devtools` is "disabled" (extensions.md 4.8).
+  void CreateThrottlesForNavigation(
+      content::NavigationThrottleRegistry& registry) override;
+
   std::unique_ptr<content::LoginDelegate> CreateLoginDelegate(
       const net::AuthChallengeInfo& auth_info,
       content::WebContents* web_contents,

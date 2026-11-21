@@ -55,6 +55,8 @@ int bdk_harness_engine_keep_profiles = 0;
 /* Set by a test that needs surfaces configured: the value of "surfaces" in the resolved
    configuration, for example {"notifications":"disabled"}. Cleared by the next start. */
 const char* bdk_harness_engine_surfaces = NULL;
+/* The same for "extensions" (for example {"ui":{"side_panels":"disabled"}}). */
+const char* bdk_harness_engine_extensions = NULL;
 
 /* Set by a test that needs extensions configured: the value of "extensions" in the resolved
    configuration (a JSON object), for the next runtime only. */

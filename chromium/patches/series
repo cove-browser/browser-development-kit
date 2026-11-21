@@ -13,3 +13,4 @@ bdk-let-an-embedder-present-printing.patch
 bdk-let-an-embedder-supply-the-autofill-popup-view.patch
 bdk-reach-the-address-bubble-handler-through-the-browser-s-user-data.patch
 bdk-let-an-embedder-present-extension-install-and-uninstall-prompts.patch
+bdk-let-an-embedder-keep-a-browser-out-of-the-extension-window-list.patch

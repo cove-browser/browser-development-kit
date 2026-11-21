@@ -229,10 +229,11 @@ static const t_test_t* const kTables[] = {
     t_ui_tests,
     t_extension_tests, /* extensions and registered windows (tests_extensions.c) */
 #ifdef BDK_HARNESS_ENGINE_TESTS
-    t_engine_tests,           /* scenarios only a real engine can run (tests_engine.c) */
-    t_engine_ui_tests,        /* browser-owned surfaces on the engine (tests_engine_ui.c) */
-    t_engine_prompt_tests,    /* services and prompts (tests_engine_prompts.c) */
-    t_engine_extension_tests, /* extension install and policy (tests_engine_extensions.c) */
+    t_engine_tests,                 /* scenarios only a real engine can run (tests_engine.c) */
+    t_engine_ui_tests,              /* browser-owned surfaces on the engine (tests_engine_ui.c) */
+    t_engine_prompt_tests,          /* services and prompts (tests_engine_prompts.c) */
+    t_engine_extension_tests,       /* extension install and policy (tests_engine_extensions.c) */
+    t_engine_extension_panel_tests, /* windows, side panels, DevTools extensions */
 #endif
 };
 

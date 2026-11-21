@@ -51,7 +51,9 @@
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_find.h"
 #include "bdk/engine/ui_notifications.h"
+#include "bdk/engine/window_registry.h"
 #include "chrome/browser/browser_process.h"
+#include "chrome/browser/extensions/extension_tab_util.h"
 #include "chrome/browser/profiles/delete_profile_helper.h"
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
 #include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"
@@ -61,6 +63,8 @@
 #include "chrome/browser/profiles/profile_destroyer.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/profiles/profile_metrics.h"
+#include "chrome/browser/ui/browser.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "components/version_info/version_info.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
@@ -697,6 +701,36 @@ class EngineBackend final : public bdkcore::Backend {
       }
     }
     HostContexts::Get().UnregisterWindow(&window);
+  }
+
+  // The attachments of bdk_window.h, which the window registry keeps.
+  bdk_window_t WindowForContents(const Contents& c) override {
+    return WindowRegistry::Get().WindowOfPage(c.handle);
+  }
+
+  void WindowContents(const bdkcore::Window& window,
+                      std::vector<bdk_contents_t>* contents,
+                      bdk_contents_t* active) override {
+    *contents = WindowRegistry::Get().PagesOf(&window);
+    *active = 0;
+    HostContext* context = WindowRegistry::Get().ActiveContext(&window);
+    Browser* browser = context ? context->browser() : nullptr;
+    if (!browser) {
+      return;
+    }
+    if (EngineContents* page = EngineContents::FromWebContents(
+            browser->GetTabStripModel()->GetActiveWebContents())) {
+      *active = page->handle();
+    }
+  }
+
+  // The window id extensions see (windows.get) is the session identifier of
+  // the context of the window's active page: a window is one extension window
+  // per profile.
+  int32_t WindowExtensionId(const bdkcore::Window& window) override {
+    HostContext* context = WindowRegistry::Get().ActiveContext(&window);
+    Browser* browser = context ? context->browser() : nullptr;
+    return browser ? extensions::ExtensionTabUtil::GetWindowId(browser) : -1;
   }
 
   // Keeps a persistent profile loaded for the life of the runtime, from its

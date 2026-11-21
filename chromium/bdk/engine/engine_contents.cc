@@ -30,9 +30,12 @@
 #include "bdk/engine/ui_find.h"
 #include "bdk/engine/ui_permissions.h"
 #include "bdk/engine/ui_request.h"
+#include "bdk/engine/window_registry.h"
 #include "chrome/browser/history/history_tab_helper.h"
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/browser.h"
+#include "chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h"
 #include "components/input/native_web_keyboard_event.h"
 #include "content/public/browser/context_menu_params.h"
 #include "content/public/browser/host_zoom_map.h"
@@ -194,7 +197,9 @@ Profile* ProfileOf(const bdkcore::Contents& contents) {
 EngineContents::EngineContents(
     const std::shared_ptr<bdkcore::Contents>& contents,
     std::unique_ptr<content::WebContents> web_contents)
-    : core_(contents), host_view_(HostView::Create()) {
+    : core_(contents),
+      handle_(contents->handle),
+      host_view_(HostView::Create()) {
   Registry().push_back(this);
   host_view_->SetWindowChangedCallback(base::BindRepeating(
       &EngineContents::OnHostViewWindowChanged, weak_factory_.GetWeakPtr()));
@@ -205,6 +210,7 @@ EngineContents::EngineContents(
 
 EngineContents::~EngineContents() {
   std::erase(Registry(), this);
+  WindowRegistry::Get().ForgetPage(handle_);
   // Dialogs and find UI go while the page is whole.
   find_.reset();
   dialogs_.reset();
@@ -301,6 +307,9 @@ void EngineContents::MoveTo(HostContext& context) {
     return;
   }
   HostContexts::Get().Move(web_contents_, context);
+  // The page is attached to the context's window now, or to none for a
+  // parking context.
+  WindowRegistry::Get().NotePage(handle_, context.window());
   // The Browser took the delegate with the tab.
   web_contents_->SetDelegate(this);
   if (focused_) {
@@ -598,6 +607,18 @@ void EngineContents::OpenDevTools() {
 
 void EngineContents::RequestClose() {
   CloseContents(web_contents_.get());
+}
+
+void EngineContents::SetContentsBounds(content::WebContents* source,
+                                       const gfx::Rect& bounds) {
+  // Chromium's delegate for the page's Browser ignores this for a normal
+  // window and sets the bounds of any other: the Browser's window is BDK's,
+  // which asks the application (a window request of kind setFrame).
+  HostContext* context = HostContexts::Get().ContextOf(web_contents_);
+  if (Browser* browser = context ? context->browser() : nullptr) {
+    BrowserWebContentsDelegate::From(browser)->SetContentsBounds(source,
+                                                                 bounds);
+  }
 }
 
 void EngineContents::CloseContents(content::WebContents* source) {
