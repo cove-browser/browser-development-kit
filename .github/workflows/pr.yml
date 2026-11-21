@@ -103,6 +103,11 @@ jobs:
         # swift and minimal-browser need Xcode and AppKit and run in the swift-macos job, so they are excluded here too.
         run: pnpm exec nx affected -t lint test build --exclude=chromium,swift,minimal-browser
 
+      # The matrix page is generated from matrix.json. The affected run above does not run this target, so a stale
+      # page would pass it; check the page on every pull request.
+      - name: Extension compatibility matrix is current
+        run: pnpm exec nx run extensions-suite:matrix-check
+
       # Workflows, hooks and root configuration belong to no project, so `nx affected` never selects
       # the checks that read them (actionlint, Biome on root files, taplo). Run them on every PR;
       # an affected run above makes this a cache hit.

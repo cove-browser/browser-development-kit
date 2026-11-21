@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "BDK MV3 Probe",
+  "version": "0.2.0",
+  "description": "Test fixture: reports how tabs, windows, activeTab, popup, side panel and messaging behave under a host.",
+  "minimum_chrome_version": "127",
+  "permissions": ["activeTab", "tabs", "scripting", "contextMenus", "sidePanel", "storage"],
+  "background": { "service_worker": "sw.js" },
+  "action": { "default_title": "BDK probe", "default_popup": "popup.html" },
+  "side_panel": { "default_path": "sidepanel.html" },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "externally_connectable": { "matches": ["http://127.0.0.1/*", "http://localhost/*"] }
+}

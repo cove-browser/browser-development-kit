@@ -4,13 +4,6 @@
   "projectType": "library",
   "implicitDependencies": ["swift", "chromium", "js-automation"],
   "targets": {
-    "test-extensions": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "options": {
-        "command": "echo 'integration-tests:test-extensions: not implemented until M5'"
-      }
-    },
     "test-e2e": {
       "executor": "nx:run-commands",
       "cache": false,

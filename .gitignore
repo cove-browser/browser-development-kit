@@ -15,3 +15,4 @@ apps/**/bdk.resolved.json
 packages/js/protocol/src/generated/
 # CMake builds of packages/core next to build/ (engine conformance, sanitizers)
 packages/core/build-*/
+tests/extensions/results/
