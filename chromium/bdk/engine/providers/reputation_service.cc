@@ -143,13 +143,16 @@ class BdkDatabaseManager : public safe_browsing::SafeBrowsingDatabaseManager {
     std::move(callback).Run(false);
   }
 
+  // A local list, as Chromium's own local database is. The blocking page names
+  // its metrics after the source and hits NOTREACHED on UNKNOWN; nothing is
+  // reported anywhere.
   safe_browsing::ThreatSource GetBrowseUrlThreatSource(
       safe_browsing::CheckBrowseUrlType check_type) const override {
-    return safe_browsing::ThreatSource::UNKNOWN;
+    return safe_browsing::ThreatSource::LOCAL_PVER4;
   }
 
   safe_browsing::ThreatSource GetNonBrowseUrlThreatSource() const override {
-    return safe_browsing::ThreatSource::UNKNOWN;
+    return safe_browsing::ThreatSource::LOCAL_PVER4;
   }
 
   bool IsDatabaseReady() const override { return true; }
