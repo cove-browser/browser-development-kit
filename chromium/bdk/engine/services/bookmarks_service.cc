@@ -371,7 +371,9 @@ void OnParsed(
     std::unique_ptr<base::SequenceBound<ContentBookmarkParser>> parser,
     user_data_importer::BookmarkParser::BookmarkParsingResult result) {
   using Error = user_data_importer::BookmarkParser::BookmarkParsingError;
-  if (!model) {
+  // A call cancelled while the file was parsed has been answered already;
+  // nothing it read is added.
+  if (!model || c->cancelled()) {
     return;
   }
   if (!result.has_value()) {

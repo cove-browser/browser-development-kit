@@ -59,6 +59,12 @@ std::shared_ptr<bdkcore::Request> RaiseUiRequest(
       anchor[2] = 0;
     }
   }
+  // With no finish the request is a notice (a fullscreen exit, say): it has
+  // no on_finish, so the router delivers it at once instead of queueing it
+  // behind a request the handler still holds.
+  if (!finish) {
+    return bdkcore::raise_ui_request(rt, request);
+  }
   // The lambda lives in the request, and the router calls it while the
   // request is alive, so it may read the request's gesture.
   const bdkcore::Request* raw = request.get();
@@ -69,10 +75,23 @@ std::shared_ptr<bdkcore::Request> RaiseUiRequest(
     UiResult result;
     result.outcome = outcome;
     result.completion = completion;
+    result.gesture_ok = UiPresenters::Get().IsRecentGesture(raw->gesture);
+    // The router checked only the kind of the gesture handle; the engine
+    // checks that it is the operating system's recent event. A grant without
+    // one is no grant on any surface: it reaches the handler as a rejection,
+    // which takes the path that grants nothing.
+    if (outcome == bdkcore::UiOutcome::kCompleted && !result.gesture_ok &&
+        bdkcore::completion_grants(raw->surface, completion)) {
+      result.outcome = bdkcore::UiOutcome::kRejected;
+      result.completion.clear();
+      if (*shared_finish) {
+        std::move(*shared_finish).Run(result);
+      }
+      return;
+    }
     if (std::optional<base::DictValue> parsed = ParseJsonDict(args)) {
       result.args = std::move(*parsed);
     }
-    result.gesture_ok = UiPresenters::Get().IsRecentGesture(raw->gesture);
     if (*shared_finish) {
       std::move(*shared_finish).Run(result);
     }

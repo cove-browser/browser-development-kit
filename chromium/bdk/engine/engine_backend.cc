@@ -346,9 +346,10 @@ class EngineBackend final : public bdkcore::Backend {
                   base::Unretained(this), path, weak, std::move(done)));
   }
 
-  bdk_status_t OpenPrivateProfile(Runtime& rt,
-                                  bdkcore::Profile& profile,
-                                  bdk_error_t* out_error) override {
+  bdk_status_t OpenPrivateProfile(
+      Runtime& rt,
+      const std::shared_ptr<bdkcore::Profile>& profile,
+      bdk_error_t* out_error) override {
     // Each private profile is its own off-the-record profile: cookies, cache,
     // storage and permissions are kept apart from every other profile, and
     // nothing is written to disk.
@@ -362,7 +363,10 @@ class EngineBackend final : public bdkcore::Backend {
     InstallDownloadPrompts(otr);
     auto data = std::make_unique<EngineProfile>();
     data->profile = otr;
-    profile.data = std::move(data);
+    // Cookie and download events; ProfileEvents leaves out the history and
+    // bookmarks an off-the-record profile shares with its original.
+    data->events = CreateServiceEvents(otr, profile);
+    profile->data = std::move(data);
     return BDK_OK;
   }
 

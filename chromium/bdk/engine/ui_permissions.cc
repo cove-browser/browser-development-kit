@@ -252,13 +252,9 @@ class BdkPermissionPrompt : public permissions::PermissionPrompt {
   }
 
   void Grant(const UiResult& result) {
-    // The router checked that a gesture came with the grant; the engine checks
-    // that it is the operating system's: a recent mouse-up or key-down in a
-    // window of this application. Anything less is no grant.
-    if (!result.gesture_ok) {
-      Decide(PermissionChoice::kDismiss);
-      return;
-    }
+    // RaiseUiRequest already turned a grant without the operating system's
+    // gesture into a rejection, so this one carried a recent mouse-up or
+    // key-down in a window of this application.
     // The manager decides a prompt's requests together, so a grant of fewer
     // kinds than were asked cannot be honoured: it grants nothing.
     std::set<std::string> granted;

@@ -25,6 +25,7 @@
 #include "bdk/engine/json_util.h"
 #include "bdk/engine/services/autofill_service.h"
 #include "bdk/engine/services/events.h"
+#include "bdk/engine/services/service_call.h"
 #include "bdk/engine/services/service_common.h"
 #include "bdk/engine/services/services.h"
 #include "chrome/browser/password_manager/factories/profile_password_store_factory.h"
@@ -89,19 +90,18 @@ std::string OriginOf(const StoredCredential& credential) {
   return origin.opaque() ? credential.signon_realm : origin.GetURL().spec();
 }
 
-base::DictValue InfoOf(const StoredCredential& credential) {
-  base::DictValue info;
-  info.Set("id", IdOf(credential));
-  info.Set("origin", OriginOf(credential));
-  info.Set("username", base::UTF16ToUTF8(credential.username_value));
-  info.Set("created", credential.date_created.InMillisecondsFSinceUnixEpoch());
-  if (credential.date_last_used.is_null()) {
-    info.Set("lastUsed", base::Value());
-  } else {
-    info.Set("lastUsed",
-             credential.date_last_used.InMillisecondsFSinceUnixEpoch());
-  }
-  return info;
+// Written as text so the times are whole milliseconds, as JsonTime writes
+// them; a double in a DictValue would keep a fraction or gain a ".0".
+std::string InfoJson(const StoredCredential& credential) {
+  return "{\"id\":" + JsonString(IdOf(credential)) +
+         ",\"origin\":" + JsonString(OriginOf(credential)) + ",\"username\":" +
+         JsonString(base::UTF16ToUTF8(credential.username_value)) +
+         ",\"created\":" + JsonTime(credential.date_created) +
+         ",\"lastUsed\":" +
+         (credential.date_last_used.is_null()
+              ? std::string("null")
+              : JsonTime(credential.date_last_used)) +
+         "}";
 }
 
 bool SameKey(const StoredCredential& a, const StoredCredential& b) {
@@ -148,7 +148,7 @@ void List(const std::shared_ptr<BuiltinCall>& call, const Store& store) {
       base::BindOnce(
           [](std::shared_ptr<BuiltinCall> call, bool for_origin,
              url::Origin wanted, Store, Credentials all) {
-            base::ListValue items;
+            std::string items;
             for (const StoredCredential& credential : all) {
               if (credential.blocked_by_user) {
                 continue;
@@ -156,10 +156,9 @@ void List(const std::shared_ptr<BuiltinCall>& call, const Store& store) {
               if (for_origin && url::Origin::Create(credential.url) != wanted) {
                 continue;
               }
-              items.Append(InfoOf(credential));
+              items += (items.empty() ? "" : ",") + InfoJson(credential);
             }
-            call->control->Resolve(
-                ToJson(base::DictValue().Set("items", std::move(items))));
+            call->control->Resolve("{\"items\":[" + items + "]}");
           },
           call, for_origin, wanted, store));
 }
@@ -193,7 +192,7 @@ void ResolveWithInfoOf(const std::shared_ptr<BuiltinCall>& call,
              Credentials all) {
             for (const StoredCredential& credential : all) {
               if (!credential.blocked_by_user && SameKey(credential, like)) {
-                call->control->Resolve(ToJson(InfoOf(credential)));
+                call->control->Resolve(InfoJson(credential));
                 return;
               }
             }
@@ -464,6 +463,11 @@ void Import(const std::shared_ptr<BuiltinCall>& call, const Store& store) {
       base::BindOnce(
           [](std::shared_ptr<BuiltinCall> call, Store store,
              std::optional<std::string> text) {
+            // Cancelled while the file was read: the call is answered and
+            // nothing it read is saved.
+            if (call->control->cancelled()) {
+              return;
+            }
             if (!text) {
               RejectCall(*call, BDK_CODE_INVALID_ARGUMENTS,
                          "the file could not be read");

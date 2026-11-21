@@ -45,6 +45,9 @@ BdkTabDialogs::~BdkTabDialogs() {
   if (request_) {
     bdkcore::withdraw_ui_request(*request_);
   }
+  if (dismiss_) {
+    std::move(dismiss_).Run();
+  }
 }
 
 void BdkTabDialogs::ShowManagePasswordsBubble(bool user_action) {
@@ -62,7 +65,7 @@ void BdkTabDialogs::ShowManagePasswordsBubble(bool user_action) {
   if (!is_update && state != State::PENDING_PASSWORD_STATE) {
     return;
   }
-  if (answered_ || (request_ && !request_->finished)) {
+  if (answered_ || (request_ && !request_->finished) || dismiss_) {
     return;
   }
   const password_manager::PasswordForm& pending =
@@ -109,6 +112,9 @@ void BdkTabDialogs::HideManagePasswordsBubble() {
     bdkcore::withdraw_ui_request(*request_);
     request_.reset();
   }
+  if (dismiss_) {
+    std::move(dismiss_).Run();
+  }
 }
 
 void BdkTabDialogs::Finished(bool is_update, const UiResult& result) {
@@ -141,13 +147,14 @@ void BdkTabDialogs::Finished(bool is_update, const UiResult& result) {
       if (!is_update) {
         alert.buttons.push_back({"never", "Never for this site"});
       }
-      UiPresenters::Get().ShowAlert(
+      dismiss_ = UiPresenters::Get().ShowAlert(
           "passwords", &page->host_view(), std::move(alert),
           base::BindOnce(
               [](base::WeakPtr<BdkTabDialogs> self, bool is_update, int index) {
                 if (!self) {
                   return;
                 }
+                self->dismiss_.Reset();
                 self->Apply(is_update, index == 0   ? Choice::kSave
                                        : index == 1 ? Choice::kNotNow
                                        : index == 2 ? Choice::kNever

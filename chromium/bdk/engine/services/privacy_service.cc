@@ -31,6 +31,7 @@
 #include "content/public/browser/storage_partition.h"
 #include "net/cookies/canonical_cookie.h"
 #include "services/network/public/mojom/cookie_manager.mojom.h"
+#include "url/gurl.h"
 #include "url/origin.h"
 
 namespace bdk {
@@ -151,10 +152,58 @@ void Finish(const std::shared_ptr<ServiceCall>& c,
   c->Resolve(out + "]}");
 }
 
-// Counts what each requested type holds, one type after the other. History,
-// cookies and the downloads list are counted; the other types report 0 items.
+// The part of the data a clear with the call's `range` and `origins` would
+// touch.
+struct Scope {
+  TimeBounds bounds;
+  std::vector<url::Origin> origins;  // empty for every site
+
+  bool InRange(base::Time time) const {
+    return (bounds.begin.is_null() || time >= bounds.begin) &&
+           (bounds.end.is_null() || time < bounds.end);
+  }
+  bool HasUrl(const GURL& url) const {
+    if (origins.empty()) {
+      return true;
+    }
+    const url::Origin origin = url::Origin::Create(url);
+    for (const url::Origin& wanted : origins) {
+      if (wanted == origin) {
+        return true;
+      }
+    }
+    return false;
+  }
+  bool HasCookie(const net::CanonicalCookie& cookie) const {
+    if (origins.empty()) {
+      return true;
+    }
+    for (const url::Origin& wanted : origins) {
+      if (cookie.IsDomainMatch(wanted.host())) {
+        return true;
+      }
+    }
+    return false;
+  }
+};
+
+Scope ScopeOf(const ServiceCall& c) {
+  Scope scope;
+  scope.bounds = ParseTimeRange(c.Dict("range"));
+  if (const base::ListValue* origins = c.List("origins")) {
+    for (const base::Value& origin : *origins) {
+      scope.origins.push_back(url::Origin::Create(GURL(origin.GetString())));
+    }
+  }
+  return scope;
+}
+
+// Counts what each requested type holds within the call's range and origins,
+// one type after the other. History, cookies and the downloads list are
+// counted; the other types report 0 items.
 struct Counting {
   std::shared_ptr<ServiceCall> call;
+  Scope scope;
   std::vector<std::string> pending;  // types still to count, last first
   std::vector<Estimate> done;
 };
@@ -179,17 +228,19 @@ void CountNext(std::shared_ptr<Counting> counting) {
         c->original_profile(), ServiceAccessType::EXPLICIT_ACCESS);
     if (history) {
       history::QueryOptions options;
-      TimeBounds bounds = ParseTimeRange(c->Dict("range"));
-      options.begin_time = bounds.begin;
-      options.end_time = bounds.end;
+      options.begin_time = counting->scope.bounds.begin;
+      options.end_time = counting->scope.bounds.end;
       static base::NoDestructor<base::CancelableTaskTracker> tracker;
       history->QueryHistory(
           u"", options,
           base::BindOnce(
               [](std::shared_ptr<Counting> counting, std::string type,
                  history::QueryResults results) {
-                Counted(std::move(counting), std::move(type),
-                        static_cast<int>(results.size()));
+                int items = 0;
+                for (const history::URLResult& result : results) {
+                  items += counting->scope.HasUrl(result.url()) ? 1 : 0;
+                }
+                Counted(std::move(counting), std::move(type), items);
               },
               counting, type),
           tracker.get());
@@ -202,15 +253,29 @@ void CountNext(std::shared_ptr<Counting> counting) {
         ->GetAllCookies(base::BindOnce(
             [](std::shared_ptr<Counting> counting, std::string type,
                const std::vector<net::CanonicalCookie>& cookies) {
-              Counted(std::move(counting), std::move(type),
-                      static_cast<int>(cookies.size()));
+              // As the remover does, by when the cookie was created.
+              int items = 0;
+              for (const net::CanonicalCookie& cookie : cookies) {
+                items += counting->scope.InRange(cookie.CreationDate()) &&
+                                 counting->scope.HasCookie(cookie)
+                             ? 1
+                             : 0;
+              }
+              Counted(std::move(counting), std::move(type), items);
             },
             counting, type));
     return;
   } else if (type == "downloads") {
     std::vector<raw_ptr<download::DownloadItem, VectorExperimental>> items;
     c->profile()->GetDownloadManager()->GetAllDownloads(&items);
-    Counted(std::move(counting), type, static_cast<int>(items.size()));
+    int count = 0;
+    for (const download::DownloadItem* item : items) {
+      count += counting->scope.InRange(item->GetStartTime()) &&
+                       counting->scope.HasUrl(item->GetURL())
+                   ? 1
+                   : 0;
+    }
+    Counted(std::move(counting), type, count);
     return;
   }
   Counted(std::move(counting), type, 0);
@@ -225,6 +290,7 @@ void EstimateCommand(const std::shared_ptr<ServiceCall>& c) {
   }
   auto counting = std::make_shared<Counting>();
   counting->call = c;
+  counting->scope = ScopeOf(*c);
   counting->pending = std::move(types);
   CountNext(std::move(counting));
 }

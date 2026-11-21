@@ -23,7 +23,9 @@ class HostView;
 // the router's outcome, the completion and its arguments (an empty dictionary
 // when it had none), and whether a granting completion carried the gesture
 // the operating system delivered (a recent mouse-up or key-down of this
-// application's window, ui-requests.md section 3).
+// application's window, ui-requests.md section 3). A granting completion
+// without that gesture never reaches a handler as one: it arrives as
+// kRejected, with no completion.
 struct UiResult {
   bdkcore::UiOutcome outcome = bdkcore::UiOutcome::kNone;
   std::string completion;
@@ -35,8 +37,9 @@ using UiFinish = base::OnceCallback<void(const UiResult&)>;
 
 // The engine's one way to raise a request: raises one of `surface` for
 // `contents` through the core's router, with `payload` (the fields of
-// ui-requests.md section 5 for the surface) and calls `finish` (which may be
-// null) once, later, when it ends. The request is anchored at the top of
+// ui-requests.md section 5 for the surface) and calls `finish` once, later,
+// when it ends. With a null `finish` the request is a notice, delivered at
+// once and never queued. The request is anchored at the top of
 // `anchor_view`'s frame when given, or at `point_in_view` (view coordinates)
 // when that is given too. Returns null, and never calls `finish`, when the
 // runtime is gone or shutting down. The caller may withdraw the request it

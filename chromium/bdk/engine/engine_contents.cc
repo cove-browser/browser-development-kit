@@ -145,6 +145,42 @@ base::ListValue MenuItems(const content::ContextMenuParams& params,
   return items;
 }
 
+// The menu the host view shows for `items`, as the engine offered them or as
+// the application arranged them (BDKMenuItem: "isEnabled", "kind",
+// "children"). The host view's menu is flat, so a submenu's items are shown in
+// its place. An entry that is not an object is skipped.
+void AppendMenuItems(const base::ListValue& items, std::vector<MenuItem>& out) {
+  for (const base::Value& v : items) {
+    const base::DictValue* d = v.GetIfDict();
+    if (!d) {
+      continue;
+    }
+    const std::string* kind = d->FindString("kind");
+    if (kind && *kind == "separator") {
+      out.push_back(MenuItem());
+      continue;
+    }
+    if (kind && *kind == "submenu") {
+      if (const base::ListValue* children = d->FindList("children")) {
+        AppendMenuItems(*children, out);
+      }
+      continue;
+    }
+    const std::string* id = d->FindString("id");
+    if (!id || id->empty()) {
+      continue;
+    }
+    MenuItem item;
+    item.id = *id;
+    if (const std::string* title = d->FindString("title")) {
+      item.title = *title;
+    }
+    item.enabled = d->FindBool("isEnabled")
+                       .value_or(d->FindBool("enabled").value_or(true));
+    out.push_back(std::move(item));
+  }
+}
+
 }  // namespace
 
 EngineProfile::EngineProfile() = default;
@@ -614,29 +650,37 @@ bool EngineContents::HandleContextMenu(
             if (!self) {
               return;
             }
+            double x = params.x;
+            double y = params.y;
+            const base::ListValue* shown = &items;
             if (result.outcome == bdkcore::UiOutcome::kCompleted &&
-                result.completion == "perform") {
-              if (const std::string* id = result.args.FindString("id")) {
-                self->PerformMenuItem(params, *id);
+                result.completion == "accept") {
+              // ui-requests.md section 5: accept {"action":"perform","item"}
+              // runs one of the engine's items; accept {"action":"show",
+              // "items","at"?} shows the application's arrangement of them.
+              const std::string* action = result.args.FindString("action");
+              if (action && *action == "perform") {
+                if (const std::string* id = result.args.FindString("item")) {
+                  self->PerformMenuItem(params, *id);
+                }
+                return;
               }
-              return;
-            }
-            if (result.outcome != bdkcore::UiOutcome::kDefaulted) {
+              const base::ListValue* arranged = result.args.FindList("items");
+              if (!action || *action != "show" || !arranged) {
+                return;
+              }
+              shown = arranged;
+              if (const base::DictValue* at = result.args.FindDict("at")) {
+                x = at->FindDouble("x").value_or(x);
+                y = at->FindDouble("y").value_or(y);
+              }
+            } else if (result.outcome != bdkcore::UiOutcome::kDefaulted) {
               return;  // dismissed, rejected or gone
             }
             std::vector<MenuItem> menu;
-            for (const base::Value& v : items) {
-              const base::DictValue& d = v.GetDict();
-              MenuItem item;
-              item.id = *d.FindString("id");
-              if (const std::string* title = d.FindString("title")) {
-                item.title = *title;
-              }
-              item.enabled = d.FindBool("enabled").value_or(true);
-              menu.push_back(std::move(item));
-            }
+            AppendMenuItems(*shown, menu);
             self->host_view_->ShowMenu(
-                menu, params.x, params.y,
+                menu, x, y,
                 base::BindOnce(&EngineContents::PerformMenuItem, self, params));
           },
           weak_factory_.GetWeakPtr(), params, std::move(items)),

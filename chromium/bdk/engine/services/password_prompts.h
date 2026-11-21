@@ -10,6 +10,7 @@
 
 #include "base/memory/weak_ptr.h"
 #include "bdk/core/runtime/core_internal.h"
+#include "bdk/engine/ui_presenters.h"
 #include "bdk/engine/ui_request.h"
 #include "chrome/browser/ui/views/tab_dialogs_views.h"
 #include "content/public/browser/web_contents.h"
@@ -44,6 +45,9 @@ class BdkTabDialogs : public TabDialogsViews {
 
   base::WeakPtr<content::WebContents> contents_;
   std::shared_ptr<bdkcore::Request> request_;
+  // Closes the default sheet shown when the request defaulted, while it is
+  // open.
+  Dismisser dismiss_;
   // The current question was answered (the password manager's state may stay
   // pending a moment longer).
   bool answered_ = false;
