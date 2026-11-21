@@ -9,21 +9,31 @@ import {
 
 interface Harness {
   readonly bindings: BrokerBindings;
-  readonly remote: { [K in keyof PageBrokerRemote]: ReturnType<typeof vi.fn> };
+  readonly remote: { [K in Exclude<keyof PageBrokerRemote, "$">]: ReturnType<typeof vi.fn> };
   readonly router: () => PageClientCallbackRouter & {
     progress: (callId: bigint, fraction: number, message: string) => void;
     event: (subscriptionId: bigint, payloadJson: string) => void;
   };
   readonly load: ReturnType<typeof vi.fn>;
+  /** Closes the broker pipe, as Mojo reports it. */
+  readonly disconnect: () => void;
 }
 
 function harness(): Harness {
+  const connectionErrorListeners: (() => void)[] = [];
   const remote = {
     setClient: vi.fn(),
     invoke: vi.fn(async () => ({ ok: true, resultJson: "null" })),
     cancel: vi.fn(),
     subscribe: vi.fn(async () => ({ ok: true, errorJson: "" })),
     unsubscribe: vi.fn(),
+    $: {
+      onConnectionError: {
+        addListener: (listener: () => void) => {
+          connectionErrorListeners.push(listener);
+        },
+      },
+    },
   };
   let created: ReturnType<Harness["router"]> | undefined;
   class Router {
@@ -54,6 +64,9 @@ function harness(): Harness {
     remote,
     load,
     router: () => created as ReturnType<Harness["router"]>,
+    disconnect: () => {
+      for (const listener of connectionErrorListeners) listener();
+    },
   };
 }
 
@@ -254,6 +267,34 @@ describe("subscribe", () => {
     expect(errors[0]).toMatchObject({ domain: "capability", code: "denied" });
     h.router().event(1n, "1");
     expect(received).toEqual([]);
+  });
+
+  it("ends active subscriptions with transportUnavailable when the connection closes, then reconnects", async () => {
+    const h = harness();
+    const transport = createMojoTransport({ load: h.load as never });
+    const errors: BdkError[] = [];
+    const received: unknown[] = [];
+    transport.subscribe(
+      "a.b",
+      undefined,
+      (p) => received.push(p),
+      (e) => errors.push(e),
+    );
+    const gone = transport.subscribe(
+      "a.c",
+      undefined,
+      () => {},
+      (e) => errors.push(e),
+    );
+    await vi.waitFor(() => expect(h.remote.subscribe).toHaveBeenCalledTimes(2));
+    gone.unsubscribe();
+    h.disconnect();
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ code: "transportUnavailable" });
+    h.router().event(1n, "1");
+    expect(received).toEqual([]);
+    await transport.invoke("settings.get", {});
+    expect(h.load).toHaveBeenCalledTimes(2);
   });
 
   it("reports unavailable bindings through onError", async () => {

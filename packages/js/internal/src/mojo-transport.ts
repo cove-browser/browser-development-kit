@@ -19,6 +19,8 @@ export interface PageBrokerRemote {
   cancel(callId: bigint): void;
   subscribe(subscriptionId: bigint, event: string, filterJson: string): Promise<SubscribeReply>;
   unsubscribe(subscriptionId: bigint): void;
+  /** Mojo's interface control: `onConnectionError` fires once when the pipe closes. */
+  readonly $: { readonly onConnectionError: { addListener(listener: () => void): unknown } };
 }
 
 /** The generated `PageClientCallbackRouter`: where the broker's progress and events arrive. */
@@ -120,6 +122,8 @@ export function createMojoTransport(options: MojoTransportOptions = {}): Transpo
   const load = options.load ?? loadBindings;
   const progress = new Map<bigint, NonNullable<CallOptions["onProgress"]>>();
   const listeners = new Map<bigint, (payload: unknown) => void>();
+  /** How each active subscription ends with an error, for when the connection is lost. */
+  const enders = new Map<bigint, (error: BdkError) => void>();
   let nextCallId = 1n;
   let nextSubscriptionId = 1n;
   let connection: Promise<PageBrokerRemote> | undefined;
@@ -133,6 +137,12 @@ export function createMojoTransport(options: MojoTransportOptions = {}): Transpo
     });
     router.onEvent.addListener((subscriptionId, payloadJson) => {
       listeners.get(subscriptionId)?.(JSON.parse(payloadJson));
+    });
+    remote.$.onConnectionError.addListener(() => {
+      // The next call opens a new connection; the broker forgot this one's subscriptions.
+      connection = undefined;
+      const lost = transportUnavailable("the connection to the page broker closed");
+      for (const end of [...enders.values()]) end(lost);
     });
     remote.setClient(router.$.bindNewPipeAndPassRemote());
     return remote;
@@ -188,9 +198,11 @@ export function createMojoTransport(options: MojoTransportOptions = {}): Transpo
         if (!active) return;
         active = false;
         listeners.delete(subscriptionId);
+        enders.delete(subscriptionId);
         onError?.(error);
       };
       listeners.set(subscriptionId, listener);
+      enders.set(subscriptionId, end);
       connect()
         .then(async (connected) => {
           if (!active) return;
@@ -208,6 +220,7 @@ export function createMojoTransport(options: MojoTransportOptions = {}): Transpo
           if (!active) return;
           active = false;
           listeners.delete(subscriptionId);
+          enders.delete(subscriptionId);
           remote?.unsubscribe(subscriptionId);
         },
       };
