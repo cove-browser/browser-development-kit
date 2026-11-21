@@ -6,6 +6,8 @@
 // omnibox: engines, the address bar's classification, and suggestions from
 // history, bookmarks and keyword engines. A search engine's suggest service
 // is asked only when the profile's search-suggest preference is on.
+// search.enginesChanged comes from observing TemplateURLService, so a change
+// made anywhere (these commands, Chromium's settings page, sync) is announced.
 
 #include <memory>
 #include <string>
@@ -14,7 +16,9 @@
 #include "base/callback_list.h"
 #include "base/functional/bind.h"
 #include "base/location.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
+#include "base/scoped_observation.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
@@ -40,6 +44,7 @@
 #include "components/search_engines/template_url.h"
 #include "components/search_engines/template_url_data.h"
 #include "components/search_engines/template_url_service.h"
+#include "components/search_engines/template_url_service_observer.h"
 #include "third_party/metrics_proto/omnibox_event.pb.h"
 #include "url/gurl.h"
 
@@ -85,11 +90,45 @@ std::string EnginesJson(TemplateURLService* service) {
   return out + "]";
 }
 
-void EmitEnginesChanged(const ServiceCall& c, TemplateURLService* service) {
-  EmitEvent(
-      c.builtin().profile, "search.enginesChanged",
-      "{\"engines\":" + EnginesJson(service) + ",\"source\":\"application\"}");
-}
+// Announces the engines whenever TemplateURLService reports a change that
+// alters what search.engines answers.
+class SearchEvents : public ServiceEvents, public TemplateURLServiceObserver {
+ public:
+  SearchEvents(TemplateURLService* service,
+               std::weak_ptr<bdkcore::Profile> profile)
+      : service_(service), profile_(std::move(profile)) {
+    if (service_->loaded()) {
+      last_ = EnginesJson(service_);
+    }
+    observation_.Observe(service_);
+  }
+
+  void OnTemplateURLServiceChanged() override {
+    if (!service_->loaded()) {
+      return;
+    }
+    std::string engines = EnginesJson(service_);
+    if (engines == last_) {
+      return;
+    }
+    const bool first = last_.empty();
+    last_ = std::move(engines);
+    if (first) {
+      return;  // loading the profile's engines is not a change
+    }
+    EmitEvent(profile_, "search.enginesChanged",
+              "{\"engines\":" + last_ + ",\"source\":\"application\"}");
+  }
+
+  void OnTemplateURLServiceShuttingDown() override { observation_.Reset(); }
+
+ private:
+  raw_ptr<TemplateURLService> service_;
+  std::weak_ptr<bdkcore::Profile> profile_;
+  std::string last_;
+  base::ScopedObservation<TemplateURLService, TemplateURLServiceObserver>
+      observation_{this};
+};
 
 // Runs `then` once the engines are loaded from the profile.
 void WhenLoaded(const std::shared_ptr<ServiceCall>& c,
@@ -182,7 +221,6 @@ void AddEngine(const std::shared_ptr<ServiceCall>& c, TemplateURLService* s) {
     return;
   }
   c->Resolve(EngineJson(*added, s->GetDefaultSearchProvider()));
-  EmitEnginesChanged(*c, s);
 }
 
 void UpdateEngine(const std::shared_ptr<ServiceCall>& c,
@@ -236,7 +274,6 @@ void UpdateEngine(const std::shared_ptr<ServiceCall>& c,
     s->ResetTemplateURL(engine, name, keyword, url);
   }
   c->Resolve(EngineJson(*engine, s->GetDefaultSearchProvider()));
-  EmitEnginesChanged(*c, s);
 }
 
 void RemoveEngine(const std::shared_ptr<ServiceCall>& c,
@@ -251,7 +288,6 @@ void RemoveEngine(const std::shared_ptr<ServiceCall>& c,
   }
   s->Remove(engine);
   c->ResolveNull();
-  EmitEnginesChanged(*c, s);
 }
 
 void SetDefault(const std::shared_ptr<ServiceCall>& c, TemplateURLService* s) {
@@ -267,7 +303,6 @@ void SetDefault(const std::shared_ptr<ServiceCall>& c, TemplateURLService* s) {
   }
   s->SetUserSelectedDefaultSearchProvider(engine);
   c->ResolveNull();
-  EmitEnginesChanged(*c, s);
 }
 
 void Classify(const std::shared_ptr<ServiceCall>& c, TemplateURLService* s) {
@@ -427,6 +462,17 @@ void DeleteSuggestion(const std::shared_ptr<ServiceCall>& c) {
 }
 
 }  // namespace
+
+std::unique_ptr<ServiceEvents> CreateSearchEvents(
+    Profile* profile,
+    std::weak_ptr<bdkcore::Profile> bdk_profile) {
+  TemplateURLService* service =
+      TemplateURLServiceFactory::GetForProfile(profile);
+  if (!service) {
+    return nullptr;
+  }
+  return std::make_unique<SearchEvents>(service, std::move(bdk_profile));
+}
 
 void AddSearchHandlers(HandlerTable& table) {
   table["search.engines"] = [](const std::shared_ptr<ServiceCall>& c) {
