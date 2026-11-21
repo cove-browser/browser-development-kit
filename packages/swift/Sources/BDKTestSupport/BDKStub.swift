@@ -220,6 +220,55 @@ public struct BDKStub {
         bdk_stub_service_count(try runtime.liveHandle(), which.rawValue)
     }
 
+    // MARK: Automation
+
+    /// Defines the script `name` as one the test plays: the stub runs no JavaScript, so a task of
+    /// this script receives the frames BDK sends to it (the first is `start`) and answers with
+    /// `StubScript.send`. The name must also be listed in the resolved configuration's
+    /// `automation.scripts`.
+    public func defineScript(_ name: String) throws -> StubScript {
+        let handle = try runtime.liveHandle()
+        let script = StubScript()
+        // The stub keeps the context until the runtime stops, so this reference is never released.
+        let context = Unmanaged.passRetained(script).toOpaque()
+        let status = withBDKString(name) { name in
+            bdk_stub_script_define(
+                handle, name,
+                { context, task, frame in
+                    guard let context else { return }
+                    let script = Unmanaged<StubScript>.fromOpaque(context).takeUnretainedValue()
+                    let text =
+                        frame.data.map {
+                            String(
+                                decoding: UnsafeRawBufferPointer(start: $0, count: frame.length),
+                                as: UTF8.self)
+                        } ?? ""
+                    MainActor.assumeIsolated { script.receive(task: task, frame: text) }
+                }, context)
+        }
+        try check(status)
+        return script
+    }
+
+    /// The host process dies: every running task ends with `automation.hostGone`.
+    public func crashAutomationHost() throws {
+        try check(bdk_stub_automation_host_crash(try runtime.liveHandle()))
+    }
+
+    /// The counters of `automationCount`.
+    public enum AutomationCount: UInt32, Sendable {
+        /// Tasks the host started.
+        case started = 0
+        /// Tasks the host was told to tear down.
+        case ended = 1
+        /// User-script updates the backend received.
+        case scriptsChanged = 2
+    }
+
+    public func automationCount(_ which: AutomationCount) throws -> UInt32 {
+        bdk_stub_automation_count(try runtime.liveHandle(), which.rawValue)
+    }
+
     // MARK: Helpers
 
     private func check(_ status: bdk_status_t) throws {
@@ -233,5 +282,39 @@ public struct BDKStub {
         withUnsafeBytes(of: tuple) { raw in
             String(decoding: raw.prefix { $0 != 0 }, as: UTF8.self)
         }
+    }
+}
+
+/// A script the test plays in the stub's automation host (`BDKStub.defineScript`).
+@MainActor
+public final class StubScript {
+    /// Every frame BDK sent to the script, in order, parsed.
+    public private(set) var frames: [BDKJSValue] = []
+    /// The stub's identifier of the most recently started task.
+    public private(set) var task: UInt64 = 0
+
+    /// The newest frame BDK sent, or nil before the first.
+    public var last: BDKJSValue? { frames.last }
+
+    func receive(task: UInt64, frame: String) {
+        self.task = task
+        frames.append(BDKJSValue(jsonString: frame) ?? .null)
+    }
+
+    /// Sends a frame from the script, in the wire protocol, as JSON text. It is delivered on the
+    /// next pump, which the awaiting test performs. Throws when the task already ended.
+    public func send(_ frameJSON: String) throws {
+        let status = withBDKString(frameJSON) { bdk_stub_script_send(task, $0) }
+        EventLoop.scheduler?()
+        guard status == BDK_OK else {
+            throw BDKError(
+                domain: .runtime, code: "stubRejected",
+                message: "the stub rejected the frame with status \(status.rawValue)")
+        }
+    }
+
+    /// Sends a frame from the script.
+    public func send(_ frame: BDKJSValue) throws {
+        try send(frame.jsonString)
     }
 }

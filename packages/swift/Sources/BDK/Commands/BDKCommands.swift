@@ -97,14 +97,16 @@ public final class BDKCommands {
 
     /// The events named `name`, as the runtime delivers them. The stream ends when it is no longer
     /// iterated, or when the runtime shuts down.
-    public func events(named name: String, profile: BDKProfile? = nil) throws -> AsyncStream<
-        BDKApplicationEvent
-    > {
+    public func events(
+        named name: String, profile: BDKProfile? = nil, contents: BDKWebContents? = nil
+    ) throws -> AsyncStream<BDKApplicationEvent> {
         let handle = try liveHandle()
+        let profileHandle = try profile?.liveHandle()
+        let contentsHandle = try contents?.liveHandle()
         let (stream, continuation) = AsyncStream.makeStream(of: BDKApplicationEvent.self)
         let box = Unmanaged.passRetained(EventBox(continuation))
         let subscription = withBDKStrings([name, ""]) { lent in
-            withInvokeOptions(profile: profile, contents: nil) {
+            withInvokeOptions(profileHandle: profileHandle, contentsHandle: contentsHandle) {
                 bdk_subscribe_named(
                     handle, lent[0], lent[1], $0, eventCallback, box.toOpaque(),
                     eventReleaseCallback)
@@ -147,13 +149,25 @@ public final class BDKCommands {
         contents: BDKWebContents? = nil,
         onProgress: (@MainActor (Double, String) -> Void)? = nil
     ) async throws -> String {
+        try await invokeBinary(
+            name, arguments: arguments, profile: profile, contents: contents, onProgress: onProgress
+        ).json
+    }
+
+    /// `invoke` for a command marked binary (a screenshot, a PDF): the result JSON, and the bytes
+    /// the call carried outside it, or nil when it carried none (the caller named a file).
+    public func invokeBinary(
+        _ name: String, arguments: String = "{}", profile: BDKProfile? = nil,
+        contents: BDKWebContents? = nil,
+        onProgress: (@MainActor (Double, String) -> Void)? = nil
+    ) async throws -> (json: String, binary: Data?) {
         let handle = try liveHandle()
         let profileHandle = try profile?.liveHandle()
         let contentsHandle = try contents?.liveHandle()
         let call = InvokeCall(
             runtime: handle, name: name, arguments: arguments, profile: profileHandle,
             contents: contentsHandle)
-        return try await abiAsync(.runtime, progress: onProgress, call.issue)
+        return try await abiAsyncBinary(.runtime, progress: onProgress, call.issue)
     }
 
     /// Invokes a typed command.
@@ -198,14 +212,6 @@ extension BDKEventTarget {
 }
 
 /// Lends the invoke options for a profile and a page, or nil for neither.
-@MainActor
-private func withInvokeOptions<Result>(
-    profile: BDKProfile?, contents: BDKWebContents?,
-    _ body: (UnsafePointer<bdk_invoke_options_t>?) -> Result
-) -> Result {
-    withInvokeOptions(profileHandle: profile?.handle, contentsHandle: contents?.handle, body)
-}
-
 private func withInvokeOptions<Result>(
     profileHandle: bdk_profile_t?, contentsHandle: bdk_contents_t?,
     _ body: (UnsafePointer<bdk_invoke_options_t>?) -> Result
