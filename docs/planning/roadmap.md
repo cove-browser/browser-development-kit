@@ -163,6 +163,24 @@ Also fixed in M3: a persistent profile stayed loaded in Chromium after the appli
 | SDK and generation | T-JS-01, T-JS-02, T-JS-03 | Declarations are generated locally from interface definitions and registered commands. Nothing is published to npm. |
 | Left over from M2 and M3 | T-SVC-10, T-SWF-06, T-UIR-07, T-UIR-08 | Page commands, zoom, mute and address-bar services work from Swift. The M3 scenarios left open pass, print preview is hosted or the system panel is recorded as the default, and the M3 exit criterion is checked by hand. (T-SVC-07, T-SVC-08 and T-SWF-07 were planned here and done in M3.) |
 
+**Status, 2026-11-20: done and passing without Chromium; the engine work is written, engine build and test pending.** No Chromium build, sync or roll was run for M4: the main session builds the engine. What runs without Chromium passes: the stub conformance suite (219 of 219, 30 new), Swift (148, 14 new), `@bdk/protocol` (10), `@bdk/internal` (82), `js-codegen` (156), `@bdk/vite` (21), the CLI (304, 2 opt-in tests skipped), tooling (135), lint and format, `codegen-check` and `chromium:patch-check` (15 patches). The decisions are in [amendments.md](amendments.md) section 2.14.
+
+| Task | Status | Where it is recorded |
+|---|---|---|
+| T-WUI-02, T-WUI-05 | Done in the core against the stub: the route table from `bdk.resolved.json`, Swift registrations before the freeze (`config.noBuiltin`, `routeUnknown`, `routeInvalid`, `routeMode`, `handlerMissing`), disabled and unknown routes show the error page, an overridden or disabled built-in has no internal way in, native routes reach the Swift handler. Engine (URL handler, navigation throttle): written, engine build and test pending. T-WUI-01 (M0) is covered here: the alias scheme comes from the configuration at start and is registered in every process by a new patch. | `packages/core/runtime/routes.h`; conventions.md decision 15 |
+| T-WUI-06 | Done in the core and the stub; the engine maps every URL it reports: written, pending. Internal pages are not recorded in history, as in Chrome; an alias is shown as its target route. | amendments 2.14 |
+| T-WUI-03 | `@bdk/vite` and `bdk build pages` done and tested (Vite 8.3.8 run in process from the project's `node_modules` by the packaged `bdk` with no Node on the path). The data source in the engine: written, pending. | `packages/js/vite/README.md`; `packages/cli/README.md` |
+| T-WUI-04 | Page callers, grants (an alias carries its target's), revocation on navigation and page subscriptions done in the core and tested on the stub. The Mojo interface, its binder and per-call checks: written, pending; the scenarios in `tests_engine_pages.c` assert them on the engine. | `chromium/bdk/README.md` (`pages/`) |
+| T-JS-01 to T-JS-03 | Done: `@bdk/protocol`, `@bdk/internal` (one generated module per namespace with page callers, a mock transport), the TypeScript generators and the per-application declarations. Nothing is published. | `packages/js/*/README.md` |
+| T-CLI-04 | Done except Xcode itself: `bdk build codegen`, `bdk build pages`, the default `bdk build`, Xcode file lists and the template's build phases. Not run from Xcode; `--watch` and the declaration extractor: T-CLI-06, M5. | `packages/cli/README.md`; `apps/templates/swift-browser/README.md` |
+| T-SVC-10 | Commands defined, done in the stub; the engine service on `TemplateURLService` and the omnibox: written, pending. First-run engines from `[search]` and suggest off by default: T-PRV-10, M6. | services.md 5.13 |
+| T-SWF-06 | Done against the stub; engine page commands written, pending. | swift-api.md 6.7 and 9 |
+| T-UIR-07 | Scenarios written (HTTP authentication against a loopback 401 server, a non-overridable error on an HSTS host, the card save prompt), engine run pending. The M3 exit criterion has not been checked by hand. | `tests_engine_pages.c` |
+| T-UIR-08 | Decided: the system print panel is the permanent default; print preview is not hosted. | amendments 2.14 |
+| Exit criteria | Not met yet: they need the engine build. Without Chromium, the minimal example has a bundled `minimal://settings` page that reads and writes `privacy.doNotTrack`. | `apps/examples/minimal-browser/README.md` |
+
+Not done, each a task: running the engine work (the tasks above stay open until the main session's build passes); `bdk build pages --watch`, the Swift declaration extractor and Xcode verification (T-CLI-06, M5); a settings key catalogue for typed keys and event filters for pages (T-JS-05, M5); `navigation.handledNatively` for native routes (T-SWF-09, M5); `favicons`, `topSites` and their `@bdk/internal` modules (S12, T-SVC-11, M5); the Google-service audit of the built-in pages (T-WUI-07, M6); search defaults with no Google (T-PRV-10, M6). `@bdk/internal/extensions` and `translation` arrive with their namespaces (T-EXT-02, M5; T-PRV-03, M6).
+
 ### M5 — Extensions (public v1 gate)
 
 | Work | Tasks | Acceptance |
@@ -173,6 +191,7 @@ Also fixed in M3: a persistent profile stayed loaded in Chromium after the appli
 | Compatibility checks | T-EXT-06 | A manifest requiring a disabled surface is rejected with a reason, at install and at update. A disabled API is absent, not silently accepted. |
 | Suite and matrix | T-EXT-07, T-EXT-08 | The probe suite and a set of real extensions run in CI. The matrix is generated from results and lists known gaps. |
 | Window registration | T-SWF-08 | Extensions see the window kind the application registered; default presenters attach to the application's anchors. |
+| Left over from M4 | T-CLI-06, T-JS-05, T-SWF-09, T-SVC-11 | `bdk build pages --watch` and the declaration extractor work in an Xcode build; setting keys are typed and page subscriptions filtered; a native route answers navigation; favicons and top sites once S12 is confirmed. |
 
 Exit criteria: representative real extensions, including a content blocker, a password manager and a developer tool, install and work. Every known difference from Chrome is documented.
 
@@ -187,6 +206,7 @@ Exit criteria: representative real extensions, including a content blocker, a pa
 | Reputation | T-PRV-05 | The chosen default blocks a listed test URL with an interstitial. Documentation and default UI state the protection level. |
 | Security data | T-PRV-06 | Revocation and transparency data update through the chosen route, or the fallback and its staleness are documented. |
 | Audit | T-PRV-07 | The network audit passes: no Google-owned host is contacted except sites the test visits. No sign-in, sync, metrics or crash upload code path is reachable. |
+| Left over from M4 | T-WUI-07, T-PRV-10 | The built-in pages contact no Google service; a new profile has only the configured search engines and sends no typed text. |
 
 ### M7 — Automation host and DevTools
 

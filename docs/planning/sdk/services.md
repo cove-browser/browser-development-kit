@@ -303,6 +303,8 @@ Events: `translation.preferencesChanged`, `translation.modelsChanged`, `translat
 
 ### 5.13 `search`: address-bar services (Added, S1)
 
+Built in M4 (T-SVC-10) as `interface/search.json`, with `search.enginesChanged`: done in the stub; the engine service on `TemplateURLService` and the omnibox is written and waits for an engine build. Engine ids are Chromium's sync GUIDs. Changing the default engine's suggest or favicon URL is refused (Chromium changes only name, keyword and URL in place). Not built: the first-run engines from `[search]` (S1 is unconfirmed) and the suggest setting off by default; Chromium's prepopulated engines and its search-suggest preference apply (T-PRV-10, M6).
+
 | Command | Capability | Marks | Does |
 |---|---|---|---|
 | `search.engines` | `search.read` | | Identifier, name, keyword, URLs, whether it is the default, whether the product or the user added it |
