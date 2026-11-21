@@ -158,14 +158,14 @@ static void test_a_disabled_page_shows_an_error_page(void) {
     bdk_profile_t p = start_routes(BDK_NATIVE_PAGE_HANDLED);
     t_events_t ev;
     (void)load_in_new_page(p, "conf://flags", &ev);
-    expect_error_page(&ev, "conf://flags", -20); /* net::ERR_BLOCKED_BY_CLIENT */
+    expect_error_page(&ev, "conf://flags/", -20); /* net::ERR_BLOCKED_BY_CLIENT */
 }
 
 static void test_an_unknown_route_shows_an_error_page(void) {
     bdk_profile_t p = start_routes(BDK_NATIVE_PAGE_HANDLED);
     t_events_t ev;
     (void)load_in_new_page(p, "conf://nothing-here", &ev);
-    expect_error_page(&ev, "conf://nothing-here", -300); /* net::ERR_INVALID_URL */
+    expect_error_page(&ev, "conf://nothing-here/", -300); /* net::ERR_INVALID_URL */
 }
 
 static void test_an_overridden_or_disabled_built_in_has_no_internal_way_in(void) {
@@ -236,7 +236,7 @@ static void test_a_native_handler_can_block_with_the_error_page(void) {
     t_events_t ev;
     (void)load_in_new_page(p, "conf://downloads", &ev);
     CHECK(g_native.calls == 1);
-    expect_error_page(&ev, "conf://downloads", -20);
+    expect_error_page(&ev, "conf://downloads/", -20);
 }
 
 static void test_a_native_handler_may_answer_later_and_only_once(void) {
@@ -248,7 +248,7 @@ static void test_a_native_handler_may_answer_later_and_only_once(void) {
     bdk_native_page_complete(g_native.held, BDK_NATIVE_PAGE_BLOCKED);
     bdk_native_page_complete(g_native.held, BDK_NATIVE_PAGE_HANDLED); /* stale: ignored */
     t_pump();
-    expect_error_page(&ev, "conf://downloads", -20);
+    expect_error_page(&ev, "conf://downloads/", -20);
 }
 
 static void test_a_native_route_needs_a_handler_before_the_freeze(void) {
@@ -320,7 +320,7 @@ static void test_a_registration_outranks_the_resolved_table(void) {
     expect_error_page(&ev2, "chrome://bdk-settings/", -20);
     t_events_t ev3;
     (void)load_in_new_page(p, "conf://agents", &ev3);
-    expect_error_page(&ev3, "conf://agents", -20);
+    expect_error_page(&ev3, "conf://agents/", -20);
 }
 
 static void test_registered_contexts_are_released_once(void) {

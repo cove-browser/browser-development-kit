@@ -242,7 +242,7 @@ extension BDKStubTests {
                 guard case .navigationFailed(let failure) = try await events.next(where: isFailure)
                 else { return }
                 #expect(failure.netError == -20 && failure.isErrorPage)
-                #expect(failure.url == URL(string: "conf://downloads"))
+                #expect(failure.url == URL(string: "conf://downloads/"))
             }
         }
 

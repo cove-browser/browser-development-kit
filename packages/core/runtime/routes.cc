@@ -406,7 +406,9 @@ RouteNavigation resolve_navigation(const Runtime& rt, const std::string& url, bo
             nav.kind = RouteNavigation::Kind::kRefused;
             return nav;
         }
-        nav.display = url;
+        /* Canonical, as Chromium reports a URL of a standard scheme: `conf://flags` is
+           `conf://flags/`, so the stub and the engine show a failed or native URL alike. */
+        nav.display = with_path(t.scheme + "://" + u.host, u.rest);
         auto alias = t.aliases.find(u.host);
         std::string route = alias != t.aliases.end() ? alias->second : u.host;
         RouteEntry scratch;
