@@ -24,6 +24,32 @@ Used by: the BDK engine (//bdk/engine/extensions/options_page.cc).
  chrome/browser/extensions/embedder_options_page_hook.h | 46 ++++++++++++
  2 files changed
 
+diff --git a/chrome/browser/extensions/browser_extension_window_controller.cc b/chrome/browser/extensions/browser_extension_window_controller.cc
+index 06d4b62c70dc082af3bf2798ecbec32dd8a74410..53f50c5df194213822c6deb037a8ba700a6830ae 100644
+--- a/chrome/browser/extensions/browser_extension_window_controller.cc
++++ b/chrome/browser/extensions/browser_extension_window_controller.cc
+@@ -12,6 +12,7 @@
+ #include "base/notimplemented.h"
+ #include "base/strings/stringprintf.h"
+ #include "chrome/browser/extensions/embedder_extension_window_filter.h"
++#include "chrome/browser/extensions/embedder_options_page_hook.h"
+ #include "chrome/browser/extensions/extension_tab_util.h"
+ #include "chrome/browser/extensions/window_controller_list.h"
+ #include "chrome/browser/profiles/profile.h"
+@@ -314,6 +315,13 @@ bool BrowserExtensionWindowController::OpenOptionsPage(
+           ui::PAGE_TRANSITION_LINK);
+   browser_->OpenURL(params, /*navigation_handle_callback=*/{});
+ #else
++  if (const auto& embedder_hook = embedder_options_page_hook::GetHook()) {
++    // An embedder that shows options pages in UI of its own takes the request.
++    if (std::optional<bool> handled = embedder_hook.Run(
++            GetBrowser(), extension, url, open_in_tab)) {
++      return *handled;
++    }
++  }
+   // Force the options page to open in non-OTR window if the extension is not
+   // running in split mode, because it won't be able to save settings from OTR.
+   // This version of OpenOptionsPage() can be called from an OTR window via e.g.
 diff --git a/chrome/browser/extensions/embedder_options_page_hook.h b/chrome/browser/extensions/embedder_options_page_hook.h
 new file mode 100644
 index 0000000000000000000000000000000000000000..ced4699f060bc6cb6f0e95c6f38b6e00d3d7177d
@@ -76,29 +102,3 @@ index 0000000000000000000000000000000000000000..ced4699f060bc6cb6f0e95c6f38b6e00
 +}  // namespace embedder_options_page_hook
 +
 +#endif  // CHROME_BROWSER_EXTENSIONS_EMBEDDER_OPTIONS_PAGE_HOOK_H_
-diff --git a/chrome/browser/extensions/browser_extension_window_controller.cc b/chrome/browser/extensions/browser_extension_window_controller.cc
-index 497220fc726c4e37c1685d459b69369cba6ee21a..05be538a4171d5d272bf134520dd447de199ea4d 100644
---- a/chrome/browser/extensions/browser_extension_window_controller.cc
-+++ b/chrome/browser/extensions/browser_extension_window_controller.cc
-@@ -11,6 +11,7 @@
- #include "base/feature_list.h"
- #include "base/notimplemented.h"
- #include "base/strings/stringprintf.h"
-+#include "chrome/browser/extensions/embedder_options_page_hook.h"
- #include "chrome/browser/extensions/extension_tab_util.h"
- #include "chrome/browser/extensions/window_controller_list.h"
- #include "chrome/browser/profiles/profile.h"
-@@ -308,6 +309,13 @@
-           ui::PAGE_TRANSITION_LINK);
-   browser_->OpenURL(params, /*navigation_handle_callback=*/{});
- #else
-+  if (const auto& embedder_hook = embedder_options_page_hook::GetHook()) {
-+    // An embedder that shows options pages in UI of its own takes the request.
-+    if (std::optional<bool> handled = embedder_hook.Run(
-+            GetBrowser(), extension, url, open_in_tab)) {
-+      return *handled;
-+    }
-+  }
-   // Force the options page to open in non-OTR window if the extension is not
-   // running in split mode, because it won't be able to save settings from OTR.
-   // This version of OpenOptionsPage() can be called from an OTR window via e.g.
