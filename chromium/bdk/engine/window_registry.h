@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "base/no_destructor.h"
 #include "base/values.h"
 #include "bdk/core/include/bdk/bdk_base.h"
@@ -62,15 +63,17 @@ class WindowRegistry {
   WindowRegistry();
   ~WindowRegistry();
 
+  // Windows by handle: the core frees a window at shutdown without
+  // unregistering it, so nothing here may point at one.
   struct Arrival {
     bdk_contents_t contents;
-    const bdkcore::Window* window;
+    bdk_window_t window;
   };
   // Pages in the order they arrived in their window (a move appends).
   std::vector<Arrival> arrivals_;
   struct Active {
-    const bdkcore::Window* window;
-    const HostContext* context;
+    bdk_window_t window;
+    raw_ptr<const HostContext> context;
   };
   std::vector<Active> active_;
 };

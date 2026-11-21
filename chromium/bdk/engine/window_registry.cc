@@ -29,7 +29,7 @@ void WindowRegistry::NotePage(bdk_contents_t contents,
                               const bdkcore::Window* window) {
   ForgetPage(contents);
   if (window) {
-    arrivals_.push_back({contents, window});
+    arrivals_.push_back({contents, window->handle});
   }
 }
 
@@ -41,10 +41,11 @@ void WindowRegistry::ForgetPage(bdk_contents_t contents) {
 
 void WindowRegistry::NoteActive(const bdkcore::Window* window,
                                 const HostContext* context) {
-  std::erase_if(active_, [window](const Active& active) {
-    return active.window == window;
+  const bdk_window_t handle = window->handle;
+  std::erase_if(active_, [handle](const Active& active) {
+    return active.window == handle;
   });
-  active_.push_back({window, context});
+  active_.push_back({handle, context});
 }
 
 void WindowRegistry::ForgetContext(const HostContext* context) {
@@ -54,18 +55,19 @@ void WindowRegistry::ForgetContext(const HostContext* context) {
 }
 
 void WindowRegistry::ForgetWindow(const bdkcore::Window* window) {
-  std::erase_if(arrivals_, [window](const Arrival& arrival) {
-    return arrival.window == window;
+  const bdk_window_t handle = window->handle;
+  std::erase_if(arrivals_, [handle](const Arrival& arrival) {
+    return arrival.window == handle;
   });
-  std::erase_if(active_, [window](const Active& active) {
-    return active.window == window;
+  std::erase_if(active_, [handle](const Active& active) {
+    return active.window == handle;
   });
 }
 
 bdk_window_t WindowRegistry::WindowOfPage(bdk_contents_t contents) const {
   for (const Arrival& arrival : arrivals_) {
     if (arrival.contents == contents) {
-      return arrival.window->handle;
+      return arrival.window;
     }
   }
   return 0;
@@ -75,7 +77,7 @@ std::vector<bdk_contents_t> WindowRegistry::PagesOf(
     const bdkcore::Window* window) const {
   std::vector<bdk_contents_t> pages;
   for (const Arrival& arrival : arrivals_) {
-    if (arrival.window == window) {
+    if (arrival.window == window->handle) {
       pages.push_back(arrival.contents);
     }
   }
@@ -90,7 +92,7 @@ HostContext* WindowRegistry::ActiveContext(
     return nullptr;
   }
   for (const Active& active : active_) {
-    if (active.window != window) {
+    if (active.window != window->handle) {
       continue;
     }
     for (HostContext* context : contexts) {
