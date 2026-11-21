@@ -33,7 +33,8 @@ let package = Package(
                 "runtime/ui_router.cc",
                 "runtime/extension_policy.cc",
                 "runtime/app_settings.cc", "runtime/broker.cc", "runtime/broker_args.cc",
-                "stub/stub_backend.cc", "stub/stub_services.cc", "stub/stub_broker.cc",
+                "stub/stub_backend.cc", "stub/stub_services.cc", "stub/stub_extensions.cc",
+                "stub/stub_broker.cc",
             ],
             publicHeadersPath: "stub",
             cxxSettings: [.headerSearchPath("runtime"), .headerSearchPath("generated")]

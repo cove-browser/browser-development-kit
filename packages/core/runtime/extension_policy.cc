@@ -43,7 +43,7 @@ bool contains(const std::vector<std::string>& list, const std::string& value) {
 
 /* The leading integer of a version string ("120.0.6099.0" is 120); 0 for none. */
 int major_of(const std::string& version) {
-    return std::atoi(version.c_str());
+    return static_cast<int>(std::strtol(version.c_str(), nullptr, 10));
 }
 
 /* ---- What this product lacks --------------------------------------------------------------- */

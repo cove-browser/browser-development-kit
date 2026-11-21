@@ -39,6 +39,24 @@ Controls& controls();
 /* Answers the authentication request that is waiting (mode 2). False if none is. */
 bool services_answer_authentication(bool granted);
 
+/* Extensions (stub_extensions.cc). */
+void extensions_reset();
+/* A package a source names, for sources the stub cannot read from disk: kind is an
+   ExtensionSourceKind name, key the path (crx), the id (updateUrl) or "<store>/<id>" (store). */
+void extensions_add_package(const std::string& kind, const std::string& key,
+                            const std::string& manifest);
+/* The extensions.* commands; false for any other command. */
+bool extensions_execute(bdkcore::Runtime& rt, const std::shared_ptr<bdkcore::BuiltinCall>& call);
+/* Backend::ExtensionActivateAction (command empty) and ExtensionPerformCommand. */
+bdk_status_t extensions_activate(bdkcore::Runtime& rt,
+                                 const std::shared_ptr<bdkcore::Contents>& contents,
+                                 const std::string& id, const std::string& command,
+                                 std::string* result, bdk_error_t* err);
+
+/* Makes the request the one bdk_stub_send_ui_update and bdk_stub_last_ui_update address, and
+   records the application's updates to it (stub_backend.cc). */
+void track_request(const std::shared_ptr<bdkcore::Request>& request);
+
 } // namespace bdkstub
 
 #endif /* BDK_STUB_SERVICES_H_ */

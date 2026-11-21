@@ -554,6 +554,7 @@ void services_reset() {
     s.held.clear();
     s.waiting_authentication = nullptr;
     s.callers.clear();
+    extensions_reset();
 }
 
 std::map<uint64_t, std::shared_ptr<Caller>>& callers() {
@@ -573,6 +574,8 @@ void services_execute(Runtime& rt, const std::shared_ptr<BuiltinCall>& call) {
         call->control->OnCancel([] { ++st().controls.stopped; });
         return;
     }
+    if (extensions_execute(rt, call))
+        return;
     /* Every command reports progress; the core drops it unless the command is marked P. */
     call->control->Progress(0.1, "starting");
     JsonValue args;

@@ -21,6 +21,7 @@ extern const t_test_t t_broker_tests[];
 extern const t_test_t t_profile_tests[];
 extern const t_test_t t_contents_tests[];
 extern const t_test_t t_ui_tests[];
+extern const t_test_t t_extension_tests[];
 #ifdef BDK_HARNESS_ENGINE_TESTS
 extern const t_test_t t_engine_tests[];
 extern const t_test_t t_engine_ui_tests[];
@@ -65,7 +66,7 @@ typedef struct t_capture {
     int results, releases, progress;
     int result_seq, release_seq;
     int has_error, has_binary;
-    char domain[48], code[48], message[160], json[512];
+    char domain[48], code[48], message[160], json[2048];
     double fraction;
     void (*on_result)(struct t_capture*); /* optional hook, runs inside the result callback */
     void* hook_data;

@@ -1,5 +1,6 @@
 /* Stub runtime: the in-memory backend of the runtime core, its task queue and its test hooks.
    Nothing renders; navigation is a scripted state machine. */
+#include <algorithm>
 #include <climits>
 #include <cstdint>
 #include <cstdio>
@@ -48,6 +49,21 @@ struct StubState {
     /* What the stub keeps of application settings, by profile id ("" for the application): its
        stand-in for the disk, so a closed and reopened profile gets its values back. */
     std::map<std::string, std::string> app_settings;
+    /* The request bdk_stub_send_ui_update addresses, and the last update the application sent
+       to it. */
+    std::weak_ptr<Request> last_request;
+    std::string last_update;
+    /* Registered windows: the pages attached to each, in arrival order, the active one, and the
+       identifier extensions would see. */
+    struct WindowState {
+        std::vector<bdk_contents_t> contents;
+        bdk_contents_t active = 0;
+        int32_t extension_id = -1;
+    };
+    std::map<bdk_window_t, WindowState> windows;
+    int32_t next_window_id = 1;
+    uint32_t window_answer = 0;   /* the last answer to bdk_stub_window_request, 0 for none */
+    uint32_t menus_presented = 0; /* bdk_extension_menu_present calls that reached the stub */
 };
 
 StubState& S() {
@@ -64,6 +80,27 @@ void set_outcome(uint32_t kind, uint32_t surface, const std::string& completion,
     o.surface = surface;
     snprintf(o.completion, sizeof o.completion, "%s", completion.c_str());
     snprintf(o.arguments_json, sizeof o.arguments_json, "%s", args.c_str());
+}
+
+/* The window a page is attached to, or null. */
+StubState::WindowState* window_with(bdk_contents_t c, bdk_window_t* handle = nullptr) {
+    for (auto& [h, w] : S().windows) {
+        if (std::find(w.contents.begin(), w.contents.end(), c) != w.contents.end()) {
+            if (handle)
+                *handle = h;
+            return &w;
+        }
+    }
+    return nullptr;
+}
+
+void detach(bdk_contents_t c) {
+    if (StubState::WindowState* w = window_with(c)) {
+        w->contents.erase(std::remove(w->contents.begin(), w->contents.end(), c),
+                          w->contents.end());
+        if (w->active == c)
+            w->active = w->contents.empty() ? 0 : w->contents.back();
+    }
 }
 
 void cancel_nav(const std::shared_ptr<Contents>& c, const char* why) {
@@ -253,6 +290,12 @@ class StubBackend final : public Backend {
                        bdk_error_t*) override {
         S().scripts.clear();
         S().app_settings.clear();
+        S().last_request.reset();
+        S().last_update.clear();
+        S().windows.clear();
+        S().next_window_id = 1;
+        S().window_answer = 0;
+        S().menus_presented = 0;
         set_outcome(BDK_STUB_UI_NONE, 0, "", "");
         bdkstub::services_reset();
         return BDK_OK;
@@ -314,6 +357,7 @@ class StubBackend final : public Backend {
         StubContents& d = data_of(c);
         if (d.nav)
             d.nav->cancelled = true;
+        detach(c.handle);
     }
 
     bdk_status_t Load(const std::shared_ptr<Contents>& c, const std::string& url,
@@ -496,6 +540,8 @@ class StubBackend final : public Backend {
                                     0, 0);
             }
         }
+        if (StubState::WindowState* w = window_with(c->handle))
+            w->active = c->handle;
         if (!data_of(*c).focused) {
             data_of(*c).focused = true;
             emit_contents_event(c, BDK_CONTENTS_EVENT_FOCUS_CHANGED, "", "{\"focused\":true}", 0,
@@ -504,11 +550,51 @@ class StubBackend final : public Backend {
         return BDK_OK;
     }
 
-    bdk_status_t RegisterWindow(Runtime&, const Window&, bdk_error_t*) override {
+    bdk_status_t RegisterWindow(Runtime&, const Window& w, bdk_error_t*) override {
+        S().windows[w.handle] = StubState::WindowState{};
         return BDK_OK;
     }
 
-    void UnregisterWindow(const Window&) override {}
+    void UnregisterWindow(const Window& w) override {
+        S().windows.erase(w.handle);
+    }
+
+    bdk_window_t WindowForContents(const Contents& c) override {
+        bdk_window_t h = 0;
+        window_with(c.handle, &h);
+        return h;
+    }
+
+    void WindowContents(const Window& w, std::vector<bdk_contents_t>* contents,
+                        bdk_contents_t* active) override {
+        auto it = S().windows.find(w.handle);
+        *contents = it == S().windows.end() ? std::vector<bdk_contents_t>{} : it->second.contents;
+        *active = it == S().windows.end() ? 0 : it->second.active;
+    }
+
+    int32_t WindowExtensionId(const Window& w) override {
+        auto it = S().windows.find(w.handle);
+        return it == S().windows.end() ? -1 : it->second.extension_id;
+    }
+
+    bdk_status_t ExtensionActivateAction(Runtime& rt, const std::shared_ptr<Contents>& c,
+                                         const std::string& id, bdk_native_handle_t,
+                                         std::string* result, bdk_error_t* err) override {
+        return bdkstub::extensions_activate(rt, c, id, "", result, err);
+    }
+
+    bdk_status_t ExtensionPerformCommand(Runtime& rt, const std::shared_ptr<Contents>& c,
+                                         const std::string& id, const std::string& command,
+                                         bdk_native_handle_t, std::string* result,
+                                         bdk_error_t* err) override {
+        return bdkstub::extensions_activate(rt, c, id, command, result, err);
+    }
+
+    bdk_status_t ExtensionPresentMenu(Runtime&, const Window&, bdk_native_handle_t,
+                                      bdk_error_t*) override {
+        ++S().menus_presented;
+        return BDK_OK;
+    }
 
     void ExecuteCommand(Runtime& rt, const std::shared_ptr<BuiltinCall>& call) override {
         bdkstub::services_execute(rt, call);
@@ -520,6 +606,16 @@ class StubBackend final : public Backend {
 };
 
 } // namespace
+
+namespace bdkstub {
+
+void track_request(const std::shared_ptr<Request>& r) {
+    S().last_request = r;
+    S().last_update.clear();
+    r->on_update = [](const std::string& update) { S().last_update = update; };
+}
+
+} // namespace bdkstub
 
 namespace bdkcore {
 
@@ -584,7 +680,109 @@ BDK_EXPORT bdk_status_t bdk_stub_raise_ui_request(bdk_runtime_t h, uint32_t surf
         set_outcome(static_cast<uint32_t>(outcome), surface, completion, args);
     };
     set_outcome(BDK_STUB_UI_NONE, surface, "", "");
+    bdkstub::track_request(r);
     raise_ui_request(rt, r);
+    return BDK_OK;
+}
+
+BDK_EXPORT bdk_status_t bdk_stub_send_ui_update(bdk_runtime_t h, bdk_string_t update) {
+    if (bdk_status_t s = check_thread())
+        return s;
+    auto rt = runtime_of(h);
+    if (!rt)
+        return BDK_ERR_STALE_HANDLE;
+    auto r = S().last_request.lock();
+    bool object = false;
+    if (!r || !string_ok(update) || !valid_json(str(update), &object) || !object)
+        return BDK_ERR_INVALID_ARGUMENT;
+    ui_send_update(rt, r, str(update));
+    return BDK_OK;
+}
+
+BDK_EXPORT bdk_status_t bdk_stub_last_ui_update(bdk_runtime_t h, char* out, size_t cap) {
+    if (bdk_status_t s = check_thread())
+        return s;
+    if (!runtime_of(h))
+        return BDK_ERR_STALE_HANDLE;
+    if (!out || cap == 0)
+        return BDK_ERR_INVALID_ARGUMENT;
+    snprintf(out, cap, "%s", S().last_update.c_str());
+    return BDK_OK;
+}
+
+BDK_EXPORT bdk_status_t bdk_stub_attach_contents(bdk_contents_t c, bdk_window_t w) {
+    if (bdk_status_t s = check_thread())
+        return s;
+    if (!contents_of(c) || (w && !window_of(w)))
+        return BDK_ERR_STALE_HANDLE;
+    detach(c);
+    if (!w)
+        return BDK_OK;
+    StubState::WindowState& state = S().windows[w];
+    state.contents.push_back(c);
+    if (!state.active)
+        state.active = c;
+    if (state.extension_id < 0)
+        state.extension_id = S().next_window_id++;
+    return BDK_OK;
+}
+
+BDK_EXPORT bdk_status_t bdk_stub_window_request(bdk_window_t h, bdk_string_t request) {
+    if (bdk_status_t s = check_thread())
+        return s;
+    auto w = window_of(h);
+    auto rt = current_runtime();
+    if (!w || !rt)
+        return BDK_ERR_STALE_HANDLE;
+    bool object = false;
+    if (!string_ok(request) || !valid_json(str(request), &object) || !object)
+        return BDK_ERR_INVALID_ARGUMENT;
+    S().window_answer = 0;
+    window_request(rt, w, str(request),
+                   [](bdk_ui_response_t answer) { S().window_answer = answer; });
+    return BDK_OK;
+}
+
+BDK_EXPORT bdk_status_t bdk_stub_last_window_answer(uint32_t* out) {
+    if (bdk_status_t s = check_thread())
+        return s;
+    if (!out)
+        return BDK_ERR_INVALID_ARGUMENT;
+    *out = S().window_answer;
+    return BDK_OK;
+}
+
+BDK_EXPORT bdk_status_t bdk_stub_window_anchor(bdk_window_t h, uint32_t role, double out_rect[4],
+                                               uint8_t* out_found) {
+    if (bdk_status_t s = check_thread())
+        return s;
+    auto w = window_of(h);
+    if (!w)
+        return BDK_ERR_STALE_HANDLE;
+    if (!out_rect || !out_found)
+        return BDK_ERR_INVALID_ARGUMENT;
+    *out_found = window_anchor(*w, role, out_rect) ? 1 : 0;
+    return BDK_OK;
+}
+
+BDK_EXPORT bdk_status_t bdk_stub_extension_package(bdk_runtime_t h, bdk_string_t kind,
+                                                   bdk_string_t key, bdk_string_t manifest) {
+    if (bdk_status_t s = check_thread())
+        return s;
+    if (!runtime_of(h))
+        return BDK_ERR_STALE_HANDLE;
+    if (!string_ok(kind) || !string_ok(key) || !string_ok(manifest) || key.length == 0)
+        return BDK_ERR_INVALID_ARGUMENT;
+    bdkstub::extensions_add_package(str(kind), str(key), str(manifest));
+    return BDK_OK;
+}
+
+BDK_EXPORT bdk_status_t bdk_stub_menus_presented(uint32_t* out) {
+    if (bdk_status_t s = check_thread())
+        return s;
+    if (!out)
+        return BDK_ERR_INVALID_ARGUMENT;
+    *out = S().menus_presented;
     return BDK_OK;
 }
 
