@@ -34,8 +34,8 @@ Expected status: `supported` behaves as in Chrome. `degraded` exists and differs
 | `tabs.update` | degraded | not run | `engine_ext_probe_tabs_update_active_request` |
 | `tabs.highlight` | degraded | not run | `engine_ext_probe_tabs_update_active_request` |
 | `tabs.move` | degraded | not run | `engine_ext_probe_move_keeps_tab_id_and_events` |
-| `tabs.group` | absent | not run | `engine_ext_probe_api_presence` |
-| `tabGroups` | absent | not run | `engine_ext_probe_api_presence` |
+| `tabs.group` | degraded | not run | `engine_ext_probe_api_presence` |
+| `tabGroups` | degraded | not run | `engine_ext_probe_api_presence` |
 | `tabs.query` | degraded | not run | `engine_ext_probe_active_tab_is_focused_page`<br>`engine_ext_probe_offscreen_pages_in_query` |
 | `tabs.discard` | supported | not run | `engine_ext_probe_tab_requests_reach_delegate` |
 | `tabs.duplicate` | supported | not run | `engine_ext_probe_tab_requests_reach_delegate` |
@@ -150,6 +150,8 @@ Every row whose expected status is not `supported`.
 | `tabs.update` | Setting active raises an activation request to the window delegate. The application may ignore it and the call then resolves with no change. | not run |
 | `tabs.highlight` | Raises an activation request to the window delegate, which may ignore it. | not run |
 | `tabs.move` | BDK has no tab order. A move between windows moves the page's view only if the application's delegate does it. | not run |
+| `tabs.group` | Groups are made in the engine's tab model of the page's host context, but BDK has no group concept and the application shows none. | not run |
+| `tabGroups` | The namespace works on the engine's tab model, but the application shows no groups (inspection reports api.tabGroups.notShown). | not run |
 | `tabs.query` | Pages attached to a window are that window's tabs. Off-screen pages follow decision D1 and the parking context is hidden. | not run |
 | `downloads.setShelfEnabled` | Accepted and passed to the presenter as a hint only. | not run |
 | `downloads.setUiOptions` | Accepted and passed to the presenter as a hint only. | not run |
@@ -171,8 +173,6 @@ Every row whose expected status is not `supported`.
 
 | Row | What differs | Observed |
 |---|---|---|
-| `tabs.group` | BDK has no tab groups. | not run |
-| `tabGroups` | BDK has no tab groups; the namespace is absent. | not run |
 | `identity.getAuthToken` | No Google sign-in exists. | not run |
 | `identity.getProfileUserInfo` | No Google sign-in exists. | not run |
 | `webstore` | Only with a store source (decision D4); not configured in the suite. | not run |

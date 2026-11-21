@@ -186,8 +186,8 @@
       "id": "api.tabs.group",
       "group": "api",
       "subject": "tabs.group",
-      "expected": "absent",
-      "reason": "BDK has no tab groups.",
+      "expected": "degraded",
+      "reason": "Groups are made in the engine's tab model of the page's host context, but BDK has no group concept and the application shows none.",
       "evidence": ["engine_ext_probe_api_presence"],
       "source": "extensions.md 7"
     },
@@ -195,8 +195,8 @@
       "id": "api.tabGroups",
       "group": "api",
       "subject": "tabGroups",
-      "expected": "absent",
-      "reason": "BDK has no tab groups; the namespace is absent.",
+      "expected": "degraded",
+      "reason": "The namespace works on the engine's tab model, but the application shows no groups (inspection reports api.tabGroups.notShown).",
       "evidence": ["engine_ext_probe_api_presence"],
       "source": "extensions.md 7"
     },
