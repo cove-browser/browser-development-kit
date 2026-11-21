@@ -5,6 +5,7 @@ export function helpText(steps: readonly string[]): string {
 Usage:
   bdk build config [--out <file>]
   bdk build automation --bundle <App.app> [--out <file>]
+  bdk build devtools --bundle <App.app> [--out <file>]
   bdk build sign --bundle <App.app> --identity <name|-> [--team <id>] [--entitlements <file>]
   bdk --help | --version
 
@@ -17,8 +18,8 @@ Options:
   --offline               Never use the network (fail instead)
   --diagnostics <form>    Print diagnostics as "human" or "xcode" (file:line: error: message).
                           Default: "xcode" inside an Xcode build, otherwise "human"
-  --out <file>            For \`build config\` and \`build automation\`: where bdk.resolved.json is written and read
-  --bundle                For \`build automation\` and \`build sign\`: the application, <App.app>
+  --out <file>            For \`build config\`, \`build automation\` and \`build devtools\`: where bdk.resolved.json is written and read
+  --bundle                For \`build automation\`, \`build devtools\` and \`build sign\`: the application, <App.app>
   --identity, --team, --entitlements
                           For \`build sign\`. In an Xcode build they default to CODESIGNING_FOLDER_PATH,
                           EXPANDED_CODE_SIGN_IDENTITY, DEVELOPMENT_TEAM and CODE_SIGN_ENTITLEMENTS.
