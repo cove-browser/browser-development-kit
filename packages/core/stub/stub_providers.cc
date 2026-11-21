@@ -39,7 +39,7 @@ TranslationPreferences& prefs_of(const Profile* p) {
     return st().prefs[p ? p->id : std::string()];
 }
 
-std::string quoted(const std::string& s) {
+std::string json_quoted(const std::string& s) {
     return "\"" + json_escape(s) + "\"";
 }
 
@@ -88,7 +88,7 @@ void emit_preferences(const std::shared_ptr<Runtime>& rt, const Profile* p) {
 std::string strings_json(const std::vector<std::string>& texts) {
     std::string out = "[";
     for (size_t i = 0; i < texts.size(); ++i)
-        out += (i ? "," : "") + quoted(texts[i]);
+        out += (i ? "," : "") + json_quoted(texts[i]);
     return out + "]";
 }
 
@@ -325,7 +325,7 @@ void page_loaded(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Conte
         }
         decide(detected);
     };
-    provider_invoke(rt, Service::kTranslation, "detect", "{\"sample\":" + quoted(sample) + "}",
+    provider_invoke(rt, Service::kTranslation, "detect", "{\"sample\":" + json_quoted(sample) + "}",
                     std::move(h));
 }
 
@@ -405,8 +405,8 @@ bool providers_execute(Runtime& rt, const std::shared_ptr<BuiltinCall>& call) {
         translation_call(runtime, no_engine, "supported_pairs", "{}", std::move(h));
     };
     auto pair_input = [&] {
-        return "{\"from\":" + quoted(args.find("from")->text) +
-               ",\"to\":" + quoted(args.find("to")->text) + "}";
+        return "{\"from\":" + json_quoted(args.find("from")->text) +
+               ",\"to\":" + json_quoted(args.find("to")->text) + "}";
     };
     auto keep = [control](const std::shared_ptr<ProviderRequest>& request) {
         if (request)
@@ -527,7 +527,7 @@ void providers_check_navigation(const std::shared_ptr<Contents>& c, const std::s
             go(true); /* Like Safe Browsing, a check that fails lets the page load */
     };
     provider_invoke(rt, Service::kReputation, "check_url",
-                    "{\"url\":" + quoted(url) + ",\"kind\":\"navigation\"}", std::move(h));
+                    "{\"url\":" + json_quoted(url) + ",\"kind\":\"navigation\"}", std::move(h));
 }
 
 } // namespace bdkstub
@@ -628,7 +628,8 @@ BDK_EXPORT bdk_status_t bdk_stub_geolocation_watch(bdk_contents_t h, uint8_t hig
         p.watch.reset();
         if (!reply.ok() && reply.code != BDK_CODE_CANCELLED)
             p.last_position =
-                "{\"error\":\"positionUnavailable\",\"message\":" + quoted(reply.message) + "}";
+                "{\"error\":\"positionUnavailable\",\"message\":" + json_quoted(reply.message) +
+                "}";
     };
     pg.watch =
         provider_invoke(rt, Service::kGeolocation, "start",

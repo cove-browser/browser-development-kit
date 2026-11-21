@@ -76,7 +76,7 @@ bool endpoint_ok(const std::string& url) {
     return false;
 }
 
-std::string quoted(const std::string& s) {
+std::string json_quoted(const std::string& s) {
     return "\"" + json_escape(s) + "\"";
 }
 
@@ -501,7 +501,7 @@ std::string check_verdict(const JsonValue& answer, bool download, std::string* n
                                             "dangerousDownload"};
     for (const char* v : download ? kDownload : kUrl) {
         if (verdict->text == v) {
-            *normalized = "{\"verdict\":" + quoted(v) + "}";
+            *normalized = "{\"verdict\":" + json_quoted(v) + "}";
             return "";
         }
     }
@@ -516,8 +516,8 @@ std::string check_position(const JsonValue& p, std::string* normalized) {
                                   error->text != "positionUnavailable" && error->text != "timeout"))
             return "a position error is not permissionDenied, positionUnavailable or timeout";
         const JsonValue* message = p.find("message");
-        *normalized = "{\"error\":" + quoted(error->text) +
-                      ",\"message\":" + quoted(is_string(message) ? message->text : "") + "}";
+        *normalized = "{\"error\":" + json_quoted(error->text) +
+                      ",\"message\":" + json_quoted(is_string(message) ? message->text : "") + "}";
         return "";
     }
     const JsonValue* lat = p.find("latitude");
@@ -577,8 +577,8 @@ std::string provider_check_answer(Service s, const std::string& operation,
                     return "pair " + std::to_string(i) + " does not name two languages";
                 if (installed && installed->type != JsonValue::Type::kBool)
                     return "pair " + std::to_string(i) + ": \"installed\" is not a boolean";
-                out += std::string(i ? "," : "") + "{\"from\":" + quoted(from->text) +
-                       ",\"to\":" + quoted(to->text) +
+                out += std::string(i ? "," : "") + "{\"from\":" + json_quoted(from->text) +
+                       ",\"to\":" + json_quoted(to->text) +
                        ",\"installed\":" + ((!installed || installed->boolean) ? "true" : "false") +
                        "}";
             }
@@ -599,7 +599,7 @@ std::string provider_check_answer(Service s, const std::string& operation,
             for (size_t i = 0; i < texts->items.size(); ++i) {
                 if (texts->items[i].type != JsonValue::Type::kString)
                     return "text " + std::to_string(i) + " is not a string";
-                out += std::string(i ? "," : "") + quoted(texts->items[i].text);
+                out += std::string(i ? "," : "") + json_quoted(texts->items[i].text);
             }
             *normalized = out + "]}";
             return "";
@@ -612,7 +612,7 @@ std::string provider_check_answer(Service s, const std::string& operation,
             if (!is_string(language) || !translation_language_ok(language->text) || !reliable ||
                 reliable->type != JsonValue::Type::kBool)
                 return "the answer is not null or {\"language\", \"reliable\"}";
-            *normalized = "{\"language\":" + quoted(language->text) +
+            *normalized = "{\"language\":" + json_quoted(language->text) +
                           ",\"reliable\":" + (reliable->boolean ? "true" : "false") + "}";
             return "";
         }

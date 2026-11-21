@@ -13,14 +13,14 @@ std::map<bdk_contents_t, TranslationState>& translation_states(Runtime& rt);
 
 namespace {
 
-std::string quoted(const std::string& s) {
+std::string json_quoted(const std::string& s) {
     return "\"" + json_escape(s) + "\"";
 }
 
 std::string string_array(const std::vector<std::string>& items) {
     std::string out = "[";
     for (size_t i = 0; i < items.size(); ++i)
-        out += (i ? "," : "") + quoted(items[i]);
+        out += (i ? "," : "") + json_quoted(items[i]);
     return out + "]";
 }
 
@@ -101,7 +101,8 @@ bool translation_language_ok(const std::string& code) {
 }
 
 std::string translation_preferences_json(const TranslationPreferences& p) {
-    return "{\"target\":" + quoted(p.target) + ",\"alwaysTranslate\":" + string_array(p.always) +
+    return "{\"target\":" + json_quoted(p.target) +
+           ",\"alwaysTranslate\":" + string_array(p.always) +
            ",\"neverTranslate\":" + string_array(p.never) +
            ",\"neverSites\":" + string_array(p.never_sites) +
            ",\"offers\":" + (p.offers ? "true" : "false") + "}";
@@ -145,13 +146,13 @@ bool translation_apply_preferences(const JsonValue& args, TranslationPreferences
 }
 
 std::string translation_state_json(const TranslationState& s) {
-    std::string out = "{\"phase\":" + quoted(s.phase);
+    std::string out = "{\"phase\":" + json_quoted(s.phase);
     if (!s.detected.empty())
-        out += ",\"detected\":" + quoted(s.detected);
+        out += ",\"detected\":" + json_quoted(s.detected);
     if (!s.from.empty())
-        out += ",\"from\":" + quoted(s.from);
+        out += ",\"from\":" + json_quoted(s.from);
     if (!s.to.empty())
-        out += ",\"to\":" + quoted(s.to);
+        out += ",\"to\":" + json_quoted(s.to);
     if (s.progress >= 0)
         out += ",\"progress\":" + json_serialize([&] {
                    JsonValue v;
@@ -160,9 +161,9 @@ std::string translation_state_json(const TranslationState& s) {
                    return v;
                }());
     if (!s.error_code.empty())
-        out += ",\"error\":{\"domain\":" + quoted(s.error_domain) +
-               ",\"code\":" + quoted(s.error_code) + ",\"message\":" + quoted(s.error_message) +
-               "}";
+        out += ",\"error\":{\"domain\":" + json_quoted(s.error_domain) +
+               ",\"code\":" + json_quoted(s.error_code) +
+               ",\"message\":" + json_quoted(s.error_message) + "}";
     return out + "}";
 }
 
@@ -197,8 +198,8 @@ void translation_set_state(const std::shared_ptr<Contents>& c, const Translation
     }
     emit_contents_event(c, BDK_CONTENTS_EVENT_TRANSLATION, url, after, 0, 0);
     emit_builtin_event(rt, "translation.stateChanged", c->profile ? c->profile->handle : 0,
-                       "{\"page\":" + quoted(std::to_string(c->handle)) + ",\"state\":" + after +
-                           "}");
+                       "{\"page\":" + json_quoted(std::to_string(c->handle)) +
+                           ",\"state\":" + after + "}");
 }
 
 TranslationDecision translation_decide(const TranslationPreferences& p, const std::string& language,
@@ -338,7 +339,7 @@ class Job final : public TranslationJob, public std::enable_shared_from_this<Job
     }
 
     std::string Pair() const {
-        return "{\"from\":" + quoted(spec_.from) + ",\"to\":" + quoted(spec_.to) + "}";
+        return "{\"from\":" + json_quoted(spec_.from) + ",\"to\":" + json_quoted(spec_.to) + "}";
     }
 
     void NextBatch() {
@@ -359,10 +360,11 @@ class Job final : public TranslationJob, public std::enable_shared_from_this<Job
         }
         std::string texts = "[";
         for (size_t i = 0; i < batch_.size(); ++i)
-            texts += (i ? "," : "") + quoted(spec_.texts[batch_[i]]);
+            texts += (i ? "," : "") + json_quoted(spec_.texts[batch_[i]]);
         texts += ']';
-        std::string input = "{\"from\":" + quoted(spec_.from) + ",\"to\":" + quoted(spec_.to) +
-                            ",\"texts\":" + texts + ",\"url\":" + quoted(spec_.url) + "}";
+        std::string input = "{\"from\":" + json_quoted(spec_.from) +
+                            ",\"to\":" + json_quoted(spec_.to) + ",\"texts\":" + texts +
+                            ",\"url\":" + json_quoted(spec_.url) + "}";
         auto self = shared_from_this();
         Step("translate", input, [self](const ProviderReply& r) { self->OnBatch(r); });
     }
@@ -453,15 +455,15 @@ std::string translation_request_payload(const TranslationState& s, const std::st
                                         const std::string& pairs_json,
                                         const std::string& descriptor_json) {
     std::string phase = s.phase == "available" ? "offer" : s.phase;
-    std::string out = "{\"phase\":" + quoted(phase) + ",\"target\":" + quoted(target);
+    std::string out = "{\"phase\":" + json_quoted(phase) + ",\"target\":" + json_quoted(target);
     if (!s.detected.empty())
-        out += ",\"detected\":" + quoted(s.detected);
+        out += ",\"detected\":" + json_quoted(s.detected);
     if (s.progress >= 0 && s.phase == "translating")
         out += ",\"progress\":" + std::to_string(s.progress);
     if (!s.error_code.empty())
-        out += ",\"error\":{\"domain\":" + quoted(s.error_domain) +
-               ",\"code\":" + quoted(s.error_code) + ",\"message\":" + quoted(s.error_message) +
-               "}";
+        out += ",\"error\":{\"domain\":" + json_quoted(s.error_domain) +
+               ",\"code\":" + json_quoted(s.error_code) +
+               ",\"message\":" + json_quoted(s.error_message) + "}";
     return out + ",\"languages\":" + (pairs_json.empty() ? "[]" : pairs_json) +
            ",\"provider\":" + descriptor_json + "}";
 }
