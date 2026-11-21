@@ -64,6 +64,22 @@ BDK_EXPORT bdk_status_t bdk_stub_answer_authentication(bdk_runtime_t, uint8_t gr
 BDK_EXPORT bdk_status_t bdk_stub_hold_services(bdk_runtime_t, uint8_t hold);
 BDK_EXPORT bdk_status_t bdk_stub_release_held_commands(bdk_runtime_t);
 
+/* Internal pages (T-WUI-04). Asks for the page broker as the page's primary main frame would, or a
+   subframe of it (subframe 1), with the URL the page committed. On success *out is a caller to use
+   with bdk_stub_invoke_as, with the capabilities of the page's route; it is revoked when the page
+   navigates or closes. Otherwise BDK_ERR_FAILED with capability.denied, and the page's renderer is
+   reported gone (reason "badMessage"), as Chromium terminates a renderer that asks for an interface
+   its page may not have. */
+BDK_EXPORT bdk_status_t bdk_stub_page_bind(bdk_runtime_t, bdk_contents_t, uint8_t subframe,
+                                           bdk_stub_caller_t* out, bdk_error_t*);
+/* A navigation the page starts itself (a link, location.href), not the application. */
+BDK_EXPORT bdk_status_t bdk_stub_page_navigate(bdk_contents_t, bdk_string_t url);
+/* Subscribes to an event as that caller (broker_subscribe_as). 0 on refusal, with *out_error set.
+ */
+BDK_EXPORT bdk_subscription_t bdk_stub_subscribe_as(bdk_runtime_t, bdk_stub_caller_t,
+                                                    bdk_string_t event, bdk_event_cb, void* ctx,
+                                                    bdk_release_cb, bdk_error_t* out_error);
+
 #define BDK_STUB_COUNT_EXECUTED 0u        /* calls that reached a service */
 #define BDK_STUB_COUNT_HELD 1u            /* calls a service is holding */
 #define BDK_STUB_COUNT_STOPPED 2u         /* calls a service was told to stop */

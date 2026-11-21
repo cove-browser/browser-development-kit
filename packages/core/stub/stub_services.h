@@ -39,6 +39,17 @@ Controls& controls();
 /* Answers the authentication request that is waiting (mode 2). False if none is. */
 bool services_answer_authentication(bool granted);
 
+/* What the page hooks (bdk_stub_page_bind, bdk_stub_page_navigate) need of a stub page
+   (stub_backend.cc). */
+/* The internal URL the page committed last, as Chromium's frame would report it. */
+std::string page_committed_url(const bdkcore::Contents& contents);
+/* Keeps a caller bound for the page, to revoke it when the page navigates or closes. */
+void page_keep_caller(bdkcore::Contents& contents, std::shared_ptr<bdkcore::Caller> caller);
+/* A navigation the page starts itself: trusted only when it shows an internal page. */
+void page_navigate(const std::shared_ptr<bdkcore::Contents>& contents, const std::string& url);
+/* Chromium terminates a renderer that asks for an interface it may not have. */
+void page_renderer_gone(const std::shared_ptr<bdkcore::Contents>& contents, const char* reason);
+
 } // namespace bdkstub
 
 #endif /* BDK_STUB_SERVICES_H_ */
