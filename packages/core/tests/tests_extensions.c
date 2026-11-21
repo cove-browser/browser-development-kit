@@ -1000,6 +1000,10 @@ static void test_ext_actions_and_activation(void) {
     REQUIRE(bdk_ui_complete(g_request, S("accept"), S("{\"action\":\"close\"}"), no_gesture(),
                             &err) == BDK_OK);
     t_pump();
+    bdk_harness_ui_outcome_t o;
+    memset(&o, 0, sizeof o);
+    REQUIRE(bdk_harness_last_ui_outcome(t_runtime, &o) == BDK_OK);
+    CHECK(o.kind == BDK_HARNESS_UI_COMPLETED && strcmp(o.completion, "accept") == 0);
 
     /* The action's keyboard command opens the popup too; other commands are dispatched. */
     g_calls = 0;

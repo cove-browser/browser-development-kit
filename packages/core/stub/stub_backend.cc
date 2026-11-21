@@ -613,6 +613,15 @@ void track_request(const std::shared_ptr<Request>& r) {
     S().last_request = r;
     S().last_update.clear();
     r->on_update = [](const std::string& update) { S().last_update = update; };
+    /* Requests the stub raises itself report their outcome like the raised ones do. */
+    const uint32_t surface = r->surface;
+    set_outcome(BDK_STUB_UI_NONE, surface, "", "");
+    r->on_finish = [surface, inner = std::move(r->on_finish)](
+                       UiOutcome outcome, const std::string& completion, const std::string& args) {
+        set_outcome(static_cast<uint32_t>(outcome), surface, completion, args);
+        if (inner)
+            inner(outcome, completion, args);
+    };
 }
 
 } // namespace bdkstub
@@ -675,11 +684,6 @@ BDK_EXPORT bdk_status_t bdk_stub_raise_ui_request(bdk_runtime_t h, uint32_t surf
     r->surface = surface;
     r->contents = contents;
     r->payload = str(payload);
-    r->on_finish = [surface](UiOutcome outcome, const std::string& completion,
-                             const std::string& args) {
-        set_outcome(static_cast<uint32_t>(outcome), surface, completion, args);
-    };
-    set_outcome(BDK_STUB_UI_NONE, surface, "", "");
     bdkstub::track_request(r);
     raise_ui_request(rt, r);
     return BDK_OK;
