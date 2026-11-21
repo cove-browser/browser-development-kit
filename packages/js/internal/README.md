@@ -27,8 +27,10 @@ fails when the copies drift.
 | `types`, `metadata` | Every named type of the interface definitions; the capability of each command and event | generated |
 | `settings`, `profiles`, `history`, `bookmarks`, `downloads`, `permissions`, `privacy` (with `cookies`), `passwords`, `autofill`, `search`, `system` | One typed function per command a page may call, `on<Event>` per event | generated |
 
-Generated files are written by `pnpm exec nx run js-codegen:codegen` from `packages/core/interface` and committed;
-`js-codegen:codegen-check` fails when they are stale. Not yet generated, because the definitions do not exist: `extensions`,
+Generated files are written by `pnpm exec nx run js-codegen:codegen` from `packages/core/interface` and are not
+committed (they are in the root `.gitignore`); every target of this package runs `codegen` first. Run it by hand
+after a fresh clone for editor types. A new namespace's module goes in `.gitignore` and in the `codegen` target's
+`outputs`; a `js-codegen` test checks both. Not yet generated, because the definitions do not exist: `extensions`,
 `translation`, `favicons`, `top-sites`. A command whose `callers` exclude `page` has no function.
 
 The application's own commands, events and settings come from `@bdk/internal/app.d.ts`, which `bdk build codegen`

@@ -11,7 +11,7 @@ import {
 } from "./registry.js";
 import { renderSwiftServices, SWIFT_PATH, SWIFT_REPORT_PATH } from "./swift.js";
 import { renderCommandTable, TABLE_PATH } from "./table.js";
-import { renderTypescriptModules, TYPESCRIPT_DIR, TYPESCRIPT_REPORT_DIR } from "./typescript.js";
+import { renderTypescriptModules, TYPESCRIPT_DIR } from "./typescript.js";
 import { parsePolicy, type SourceFile, validate } from "./validate.js";
 
 /** Files in the interface directory that are not namespace definitions. */
@@ -115,8 +115,12 @@ export function readInputs(coreDir: string): Inputs {
   };
 }
 
-/** The generated files as absolute path, text and the path `check` reports it by. */
-function targets(coreDir: string, outputs: Outputs): [string, string, string][] {
+/**
+ * The committed outputs as absolute path, text and the path `check` reports it by. They are committed because
+ * builds that cannot run this generator read them: the registry is the record of every identifier ever
+ * assigned, the Chromium GN build compiles the header and the tables, and SwiftPM compiles the Swift wrappers.
+ */
+function committedTargets(coreDir: string, outputs: Outputs): [string, string, string][] {
   return [
     [
       join(coreDir, "interface", REGISTRY_FILE),
@@ -126,18 +130,28 @@ function targets(coreDir: string, outputs: Outputs): [string, string, string][] 
     [join(coreDir, HEADER_PATH), outputs.header, `packages/core/${HEADER_PATH}`],
     [join(coreDir, TABLE_PATH), outputs.table, `packages/core/${TABLE_PATH}`],
     [join(coreDir, SWIFT_PATH), outputs.swift, SWIFT_REPORT_PATH],
-    ...Object.entries(outputs.typescript).map(([file, text]): [string, string, string] => [
-      join(coreDir, TYPESCRIPT_DIR, file),
-      text,
-      `${TYPESCRIPT_REPORT_DIR}/${file}`,
-    ]),
   ];
+}
+
+/**
+ * The `@bdk/internal` modules as absolute path and text. They are git-ignored build outputs: only Nx targets
+ * read them, and those depend on `js-codegen:codegen`.
+ */
+function typescriptTargets(coreDir: string, outputs: Outputs): [string, string][] {
+  return Object.entries(outputs.typescript).map(([file, text]): [string, string] => [
+    join(coreDir, TYPESCRIPT_DIR, file),
+    text,
+  ]);
 }
 
 /** Writes every generated file, leaving one untouched when its content would not change. */
 export function generate(coreDir: string): string[] {
   const written: string[] = [];
-  for (const [path, text] of targets(coreDir, build(readInputs(coreDir)))) {
+  const outputs = build(readInputs(coreDir));
+  for (const [path, text] of [
+    ...committedTargets(coreDir, outputs),
+    ...typescriptTargets(coreDir, outputs),
+  ]) {
     if (readOptional(path) !== text) {
       mkdirSync(dirname(path), { recursive: true });
       writeFileSync(path, text);
@@ -147,9 +161,12 @@ export function generate(coreDir: string): string[] {
   return written;
 }
 
-/** Names the committed outputs that differ from what the definitions generate. Empty when current. */
+/**
+ * Names the committed outputs that differ from what the definitions generate. Empty when current. It also
+ * generates the `@bdk/internal` modules in memory, so a definition they cannot be written from still fails.
+ */
 export function check(coreDir: string): string[] {
-  return targets(coreDir, build(readInputs(coreDir)))
+  return committedTargets(coreDir, build(readInputs(coreDir)))
     .filter(([path, text]) => readOptional(path) !== text)
     .map(([, , report]) => report);
 }
