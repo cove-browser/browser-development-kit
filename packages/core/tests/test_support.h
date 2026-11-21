@@ -70,7 +70,7 @@ typedef struct t_capture {
     int results, releases, progress;
     int result_seq, release_seq;
     int has_error, has_binary;
-    char domain[48], code[48], message[160], json[2048];
+    char domain[48], code[48], message[160], json[32768];
     double fraction;
     void (*on_result)(struct t_capture*); /* optional hook, runs inside the result callback */
     void* hook_data;

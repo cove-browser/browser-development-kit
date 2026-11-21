@@ -123,7 +123,7 @@ static int failed_with(const t_capture_t* cap, const char* code) {
 typedef struct {
     int calls;
     bdk_request_t request;
-    char payload[4096];
+    char payload[65536]; /* a request carries the extension's icon as a data URL */
 } seen_t;
 
 static seen_t g_seen;
@@ -287,7 +287,7 @@ static void test_engine_ext_a_handler_grants_an_unpacked_install_with_a_gesture(
     CHECK(strstr(cap.json, "\"isEnabled\":true") != NULL);
     CHECK(strstr(cap.json, "\"disableReasons\":[]") != NULL);
     CHECK(strstr(cap.json, "\"apiPermissions\":[") != NULL && strstr(cap.json, "storage") != NULL);
-    CHECK(strstr(cap.json, "\"compatibility\":{\"verdict\":\"compatible\"") != NULL);
+    CHECK(strstr(cap.json, "\"verdict\":\"compatible\"") != NULL); /* keys are sorted */
     CHECK(wait_for_payload(&installed, "\"name\":\"Install Basic\""));
     bdk_ui_request_release(g_seen.request);
 
@@ -364,11 +364,12 @@ static void test_engine_ext_with_no_handler_the_default_alert_lists_the_warnings
     invoke(p, "extensions.install", args, &cap);
     CHECK(failed_with(&cap, "cancelled"));
     CHECK(presenter_uses("extension_installs") == 1);
-    char record[8192];
+    char record[65536];
     presenter_record("extension_installs", record, sizeof record);
     CHECK(strstr(record, "Install Basic") != NULL);
     CHECK(strstr(record, "It can:") != NULL || strstr(record, "no special permissions") != NULL);
-    CHECK(strstr(record, "\"install\"") != NULL && strstr(record, "\"cancel\"") != NULL);
+    /* The payload is a JSON string inside the record, so its quotes are escaped. */
+    CHECK(strstr(record, "\\\"install\\\"") != NULL && strstr(record, "\\\"cancel\\\"") != NULL);
 
     script_presenter("extension_installs", "install");
     invoke_ok(p, "extensions.install", args, &cap);
@@ -615,7 +616,7 @@ static void test_engine_ext_allow_all_installs_it_and_the_disabled_apis_are_abse
     bdk_contents_t c = new_active_page(p);
     char id[64];
     install_fixture(p, "install-sidepanel", id, sizeof id);
-    char record[8192];
+    char record[65536];
     presenter_record("extension_installs", record, sizeof record);
     CHECK(strstr(record, "Compatibility") != NULL); /* the finding is in the prompt */
 

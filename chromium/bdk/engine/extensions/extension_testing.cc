@@ -33,9 +33,15 @@ bool RunExtensionTestingCommand(const std::string& name,
     base::ScopedAllowBlockingForTesting allow_blocking;
     const base::FilePath key_path = base::FilePath::FromUTF8Unsafe(*key);
     const bool have_key = base::PathExists(key_path);
+    // Chromium reads no file through a path with "..", which the fixtures'
+    // path has.
+    const base::FilePath source =
+        base::MakeAbsoluteFilePath(base::FilePath::FromUTF8Unsafe(*dir));
+    if (source.empty()) {
+      return false;
+    }
     extensions::ExtensionCreator creator;
-    if (!creator.Run(base::FilePath::FromUTF8Unsafe(*dir),
-                     base::FilePath::FromUTF8Unsafe(*crx),
+    if (!creator.Run(source, base::FilePath::FromUTF8Unsafe(*crx),
                      have_key ? key_path : base::FilePath(),
                      have_key ? base::FilePath() : key_path,
                      extensions::ExtensionCreator::kOverwriteCRX)) {
