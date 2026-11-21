@@ -22,6 +22,7 @@
 #include "bdk/core/runtime/core_internal.h"
 #include "bdk/engine/bdk_testing.h"
 #include "bdk/engine/engine_contents.h"
+#include "bdk/engine/extensions/panel_testing.h"
 #include "bdk/engine/json_util.h"
 #include "bdk/engine/services/authentication.h"
 #include "bdk/engine/services/capture_service.h"
@@ -222,6 +223,11 @@ bool Run(const std::string& name,
     ScriptPageForTesting(*url, *body, content_type ? *content_type : "",
                          headers ? *headers : "");
     return true;
+  }
+  // Windows, side panels, anchored prompts and extension fixtures.
+  if (std::optional<bool> handled =
+          RunExtensionPanelCommand(name, args, result)) {
+    return *handled;
   }
   return false;
 }

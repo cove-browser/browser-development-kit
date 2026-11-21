@@ -63,6 +63,8 @@ class EngineContents : public bdkcore::BackendData,
 
   // The core's side of the page, null once the application destroyed it.
   std::shared_ptr<bdkcore::Contents> Core() const { return core_.lock(); }
+  // The page's handle: valid for the life of the page, which Core() is not.
+  bdk_contents_t handle() const { return handle_; }
   base::WeakPtr<EngineContents> GetWeakPtr() {
     return weak_factory_.GetWeakPtr();
   }
@@ -131,6 +133,9 @@ class EngineContents : public bdkcore::BackendData,
       bool user_gesture,
       bool* was_blocked) override;
   void CloseContents(content::WebContents* source) override;
+  // window.moveTo and resizeTo of a page in a popup window.
+  void SetContentsBounds(content::WebContents* source,
+                         const gfx::Rect& bounds) override;
   bool HandleContextMenu(content::RenderFrameHost& render_frame_host,
                          const content::ContextMenuParams& params) override;
   content::KeyboardEventProcessingResult PreHandleKeyboardEvent(
@@ -202,6 +207,7 @@ class EngineContents : public bdkcore::BackendData,
   void SetFullscreen(bool fullscreen);
 
   std::weak_ptr<bdkcore::Contents> core_;
+  const bdk_contents_t handle_;
   std::unique_ptr<HostView> host_view_;
   // JavaScript dialogs and file pickers; find in page (ui_dialogs.h,
   // ui_find.h).
