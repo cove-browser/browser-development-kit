@@ -1,0 +1,59 @@
+{
+  "namespace": "debug",
+  "since": 1,
+  "commands": [
+    {
+      "name": "debug.attach",
+      "capability": "contents.debug",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {},
+      "result": {
+        "session": "string"
+      }
+    },
+    {
+      "name": "debug.send",
+      "capability": "contents.debug",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {
+        "session": "string",
+        "method": "string",
+        "params": "json?"
+      },
+      "result": {
+        "result": "json"
+      }
+    },
+    {
+      "name": "debug.detach",
+      "capability": "contents.debug",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {
+        "session": "string"
+      },
+      "result": "void"
+    }
+  ],
+  "events": [
+    {
+      "name": "debug.event",
+      "capability": "contents.debug",
+      "payload": {
+        "session": "string",
+        "method": "string",
+        "params": "json"
+      }
+    },
+    {
+      "name": "debug.detached",
+      "capability": "contents.debug",
+      "payload": {
+        "session": "string",
+        "reason": "string"
+      }
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "namespace": "automation",
+  "since": 1,
+  "types": {
+    "SessionInfo": {
+      "name": "string",
+      "capabilities": "string[]"
+    },
+    "CallError": {
+      "domain": "string",
+      "code": "string"
+    }
+  },
+  "events": [
+    {
+      "name": "automation.sessionCreated",
+      "capability": "automation.audit",
+      "payload": {
+        "session": "SessionInfo"
+      }
+    },
+    {
+      "name": "automation.sessionRevoked",
+      "capability": "automation.audit",
+      "payload": {
+        "session": "SessionInfo"
+      }
+    },
+    {
+      "name": "automation.commandInvoked",
+      "capability": "automation.audit",
+      "payload": {
+        "session": "string",
+        "task": "string?",
+        "command": "string",
+        "profile": "string?",
+        "contents": "string?",
+        "error": "CallError?"
+      }
+    }
+  ],
+  "constants": [
+    {
+      "group": "taskEvents",
+      "kind": "enum",
+      "prefix": "BDK_TASK_EVENT_",
+      "comment": "Task event kinds (bdk_task_event_cb). FINISHED is always the last.",
+      "values": {
+        "PROGRESS": 1,
+        "LOG": 2,
+        "COMMAND": 3,
+        "FINISHED": 4
+      }
+    }
+  ]
+}
