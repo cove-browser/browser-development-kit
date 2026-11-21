@@ -24,7 +24,7 @@ Used by: the BDK engine (//bdk/engine) and the Swift SDK.
  2 files changed, 194 insertions(+)
 
 diff --git a/chrome/app/framework.exports b/chrome/app/framework.exports
-index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..8d59d1068e7c2d8b81e64aad2aa1e5af68152729 100644
+index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..d4576fabb6f24531657ff5901278beb4fa5e6346 100644
 --- a/chrome/app/framework.exports
 +++ b/chrome/app/framework.exports
 @@ -20,3 +20,100 @@ _ChromeAppModeStart_v8
@@ -129,7 +129,7 @@ index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..8d59d1068e7c2d8b81e64aad2aa1e5af
 +_OBJC_METACLASS_$_BDKApplicationBase
 +_OBJC_CLASS_$_BDKApplicationBase
 diff --git a/chrome/app/framework.order b/chrome/app/framework.order
-index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..4326eeafc7843fb15c744bc1ee3d35b4a17ff8c4 100644
+index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..691c2c2a86908afa0fc4471ee3f7b3cd76ada4a0 100644
 --- a/chrome/app/framework.order
 +++ b/chrome/app/framework.order
 @@ -33,5 +33,102 @@ _ChromeWebAppShortcutCopierMain
