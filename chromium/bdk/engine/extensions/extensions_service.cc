@@ -16,6 +16,7 @@
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/memory/scoped_refptr.h"
+#include "base/one_shot_event.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
 #include "bdk/core/include/bdk/bdk_ids.h"
@@ -386,13 +387,13 @@ void SetSiteAccess(const Call& call) {
               if (access == "onSpecificSites") {
                 extensions::URLPatternSet hosts;
                 const base::ListValue* patterns = call->List("patterns");
+                const base::ListValue no_patterns;
                 for (const base::Value& value :
-                     patterns ? *patterns : base::ListValue()) {
-                  extensions::URLPattern pattern(
-                      extensions::URLPattern::SCHEME_ALL);
+                     patterns ? *patterns : no_patterns) {
+                  URLPattern pattern(URLPattern::SCHEME_ALL);
                   if (!value.is_string() ||
                       pattern.Parse(value.GetString()) !=
-                          extensions::URLPattern::ParseResult::kSuccess) {
+                          URLPattern::ParseResult::kSuccess) {
                     call->InvalidArguments("\"" +
                                            (value.is_string()
                                                 ? value.GetString()

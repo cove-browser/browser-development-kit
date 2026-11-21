@@ -12,6 +12,7 @@
 #include "base/files/file_path.h"
 #include "base/functional/bind.h"
 #include "base/json/json_writer.h"
+#include "base/no_destructor.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "bdk/core/runtime/core_internal.h"
@@ -43,7 +44,10 @@ struct LoadState {
   std::string id;
   std::string error;
 };
-LoadState g_load;
+LoadState& LoadRecord() {
+  static base::NoDestructor<LoadState> state;
+  return *state;
+}
 
 // The last `extensions.eval`.
 struct EvalState {
@@ -51,7 +55,10 @@ struct EvalState {
   std::string value = "null";
   std::string error;
 };
-EvalState g_eval;
+EvalState& EvalRecord() {
+  static base::NoDestructor<EvalState> state;
+  return *state;
+}
 
 Profile* ProfileOfPage(const base::DictValue& args) {
   const std::string* handle = args.FindString("contents");
@@ -103,23 +110,23 @@ std::optional<bool> RunExtensionPanelCommand(const std::string& name,
     if (!profile || !path) {
       return false;
     }
-    g_load = LoadState();
+    LoadRecord() = LoadState();
     scoped_refptr<extensions::UnpackedInstaller> installer =
         extensions::UnpackedInstaller::Create(profile);
     installer->set_completion_callback(
         base::BindOnce([](const extensions::Extension* extension,
                           const base::FilePath&, const std::u16string& error) {
-          g_load.done = true;
-          g_load.id = extension ? extension->id() : std::string();
-          g_load.error = base::UTF16ToUTF8(error);
+          LoadRecord().done = true;
+          LoadRecord().id = extension ? extension->id() : std::string();
+          LoadRecord().error = base::UTF16ToUTF8(error);
         }));
     installer->Load(base::FilePath::FromUTF8Unsafe(*path));
     return true;
   }
   if (name == "extensions.loaded") {
-    result.Set("done", g_load.done);
-    result.Set("id", g_load.id);
-    result.Set("error", g_load.error);
+    result.Set("done", LoadRecord().done);
+    result.Set("id", LoadRecord().id);
+    result.Set("error", LoadRecord().error);
     return true;
   }
   if (name == "extensions.eval") {
@@ -133,32 +140,32 @@ std::optional<bool> RunExtensionPanelCommand(const std::string& name,
     if (!profile || !id || !script) {
       return false;
     }
-    g_eval = EvalState();
+    EvalRecord() = EvalState();
     std::vector<extensions::WorkerId> workers =
         extensions::ProcessManager::Get(profile)->GetServiceWorkersForExtension(
             *id);
     if (workers.size() != 1u) {
-      g_eval.done = true;
-      g_eval.error = "workers: " + base::NumberToString(workers.size());
+      EvalRecord().done = true;
+      EvalRecord().error = "workers: " + base::NumberToString(workers.size());
       return true;
     }
     extensions::util::GetServiceWorkerContextForExtensionId(*id, profile)
         ->ExecuteScriptForTest(
             *script, workers[0].version_id,
-            base::BindOnce(
-                [](base::Value value, const std::optional<std::string>& error) {
-                  g_eval.done = true;
-                  g_eval.value = value.is_string()
-                                     ? value.GetString()
-                                     : base::WriteJson(value).value_or("null");
-                  g_eval.error = error.value_or(std::string());
-                }));
+            base::BindOnce([](base::Value value,
+                              const std::optional<std::string>& error) {
+              EvalRecord().done = true;
+              EvalRecord().value =
+                  value.is_string() ? value.GetString()
+                                    : base::WriteJson(value).value_or("null");
+              EvalRecord().error = error.value_or(std::string());
+            }));
     return true;
   }
   if (name == "extensions.eval.result") {
-    result.Set("done", g_eval.done);
-    result.Set("value", g_eval.value);
-    result.Set("error", g_eval.error);
+    result.Set("done", EvalRecord().done);
+    result.Set("value", EvalRecord().value);
+    result.Set("error", EvalRecord().error);
     return true;
   }
   if (name == "window.extension_windows") {

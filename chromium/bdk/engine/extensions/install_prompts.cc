@@ -33,6 +33,7 @@
 #include "extensions/browser/install_prompt_permissions.h"
 #include "extensions/browser/uninstall_reason.h"
 #include "extensions/common/extension.h"
+#include "extensions/common/permissions/permission_set.h"
 #include "ui/gfx/image/image.h"
 #include "ui/gfx/native_ui_types.h"
 

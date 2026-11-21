@@ -113,7 +113,7 @@ class HostModalDialogHost : public web_modal::WebContentsModalDialogHost {
 // A find bar that shows nothing. Find UI becomes a UI request with the find
 // service; until then a find session runs and its results are kept by the
 // tab's find helper, which is what a service reads.
-class HostFindBar : public FindBar {
+class HostFindBar : public ::FindBar {
  public:
   // FindBar:
   FindBarController* GetFindBarController() const override {
@@ -495,7 +495,7 @@ bool BdkBrowserWindow::HandleKeyboardEvent(
   return false;
 }
 
-std::unique_ptr<FindBar> BdkBrowserWindow::CreateFindBar() {
+std::unique_ptr<::FindBar> BdkBrowserWindow::CreateFindBar() {
   return std::make_unique<HostFindBar>();
 }
 

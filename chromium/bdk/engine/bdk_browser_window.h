@@ -173,7 +173,7 @@ class BdkBrowserWindow : public BrowserWindow {
   content::KeyboardEventProcessingResult PreHandleKeyboardEvent(
       const input::NativeWebKeyboardEvent& event) override;
   bool HandleKeyboardEvent(const input::NativeWebKeyboardEvent& event) override;
-  std::unique_ptr<FindBar> CreateFindBar() override;
+  std::unique_ptr<::FindBar> CreateFindBar() override;
   web_modal::WebContentsModalDialogHost* GetWebContentsModalDialogHost()
       override;
   web_modal::WebContentsModalDialogHost* GetWebContentsModalDialogHostFor(

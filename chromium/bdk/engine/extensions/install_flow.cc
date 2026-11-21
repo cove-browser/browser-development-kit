@@ -38,6 +38,7 @@
 #include "extensions/common/extension_urls.h"
 #include "extensions/common/file_util.h"
 #include "extensions/common/mojom/manifest.mojom.h"
+#include "extensions/common/permissions/permission_set.h"
 #include "net/base/url_util.h"
 #include "url/gurl.h"
 

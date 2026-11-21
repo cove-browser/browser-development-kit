@@ -32,8 +32,8 @@
 #include "extensions/browser/ui_util.h"
 #include "extensions/common/constants.h"
 #include "extensions/common/extension.h"
-#include "extensions/common/extension_icon_set.h"
 #include "extensions/common/extension_urls.h"
+#include "extensions/common/icons/extension_icon_set.h"
 #include "extensions/common/manifest.h"
 #include "extensions/common/manifest_handlers/icons_handler.h"
 #include "extensions/common/manifest_handlers/manifest_url_handlers.h"
@@ -296,7 +296,8 @@ std::string IconDataUrl(const gfx::Image& image) {
   if (!png || png->size() == 0) {
     return std::string();
   }
-  return "data:image/png;base64," + base::Base64Encode(png->AsSpan());
+  return "data:image/png;base64," +
+         base::Base64Encode(base::span<const uint8_t>(*png));
 }
 
 void LoadIconDataUrl(Profile* profile,

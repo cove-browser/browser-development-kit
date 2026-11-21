@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <utility>
 
+#include "base/memory/raw_ptr.h"
 #include "base/strings/sys_string_conversions.h"
 #include "content/public/browser/web_contents.h"
 #include "ui/gfx/native_ui_types.h"
@@ -313,7 +314,7 @@ class SidePanelFrameMac : public SidePanelFrame {
   // The application owns the window; it unregisters it before it goes.
   NSWindow* __weak window_;
   BDKSidePanelFrameView* __strong frame_view_;
-  Client* client_;
+  raw_ptr<Client> client_;
   int width_;
   bool dragging_ = false;
   int drag_start_width_ = 0;

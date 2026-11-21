@@ -219,7 +219,7 @@ class Hooks : public ExtensionPolicyHooks,
           base::UTF8ToUTF16(std::string(kUnavailableApiPrefix) + "chrome." +
                             api->name + " is not available: " + api->key +
                             " disables it"),
-          extensions::kMinimumSeverityToReportError));
+          extension_misc::kMinimumSeverityToReportError));
     }
   }
 

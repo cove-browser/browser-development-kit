@@ -11,6 +11,7 @@
 #include "base/memory/ref_counted_memory.h"
 #include "base/strings/stringprintf.h"
 #include "bdk/engine/engine_contents.h"
+#include "chrome/browser/profiles/profile.h"
 #include "components/sessions/content/session_tab_helper.h"
 #include "content/public/browser/web_contents.h"
 #include "extensions/browser/extension_registry.h"

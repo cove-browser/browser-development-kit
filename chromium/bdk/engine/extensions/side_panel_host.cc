@@ -27,6 +27,7 @@
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_presenters.h"
 #include "chrome/browser/extensions/extension_tab_util.h"
+#include "chrome/browser/extensions/extension_view.h"
 #include "chrome/browser/extensions/extension_view_host.h"
 #include "chrome/browser/extensions/extension_view_host_factory.h"
 #include "chrome/browser/profiles/profile.h"

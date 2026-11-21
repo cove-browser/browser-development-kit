@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "base/functional/bind.h"
+#include "base/no_destructor.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
 #include "bdk/engine/engine_contents.h"
@@ -32,8 +33,8 @@ namespace {
 constexpr base::TimeDelta kFirstSizeWait = base::Milliseconds(150);
 
 PopupRecord& Record() {
-  static PopupRecord record;
-  return record;
+  static base::NoDestructor<PopupRecord> record;
+  return *record;
 }
 
 const char* TriggerName(PopupTrigger trigger) {
