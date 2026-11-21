@@ -11,6 +11,7 @@ import {
 } from "./registry.js";
 import { renderSwiftServices, SWIFT_PATH, SWIFT_REPORT_PATH } from "./swift.js";
 import { renderCommandTable, TABLE_PATH } from "./table.js";
+import { renderTypescriptModules, TYPESCRIPT_DIR, TYPESCRIPT_REPORT_DIR } from "./typescript.js";
 import { parsePolicy, type SourceFile, validate } from "./validate.js";
 
 /** Files in the interface directory that are not namespace definitions. */
@@ -33,6 +34,8 @@ export interface Outputs {
   readonly header: string;
   readonly table: string;
   readonly swift: string;
+  /** File name (relative to `TYPESCRIPT_DIR`) to the text of each `@bdk/internal` module. */
+  readonly typescript: Readonly<Record<string, string>>;
 }
 
 function parseJson(file: string, text: string): { json: unknown; issues: Issue[] } {
@@ -84,6 +87,7 @@ export function build(inputs: Inputs): Outputs {
     header: renderHeader(validated.definitions, reconciled.registry),
     table: renderCommandTable(validated.definitions, reconciled.registry, policy),
     swift: renderSwiftServices(validated.definitions),
+    typescript: renderTypescriptModules(validated.definitions),
   };
 }
 
@@ -111,17 +115,29 @@ export function readInputs(coreDir: string): Inputs {
   };
 }
 
-/** Writes `ids.json`, `bdk_ids.h` and the broker tables, leaving a file untouched when its content would not change. */
+/** The generated files as absolute path, text and the path `check` reports it by. */
+function targets(coreDir: string, outputs: Outputs): [string, string, string][] {
+  return [
+    [
+      join(coreDir, "interface", REGISTRY_FILE),
+      outputs.registry,
+      `packages/core/interface/${REGISTRY_FILE}`,
+    ],
+    [join(coreDir, HEADER_PATH), outputs.header, `packages/core/${HEADER_PATH}`],
+    [join(coreDir, TABLE_PATH), outputs.table, `packages/core/${TABLE_PATH}`],
+    [join(coreDir, SWIFT_PATH), outputs.swift, SWIFT_REPORT_PATH],
+    ...Object.entries(outputs.typescript).map(([file, text]): [string, string, string] => [
+      join(coreDir, TYPESCRIPT_DIR, file),
+      text,
+      `${TYPESCRIPT_REPORT_DIR}/${file}`,
+    ]),
+  ];
+}
+
+/** Writes every generated file, leaving one untouched when its content would not change. */
 export function generate(coreDir: string): string[] {
-  const outputs = build(readInputs(coreDir));
-  const targets = [
-    [join(coreDir, "interface", REGISTRY_FILE), outputs.registry],
-    [join(coreDir, HEADER_PATH), outputs.header],
-    [join(coreDir, TABLE_PATH), outputs.table],
-    [join(coreDir, SWIFT_PATH), outputs.swift],
-  ] as const;
   const written: string[] = [];
-  for (const [path, text] of targets) {
+  for (const [path, text] of targets(coreDir, build(readInputs(coreDir)))) {
     if (readOptional(path) !== text) {
       mkdirSync(dirname(path), { recursive: true });
       writeFileSync(path, text);
@@ -133,17 +149,7 @@ export function generate(coreDir: string): string[] {
 
 /** Names the committed outputs that differ from what the definitions generate. Empty when current. */
 export function check(coreDir: string): string[] {
-  const outputs = build(readInputs(coreDir));
-  const stale: string[] = [];
-  if (readOptional(join(coreDir, "interface", REGISTRY_FILE)) !== outputs.registry) {
-    stale.push(`packages/core/interface/${REGISTRY_FILE}`);
-  }
-  if (readOptional(join(coreDir, HEADER_PATH)) !== outputs.header) {
-    stale.push(`packages/core/${HEADER_PATH}`);
-  }
-  if (readOptional(join(coreDir, TABLE_PATH)) !== outputs.table) {
-    stale.push(`packages/core/${TABLE_PATH}`);
-  }
-  if (readOptional(join(coreDir, SWIFT_PATH)) !== outputs.swift) stale.push(SWIFT_REPORT_PATH);
-  return stale;
+  return targets(coreDir, build(readInputs(coreDir)))
+    .filter(([path, text]) => readOptional(path) !== text)
+    .map(([, , report]) => report);
 }
