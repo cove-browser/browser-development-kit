@@ -56,6 +56,10 @@ int bdk_harness_engine_keep_profiles = 0;
    configuration, for example {"notifications":"disabled"}. Cleared by the next start. */
 const char* bdk_harness_engine_surfaces = NULL;
 
+/* Set by a test that needs extensions configured: the value of "extensions" in the resolved
+   configuration (a JSON object), for the next runtime only. */
+const char* bdk_harness_engine_extensions = NULL;
+
 void bdk_harness_prepare_start_config(bdk_start_config_t* config) {
     /* The suite expects each runtime to start with no profiles, as with a new data directory. */
     if (!bdk_harness_engine_keep_profiles)
@@ -68,6 +72,9 @@ void bdk_harness_prepare_start_config(bdk_start_config_t* config) {
     resolved = "{\"browser\":{\"name\":\"BDK Conformance\"}";
     if (bdk_harness_engine_surfaces)
         resolved += std::string(",\"surfaces\":") + bdk_harness_engine_surfaces;
+    if (bdk_harness_engine_extensions)
+        resolved += std::string(",\"extensions\":") + bdk_harness_engine_extensions;
+    bdk_harness_engine_extensions = NULL;
     resolved += "}";
     bdk_harness_engine_surfaces = NULL;
     config->resolved_config_json = View(resolved.c_str());

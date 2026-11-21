@@ -137,7 +137,15 @@ BDK_EXPORT bdk_status_t bdk_testing_tab_info(bdk_contents_t,
    as the setting does downloads.danger {"on"}  every download is held as
    dangerous content (this build has no Safe Browsing or file-type policy to
    flag a real one before M6) script_page {"url", "body", "contentType",
-   "headers"}  serves later navigations to url with this content */
+   "headers"}  serves later navigations to url with this content
+   extensions.pack {"dir", "crx", "key"} -> {"id"}  packs the directory into the
+   CRX with Chromium's ExtensionCreator, signed with the key in the file `key`
+   (made when missing), so a second package of the same key is an update of the
+   first extensions.serve {"url", "body" | "file"}  a fetch of the url (an
+   update manifest, a package) is answered by the engine, not the network;
+   neither removes the entry. present.script on "extension_installs" and
+   "extension_uninstalls" answers the default sheets with the key of a button
+   ("install" or "remove", "cancel") */
 BDK_EXPORT bdk_status_t bdk_testing_command(bdk_runtime_t,
                                             bdk_string_t command,
                                             bdk_string_t args_json,

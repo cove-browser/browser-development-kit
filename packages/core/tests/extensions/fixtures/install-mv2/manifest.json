@@ -1,0 +1,9 @@
+{
+  "manifest_version": 2,
+  "name": "Install MV2",
+  "version": "1.0",
+  "permissions": ["storage"],
+  "background": {
+    "scripts": ["bg.js"]
+  }
+}
