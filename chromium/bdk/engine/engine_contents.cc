@@ -21,6 +21,7 @@
 #include "bdk/engine/host_view.h"
 #include "bdk/engine/identity.h"
 #include "bdk/engine/json_util.h"
+#include "bdk/engine/pages/page_routes.h"
 #include "bdk/engine/services/interstitial_prompts.h"
 #include "bdk/engine/services/password_prompts.h"
 #include "bdk/engine/session_state.h"
@@ -44,6 +45,7 @@
 #include "content/public/browser/render_widget_host.h"
 #include "content/public/browser/render_widget_host_view.h"
 #include "content/public/browser/web_contents.h"
+#include "content/public/common/url_constants.h"
 #include "net/base/net_errors.h"
 #include "third_party/blink/public/common/context_menu_data/edit_flags.h"
 #include "third_party/blink/public/common/page/page_zoom.h"
@@ -369,7 +371,9 @@ void EngineContents::Emit(uint32_t kind,
                           int32_t net_error,
                           uint32_t flags) {
   if (auto c = core()) {
-    bdkcore::emit_contents_event(c, kind, url, detail, net_error, flags);
+    // The application never sees the internal URL of one of its pages.
+    bdkcore::emit_contents_event(c, kind, DisplayUrl(url), detail, net_error,
+                                 flags);
   }
 }
 
@@ -525,7 +529,7 @@ EngineContents* EngineContents::RequestNewWindow(
   base::DictValue payload;
   payload.Set("kind", kind);
   payload.Set("disposition", Disposition(disposition));
-  payload.Set("targetURL", target_url.spec());
+  payload.Set("targetURL", DisplayUrl(target_url));
   // Handles are 64-bit: JSON numbers cannot carry them exactly.
   payload.Set("newContents", base::NumberToString(page->handle));
   payload.Set("opener", base::NumberToString(opener->handle));
@@ -566,7 +570,23 @@ EngineContents* EngineContents::RequestNewWindow(
   return raw;
 }
 
+bool EngineContents::DevToolsOpen() const {
+  return devtools_page_ && !devtools_page_->close_reported_;
+}
+
+void EngineContents::ToggleDevTools() {
+  if (DevToolsOpen()) {
+    devtools_page_->RequestClose();
+    devtools_page_ = nullptr;
+    return;
+  }
+  OpenDevTools();
+}
+
 void EngineContents::OpenDevTools() {
+  if (DevToolsOpen()) {
+    return;
+  }
   const GURL url = DevToolsFrontend::FrontendURL();
   std::unique_ptr<content::WebContents> frontend = content::WebContents::Create(
       content::WebContents::CreateParams(web_contents_->GetBrowserContext()));
@@ -582,6 +602,7 @@ void EngineContents::OpenDevTools() {
     return;
   }
   base::WeakPtr<EngineContents> weak_page = page->weak_factory_.GetWeakPtr();
+  devtools_page_ = weak_page;
   page->devtools_ = std::make_unique<DevToolsFrontend>(
       frontend_contents, web_contents_.get(),
       base::BindRepeating(
@@ -591,6 +612,22 @@ void EngineContents::OpenDevTools() {
                 FROM_HERE, base::BindOnce(&EngineContents::RequestClose, p));
           },
           weak_page));
+}
+
+bool EngineContents::CanOpenDevTools() {
+  return SurfaceAvailable(core(), BDK_SURFACE_DEVTOOLS);
+}
+
+void EngineContents::OpenViewSource() {
+  const GURL url(content::kViewSourceScheme + std::string(":") +
+                 web_contents_->GetLastCommittedURL().spec());
+  std::unique_ptr<content::WebContents> source = content::WebContents::Create(
+      content::WebContents::CreateParams(web_contents_->GetBrowserContext()));
+  source->GetController().LoadURL(url, content::Referrer(),
+                                  ui::PAGE_TRANSITION_LINK, std::string());
+  RequestNewWindow(std::move(source), "newPage",
+                   WindowOpenDisposition::kNewForegroundTab, url, nullptr,
+                   /*user_gesture=*/true);
 }
 
 void EngineContents::RequestClose() {
@@ -622,10 +659,10 @@ bool EngineContents::HandleContextMenu(
   }
   base::ListValue items = MenuItems(params, web_contents_.get());
   base::DictValue context;
-  context.Set("linkURL", params.link_url.spec());
+  context.Set("linkURL", DisplayUrl(params.link_url));
   context.Set("srcURL", params.src_url.spec());
-  context.Set("pageURL", params.page_url.spec());
-  context.Set("frameURL", params.frame_url.spec());
+  context.Set("pageURL", DisplayUrl(params.page_url));
+  context.Set("frameURL", DisplayUrl(params.frame_url));
   context.Set("selectionText", base::UTF16ToUTF8(params.selection_text));
   context.Set("isEditable", params.is_editable);
   context.Set("misspelledWord", base::UTF16ToUTF8(params.misspelled_word));

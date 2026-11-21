@@ -114,6 +114,48 @@ extern "C" {
 #define BDK_SURFACE_WEBAUTHN 23u
 #define BDK_SURFACE_EXTERNAL_PROTOCOLS 24u
 
+/* bdk_page_handler_register's mode: how a logical route is served (architecture.md 8.1) */
+#define BDK_PAGE_MODE_CHROMIUM 1u
+#define BDK_PAGE_MODE_BUNDLED 2u
+#define BDK_PAGE_MODE_NATIVE 3u
+#define BDK_PAGE_MODE_DISABLED 4u
+
+/* bdk_native_page_complete's result: the handler showed the page itself, or the navigation shows
+ * the standard error page */
+#define BDK_NATIVE_PAGE_HANDLED 1u
+#define BDK_NATIVE_PAGE_BLOCKED 2u
+
+/* bdk_contents_perform_command and bdk_contents_can_perform_command (swift-api.md section 9) */
+#define BDK_PAGE_COMMAND_BACK 1u
+#define BDK_PAGE_COMMAND_FORWARD 2u
+#define BDK_PAGE_COMMAND_RELOAD 3u
+#define BDK_PAGE_COMMAND_RELOAD_BYPASSING_CACHE 4u
+#define BDK_PAGE_COMMAND_STOP 5u
+#define BDK_PAGE_COMMAND_CUT 6u
+#define BDK_PAGE_COMMAND_COPY 7u
+#define BDK_PAGE_COMMAND_PASTE 8u
+#define BDK_PAGE_COMMAND_PASTE_AND_MATCH_STYLE 9u
+#define BDK_PAGE_COMMAND_UNDO 10u
+#define BDK_PAGE_COMMAND_REDO 11u
+#define BDK_PAGE_COMMAND_SELECT_ALL 12u
+#define BDK_PAGE_COMMAND_DELETE 13u
+#define BDK_PAGE_COMMAND_FIND 14u
+#define BDK_PAGE_COMMAND_FIND_NEXT 15u
+#define BDK_PAGE_COMMAND_FIND_PREVIOUS 16u
+#define BDK_PAGE_COMMAND_ZOOM_IN 17u
+#define BDK_PAGE_COMMAND_ZOOM_OUT 18u
+#define BDK_PAGE_COMMAND_ZOOM_RESET 19u
+#define BDK_PAGE_COMMAND_PRINT 20u
+#define BDK_PAGE_COMMAND_SAVE_PAGE_AS 21u
+#define BDK_PAGE_COMMAND_VIEW_SOURCE 22u
+#define BDK_PAGE_COMMAND_TOGGLE_MUTE 23u
+#define BDK_PAGE_COMMAND_TOGGLE_DEV_TOOLS 24u
+#define BDK_PAGE_COMMAND_TOGGLE_FULLSCREEN 25u
+
+/* bdk_contents_set_zoom_scoped: this page only, or Chromium's per-site level */
+#define BDK_ZOOM_SCOPE_PAGE 1u
+#define BDK_ZOOM_SCOPE_SITE 2u
+
 /* Command identifiers (bdk_invoke). Assigned once from interface/ids.json, never reused. */
 #define BDK_COMMAND_AUTOFILL_ADDRESSES_LIST 1u
 #define BDK_COMMAND_AUTOFILL_ADDRESSES_ADD 2u
@@ -201,6 +243,14 @@ extern "C" {
 #define BDK_COMMAND_SETTINGS_RESET 84u
 #define BDK_COMMAND_SYSTEM_DEFAULT_BROWSER_STATUS 85u
 #define BDK_COMMAND_SYSTEM_DEFAULT_BROWSER_REQUEST 86u
+#define BDK_COMMAND_SEARCH_ENGINES 87u
+#define BDK_COMMAND_SEARCH_ADD_ENGINE 88u
+#define BDK_COMMAND_SEARCH_UPDATE_ENGINE 89u
+#define BDK_COMMAND_SEARCH_REMOVE_ENGINE 90u
+#define BDK_COMMAND_SEARCH_SET_DEFAULT 91u
+#define BDK_COMMAND_SEARCH_CLASSIFY 92u
+#define BDK_COMMAND_SEARCH_SUGGESTIONS 93u
+#define BDK_COMMAND_SEARCH_DELETE_SUGGESTION 94u
 
 /* Event identifiers (bdk_subscribe). Assigned once from interface/ids.json, never reused. */
 #define BDK_EVENT_AUTOFILL_CHANGED 1u
@@ -225,6 +275,7 @@ extern "C" {
 #define BDK_EVENT_PROFILES_RENAMED 20u
 #define BDK_EVENT_PROFILES_DELETED 21u
 #define BDK_EVENT_SETTINGS_CHANGED 22u
+#define BDK_EVENT_SEARCH_ENGINES_CHANGED 23u
 
 #ifdef __cplusplus
 }

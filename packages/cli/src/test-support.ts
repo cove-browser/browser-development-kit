@@ -18,6 +18,10 @@ export function memoryAssets(files: Record<string, string>): Assets {
       if (text === undefined) throw new Error(`no test asset ${name}`);
       return text;
     },
+    list: (prefix) =>
+      Object.keys(files)
+        .filter((name) => name.startsWith(prefix))
+        .sort(),
   };
 }
 

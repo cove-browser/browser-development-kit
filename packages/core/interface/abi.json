@@ -144,6 +144,60 @@
         "WEBAUTHN": 23,
         "EXTERNAL_PROTOCOLS": 24
       }
+    },
+    {
+      "group": "pageModes",
+      "kind": "enum",
+      "prefix": "BDK_PAGE_MODE_",
+      "comment": "bdk_page_handler_register's mode: how a logical route is served (architecture.md 8.1)",
+      "values": { "CHROMIUM": 1, "BUNDLED": 2, "NATIVE": 3, "DISABLED": 4 }
+    },
+    {
+      "group": "nativePageResults",
+      "kind": "enum",
+      "prefix": "BDK_NATIVE_PAGE_",
+      "comment": "bdk_native_page_complete's result: the handler showed the page itself, or the navigation shows the standard error page",
+      "values": { "HANDLED": 1, "BLOCKED": 2 }
+    },
+    {
+      "group": "pageCommands",
+      "kind": "enum",
+      "prefix": "BDK_PAGE_COMMAND_",
+      "comment": "bdk_contents_perform_command and bdk_contents_can_perform_command (swift-api.md section 9)",
+      "values": {
+        "BACK": 1,
+        "FORWARD": 2,
+        "RELOAD": 3,
+        "RELOAD_BYPASSING_CACHE": 4,
+        "STOP": 5,
+        "CUT": 6,
+        "COPY": 7,
+        "PASTE": 8,
+        "PASTE_AND_MATCH_STYLE": 9,
+        "UNDO": 10,
+        "REDO": 11,
+        "SELECT_ALL": 12,
+        "DELETE": 13,
+        "FIND": 14,
+        "FIND_NEXT": 15,
+        "FIND_PREVIOUS": 16,
+        "ZOOM_IN": 17,
+        "ZOOM_OUT": 18,
+        "ZOOM_RESET": 19,
+        "PRINT": 20,
+        "SAVE_PAGE_AS": 21,
+        "VIEW_SOURCE": 22,
+        "TOGGLE_MUTE": 23,
+        "TOGGLE_DEV_TOOLS": 24,
+        "TOGGLE_FULLSCREEN": 25
+      }
+    },
+    {
+      "group": "zoomScopes",
+      "kind": "enum",
+      "prefix": "BDK_ZOOM_SCOPE_",
+      "comment": "bdk_contents_set_zoom_scoped: this page only, or Chromium's per-site level",
+      "values": { "PAGE": 1, "SITE": 2 }
     }
   ]
 }

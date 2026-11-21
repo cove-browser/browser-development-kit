@@ -60,6 +60,21 @@ bdk_status_t bdk_harness_hold_services(bdk_runtime_t, int hold);
 /* Answers every held command, late. */
 bdk_status_t bdk_harness_release_held_commands(bdk_runtime_t);
 
+/* Internal pages (T-WUI-04). 1 if the runtime can act as an internal page asking for the broker
+   and as a page starting a navigation itself; 0 skips the tests that need it. */
+int bdk_harness_page_hooks(void);
+/* Asks for the page broker as the page's primary main frame (subframe 0) or a subframe would. On
+   success the caller works with bdk_harness_invoke_as; on refusal BDK_ERR_FAILED and the page's
+   renderer is reported gone. */
+bdk_status_t bdk_harness_page_bind(bdk_runtime_t, bdk_contents_t, int subframe,
+                                   bdk_harness_caller_t* out, bdk_error_t*);
+/* A navigation the page starts (a link or location.href), not the application. */
+bdk_status_t bdk_harness_page_navigate(bdk_contents_t, const char* url);
+/* Subscribes to an event as that caller; 0 on refusal with *out_error set. */
+bdk_subscription_t bdk_harness_subscribe_as(bdk_runtime_t, bdk_harness_caller_t, const char* event,
+                                            bdk_event_cb, void* ctx, bdk_release_cb,
+                                            bdk_error_t* out_error);
+
 #define BDK_HARNESS_COUNT_EXECUTED 0u        /* calls that reached a service */
 #define BDK_HARNESS_COUNT_HELD 1u            /* calls a service is holding */
 #define BDK_HARNESS_COUNT_STOPPED 2u         /* calls a service was told to stop */

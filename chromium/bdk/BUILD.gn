@@ -3,6 +3,9 @@
 # the C ABI headers from packages/core under //bdk/core, and linked into the
 # Mac framework by the first patch in chromium/patches.
 
+import("//mojo/public/tools/bindings/mojom.gni")
+import("//tools/typescript/webui_ts_library.gni")
+
 config("core_config") {
   include_dirs = [
     "core/include",
@@ -23,6 +26,8 @@ source_set("core") {
     "core/runtime/core.cc",
     "core/runtime/core_host.cc",
     "core/runtime/core_internal.h",
+    "core/runtime/routes.cc",
+    "core/runtime/routes.h",
     "core/runtime/ui_router.cc",
   ]
   public_configs = [ ":core_config" ]
@@ -44,6 +49,35 @@ config("core_raw_ptr_exclusion") {
     "-Xclang",
     "raw-ptr-exclude-path=" + rebase_path("core/", root_build_dir),
   ]
+}
+
+# The page broker an internal page reaches (engine/pages, T-WUI-04). The
+# WebUI bindings are TypeScript; they are compiled and the JavaScript is
+# embedded in the engine as a header, so the bundled-page data source serves
+# bindings that always match the runtime (/@bdk/page_broker.mojom-webui.js).
+mojom("page_broker_mojom") {
+  sources = [ "engine/pages/page_broker.mojom" ]
+  webui_module_path = "/@bdk"
+}
+
+webui_ts_library("page_broker_ts") {
+  root_dir = "$root_gen_dir/bdk/engine/pages"
+  out_dir = "$target_gen_dir/page_broker_tsc"
+  in_files = [ "page_broker.mojom-webui.ts" ]
+  deps = [ "//ui/webui/resources/mojo:build_ts" ]
+  extra_deps = [ ":page_broker_mojom_ts__generator" ]
+}
+
+action("page_broker_js_header") {
+  script = "build/embed_text.py"
+  inputs = [ "$target_gen_dir/page_broker_tsc/page_broker.mojom-webui.js" ]
+  outputs = [ "$target_gen_dir/engine/pages/page_broker_js.h" ]
+  args = [
+    rebase_path(inputs[0], root_build_dir),
+    rebase_path(outputs[0], root_build_dir),
+    "kPageBrokerMojomWebUiJs",
+  ]
+  deps = [ ":page_broker_ts" ]
 }
 
 source_set("bdk") {
@@ -76,6 +110,18 @@ source_set("bdk") {
       "engine/identity.h",
       "engine/json_util.cc",
       "engine/json_util.h",
+      "engine/pages/bundled_page_source.cc",
+      "engine/pages/bundled_page_source.h",
+      "engine/pages/bundled_page_ui.cc",
+      "engine/pages/bundled_page_ui.h",
+      "engine/pages/page_broker_impl.cc",
+      "engine/pages/page_broker_impl.h",
+      "engine/pages/page_commands.cc",
+      "engine/pages/page_commands.h",
+      "engine/pages/page_routes.cc",
+      "engine/pages/page_routes.h",
+      "engine/pages/pages_navigation_throttle.cc",
+      "engine/pages/pages_navigation_throttle.h",
       "engine/services/authentication.cc",
       "engine/services/autofill_prompts.cc",
       "engine/services/autofill_prompts.h",
@@ -106,6 +152,7 @@ source_set("bdk") {
       "engine/services/print_prompts.cc",
       "engine/services/print_prompts.h",
       "engine/services/privacy_service.cc",
+      "engine/services/search_service.cc",
       "engine/services/profiles_service.cc",
       "engine/services/prompt_hooks.cc",
       "engine/services/prompt_hooks.h",
@@ -141,6 +188,12 @@ source_set("bdk") {
     ]
     deps = [
       ":core",
+      ":page_broker_js_header",
+      ":page_broker_mojom",
+      "//chrome/browser/picture_in_picture",
+      "//components/omnibox/browser",
+      "//components/search_engines",
+      "//ui/webui",
       "//base",
       "//chrome/app:branded_strings",
       "//chrome/browser",

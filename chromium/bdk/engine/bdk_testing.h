@@ -137,7 +137,8 @@ BDK_EXPORT bdk_status_t bdk_testing_tab_info(bdk_contents_t,
    as the setting does downloads.danger {"on"}  every download is held as
    dangerous content (this build has no Safe Browsing or file-type policy to
    flag a real one before M6) script_page {"url", "body", "contentType",
-   "headers"}  serves later navigations to url with this content */
+   "headers"}  serves later navigations to url with this content
+   hsts.add {"contents", "host"}  the page's profile treats host as HSTS */
 BDK_EXPORT bdk_status_t bdk_testing_command(bdk_runtime_t,
                                             bdk_string_t command,
                                             bdk_string_t args_json,

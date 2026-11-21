@@ -86,7 +86,7 @@ Both give the same module. Types come from the generated declarations (section 7
 
 ## 3. `@bdk/internal/*`
 
-Plan, M4, task T-JS-03. One module per service namespace. Each function is a thin typed wrapper over one broker command in [services.md](services.md) section 5, with the same name after the dot.
+Built in M4 (T-JS-03), tested with a mock transport; the engine side is written and waits for an engine build. One module per service namespace. Each function is a thin typed wrapper over one broker command in [services.md](services.md) section 5, with the same name after the dot.
 
 | Module | Wraps | Capabilities used |
 |---|---|---|
@@ -110,6 +110,8 @@ Plan, M4, task T-JS-03. One module per service namespace. Each function is a thi
 | `@bdk/internal/events` | `app.*` events | The event's own name |
 
 There is no `@bdk/internal/contents`, `debug` or `automation`. Pages cannot hold those capabilities ([services.md](services.md) section 4).
+
+Built in M4: `page`, `settings`, `profiles`, `history`, `bookmarks`, `downloads`, `permissions`, `privacy`, `passwords`, `autofill`, `search`, `system`, `commands`, `events` and `testing`. Not built, with their namespaces: `extensions` (T-EXT-02, M5), `translation` (T-PRV-03, M6), `favicons` and `top-sites` (S12, T-SVC-11, M5). As built, a generated function takes one arguments object (`settings.get({ key })`), a command whose result has one field resolves to that field, and `SettingKey` is `string` until the catalogue is a definition (T-JS-05, M5). Event filters are not applied to a page's subscriptions yet (T-JS-05).
 
 ### 3.1 Shape
 
@@ -343,7 +345,7 @@ Rules: front-end resources are packaged in the signed bundle, never loaded from 
 
 ## 7. Code generation
 
-Plan, M4, tasks T-JS-01 and T-JS-02. Nothing is published to npm. Everything is generated on the developer's machine during the build.
+Built in M4 (T-JS-01, T-JS-02, T-CLI-04): `bdk build codegen` writes `@bdk/internal`, `@bdk/protocol`, `@bdk/vite` and the generated `@bdk/internal/app.d.ts` and `@bdk/env.d.ts`, and links `node_modules/@bdk`. Not built: the extractor that writes `bdk.commands.json` in an Xcode build (T-CLI-06, M5). Nothing is published to npm. Everything is generated on the developer's machine during the build.
 
 ```text
 packages/core/interface/*.json  ─────────────┐   shipped inside the BDK package

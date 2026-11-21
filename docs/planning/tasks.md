@@ -90,6 +90,7 @@ G0 → T-CHR-03, T-CHR-04 → T-CHR-08 → T-CHR-09 → T-ABI-04 → T-SWF-* →
 | T-SWF-06 | Page commands and page controls left over from M2: `page.canPerform` and `perform(PageCommand)`, `page.zoom.set(_:scope:)`, settable `isMuted`, `exitPictureInPicture()` (swift-api.md 6.7 and 9) | M4 | M | Source | T-MAC-03 | C ABI functions; engine; Swift | Each command and control on the stub and in an engine scenario; `canPerform` is false where Chromium would disable the command | T-SWF-02 |
 | T-SWF-07 | `page.find` (`start`, `next`, `previous`, `stop`, `present`) and `page.print()` started by the application (left over from M3; the surfaces exist) | M3 | M | Source | T-UIR-04, T-UIR-06 | C ABI functions; engine; Swift | `find.start` reports match counts and the active match; `present()` and `print()` raise the find and printing requests, handled and unhandled | T-UIR-06 |
 | T-SWF-08 | Public window registration (S11): `runtime.windows.register`, `BDKWindow` with `kind`, `pages`, `activePage`, `extensionWindowID`, `anchors` and `delegate` (swift-api.md 8.1). Registration is automatic and internal today | M5 | M | Source | T-ADP-03 | Swift API; anchors used by the default presenters | A registered popup window reports `kind` `popup` to `windows.get`; a default presenter attaches to a supplied anchor | T-SWF-03 |
+| T-SWF-09 | A navigation to a native route answers `navigation.handledNatively` (or `blocked`) so `page.navigate(to:)` returns (left over from M4: it waits until the page closes) | M5 | S | Prebuilt | T-WUI-05 | Core and Swift | A Swift navigate to a native route returns with the code on the stub and the engine | T-SWF-06 |
 
 ## Browser-owned UI requests and default presenters
 
@@ -102,7 +103,7 @@ G0 → T-CHR-03, T-CHR-04 → T-CHR-08 → T-CHR-09 → T-ABI-04 → T-SWF-* →
 | T-UIR-05 | Interstitials: certificate errors and reputation warnings | M3 | M | Source | Architecture 7 security rules | Tests and enforcement | Setting the surface to disabled or returning reject cannot bypass an interstitial | T-UIR-01 |
 | T-UIR-06 | Find in page, fullscreen, notifications | M3 | M | Source | T-MAC-05 | Requests and defaults | Each works with and without a handler | T-UIR-01 |
 | T-UIR-07 | M3 verification left open: HTTP authentication end to end (a test server that answers 401), a non-overridable interstitial (HSTS or pinning), the card autofill prompt, and the M3 exit criterion checked by hand in the minimal browser | M4 | M | Source | T-UIR-02, T-UIR-04, T-UIR-05 | Engine scenarios; a recorded manual check in the roadmap | Each scenario passes; `proceed` on a non-overridable error is refused | T-UIR-05 |
-| T-UIR-08 | Print preview: host Chromium's preview, or record the system print panel as the permanent default in amendments.md (M3 printed through the system panel because the preview needs a parent widget) | M4 | M | Source | T-MAC-04 result | Presenter or recorded decision | Print to PDF through the preview, or the decision recorded | T-UIR-04 |
+| T-UIR-08 | Print preview: host Chromium's preview, or record the system print panel as the permanent default in amendments.md (M3 printed through the system panel because the preview needs a parent widget). Done 2026-11-20: recorded (amendments 2.14) | M4 | M | Source | T-MAC-04 result | Presenter or recorded decision | Print to PDF through the preview, or the decision recorded | T-UIR-04 |
 
 ## Service broker and services
 
@@ -118,6 +119,7 @@ G0 → T-CHR-03, T-CHR-04 → T-CHR-08 → T-CHR-09 → T-ABI-04 → T-SWF-* →
 | T-SVC-08 | Typed application settings: `config.settings.register(BDKSettingKey<T>, default:, scope:, exposedToPages:)` and typed `get` and `set` (swift-api.md 12.3; left out of T-SVC-05) | M3 | M | Prebuilt | T-SVC-05 | Registration; storage with browser settings; declarations for generation | A registered key reads its default and survives relaunch; `exposedToPages: false` is refused to every page | T-SVC-05 |
 | T-SVC-09 | `contents.screenshot`, `contents.pdf` and save-page commands, and `page.capture` in Swift (left over from T-SVC-06: the engine can capture but no command exposes it) | M7 | M | Source | services.md `contents.*` | Commands; Swift | Visible, full-page and rectangle screenshots; a PDF; each format of save | T-AUT-03 |
 | T-SVC-10 | Address-bar services (S1): `search.classify`, `search.suggestions` and search-engine management; `profile.search` in Swift | M4 | L | Source | services.md 5.13; S1 confirmed | Commands; Swift | Input classified as a URL or a search with the configured engine; suggestions from history and bookmarks with no Google endpoint | T-SVC-02 |
+| T-SVC-11 | `favicons.get` and `topSites.*` (S12) with their `@bdk/internal` modules; waits for S12 to be confirmed (left over from M4) | M5 | M | Source | services.md 5.14 | Definitions; engine; generated modules | A favicon from the favicon service, never fetched; the most-visited list; exclude and restore | T-SVC-10 |
 
 ## Internal pages and configuration
 
@@ -131,6 +133,7 @@ G0 → T-CHR-03, T-CHR-04 → T-CHR-08 → T-CHR-09 → T-ABI-04 → T-SWF-* →
 | T-WUI-04 | Capability broker binding for pages, with per-call checks | M4 | L | Source | Architecture 9.2 | Mojo interface and binder | The negative list in roadmap M4; wrong-page request terminates the renderer; privilege ends on navigation | T-WUI-03, T-SVC-01 |
 | T-WUI-05 | Built-in page modes: `chromium`, `native`, `disabled`, including settings and extension management | M4 | M | Source | Architecture 8.1 | Mode handling | An overridden built-in page has no alternate route; a disabled page shows an error | T-WUI-02 |
 | T-WUI-06 | Display mapping for branded URLs in navigation, history and session data | M4 | M | Source | Risk R8 | Mapping in one place | The application never receives a `chrome://` URL for a page it named logically | T-WUI-02 |
+| T-WUI-07 | Audit the built-in pages served in `chromium` mode for Google services (settings sign-in and sync sections, the passwords leak check), as configuration.md 4.1 plans; left over from M4 | M6 | M | Source | configuration.md 4.1; T-PRV-07 | Audit list; patches or flags | The network audit with every built-in route opened shows no Google request | T-WUI-05 |
 
 ## CLI
 
@@ -141,6 +144,7 @@ G0 → T-CHR-03, T-CHR-04 → T-CHR-08 → T-CHR-09 → T-ABI-04 → T-SWF-* →
 | T-CLI-03 | `bdk patch` for source mode | M9 | M | Source | T-CHR-03 | Command | A custom patch builds into a runtime whose manifest records it | T-CHR-09 |
 | T-CLI-04 | Xcode build-phase integration: resolve configuration, build pages, generate declarations, run the signing script. Includes the check that the packaged CLI loads a project's own Vite (`sdk/cli.md` 2.3). | M4 | L | Prebuilt | T-CFG-02, T-PKG-03 | Build-phase scripts; the `xcode` platform module | A change to a page or to `bdk.toml` is picked up by an Xcode build; `bdk build pages` runs Vite from the project's `node_modules` with no other Node on the path | T-CFG-02, T-PKG-03, T-CLI-05 |
 | T-CLI-05 | CLI foundation: a TypeScript project with a platform-neutral core and a platform interface; bundled with Rolldown; packaged with `node --build-sea` on the pinned Node 26; shipped as an executable in the Swift package's artifact bundle (`sdk/cli.md` section 2) | M2 | M | Prebuilt | `sdk/cli.md` 2.1 to 2.3 | `packages/cli`; the `cli:package` target; one adapter for embedded assets; a record of the checks | The executable runs on a machine with no Node. It runs from the artifact bundle and from an Xcode run-script phase. Start-up time is measured. An embedded template and schema are read. The signed, notarized binary passes Gatekeeper. A lint rule stops the core importing a platform module. | T-REP-01 |
+| T-CLI-06 | Left over from M4: `bdk build pages --watch` with a debug runtime reloading the page; the extractor that writes `bdk.commands.json` from the application's command module in an Xcode build; the build phases run in a real Xcode build, with user-script sandboxing tested | M5 | M | Prebuilt | T-CLI-04 | CLI; template | A page edit reaches the running application; a changed Swift command changes `app.d.ts`; an Xcode build runs the phases incrementally | T-CLI-04 |
 
 ## JavaScript packages
 
@@ -150,6 +154,7 @@ G0 → T-CHR-03, T-CHR-04 → T-CHR-08 → T-CHR-09 → T-ABI-04 → T-SWF-* →
 | T-JS-02 | Code generators for declarations from interface definitions and registered commands | M4 | M | Prebuilt | T-SVC-05 | `packages/js/codegen` | Snapshot tests; a changed definition changes output | T-JS-01 |
 | T-JS-03 | `@bdk/internal` | M4 | M | Prebuilt | T-WUI-04 | `packages/js/internal` | Unit tests with a mock transport; integration through T-WUI-04 | T-JS-02 |
 | T-JS-04 | `@bdk/automation`, commands and events, bundled with Rolldown | M7 | M | Prebuilt | T-AUT-02 | `packages/js/automation` | Unit tests; a bundled script runs in the host | T-JS-02, T-AUT-02 |
+| T-JS-05 | Left over from M4: the settings catalogue as an interface definition, so `SettingKey` is a literal union and Swift's keys and the engine's table come from one source; event filters applied to page subscriptions | M5 | M | Prebuilt | services.md 6 | Definition; generators | A misspelt key fails `tsc`; a filtered subscription gets only matching events | T-JS-03 |
 
 ## Extensions
 
@@ -186,6 +191,7 @@ Load the probe unpacked with two pages A and B visible, B focused.
 |---|---|---|---|---|---|---|---|---|
 | T-PRV-01 | Provider contracts for translation, reputation and geolocation | M6 | M | Prebuilt | Architecture 11 | Contract definitions | A fake provider for each passes a contract test | T-ABI-03 |
 | T-PRV-09 | Provider selection plumbing: named provider, endpoint remap and `provider = "app"` in the schema; application key supplied at start through `InitializeAndOverrideAPIKey` | M6 | M | Source | Architecture 11.1; `google_apis/BUILD.gn` | Schema entries; GN argument; start-up call | With no key no request reaches Google; with a key the geolocation network provider uses it; a remapped endpoint receives the request | T-PRV-01, T-CFG-01 |
+| T-PRV-10 | Search defaults without Google: the first-run engines from `[search]` once S1 is confirmed, and Chromium's search-suggest preference off by default (left over from M4) | M6 | M | Source | configuration.md 3.9; T-SVC-10 | Resolver; engine | A new profile has only the configured engines and sends no typed text | T-SVC-10 |
 | T-PRV-02 | Translation spike: renderer agent replacing script injection, with a Bergamot engine | M6 | XL | Source | Feasibility 6; `translate.mojom` | Agent; engine integration; measurements | A real page is translated offline; speed and memory recorded | T-PRV-01 |
 | T-PRV-03 | Translation state, preferences, UI requests and default presenter | M6 | L | Source | T-PRV-02 | Requests; presenter | Default and custom UI drive the same service; always and never preferences persist | T-PRV-02, T-UIR-01 |
 | T-PRV-04 | Geolocation through the operating-system provider only | M6 | M | Source | `device_features.cc:116-173` | Mode override; contract adapter | A page gets a position; the network audit shows no Google request | T-PRV-01 |

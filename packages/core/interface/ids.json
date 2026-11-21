@@ -85,7 +85,15 @@
     { "name": "settings.set", "id": 83 },
     { "name": "settings.reset", "id": 84 },
     { "name": "system.defaultBrowser.status", "id": 85 },
-    { "name": "system.defaultBrowser.request", "id": 86 }
+    { "name": "system.defaultBrowser.request", "id": 86 },
+    { "name": "search.engines", "id": 87 },
+    { "name": "search.addEngine", "id": 88 },
+    { "name": "search.updateEngine", "id": 89 },
+    { "name": "search.removeEngine", "id": 90 },
+    { "name": "search.setDefault", "id": 91 },
+    { "name": "search.classify", "id": 92 },
+    { "name": "search.suggestions", "id": 93 },
+    { "name": "search.deleteSuggestion", "id": 94 }
   ],
   "events": [
     { "name": "autofill.changed", "id": 1 },
@@ -109,7 +117,8 @@
     { "name": "profiles.created", "id": 19 },
     { "name": "profiles.renamed", "id": 20 },
     { "name": "profiles.deleted", "id": 21 },
-    { "name": "settings.changed", "id": 22 }
+    { "name": "settings.changed", "id": 22 },
+    { "name": "search.enginesChanged", "id": 23 }
   ],
   "constants": {
     "domains": [
@@ -206,6 +215,41 @@
       { "name": "SCREEN_CAPTURE", "id": 22 },
       { "name": "WEBAUTHN", "id": 23 },
       { "name": "EXTERNAL_PROTOCOLS", "id": 24 }
-    ]
+    ],
+    "pageModes": [
+      { "name": "CHROMIUM", "id": 1 },
+      { "name": "BUNDLED", "id": 2 },
+      { "name": "NATIVE", "id": 3 },
+      { "name": "DISABLED", "id": 4 }
+    ],
+    "nativePageResults": [{ "name": "HANDLED", "id": 1 }, { "name": "BLOCKED", "id": 2 }],
+    "pageCommands": [
+      { "name": "BACK", "id": 1 },
+      { "name": "FORWARD", "id": 2 },
+      { "name": "RELOAD", "id": 3 },
+      { "name": "RELOAD_BYPASSING_CACHE", "id": 4 },
+      { "name": "STOP", "id": 5 },
+      { "name": "CUT", "id": 6 },
+      { "name": "COPY", "id": 7 },
+      { "name": "PASTE", "id": 8 },
+      { "name": "PASTE_AND_MATCH_STYLE", "id": 9 },
+      { "name": "UNDO", "id": 10 },
+      { "name": "REDO", "id": 11 },
+      { "name": "SELECT_ALL", "id": 12 },
+      { "name": "DELETE", "id": 13 },
+      { "name": "FIND", "id": 14 },
+      { "name": "FIND_NEXT", "id": 15 },
+      { "name": "FIND_PREVIOUS", "id": 16 },
+      { "name": "ZOOM_IN", "id": 17 },
+      { "name": "ZOOM_OUT", "id": 18 },
+      { "name": "ZOOM_RESET", "id": 19 },
+      { "name": "PRINT", "id": 20 },
+      { "name": "SAVE_PAGE_AS", "id": 21 },
+      { "name": "VIEW_SOURCE", "id": 22 },
+      { "name": "TOGGLE_MUTE", "id": 23 },
+      { "name": "TOGGLE_DEV_TOOLS", "id": 24 },
+      { "name": "TOGGLE_FULLSCREEN", "id": 25 }
+    ],
+    "zoomScopes": [{ "name": "PAGE", "id": 1 }, { "name": "SITE", "id": 2 }]
   }
 }

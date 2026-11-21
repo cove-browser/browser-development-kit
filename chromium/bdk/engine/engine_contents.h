@@ -108,6 +108,16 @@ class EngineContents : public bdkcore::BackendData,
   // Mutes the page, including the WebContents a discard or restore puts in its
   // place.
   void SetMuted(bool muted);
+  // Opens undocked DevTools for this page in a page of its own, through a
+  // new-window request of kind "devTools", unless that page is already open.
+  void OpenDevTools();
+  // Closes this page's DevTools page when it is open, and opens it otherwise.
+  void ToggleDevTools();
+  // Whether DevTools may open: not when [ui.surfaces] devtools is disabled.
+  bool CanOpenDevTools();
+  // Opens view-source: of the page in a page of its own, through a
+  // new-window request of kind "newPage", as Chrome opens a tab.
+  void OpenViewSource();
   // Whether the page has focus, as the last focus event said.
   bool focused() const { return focused_; }
   // Between Close() and Chromium's CloseContents().
@@ -176,6 +186,8 @@ class EngineContents : public bdkcore::BackendData,
   void OnVisibilityChanged(content::Visibility visibility) override;
 
  private:
+  // Whether the DevTools page OpenDevTools opened for this page is still open.
+  bool DevToolsOpen() const;
   std::shared_ptr<bdkcore::Contents> core() const { return Core(); }
   // Makes `web_contents` the page's WebContents: its first, as a tab of the
   // parking context, or a replacement in the same tab.
@@ -183,9 +195,6 @@ class EngineContents : public bdkcore::BackendData,
   // The host view moved into or out of a window; the page follows later.
   void OnHostViewWindowChanged();
   void ActivateTab();
-  // Opens undocked DevTools for this page in a page of its own, through a
-  // new-window request of kind "devTools".
-  void OpenDevTools();
   // Asks the application to close this page, as window.close() does.
   void RequestClose();
   // Wraps `new_contents` as a page in the same profile and asks the
@@ -211,6 +220,8 @@ class EngineContents : public bdkcore::BackendData,
   raw_ptr<content::WebContents> web_contents_ = nullptr;
   // For a DevTools front-end page: the bindings to the page it inspects.
   std::unique_ptr<DevToolsFrontend> devtools_;
+  // For an inspected page: the DevTools front-end page OpenDevTools opened.
+  base::WeakPtr<EngineContents> devtools_page_;
   std::string user_agent_;
   bool muted_ = false;
   double zoom_ = 1.0;

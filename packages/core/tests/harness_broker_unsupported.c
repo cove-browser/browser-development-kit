@@ -59,3 +59,25 @@ unsigned bdk_harness_service_count(bdk_runtime_t rt, unsigned which) {
     (void)rt, (void)which;
     return 0;
 }
+
+int bdk_harness_page_hooks(void) {
+    return 0;
+}
+
+bdk_status_t bdk_harness_page_bind(bdk_runtime_t rt, bdk_contents_t contents, int subframe,
+                                   bdk_harness_caller_t* out, bdk_error_t* out_error) {
+    (void)rt, (void)contents, (void)subframe, (void)out, (void)out_error;
+    return BDK_ERR_INVALID_ARGUMENT;
+}
+
+bdk_status_t bdk_harness_page_navigate(bdk_contents_t contents, const char* url) {
+    (void)contents, (void)url;
+    return BDK_ERR_INVALID_ARGUMENT;
+}
+
+bdk_subscription_t bdk_harness_subscribe_as(bdk_runtime_t rt, bdk_harness_caller_t caller,
+                                            const char* event, bdk_event_cb cb, void* ctx,
+                                            bdk_release_cb rel, bdk_error_t* out_error) {
+    (void)rt, (void)caller, (void)event, (void)cb, (void)ctx, (void)rel, (void)out_error;
+    return 0;
+}

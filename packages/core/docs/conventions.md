@@ -59,7 +59,7 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
    generated identifier, so they could not be observed otherwise.
 9. `bdk_provider_register` and `bdk_provider_set_key` take a `bdk_runtime_t` (c-abi.md omits it). The vtable has no
    callbacks yet because their signatures are not specified.
-10. Application command, event and page-route names must start with `app.` (`config.nameNotApp`). Duplicates fail
+10. Application command and event names must start with `app.` (`config.nameNotApp`). Duplicates fail
     with `config.duplicateName` (not in the swift-api error table).
 10a. Application settings (`bdk_app_setting_register`, T-SVC-08): the broker, not the backend, answers `settings.get`,
     `getMany`, `describe`, `set` and `reset` for `app.` keys (`runtime/app_settings.cc`), so every runtime behaves the
@@ -100,6 +100,17 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
 14. A surface's mode comes from `surfaces` in the resolved configuration. A surface that is not listed is `default`
     (the resolver lists them all). `[ui] default_browser_surfaces` is already folded into the listed modes by the
     resolver, so the core never reads it.
+
+15. Logical routes (`runtime/routes.{h,cc}`, M4). The core reads `browser.internal_scheme`, `routes` and `aliases`
+    at start and owns every rule of architecture.md section 8: `bdk_page_handler_register` sets a route's mode before
+    the freeze (`config.noBuiltin`, `routeUnknown`, `routeInvalid`, `routeMode`; `config.handlerMissing` at the
+    freeze for a native route with no handler), `resolve_navigation` says what a URL becomes (load the internal URL,
+    native, blocked with `ERR_BLOCKED_BY_CLIENT` for a disabled route and `ERR_INVALID_URL` for an unknown one, or
+    dropped when a web page asks), `display_url` gives the branded form a backend must report, `page_caller_bind`
+    makes a bundled page's caller, and `broker_subscribe_as` subscribes it to events it holds (sessions subscribe in
+    M7). An alias is shown as its target route. The built-in routes and their Chromium hosts are a table in
+    `routes.cc`, checked at the pin; packages/cli lists the same routes. Internal pages are not recorded in history,
+    as in Chrome. Page subscriptions take no filter yet.
 
 ### The UI request router
 
@@ -154,7 +165,7 @@ from the registry is a renumbering and fails; so does a new constant that takes 
 
 To add an identifier: edit the definition, run `pnpm exec nx run js-codegen:codegen` (rewrites `ids.json`,
 `bdk_ids.h` and `generated/bdk_command_table.inc`, the tables the broker reads), run `cmake -DMODE=generate -P packages/core/cmake/abi-hash.cmake` (the definitions are hashed), and
-commit all of it. `pnpm exec nx run js-codegen:codegen-check` fails when the committed outputs are stale; `js-codegen:test`
+commit all of it except the `@bdk/internal` modules, which are git-ignored build outputs (amendments.md 2.14). `pnpm exec nx run js-codegen:codegen-check` fails when the committed outputs are stale; `js-codegen:test`
 and the `abi-linux` job run the same check. To remove one, delete it from the definition and regenerate. Do not edit
 `ids.json` by hand except to resolve a merge: two branches that add identifiers conflict there, and the fix is to keep
 both sides and re-run the generator, which fails if two names ended up with one identifier.
@@ -218,7 +229,8 @@ Decisions taken where the specification was silent (2026-11-19):
     `deleteUrls`, `deleteRange`, `deleteAll`), bookmarks (`roots`, `get`, `children`, `create`, `createFolder`, `update`, `move`, `remove`,
     `search`, `forUrl`), `downloads.list` and `get` (empty), `permissions.get`, `set`, `reset`, `getDefault`,
     `setDefault`, `cookies.sites` (empty), `privacy.clear` (clears history; reports progress), `passwords.add`, `list`,
-    `forOrigin`, `reveal`, `update`, `remove`, `autofill.addresses.add`, `list`, `remove` and
+    `forOrigin`, `reveal`, `update`, `remove`, `autofill.addresses.add`, `list`, `remove`, `search.engines`, `addEngine`, `updateEngine`, `removeEngine`, `setDefault`, `classify` (a stand-in for
+    Chromium's classifier), `suggestions` (stub history and bookmarks only), `deleteSuggestion`, and
     `system.defaultBrowser.status`. Everything else answers `broker.notImplemented`. It is the reference for result
     shapes, not for Chromium's behaviour. `runtime.caller` is answered by the core itself.
 13. The conformance tests that need an internal caller or the stub's services check `bdk_harness_broker_hooks()` and are
@@ -229,7 +241,7 @@ Decisions taken where the specification was silent (2026-11-19):
     `gestureRequired` is reused in domain `capability`.
 
 Not done here: subscribing to events (the capability check of services.md section 7, scope and back-pressure), the
-`translation`, `search`, `favicons`, `extensions`, `contents`, `scripts` and `debug` namespaces, and the Swift and
+`translation`, `favicons`, `extensions`, `contents`, `scripts` and `debug` namespaces, and the Swift and
 TypeScript wrappers generated from the definitions.
 
 ## The ABI hash

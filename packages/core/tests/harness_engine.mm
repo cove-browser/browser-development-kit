@@ -112,6 +112,49 @@ int bdk_harness_engine_keep_profiles = 0;
    configuration, for example {"notifications":"disabled"}. Cleared by the next start. */
 const char* bdk_harness_engine_surfaces = NULL;
 
+/* The bundle the engine reads internal pages from: the bundled routes of the page tests
+   (tests_pages.c, tests_engine_pages.c) with fixture pages. Each page sets its title to
+   "page:<route>" and, in its module, holds the page broker (bdkInvoke), so a scenario can call the
+   broker as the page. */
+static const char* kFixtureScript =
+    "import {PageBroker, PageClientCallbackRouter} from '/@bdk/page_broker.mojom-webui.js';\n"
+    "const broker = PageBroker.getRemote();\n"
+    "const router = new PageClientCallbackRouter();\n"
+    "broker.setClient(router.$.bindNewPipeAndPassRemote());\n"
+    "let next = 1n;\n"
+    "window.bdkInvoke = async (command, args) => {\n"
+    "  const r = await broker.invoke(next++, command, JSON.stringify(args ?? {}));\n"
+    "  document.title = (r.ok ? 'ok:' : 'err:') + r.resultJson;\n"
+    "};\n"
+    "document.title = 'page:' + location.host.replace(/^bdk-/, '');\n";
+
+static void write_file(const std::string& path, const char* text) {
+    FILE* f = fopen(path.c_str(), "w");
+    if (f) {
+        fputs(text, f);
+        fclose(f);
+    }
+}
+
+static const std::string& fixture_bundle(void) {
+    static std::string bundle;
+    if (bundle.empty()) {
+        bundle = g_data_dir + "/Conformance.app";
+        const std::string resources = bundle + "/Contents/Resources";
+        for (const char* page : {"Settings", "Agents"}) {
+            const std::string dir = resources + "/Pages/" + page;
+            std::string mkdir = "/bin/mkdir -p '" + dir + "'";
+            if (system(mkdir.c_str()) != 0)
+                continue;
+            write_file(dir + "/index.html",
+                       "<!doctype html><meta charset=utf-8><title>loading</title>"
+                       "<script type=module src=./main.js></script>");
+            write_file(dir + "/main.js", kFixtureScript);
+        }
+    }
+    return bundle;
+}
+
 void bdk_harness_prepare_start_config(bdk_start_config_t* config) {
     /* The suite expects each runtime to start with no profiles, as with a new data directory. */
     if (!bdk_harness_engine_keep_profiles)
@@ -119,6 +162,14 @@ void bdk_harness_prepare_start_config(bdk_start_config_t* config) {
     /* Scripted navigations belong to one runtime, as with the stub. */
     bdk_testing_intercept_all(0);
     bdk_testing_intercept_all(1);
+    config->user_data_path_override = View(g_data_dir.c_str());
+    config->bundle_path = View(fixture_bundle().c_str());
+    /* A test that names its own configuration (t_start_with) gives the browser name. */
+    std::string given(config->resolved_config_json.data ? config->resolved_config_json.data : "",
+                      config->resolved_config_json.length);
+    if (given.find("\"routes\"") != std::string::npos ||
+        given.find("\"internal_scheme\"") != std::string::npos)
+        return;
     /* The engine needs a browser name for its identity; everything else is the suite's. */
     static std::string resolved;
     resolved = "{\"browser\":{\"name\":\"BDK Conformance\"}";
@@ -127,7 +178,6 @@ void bdk_harness_prepare_start_config(bdk_start_config_t* config) {
     resolved += "}";
     bdk_harness_engine_surfaces = NULL;
     config->resolved_config_json = View(resolved.c_str());
-    config->user_data_path_override = View(g_data_dir.c_str());
 }
 
 int bdk_harness_engine_open_descriptors(void) {
@@ -662,9 +712,12 @@ int main(int argc, char** argv) {
            window). macOS does not let a process make itself frontmost while another application
            is (cooperative activation), so the harness's window cannot be relied on to be key; the
            scenarios test BDK's requests, not those policies. */
+        /* Chromium starts once per process and registers the branded scheme then: the page
+           tests' scheme, conf, is named here for the whole run, whatever the first runtime's
+           configuration says. */
         setenv("BDK_ENGINE_SWITCHES",
                "disable-features=SuppressFullscreenFromUnfocusedView,"
-               "RWHVMacHasFocusReturnsFalseForNonKeyWindow",
+               "RWHVMacHasFocusReturnsFalseForNonKeyWindow bdk-internal-scheme=conf",
                0);
         if (Silent()) {
             /* Behind other windows a page is occluded, and Chromium stops drawing it. */

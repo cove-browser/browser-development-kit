@@ -133,7 +133,7 @@ extension BDKStubTests {
                 try page.setMuted(false)
                 #expect(!page.isMuted)
                 try page.setZoom(1.5)
-                #expect(page.zoom == 1.5)
+                #expect(page.zoom.factor == 1.5)
                 await expectError(.broker, "invalidArguments") { try page.setZoom(0) }
                 try page.setUserAgent("Test/1.0")
                 try page.discard()

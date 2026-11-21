@@ -39,7 +39,8 @@ export function formatDiagnostic(d: Diagnostic, options: FormatOptions): string 
   }
   const paint = (colour: string, text: string): string =>
     options.color ? `${colour}${text}${RESET}` : text;
-  const severity = paint(d.severity === "error" ? RED : YELLOW, d.severity);
+  const colour = d.severity === "error" ? RED : d.severity === "warning" ? YELLOW : DIM;
+  const severity = paint(colour, d.severity);
   const lines = [`${where}${severity}: ${d.message} ${paint(DIM, `[${d.code}]`)}`];
   if (d.fix !== undefined) lines.push(`  fix: ${d.fix}`);
   return lines.join("\n");

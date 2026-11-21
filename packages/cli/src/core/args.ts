@@ -10,7 +10,7 @@ export interface ParsedArgs {
   project?: string;
   /** Forced diagnostics form; undefined means detect from the environment. */
   diagnostics?: DiagnosticFormat;
-  /** `--out <file>`, for `build config`. */
+  /** `--out <path>`: the resolved file for `build config`, the output directory for `build codegen`. */
   out?: string;
   /** `--bundle <App.app>`, for `build sign`. */
   bundle?: string;
@@ -20,6 +20,10 @@ export interface ParsedArgs {
   team?: string;
   /** `--entitlements <file>`: the application's entitlements, for `build sign`. */
   entitlements?: string;
+  /** `--resolved <file>`: the resolved configuration, for `build pages`. */
+  resolved?: string;
+  /** `--commands <file>`: the application's declarations (`bdk.commands.json`), for `build codegen`. */
+  commands?: string;
   positionals: string[];
 }
 
@@ -35,10 +39,20 @@ const OPTIONS = {
   identity: { type: "string" },
   team: { type: "string" },
   entitlements: { type: "string" },
+  resolved: { type: "string" },
+  commands: { type: "string" },
 } as const;
 
 /** Options that belong to a step rather than to every command. */
-export const STEP_FLAGS = ["out", "bundle", "identity", "team", "entitlements"] as const;
+export const STEP_FLAGS = [
+  "out",
+  "bundle",
+  "identity",
+  "team",
+  "entitlements",
+  "resolved",
+  "commands",
+] as const;
 export type StepFlag = (typeof STEP_FLAGS)[number];
 
 /** Parses `argv` (without the executable and script). Throws a usage error (exit 2) on bad input. */

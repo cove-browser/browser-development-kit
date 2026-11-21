@@ -609,6 +609,10 @@ Each has a stable code, used by fixtures in `tests/config/`. Messages name the f
 | `pages.capability_unknown` | A capability name that does not exist |
 | `pages.capability_denied` | A capability that pages can never hold |
 | `pages.capability_target` | A grant for a route that is not a bundled page |
+| `pages.resolved_missing`, `pages.resolved_invalid` | `bdk build pages` found no usable `bdk.resolved.json` (added in M4) |
+| `pages.vite_missing`, `pages.vite_failed` | The project's Vite cannot be loaded from the pages directory's `node_modules`, or its build failed (added in M4) |
+| `pages.csp` | A page file holds what the bundled pages' content security policy blocks (added in M4) |
+| `pages.too_large` | A page file is over 16 MiB, the limit of the runtime's data source (added in M4) |
 | `automation.collision` | Two files in the automation directory have the same script name |
 | `ui.surface_unknown` | An unknown surface name |
 | `ui.surface_mode` | A mode the surface does not allow, such as `disabled` for interstitials. The runtime core checks the resolved file again at start and reports the same condition as `ui.surfaceMode` (and an unknown surface as `ui.surfaceUnknown`, a custom surface without a handler at the freeze as `config.handlerMissing`) |

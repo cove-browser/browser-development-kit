@@ -13,9 +13,10 @@
 namespace bdk {
 
 // Chrome's browser client, plus what the BDK engine adds: the navigation
-// interceptor the engine's test hooks script (testing.cc) and HTTP
-// authentication as a UI request (ui_auth.h). BDK's internal pages and broker
-// hook in here later (M4).
+// interceptor the engine's test hooks script (testing.cc), HTTP
+// authentication as a UI request (ui_auth.h), and internal pages
+// (engine/pages): the branded scheme in every child process, the URL handler
+// pair, the navigation throttle and the page broker's interface broker.
 class BdkContentBrowserClient : public ChromeContentBrowserClient {
  public:
   BdkContentBrowserClient();
@@ -29,6 +30,14 @@ class BdkContentBrowserClient : public ChromeContentBrowserClient {
       bool force_no_https_upgrade,
       scoped_refptr<base::SequencedTaskRunner> navigation_response_task_runner)
       override;
+
+  void AppendExtraCommandLineSwitches(base::CommandLine* command_line,
+                                      int child_process_id) override;
+  void BrowserURLHandlerCreated(content::BrowserURLHandler* handler) override;
+  void CreateThrottlesForNavigation(
+      content::NavigationThrottleRegistry& registry) override;
+  void RegisterTrustedWebUIInterfaceBrokers(
+      content::WebUIBrowserInterfaceBrokerRegistry& registry) override;
 
   std::unique_ptr<content::LoginDelegate> CreateLoginDelegate(
       const net::AuthChallengeInfo& auth_info,

@@ -47,6 +47,7 @@ struct Buf {
 struct Runtime;
 struct Contents;
 struct BuiltinCall; /* broker_internal.h */
+struct RouteTable;  /* routes.h */
 
 struct Sub {
     bool active = true;
@@ -60,6 +61,8 @@ struct Sub {
     uint32_t event_id = 0;
     std::string event_name;
     bdk_profile_t profile = 0; /* events of this profile only; 0 for every profile */
+    bool page = false; /* subscribed by a page: also sees application-wide events (profile 0), but
+                          not settings.changed for a setting that is not exposed to pages */
 };
 
 struct Call {
@@ -94,6 +97,9 @@ struct CallCtx {
     std::shared_ptr<Call> call;
     std::string caller = "{\"caller\":\"host\"}";
     std::weak_ptr<Profile> profile; /* the profile the call addresses, if any */
+    /* A native page request (routes.h): its answer, and the page whose navigation asked. */
+    std::function<void(uint32_t result)> native_done;
+    bdk_contents_t source = 0;
 };
 
 /* What a backend keeps per profile or per page. */
@@ -238,6 +244,8 @@ struct Runtime {
     std::map<std::string, AppSetting> app_settings;
     std::map<std::string, AppSettingValues> app_values; /* by profile id; "" for the application */
     std::map<std::string, Owned> page_handlers, providers;
+    std::shared_ptr<RouteTable> routes;                  /* routes.h */
+    std::vector<std::weak_ptr<CallCtx>> native_contexts; /* native page requests not answered */
     std::map<std::string, std::string> provider_keys;
     std::map<uint32_t, UiHandler> ui_handlers;
     std::map<uint32_t, UiMode> ui_modes; /* by surface; a surface not listed is kDefault */
@@ -302,7 +310,9 @@ class Backend {
     virtual bdk_status_t Restore(const std::shared_ptr<Contents>& contents, bdk_bytes_t state,
                                  bdk_error_t* out_error) = 0;
     virtual bdk_status_t SetMuted(Contents& contents, bool muted, bdk_error_t* out_error) = 0;
-    virtual bdk_status_t SetZoom(Contents& contents, double zoom, bdk_error_t* out_error) = 0;
+    /* scope is BDK_ZOOM_SCOPE_PAGE or BDK_ZOOM_SCOPE_SITE. */
+    virtual bdk_status_t SetZoom(Contents& contents, double zoom, uint32_t scope,
+                                 bdk_error_t* out_error) = 0;
     virtual bdk_status_t SetUserAgent(Contents& contents, const std::string& user_agent,
                                       bdk_error_t* out_error) = 0;
     virtual bdk_status_t Discard(Contents& contents, bdk_error_t* out_error) = 0;
@@ -321,6 +331,13 @@ class Backend {
                                      bdk_error_t* out_error) = 0;
     virtual bdk_status_t Print(const std::shared_ptr<Contents>& contents,
                                bdk_error_t* out_error) = 0;
+    /* Page commands (BDK_PAGE_COMMAND_*, already checked to be one). CanPerformCommand answers as
+       Chromium would enable the command now; the core refuses PerformCommand when it is false. */
+    virtual bool CanPerformCommand(const std::shared_ptr<Contents>& contents, uint32_t command) = 0;
+    virtual bdk_status_t PerformCommand(const std::shared_ptr<Contents>& contents, uint32_t command,
+                                        bdk_error_t* out_error) = 0;
+    virtual bdk_status_t ExitPictureInPicture(const std::shared_ptr<Contents>& contents,
+                                              bdk_error_t* out_error) = 0;
 
     /* Views and windows. */
     virtual bdk_status_t NativeView(Contents& contents, bdk_native_handle_t* out,
