@@ -89,6 +89,8 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
     (`runtime/broker_internal.h`): delivered later, in order, to the subscriptions for the event's name or
     identifier. A subscription made with a profile in its options gets only that profile's events; one made
     without gets every profile's. Events with no profile (`profiles.*`) reach only the unfiltered subscriptions.
+    A page in the options works the same way: the subscription gets only events emitted for that page
+    (`emit_builtin_event_for` and `emit_builtin_event_to` name one), and none of the events that name no page.
 12. `bdk_native_handle_t` and `bdk_native_kind_t` live in `bdk_base.h` (c-abi.md puts them in section 5.4) because the
     start configuration needs them.
 13. `include/bdk/bdk_ids.h` is generated (T-ABI-03) from `interface/*.json` and the registry `interface/ids.json`; do
@@ -267,7 +269,8 @@ taken where the specification was silent (2026-11-20):
    `automation.scriptFailed`; a host crash `automation.hostGone`. `Backend::EndTask` tears the script down after any
    end. A `done` result is capped at 4 MiB like any result.
 5. Audit: every call a session makes emits `automation.commandInvoked {session, task?, command, profile?, contents?,
-   error?}` when it ends, refused calls included; `automation.sessionCreated` and `automation.sessionRevoked` frame a
+   error?}` when it ends, refused calls included (also those the connection refuses before the broker: arguments
+   that are not an object, an unknown profile, a stale page); `automation.sessionCreated` and `automation.sessionRevoked` frame a
    session's life. They are built-in events with capability `automation.audit`, so the host subscribes with
    `bdk_subscribe_named` and an auditing session can be granted them; no separate audit function exists.
 6. A session subscribes to built-in events and declared `app.` events. The event's capability is checked when it

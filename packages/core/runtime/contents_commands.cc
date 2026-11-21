@@ -233,6 +233,14 @@ void go(Runtime&, BuiltinCall& call, int offset) {
 
 /* contents.waitFor with only `load` and `url`. Returns false for conditions the backend checks. */
 bool wait_for(Runtime& rt, const std::shared_ptr<BuiltinCall>& call, const JsonValue& args) {
+    /* The command needs only contents.read, but a script predicate runs the caller's code in the
+       page, which can change it: that needs contents.script, as contents.evaluate does. */
+    if (args.find("script") && call->caller->kind != CallerKind::kHost &&
+        !capability_granted(*call->caller, "contents.script")) {
+        reject(*call, BDK_DOMAIN_CAPABILITY, BDK_CODE_DENIED,
+               "a script predicate needs the capability 'contents.script'");
+        return true;
+    }
     if (args.find("selector") || args.find("script") || args.find("networkIdle"))
         return false;
     const std::string load = text_of(args, "load");
@@ -351,14 +359,22 @@ std::string user_script_json(const UserScript& u) {
            "}";
 }
 
-std::string owner_of(const Runtime& rt, const Caller& caller) {
+/* The session's name, for events; empty for the application. */
+std::string session_name(const Runtime& rt, const Caller& caller) {
     auto session = session_of(rt, caller);
     return session ? session->caller->name : std::string();
 }
 
+/* The session's unique id, which owns its user scripts (names may repeat); empty for the
+   application. */
+std::string script_owner(const Runtime& rt, const Caller& caller) {
+    auto session = session_of(rt, caller);
+    return session ? session->id : std::string();
+}
+
 void scripts_command(Runtime& rt, BuiltinCall& call, const JsonValue& args) {
     auto& list = automation_state(rt).user_scripts[call.profile->id];
-    const std::string owner = owner_of(rt, *call.caller);
+    const std::string owner = script_owner(rt, *call.caller);
     if (call.name == "scripts.list") {
         std::string out = "{\"scripts\":[";
         for (size_t i = 0; i < list.size(); ++i)
@@ -382,6 +398,14 @@ void scripts_command(Runtime& rt, BuiltinCall& call, const JsonValue& args) {
         list.erase(it);
         user_scripts_changed(rt, *call.profile);
         call.control->Resolve("null");
+        return;
+    }
+    /* A user script runs on every page of the profile, so a session limited to some pages
+       cannot register one. */
+    if (call.caller->kind != CallerKind::kHost && !call.caller->scope.all_contents) {
+        reject(call, BDK_DOMAIN_CAPABILITY, BDK_CODE_OUT_OF_SCOPE,
+               "a user script runs on every page in the profile; the session's scope has "
+               "only some pages (scope.contents is not \"all\")");
         return;
     }
     const JsonValue* s = member(args, "script", JsonValue::Type::kObject);
@@ -513,7 +537,7 @@ bool core_execute_command(Runtime& rt, const std::shared_ptr<BuiltinCall>& call,
         else
             answer_status(*call, status, error);
     } else if (name == "contents.requestAttention") {
-        const std::string owner = owner_of(rt, *call->caller);
+        const std::string owner = session_name(rt, *call->caller);
         auto shared = runtime_of(rt.handle);
         emit_builtin_event_for(shared, "contents.attentionRequested",
                                call->contents->profile ? call->contents->profile->handle : 0, page,

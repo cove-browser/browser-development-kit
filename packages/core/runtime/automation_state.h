@@ -21,6 +21,8 @@ class Connection;
 struct Session {
     enum class Pages : uint8_t { kAll, kCreated, kExplicit };
     bdk_session_t handle = 0;
+    /* Unique for the runtime's life, unlike the name: what owns its user scripts. */
+    std::string id;
     std::weak_ptr<Runtime> rt;
     std::shared_ptr<Caller> caller;
     Pages pages = Pages::kCreated;
@@ -80,6 +82,7 @@ struct AutomationState {
     void* hello_ctx = nullptr;
     bdk_release_cb hello_rel = nullptr;
     uint64_t next_task = 1;
+    uint64_t next_session = 1;
 };
 
 /* The state of a running runtime; never null for one that started. */

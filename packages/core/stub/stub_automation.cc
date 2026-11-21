@@ -61,9 +61,10 @@ void automation_start(const std::shared_ptr<TaskPort>& task) {
 
 void automation_end(TaskPort& task) {
     HostState& h = H();
+    /* By the task's id, as the engine's host launcher keys its tasks. */
     for (auto it = h.running.begin(); it != h.running.end(); ++it) {
         auto p = it->second.lock();
-        if (!p || p.get() == &task) {
+        if (p && !p->id().empty() && p->id() == task.id()) {
             ++h.ended;
             h.running.erase(it);
             return;

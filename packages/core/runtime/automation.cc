@@ -6,8 +6,10 @@
    in the backend's automation host (a task's connection) or from an external tool over the local
    socket. Both speak the same protocol, so the checks are in one place: here, and in the broker. */
 #include <algorithm>
+#include <charconv>
 #include <cstring>
 #include <map>
+#include <memory>
 
 #include "automation_state.h"
 #include "bdk_command_table.inc"
@@ -208,9 +210,10 @@ void task_finish(const std::shared_ptr<AutomationTask>& t, const std::string& de
     task_event(t, BDK_TASK_EVENT_FINISHED, detail);
     if (t->started) {
         auto rt = t->rt.lock();
-        auto port = t->port;
         if (rt) {
-            post([rt, port] { backend().EndTask(*rt, *port); });
+            /* Holds the task, not just its port: releasing the task's handle may drop the last
+               other reference first, and the port reads the task's id through a weak pointer. */
+            post([rt, t] { backend().EndTask(*rt, *t->port); });
         }
     }
 }
@@ -239,15 +242,14 @@ struct WireCall {
     int64_t id = 0;
 };
 
-void audit(const WireCall& w, bdk_error_t error) {
+/* Records a call, answered or refused (domain and code empty when it succeeded). */
+void audit(const WireCall& w, const std::string& domain, const std::string& code) {
     auto rt = w.rt.lock();
     if (!rt)
         return;
     std::string err;
-    if (error) {
-        err = "{\"domain\":" + quoted(str(bdk_error_domain(error))) +
-              ",\"code\":" + quoted(str(bdk_error_code(error))) + "}";
-    }
+    if (!domain.empty())
+        err = "{\"domain\":" + quoted(domain) + ",\"code\":" + quoted(code) + "}";
     std::string payload = "{\"session\":" + quoted(w.session);
     auto task = w.task.lock();
     if (task)
@@ -275,7 +277,10 @@ void audit(const WireCall& w, bdk_error_t error) {
 
 void on_wire_result(void* ctx, bdk_error_t error, bdk_string_t json, bdk_buffer_t binary) {
     auto* w = static_cast<WireCall*>(ctx);
-    audit(*w, error);
+    if (error)
+        audit(*w, str(bdk_error_domain(error)), str(bdk_error_code(error)));
+    else
+        audit(*w, std::string(), std::string());
     auto c = w->connection.lock();
     if (!c || c->closed())
         return;
@@ -436,48 +441,50 @@ void Connection::Call(const JsonValue& frame) {
         ProtocolError("id " + std::to_string(id) + " is already in use");
         return;
     }
-    const JsonValue* args = frame.find("args");
-    if (args && args->type != JsonValue::Type::kObject && args->type != JsonValue::Type::kNull) {
-        SendError(id, BDK_DOMAIN_BROKER, BDK_CODE_INVALID_ARGUMENTS, "args must be an object");
-        return;
-    }
-    bdk_invoke_options_t options;
-    memset(&options, 0, sizeof options);
-    options.struct_size = sizeof options;
-    const std::string profile = string_field(frame, "profile");
-    const std::string contents = string_field(frame, "contents");
-    if (!profile.empty()) {
-        auto p = open_profile(*rt, profile);
-        if (!p) {
-            SendError(id, BDK_DOMAIN_PROFILE, BDK_CODE_NOT_FOUND,
-                      "no open profile '" + profile + "'");
-            return;
-        }
-        options.profile = p->handle;
-    }
-    if (!contents.empty()) {
-        auto c = contents_from_id(contents);
-        if (!c) {
-            SendError(id, BDK_DOMAIN_CONTENTS, BDK_CODE_STALE, "no page '" + contents + "'");
-            return;
-        }
-        options.contents = c->handle;
-    }
-    auto* w = new WireCall;
+    auto w = std::make_unique<WireCall>();
     w->connection = weak_from_this();
     w->rt = rt;
     w->task = task_;
     w->session = session_->caller->name;
     w->command = command;
-    w->profile = profile;
-    w->contents = contents;
+    w->profile = string_field(frame, "profile");
+    w->contents = string_field(frame, "contents");
     w->id = id;
+    /* Refused before the broker sees it, and audited like a broker refusal. */
+    auto refuse = [&](const char* domain, const char* code, const std::string& message) {
+        audit(*w, domain, code);
+        SendError(id, domain, code, message);
+    };
+    const JsonValue* args = frame.find("args");
+    if (args && args->type != JsonValue::Type::kObject && args->type != JsonValue::Type::kNull) {
+        refuse(BDK_DOMAIN_BROKER, BDK_CODE_INVALID_ARGUMENTS, "args must be an object");
+        return;
+    }
+    bdk_invoke_options_t options;
+    memset(&options, 0, sizeof options);
+    options.struct_size = sizeof options;
+    if (!w->profile.empty()) {
+        auto p = open_profile(*rt, w->profile);
+        if (!p) {
+            refuse(BDK_DOMAIN_PROFILE, BDK_CODE_NOT_FOUND, "no open profile '" + w->profile + "'");
+            return;
+        }
+        options.profile = p->handle;
+    }
+    if (!w->contents.empty()) {
+        auto c = contents_from_id(w->contents);
+        if (!c) {
+            refuse(BDK_DOMAIN_CONTENTS, BDK_CODE_STALE, "no page '" + w->contents + "'");
+            return;
+        }
+        options.contents = c->handle;
+    }
     CommandRef ref;
     ref.name = command;
     std::string input =
         args && args->type == JsonValue::Type::kObject ? json_serialize(*args) : std::string("{}");
     bdk_call_t call = broker_submit(rt, session_->caller, ref, input, &options, false,
-                                    on_wire_result, on_wire_progress, w, on_wire_release);
+                                    on_wire_result, on_wire_progress, w.release(), on_wire_release);
     calls_[id] = call;
 }
 
@@ -652,6 +659,8 @@ void Backend::EndTask(Runtime&, TaskPort&) {}
 
 void Backend::UserScriptsChanged(Runtime&, Profile&, const std::vector<UserScript>&) {}
 
+void Backend::CallerRevoked(Runtime&, const Caller&) {}
+
 /* ---- Shared with contents_commands.cc and the backends ---- */
 
 AutomationState& automation_state(const Runtime& rt) {
@@ -670,7 +679,12 @@ std::shared_ptr<Contents> contents_from_id(const std::string& id) {
     if (id.empty() || id.size() > 20 ||
         !std::all_of(id.begin(), id.end(), [](char c) { return c >= '0' && c <= '9'; }))
         return nullptr;
-    auto c = contents_of(std::stoull(id));
+    /* from_chars, not stoull: twenty digits can exceed a handle, and stoull throws on that. */
+    bdk_contents_t handle = 0;
+    const auto parsed = std::from_chars(id.data(), id.data() + id.size(), handle);
+    if (parsed.ec != std::errc() || parsed.ptr != id.data() + id.size())
+        return nullptr;
+    auto c = contents_of(handle);
     return c && !c->dead ? c : nullptr;
 }
 
@@ -787,6 +801,7 @@ void revoke_session(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Se
         return;
     s->revoked = true;
     broker_revoke_caller(s->caller);
+    backend().CallerRevoked(*rt, *s->caller);
     auto tasks = s->tasks;
     for (auto& w : tasks) {
         if (auto t = w.lock())
@@ -803,7 +818,7 @@ void revoke_session(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Se
         auto& list = kv.second;
         size_t before = list.size();
         list.erase(std::remove_if(list.begin(), list.end(),
-                                  [&](const UserScript& u) { return u.owner == s->caller->name; }),
+                                  [&](const UserScript& u) { return u.owner == s->id; }),
                    list.end());
         if (list.size() != before && !rt->shutting) {
             if (auto p = open_profile(*rt, kv.first))
@@ -1029,6 +1044,7 @@ BDK_EXPORT bdk_status_t bdk_session_create(bdk_runtime_t h, bdk_string_t options
     auto session = std::make_shared<Session>();
     session->rt = rt;
     session->caller = caller;
+    session->id = "session-" + std::to_string(automation_state(*rt).next_session++);
     caller->scope.all_profiles = true;
     if (const JsonValue* scope = o.find("scope")) {
         if (scope->type != JsonValue::Type::kObject)

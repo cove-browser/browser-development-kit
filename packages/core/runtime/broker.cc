@@ -496,7 +496,8 @@ bool emit_event(const std::shared_ptr<Runtime>& rt, const Caller* to, const std:
         if (host) {
             auto subs = rt->subs;
             for (auto& s : subs) {
-                if (!s->active || !s->ecb || (s->profile != 0 && s->profile != profile))
+                if (!s->active || !s->ecb || (s->profile != 0 && s->profile != profile) ||
+                    (s->contents != 0 && s->contents != contents))
                     continue;
                 if ((!s->event_name.empty() && s->event_name == name) ||
                     (s->event_id != 0 && s->event_id == id))

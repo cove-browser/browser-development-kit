@@ -340,7 +340,7 @@ For Swift and automation sessions. Never for internal pages. Swift normally uses
 | `contents.close` | `contents.control` | | |
 | `contents.navigate` | `contents.control` | | Returns when committed |
 | `contents.reload`, `contents.stop`, `contents.goBack`, `contents.goForward` | `contents.control` | | |
-| `contents.waitFor` | `contents.read` | | Load finished, network idle, a selector present, a URL pattern, or a script predicate; with a deadline |
+| `contents.waitFor` | `contents.read` | | Load finished, network idle, a selector present, a URL pattern, or a script predicate (which runs in the page, so a session also needs `contents.script`); with a deadline |
 | `contents.frames` | `contents.read` | | Frame tree |
 | `contents.text` | `contents.read` | | Visible text of a frame |
 | `contents.snapshot` | `contents.read` | | DOM or accessibility tree, as structured data |
@@ -371,7 +371,7 @@ As built in M7 (the definitions are `interface/contents.json`; the rules are `pa
 | `scripts.unregister` | `contents.script` | N | |
 | `scripts.list` | `contents.read` | N | |
 
-Scripts registered by a session are removed when the session is revoked. As built: kept by the runtime core in memory for the runtime's life (not across a relaunch); `runAt` defaults to `documentIdle` and `world` to an isolated world named like the id; a session may replace or remove only its own.
+Scripts registered by a session are removed when the session is revoked. As built: kept by the runtime core in memory for the runtime's life (not across a relaunch); `runAt` defaults to `documentIdle` and `world` to an isolated world named like the id; a session may replace or remove only its own, owned by the session itself rather than its name (names may repeat). A user script runs on every page of the profile, so a session whose `scope.contents` is not `"all"` is refused `scripts.register` with `capability.outOfScope`.
 
 ### 5.17 `debug`: the DevTools protocol (Plan, M7, T-AUT-03; written in M7; passes on the stub, engine build and test pending (T-AUT-06))
 

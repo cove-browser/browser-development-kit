@@ -279,6 +279,43 @@ static void task_calls_commands_as_the_session(void) {
     CHECK(commands == 3);
 }
 
+static void refusals_before_the_broker_are_audited(void) {
+    NEED_HOST();
+    start_with(AUTOMATION_ON);
+    static t_script_t script;
+    define_echo(&script);
+    static t_named_t audit;
+    memset(&audit, 0, sizeof audit);
+    REQUIRE(bdk_subscribe_named(t_runtime, S("automation.commandInvoked"), S(""), NULL, on_named,
+                                &audit, NULL) != 0);
+    bdk_session_t s = session("{\"name\":\"agent\",\"capabilities\":[\"contents.read\"]}");
+    static t_task_log_t log;
+    (void)run(s, "echo", "null", &log);
+    script_send(&script, "{\"type\":\"call\",\"id\":1,\"command\":\"contents.get\",\"args\":[]}");
+    CHECK(strstr(script.last, "\"type\":\"error\",\"id\":1") != NULL);
+    CHECK(strstr(script.last, "\"code\":\"invalidArguments\"") != NULL);
+    script_send(&script,
+                "{\"type\":\"call\",\"id\":2,\"command\":\"contents.get\",\"profile\":\"nope\"}");
+    CHECK(strstr(script.last, "\"type\":\"error\",\"id\":2") != NULL);
+    CHECK(strstr(script.last, "\"code\":\"notFound\"") != NULL);
+    /* Twenty digits, past a handle's range: refused as a stale page, not a crash. */
+    script_send(&script, "{\"type\":\"call\",\"id\":3,\"command\":\"contents.get\","
+                         "\"contents\":\"99999999999999999999\"}");
+    CHECK(strstr(script.last, "\"type\":\"error\",\"id\":3") != NULL);
+    CHECK(strstr(script.last, "\"code\":\"stale\"") != NULL);
+    REQUIRE(named_count(&audit, "automation.commandInvoked") == 3);
+    CHECK(strstr(audit.payloads[0], "\"code\":\"invalidArguments\"") != NULL);
+    CHECK(strstr(audit.payloads[1], "\"profile\":\"nope\"") != NULL);
+    CHECK(strstr(audit.payloads[1], "\"domain\":\"profile\",\"code\":\"notFound\"") != NULL);
+    CHECK(strstr(audit.payloads[2], "\"contents\":\"99999999999999999999\"") != NULL);
+    CHECK(strstr(audit.payloads[2], "\"domain\":\"contents\",\"code\":\"stale\"") != NULL);
+    int commands = 0;
+    for (int i = 0; i < log.count && i < T_TASK_EVENTS; ++i)
+        commands +=
+            log.kind[i] == BDK_TASK_EVENT_COMMAND && strstr(log.detail[i], "\"error\":") != NULL;
+    CHECK(commands == 3);
+}
+
 static void task_progress_and_log_come_before_finished(void) {
     NEED_HOST();
     start_with(AUTOMATION_ON);
@@ -322,6 +359,8 @@ static void task_cancel_ends_it(void) {
     CHECK(bdk_release(other) == BDK_OK);
     t_pump();
     CHECK(second.count == 1 && strstr(second.detail[0], "\"code\":\"cancelled\"") != NULL);
+    /* The host is told to end it although the handle, and with it the task, is gone. */
+    CHECK(bdk_harness_automation_count(t_runtime, BDK_HARNESS_AUTOMATION_ENDED) == 2);
 }
 
 static void revoking_the_session_stops_its_tasks_and_calls(void) {
@@ -580,6 +619,39 @@ static void page_commands_need_a_page(void) {
 
 /* ---- scripts.* ---- */
 
+static void a_script_predicate_needs_contents_script(void) {
+    NEED_HOST();
+    start_with(AUTOMATION_ON);
+    static t_script_t script;
+    define_echo(&script);
+    bdk_profile_t p = t_new_profile("A");
+    bdk_contents_t page = t_new_contents(p);
+    char id[32], frame[256];
+    id_of(page, id, sizeof id);
+    bdk_session_t s =
+        session("{\"name\":\"reader\",\"capabilities\":[\"contents.read\"],\"scope\":{\"contents\":"
+                "\"all\"}}");
+    static t_task_log_t log;
+    (void)run(s, "echo", "null", &log);
+    snprintf(frame, sizeof frame,
+             "{\"type\":\"call\",\"id\":1,\"command\":\"contents.waitFor\",\"contents\":"
+             "\"%s\",\"args\":{\"script\":\"document.forms[0].submit(); true\"}}",
+             id);
+    script_send(&script, frame);
+    CHECK(strstr(script.last, "\"type\":\"error\",\"id\":1") != NULL);
+    CHECK(strstr(script.last, "\"domain\":\"capability\",\"code\":\"denied\"") != NULL);
+    /* A URL wait is still a read: it runs, and here ends at its deadline. */
+    snprintf(frame, sizeof frame,
+             "{\"type\":\"call\",\"id\":2,\"command\":\"contents.waitFor\",\"contents\":"
+             "\"%s\",\"args\":{\"url\":\"https://never/*\",\"timeoutMs\":50}}",
+             id);
+    script_send(&script, frame);
+    for (int i = 0; i < 200 && strstr(script.last, "\"id\":2") == NULL; ++i)
+        t_pump();
+    CHECK(strstr(script.last, "\"type\":\"error\",\"id\":2") != NULL);
+    CHECK(strstr(script.last, "\"code\":\"timeout\"") != NULL);
+}
+
 static void the_core_keeps_user_scripts(void) {
     start_with(NULL);
     bdk_profile_t p = t_new_profile("A");
@@ -624,7 +696,8 @@ static void a_sessions_user_scripts_go_with_it(void) {
     host_invoke("scripts.register",
                 "{\"script\":{\"id\":\"app\",\"matches\":[\"https://*/*\"],\"css\":[\"a{}\"]}}", p,
                 0, &cap);
-    bdk_session_t s = session("{\"name\":\"agent\",\"capabilities\":[\"contents.script\"]}");
+    bdk_session_t s = session("{\"name\":\"agent\",\"capabilities\":[\"contents.script\"],"
+                              "\"scope\":{\"contents\":\"all\"}}");
     static t_task_log_t log;
     (void)run(s, "echo", "null", &log);
     char pid[64], frame[320];
@@ -649,6 +722,118 @@ static void a_sessions_user_scripts_go_with_it(void) {
     host_invoke("scripts.list", "{}", p, 0, &cap);
     CHECK(strstr(cap.json, "\"id\":\"app\"") != NULL);
     CHECK(strstr(cap.json, "\"id\":\"agent\"") == NULL);
+}
+
+static void a_session_limited_to_some_pages_cannot_register_scripts(void) {
+    NEED_HOST();
+    start_with(AUTOMATION_ON);
+    static t_script_t script;
+    define_echo(&script);
+    bdk_profile_t p = t_new_profile("A");
+    char pid[64], frame[320];
+    profile_id_of(p, pid, sizeof pid);
+    snprintf(frame, sizeof frame,
+             "{\"type\":\"call\",\"id\":1,\"command\":\"scripts.register\",\"profile\":"
+             "\"%s\",\"args\":{\"script\":{\"id\":\"agent\",\"matches\":[\"https://*/*\"],"
+             "\"javascript\":[\"1\"]}}}",
+             pid);
+    const char* scopes[] = {"created", "explicit"};
+    for (size_t i = 0; i < sizeof scopes / sizeof scopes[0]; ++i) {
+        char options[160];
+        snprintf(options, sizeof options,
+                 "{\"name\":\"agent\",\"capabilities\":[\"contents.script\"],\"scope\":{"
+                 "\"contents\":\"%s\"}}",
+                 scopes[i]);
+        bdk_session_t s = session(options);
+        static t_task_log_t log;
+        (void)run(s, "echo", "null", &log);
+        script_send(&script, frame);
+        CHECK(strstr(script.last, "\"type\":\"error\",\"id\":1") != NULL);
+        CHECK(strstr(script.last, "\"code\":\"outOfScope\"") != NULL);
+        bdk_error_t err = 0;
+        CHECK(bdk_session_revoke(s, &err) == BDK_OK);
+        t_pump();
+    }
+    t_capture_t cap;
+    host_invoke("scripts.list", "{}", p, 0, &cap);
+    CHECK(strcmp(cap.json, "{\"scripts\":[]}") == 0);
+}
+
+static void sessions_sharing_a_name_own_their_scripts_apart(void) {
+    NEED_HOST();
+    start_with(AUTOMATION_ON);
+    static t_script_t script;
+    define_echo(&script);
+    bdk_profile_t p = t_new_profile("A");
+    char pid[64], frame[320];
+    profile_id_of(p, pid, sizeof pid);
+    const char* options =
+        "{\"name\":\"agent\",\"capabilities\":[\"contents.script\"],\"scope\":{\"contents\":"
+        "\"all\"}}";
+    bdk_session_t first = session(options);
+    static t_task_log_t first_log;
+    (void)run(first, "echo", "null", &first_log);
+    snprintf(frame, sizeof frame,
+             "{\"type\":\"call\",\"id\":1,\"command\":\"scripts.register\",\"profile\":"
+             "\"%s\",\"args\":{\"script\":{\"id\":\"first\",\"matches\":[\"https://*/*\"],"
+             "\"javascript\":[\"1\"]}}}",
+             pid);
+    script_send(&script, frame);
+    CHECK(strstr(script.last, "\"type\":\"result\",\"id\":1") != NULL);
+
+    bdk_session_t second = session(options);
+    static t_task_log_t second_log;
+    (void)run(second, "echo", "null", &second_log);
+    snprintf(frame, sizeof frame,
+             "{\"type\":\"call\",\"id\":1,\"command\":\"scripts.register\",\"profile\":"
+             "\"%s\",\"args\":{\"script\":{\"id\":\"second\",\"matches\":[\"https://*/*\"],"
+             "\"javascript\":[\"2\"]}}}",
+             pid);
+    script_send(&script, frame);
+    CHECK(strstr(script.last, "\"type\":\"result\",\"id\":1") != NULL);
+    /* The same name is not the same session: the first's script is not the second's. */
+    snprintf(frame, sizeof frame,
+             "{\"type\":\"call\",\"id\":2,\"command\":\"scripts.unregister\",\"profile\":"
+             "\"%s\",\"args\":{\"id\":\"first\"}}",
+             pid);
+    script_send(&script, frame);
+    CHECK(strstr(script.last, "\"code\":\"denied\"") != NULL);
+    bdk_error_t err = 0;
+    CHECK(bdk_session_revoke(first, &err) == BDK_OK);
+    t_pump();
+    t_capture_t cap;
+    host_invoke("scripts.list", "{}", p, 0, &cap);
+    CHECK(strstr(cap.json, "\"id\":\"first\"") == NULL);
+    CHECK(strstr(cap.json, "\"id\":\"second\"") != NULL);
+}
+
+static void a_subscription_for_a_page_gets_that_pages_events(void) {
+    start_with(NULL);
+    bdk_profile_t p = t_new_profile("A");
+    bdk_contents_t a = t_new_contents(p), b = t_new_contents(p);
+    bdk_invoke_options_t o;
+    memset(&o, 0, sizeof o);
+    o.struct_size = sizeof o;
+    o.contents = a;
+    static t_named_t only_a, every;
+    memset(&only_a, 0, sizeof only_a);
+    memset(&every, 0, sizeof every);
+    REQUIRE(bdk_subscribe_named(t_runtime, S("contents.attentionRequested"), S(""), &o, on_named,
+                                &only_a, NULL) != 0);
+    REQUIRE(bdk_subscribe_named(t_runtime, S("contents.attentionRequested"), S(""), NULL, on_named,
+                                &every, NULL) != 0);
+    t_capture_t cap;
+    host_invoke("contents.requestAttention", "{}", 0, b, &cap);
+    CHECK(!cap.has_error);
+    host_invoke("contents.requestAttention", "{}", 0, a, &cap);
+    CHECK(!cap.has_error);
+    t_pump();
+    CHECK(every.count == 2);
+    REQUIRE(only_a.count == 1);
+    char id[32], want[48];
+    id_of(a, id, sizeof id);
+    snprintf(want, sizeof want, "\"contents\":\"%s\"", id);
+    CHECK(strstr(only_a.payloads[0], want) != NULL);
 }
 
 /* ---- debug.* and devtools.* ---- */
@@ -721,6 +906,7 @@ const t_test_t t_automation_tests[] = {
     {"automation.run_needs_enabled_and_listed", run_needs_enabled_and_listed},
     {"automation.task_finishes_with_the_scripts_result", task_finishes_with_the_scripts_result},
     {"automation.task_calls_commands_as_the_session", task_calls_commands_as_the_session},
+    {"automation.refusals_before_the_broker_are_audited", refusals_before_the_broker_are_audited},
     {"automation.task_progress_and_log_come_before_finished",
      task_progress_and_log_come_before_finished},
     {"automation.task_cancel_ends_it", task_cancel_ends_it},
@@ -736,8 +922,16 @@ const t_test_t t_automation_tests[] = {
      the_host_drives_pages_with_contents_commands},
     {"automation.a_failed_navigation_rejects", a_failed_navigation_rejects},
     {"automation.page_commands_need_a_page", page_commands_need_a_page},
+    {"automation.a_script_predicate_needs_contents_script",
+     a_script_predicate_needs_contents_script},
     {"automation.the_core_keeps_user_scripts", the_core_keeps_user_scripts},
     {"automation.a_sessions_user_scripts_go_with_it", a_sessions_user_scripts_go_with_it},
+    {"automation.a_session_limited_to_some_pages_cannot_register_scripts",
+     a_session_limited_to_some_pages_cannot_register_scripts},
+    {"automation.sessions_sharing_a_name_own_their_scripts_apart",
+     sessions_sharing_a_name_own_their_scripts_apart},
+    {"automation.a_subscription_for_a_page_gets_that_pages_events",
+     a_subscription_for_a_page_gets_that_pages_events},
     {"automation.the_protocol_follows_the_configuration", the_protocol_follows_the_configuration},
     {"automation.sessions_cannot_reach_beyond_a_page", sessions_cannot_reach_beyond_a_page},
     {"automation.captures_carry_bytes_outside_the_json", captures_carry_bytes_outside_the_json},

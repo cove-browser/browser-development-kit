@@ -28,7 +28,7 @@ struct UserScript {
     std::string world;                   /* "page", or an isolated world's name (default: the id) */
     bool all_frames = false;
     std::vector<std::string> javascript, css;
-    std::string owner; /* the session that registered it; empty for the application */
+    std::string owner; /* the id of the session that registered it; empty for the application */
 };
 
 struct AutomationTask;

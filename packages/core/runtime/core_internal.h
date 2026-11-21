@@ -49,6 +49,7 @@ struct Buf {
 struct Runtime;
 struct Contents;
 struct BuiltinCall; /* broker_internal.h */
+struct Caller;      /* broker_internal.h */
 struct UserScript;  /* automation_internal.h */
 class TaskPort;     /* automation_internal.h */
 
@@ -64,7 +65,8 @@ struct Sub {
     bdk_task_event_cb tcb = nullptr; /* a task's subscription (automation.cc) */
     uint32_t event_id = 0;
     std::string event_name;
-    bdk_profile_t profile = 0; /* events of this profile only; 0 for every profile */
+    bdk_profile_t profile = 0;   /* events of this profile only; 0 for every profile */
+    bdk_contents_t contents = 0; /* events of this page only; 0 for every page */
 };
 
 struct Call {
@@ -362,6 +364,10 @@ class Backend {
        nothing (a runtime that renders nothing runs no script). */
     virtual void UserScriptsChanged(Runtime& rt, Profile& profile,
                                     const std::vector<UserScript>& scripts);
+    /* A session was revoked: the backend drops what it holds for that caller now (its DevTools
+       protocol clients), rather than when the caller next shows up, which a quiet caller may
+       never do. Its calls were already cancelled. The default holds nothing. */
+    virtual void CallerRevoked(Runtime& rt, const Caller& caller);
 };
 
 /* The runtime that links the core defines this. */

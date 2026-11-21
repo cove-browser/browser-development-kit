@@ -788,7 +788,10 @@ static bdk_subscription_t subscribe_impl(bdk_runtime_t h, uint32_t id, const std
     s->rel = rel;
     s->event_id = id;
     s->event_name = name;
-    s->profile = read_invoke_options(o).profile; /* o may declare fewer bytes than profile needs */
+    /* o may declare fewer bytes than profile and contents need */
+    const bdk_invoke_options_t options = read_invoke_options(o);
+    s->profile = options.profile;
+    s->contents = options.contents;
     s->handle = table_make(T_SUB, s);
     rt->subs.push_back(s);
     return s->handle;
