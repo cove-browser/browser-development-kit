@@ -218,7 +218,8 @@ Decisions taken where the specification was silent (2026-11-19):
     `deleteUrls`, `deleteRange`, `deleteAll`), bookmarks (`roots`, `get`, `children`, `create`, `createFolder`, `update`, `move`, `remove`,
     `search`, `forUrl`), `downloads.list` and `get` (empty), `permissions.get`, `set`, `reset`, `getDefault`,
     `setDefault`, `cookies.sites` (empty), `privacy.clear` (clears history; reports progress), `passwords.add`, `list`,
-    `forOrigin`, `reveal`, `update`, `remove`, `autofill.addresses.add`, `list`, `remove` and
+    `forOrigin`, `reveal`, `update`, `remove`, `autofill.addresses.add`, `list`, `remove`, `search.engines`, `addEngine`, `updateEngine`, `removeEngine`, `setDefault`, `classify` (a stand-in for
+    Chromium's classifier), `suggestions` (stub history and bookmarks only), `deleteSuggestion`, and
     `system.defaultBrowser.status`. Everything else answers `broker.notImplemented`. It is the reference for result
     shapes, not for Chromium's behaviour. `runtime.caller` is answered by the core itself.
 13. The conformance tests that need an internal caller or the stub's services check `bdk_harness_broker_hooks()` and are
@@ -229,7 +230,7 @@ Decisions taken where the specification was silent (2026-11-19):
     `gestureRequired` is reused in domain `capability`.
 
 Not done here: subscribing to events (the capability check of services.md section 7, scope and back-pressure), the
-`translation`, `search`, `favicons`, `extensions`, `contents`, `scripts` and `debug` namespaces, and the Swift and
+`translation`, `favicons`, `extensions`, `contents`, `scripts` and `debug` namespaces, and the Swift and
 TypeScript wrappers generated from the definitions.
 
 ## The ABI hash
