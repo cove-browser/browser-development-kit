@@ -296,7 +296,7 @@ static void test_engine_never_from_the_request_persists_in_chromium_prefs(void) 
     invoke("translation.preferences", "{}", p, 0, &cap);
     CHECK(strstr(cap.json, "\"fr\"") != NULL);
     char out[512];
-    char args[64];
+    char args[128];
     snprintf(args, sizeof args, "{\"contents\":\"%llu\",\"name\":\"translate_blocked_languages\"}",
              (unsigned long long)c);
     control("pref.json", args, out, sizeof out);

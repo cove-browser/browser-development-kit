@@ -24,6 +24,7 @@
 #include "base/functional/bind.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
+#include "base/threading/thread_restrictions.h"
 #include "base/values.h"
 #include "bdk/core/runtime/core_internal.h"
 #include "bdk/engine/bdk_testing.h"
@@ -242,7 +243,7 @@ bool Run(const std::string& name,
                line.HasSwitch("disable-component-update"));
     result.Set("syncDisabled", line.HasSwitch("disable-sync"));
     result.Set("platformOnlyGeolocation",
-               device::features::kLocationProviderManagerParam.Get() ==
+               ::features::kLocationProviderManagerParam.Get() ==
                    device::mojom::LocationProviderManagerMode::kPlatformOnly);
     result.Set("googleKey", google_apis::HasAPIKeyConfigured());
     result.Set("geolocation", CurrentProviderSettings().geolocation);
@@ -255,6 +256,8 @@ bool Run(const std::string& name,
     // written: each event is one line.
     const std::string* path = args.FindString("path");
     std::string text;
+    // A test hook, run on the UI thread: the file is small and local.
+    base::ScopedAllowBlockingForTesting allow_blocking;
     if (!path || !base::ReadFileToString(base::FilePath(*path), &text)) {
       return false;
     }
