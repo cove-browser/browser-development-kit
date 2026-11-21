@@ -20,9 +20,9 @@ change, so nothing widely included is touched.
 
 Used by: the BDK engine (//bdk/engine/extensions/options_page.cc).
 ---
- chrome/browser/extensions/browser_extension_window_controller.cc | 9 +++++++++
- chrome/browser/extensions/embedder_options_page_hook.h | 46 ++++++++++++
- 2 files changed
+ .../browser_extension_window_controller.cc    |  8 ++++
+ .../extensions/embedder_options_page_hook.h   | 46 +++++++++++++++++++
+ 2 files changed, 54 insertions(+)
 
 diff --git a/chrome/browser/extensions/browser_extension_window_controller.cc b/chrome/browser/extensions/browser_extension_window_controller.cc
 index 06d4b62c70dc082af3bf2798ecbec32dd8a74410..53f50c5df194213822c6deb037a8ba700a6830ae 100644

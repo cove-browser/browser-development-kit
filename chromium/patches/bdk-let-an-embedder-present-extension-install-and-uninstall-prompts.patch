@@ -1,7 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: BDK Patches <patches@bdk.invalid>
 Date: Fri, 20 Nov 2026 10:00:00 -0800
-Subject: [PATCH] bdk: let an embedder present extension install and uninstall prompts
+Subject: [PATCH] bdk: let an embedder present extension install and uninstall
+ prompts
 
 Every extension install, re-enable and permission prompt (the install flow,
 chrome.permissions.request, the web store's inline install, a disabled
@@ -25,9 +26,9 @@ widely included is touched.
 
 Used by: the BDK engine (//bdk/engine/extensions/install_prompts.cc).
 ---
- chrome/browser/ui/extensions/embedder_extension_dialogs.h           | 60 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- chrome/browser/ui/extensions/extension_uninstall_dialog_impl.cc     | 7 +++++++
- chrome/browser/ui/views/extensions/extension_install_dialog_view.cc | 5 +++++
+ .../extensions/embedder_extension_dialogs.h   | 60 +++++++++++++++++++
+ .../extension_uninstall_dialog_impl.cc        |  7 +++
+ .../extension_install_dialog_view.cc          |  5 ++
  3 files changed, 72 insertions(+)
 
 diff --git a/chrome/browser/ui/extensions/embedder_extension_dialogs.h b/chrome/browser/ui/extensions/embedder_extension_dialogs.h
@@ -108,7 +109,7 @@ index a31c6083e867d5c66334fad57813c430121da5bb..fd0a17a1fb70050f5f4d1801d5de3cea
  #include "chrome/browser/ui/extensions/extension_dialog_utils.h"
  #include "chrome/grit/generated_resources.h"
  #include "extensions/browser/ui_util.h"
-@@ -163,6 +164,12 @@
+@@ -163,6 +164,12 @@ std::unique_ptr<extensions::ExtensionUninstallDialog>
  extensions::ExtensionUninstallDialog::Create(Profile* profile,
                                               gfx::NativeWindow parent,
                                               Delegate* delegate) {
@@ -133,7 +134,7 @@ index 396b18bf343e4674d6601a7c99011bf3dbbc171d..738b0ea46315aa9a9a2d12d1c8fef572
  #include "chrome/browser/ui/scoped_tabbed_browser_displayer.h"
  #include "chrome/browser/ui/tabs/tab_strip_model.h"
  #include "chrome/browser/ui/views/chrome_layout_provider.h"
-@@ -762,5 +763,9 @@
+@@ -762,5 +763,9 @@ END_METADATA
  // static
  ExtensionInstallPrompt::ShowDialogCallback
  ExtensionInstallPrompt::GetDefaultShowDialogCallback() {
