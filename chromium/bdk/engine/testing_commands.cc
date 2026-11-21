@@ -15,9 +15,11 @@
 
 #include "base/compiler_specific.h"
 #include "base/containers/span.h"
+#include "base/feature_list.h"
 #include "base/files/file_path.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
+#include "base/metrics/field_trial_params.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/time/time.h"
 #include "base/values.h"
@@ -35,6 +37,7 @@
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
+#include "components/heavy_ad_intervention/heavy_ad_features.h"
 #include "components/prefs/pref_service.h"
 #include "content/public/browser/storage_partition.h"
 #include "content/public/browser/web_contents.h"
@@ -172,6 +175,19 @@ bool Run(const std::string& name,
       return false;
     }
     result.Set("value", pref->GetValue()->Clone());
+    return true;
+  }
+  if (name == "heavy_ad.store") {
+    // Where the heavy-ad intervention keeps its opt-out store, decided as
+    // HeavyAdService::Initialize decides it: "disk" or "memory" (BDK keeps
+    // it in memory; chromium_main_mac.mm).
+    const bool on_disk =
+        base::FeatureList::IsEnabled(
+            heavy_ad_intervention::features::kHeavyAdPrivacyMitigations) &&
+        !base::GetFieldTrialParamByFeatureAsBool(
+            heavy_ad_intervention::features::kHeavyAdPrivacyMitigations,
+            "OptOutStoreDisabled", false);
+    result.Set("store", on_disk ? "disk" : "memory");
     return true;
   }
   if (name == "capture.start") {

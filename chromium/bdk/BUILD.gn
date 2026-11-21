@@ -210,6 +210,7 @@ source_set("bdk") {
       "//components/content_settings/core/browser",
       "//components/content_settings/core/common",
       "//components/find_in_page",
+      "//components/heavy_ad_intervention",
       "//components/keep_alive_registry",
       "//components/os_crypt/common:keychain_password_mac",
       "//components/permissions",

@@ -20,6 +20,7 @@
 #include <condition_variable>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -44,6 +45,61 @@ char** g_argv;
 
 bdk_string_t View(const char* s) {
     return bdk_string_t{s, s ? strlen(s) : 0};
+}
+
+/* Removes a data directory the harness made itself. Registered before Chromium starts, so it runs
+   after Chromium's own exit work; Chromium's threads can still write a little after it, and a run
+   that crashes or is killed leaves the directory. A failed removal is reported on stderr.
+   scripts/test-engine.sh owns the directory instead (BDK_ENGINE_DATA_DIR) and removes it once the
+   process has gone. */
+void RemoveDataDir() {
+    std::error_code error;
+    std::filesystem::remove_all(g_data_dir, error);
+    if (error) {
+        fprintf(stderr, "could not remove the engine suite's data directory %s: %s\n",
+                g_data_dir.c_str(), error.message().c_str());
+    }
+}
+
+/* BDK_ENGINE_SILENT=1 runs the suite without getting in the way of whoever is using the Mac: the
+   harness never activates, has no Dock icon or menu bar, keeps its windows behind every other
+   window and never takes them fullscreen. Chromium is told to keep drawing a hidden page, as
+   screenshots, captures and the accessibility tree need it drawn. What needs the harness
+   frontmost (an input method's composition) is skipped, as when macOS refuses to bring it
+   forward. */
+bool Silent() {
+    static const bool silent = [] {
+        const char* value = getenv("BDK_ENGINE_SILENT");
+        return value && *value && strcmp(value, "0") != 0;
+    }();
+    return silent;
+}
+
+/* A harness window, which a silent run keeps out of fullscreen (its own Space). */
+NSWindow* NewWindow(NSRect frame, NSWindowStyleMask style) {
+    NSWindow* window = [[NSWindow alloc] initWithContentRect:frame
+                                                   styleMask:style
+                                                     backing:NSBackingStoreBuffered
+                                                       defer:NO];
+    window.releasedWhenClosed = NO;
+    if (Silent())
+        window.collectionBehavior |= NSWindowCollectionBehaviorFullScreenNone;
+    return window;
+}
+
+/* Shows a harness window: in front, and key when `key`. A silent run puts it behind every other
+   window instead; it is still key within the harness, which is never the active application. */
+void ShowWindow(NSWindow* window, bool key) {
+    if (Silent()) {
+        [window orderBack:nil];
+        if (key)
+            [window makeKeyWindow];
+        return;
+    }
+    if (key)
+        [window makeKeyAndOrderFront:nil];
+    else
+        [window orderFront:nil];
 }
 
 } // namespace
@@ -194,12 +250,8 @@ void bdk_harness_attach_view(bdk_contents_t contents) {
     static NSWindow* shared;
     static CGFloat next_x;
     if (!shared) {
-        shared = [[NSWindow alloc] initWithContentRect:NSMakeRect(60, 60, 1280, 480)
-                                             styleMask:NSWindowStyleMaskTitled
-                                               backing:NSBackingStoreBuffered
-                                                 defer:NO];
-        shared.releasedWhenClosed = NO;
-        [shared makeKeyAndOrderFront:nil];
+        shared = NewWindow(NSMakeRect(60, 60, 1280, 480), NSWindowStyleMaskTitled);
+        ShowWindow(shared, true);
     }
     bdk_native_handle_t view;
     bdk_error_t error = 0;
@@ -229,12 +281,8 @@ static NSMutableDictionary<NSNumber*, NSNumber*>* WindowHandles() {
 }
 
 int bdk_harness_engine_window_open(bdk_runtime_t rt) {
-    NSWindow* window = [[NSWindow alloc] initWithContentRect:NSMakeRect(100, 100, 640, 480)
-                                                   styleMask:NSWindowStyleMaskTitled
-                                                     backing:NSBackingStoreBuffered
-                                                       defer:NO];
-    window.releasedWhenClosed = NO;
-    [window orderFront:nil];
+    NSWindow* window = NewWindow(NSMakeRect(100, 100, 640, 480), NSWindowStyleMaskTitled);
+    ShowWindow(window, false);
     bdk_native_handle_t native;
     memset(&native, 0, sizeof native);
     native.kind = BDK_NATIVE_NSWINDOW;
@@ -309,12 +357,8 @@ void bdk_harness_engine_show(bdk_contents_t contents, int visible) {
         bdk_error_t error = 0;
         if (bdk_contents_native_view(contents, &view, &error) != BDK_OK || !view.pointer)
             return;
-        window = [[NSWindow alloc]
-            initWithContentRect:NSMakeRect(80, 80, 640, 480)
-                      styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskResizable
-                        backing:NSBackingStoreBuffered
-                          defer:NO];
-        window.releasedWhenClosed = NO;
+        window = NewWindow(NSMakeRect(80, 80, 640, 480),
+                           NSWindowStyleMaskTitled | NSWindowStyleMaskResizable);
         NSView* page = (__bridge NSView*)view.pointer;
         page.frame = window.contentView.bounds;
         page.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
@@ -325,7 +369,7 @@ void bdk_harness_engine_show(bdk_contents_t contents, int visible) {
     NSView* page = window.contentView.subviews.firstObject;
     page.hidden = !visible;
     if (visible) {
-        [window makeKeyAndOrderFront:nil];
+        ShowWindow(window, true);
     } else {
         [window orderOut:nil];
     }
@@ -414,7 +458,8 @@ int bdk_harness_engine_answer_sheet(bdk_contents_t contents, int index) {
 }
 
 int bdk_harness_engine_window_is_key(bdk_contents_t contents) {
-    return WindowOf(contents).isKeyWindow ? 1 : 0;
+    /* Silent, the harness is never active, so no window of it has the keyboard. */
+    return !Silent() && WindowOf(contents).isKeyWindow ? 1 : 0;
 }
 
 int bdk_harness_engine_compose(bdk_contents_t contents, const char* marked, const char* text) {
@@ -643,10 +688,12 @@ void RunSuite(void*) {
     }
     bdk_testing_intercept_all(1);
     /* Frontmost, so its windows become key: Chromium counts focus only in the key window. */
+    if (!Silent()) {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    [NSApp activateIgnoringOtherApps:YES];
+        [NSApp activateIgnoringOtherApps:YES];
 #pragma clang diagnostic pop
+    }
     g_warmup = warmup;
     /* Posted through the engine, so it runs as a Chromium task inside Chromium's main loop, which
        must be the outer one for the suite's nested pumping to let Chromium work. */
@@ -672,20 +719,35 @@ int main(int argc, char** argv) {
                "disable-features=SuppressFullscreenFromUnfocusedView,"
                "RWHVMacHasFocusReturnsFalseForNonKeyWindow bdk-internal-scheme=conf",
                0);
-        char dir[] = "/tmp/bdk-engine-conformance-XXXXXX";
-        if (!mkdtemp(dir)) {
-            perror("mkdtemp");
-            return 2;
+        if (Silent()) {
+            /* Behind other windows a page is occluded, and Chromium stops drawing it. */
+            std::string switches = getenv("BDK_ENGINE_SWITCHES");
+            switches += " disable-backgrounding-occluded-windows";
+            setenv("BDK_ENGINE_SWITCHES", switches.c_str(), 1);
         }
-        g_data_dir = dir;
+        /* Each run has a new data directory, a Chromium profile tree of up to hundreds of
+           megabytes: the caller's, or one the harness makes and removes. */
+        if (const char* given = getenv("BDK_ENGINE_DATA_DIR"); given && *given) {
+            g_data_dir = given;
+        } else {
+            char dir[] = "/tmp/bdk-engine-conformance-XXXXXX";
+            if (!mkdtemp(dir)) {
+                perror("mkdtemp");
+                return 2;
+            }
+            g_data_dir = dir;
+            atexit(RemoveDataDir);
+        }
         g_argc = argc;
         g_argv = argv;
         [BDKHarnessApplication sharedApplication];
         BDKHarnessDelegate* delegate = [[BDKHarnessDelegate alloc] init];
         NSApp.delegate = delegate;
         /* A regular, active application: its windows become key, so pages can take focus and
-           enter fullscreen, and Chromium sees them shown and hidden. */
-        [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+           enter fullscreen, and Chromium sees them shown and hidden. A silent run is an accessory:
+           no Dock icon, no menu bar, never activated. */
+        [NSApp setActivationPolicy:Silent() ? NSApplicationActivationPolicyAccessory
+                                            : NSApplicationActivationPolicyRegular];
         [NSApp run];
     }
     return 0;
