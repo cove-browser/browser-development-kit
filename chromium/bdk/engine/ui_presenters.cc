@@ -248,6 +248,22 @@ class RoutingPresenters : public UiPresenters {
         });
   }
 
+  Dismisser ShowPageWindow(HostView* view,
+                           const std::string& title,
+                           base::OnceClosure closed) override {
+    if (!Scripted::Find("devtools")) {
+      return platform_->ShowPageWindow(view, title, std::move(closed));
+    }
+    return Scripted::Present(
+        "devtools", base::DictValue().Set("title", title),
+        [closed = std::move(closed)](const base::DictValue& a) mutable {
+          const std::string* answer = a.FindString("answer");
+          if (answer && *answer == "close") {
+            std::move(closed).Run();
+          }
+        });
+  }
+
   std::unique_ptr<FindBar> ShowFindBar(HostView* view,
                                        const base::DictValue& payload,
                                        FindBarClient* client) override {

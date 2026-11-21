@@ -38,6 +38,8 @@ std::vector<std::string> ExtraSwitches();
 
 // Whether the application allows DevTools (the context menu's Inspect item).
 bool DevToolsEnabled();
+// Set from the configuration at every start (devtools_frontend.cc).
+void SetDevToolsEnabled(bool enabled);
 
 }  // namespace bdk
 

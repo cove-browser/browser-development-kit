@@ -8,6 +8,8 @@
 #include <cstdint>
 #include <string>
 
+#include "base/files/file_path.h"
+
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
@@ -21,6 +23,30 @@ class WebContents;
 class DevToolsUIBindings;
 
 namespace bdk {
+
+// How the application configured DevTools ([devtools] in bdk.toml,
+// javascript-api.md section 6; T-AUT-05). Read at each runtime start.
+struct DevToolsConfig {
+  enum class Frontend { kDefault, kReplaced, kDisabled };
+  Frontend frontend = Frontend::kDefault;
+  // kReplaced: the application's complete front end, packaged in its bundle
+  // at Contents/Resources/BDK/DevTools/Frontend, entry index.html.
+  base::FilePath frontend_dir;
+  // The "modified" mode: overlay.css and overlay.js from
+  // Contents/Resources/BDK/DevTools/Overlay, loaded into the default front end
+  // after it finishes loading. Empty until they have been read.
+  std::string overlay_css;
+  std::string overlay_js;
+  bool has_overlay = false;
+};
+
+// Reads [devtools] (and [ui.surfaces] devtools) from the resolved
+// configuration, points Chromium's custom front-end switch at the
+// replacement, or removes it, and starts reading the overlay files. Called
+// once Chromium runs, on the UI thread, at every runtime start.
+void ConfigureDevTools(const std::string& resolved,
+                       const base::FilePath& bundle_path);
+const DevToolsConfig& CurrentDevToolsConfig();
 
 // Undocked DevTools for one page, hosted in a BDK page of its own instead of a
 // Chrome window (T-ADP-05): Chrome's front end and its DevToolsUIBindings. The
@@ -52,6 +78,9 @@ class DevToolsFrontend : public content::WebContentsObserver {
   // content::WebContentsObserver, on the inspected page:
   void WebContentsDestroyed() override;
 
+  // Loads the configured overlay into the front end, once per document.
+  void ApplyOverlay();
+
  private:
   // Watches the front-end page for the commits that replace its bindings.
   class FrontendObserver : public content::WebContentsObserver {
@@ -59,6 +88,7 @@ class DevToolsFrontend : public content::WebContentsObserver {
     FrontendObserver(content::WebContents* frontend, DevToolsFrontend* owner);
     void Follow(content::WebContents* frontend) { Observe(frontend); }
     void DidFinishNavigation(content::NavigationHandle* handle) override;
+    void DocumentOnLoadCompletedInPrimaryMainFrame() override;
 
    private:
     raw_ptr<DevToolsFrontend> owner_;

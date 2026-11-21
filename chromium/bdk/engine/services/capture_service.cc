@@ -60,7 +60,17 @@ void CaptureScreenshot(content::WebContents* contents, CaptureCallback done) {
           std::move(done)));
 }
 
+PdfOptions::PdfOptions() = default;
+PdfOptions::PdfOptions(const PdfOptions&) = default;
+PdfOptions::~PdfOptions() = default;
+
 void CapturePdf(content::WebContents* contents, CaptureCallback done) {
+  CapturePdf(contents, PdfOptions(), std::move(done));
+}
+
+void CapturePdf(content::WebContents* contents,
+                const PdfOptions& options,
+                CaptureCallback done) {
   // Created if the page has none; creating it twice does nothing.
   printing::PrintViewManager::CreateForWebContents(contents);
   printing::PrintViewManager* manager =
@@ -68,16 +78,21 @@ void CapturePdf(content::WebContents* contents, CaptureCallback done) {
   content::RenderFrameHost* frame = contents->GetPrimaryMainFrame();
   std::variant<printing::mojom::PrintPagesParamsPtr, std::string> params =
       print_to_pdf::GetPrintPagesParams(
-          frame->GetLastCommittedURL(), std::nullopt, std::nullopt,
-          std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt,
-          std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt,
-          std::nullopt, std::nullopt, std::nullopt);
+          frame->GetLastCommittedURL(), options.landscape,
+          /*display_header_footer=*/std::nullopt, options.print_background,
+          options.scale, options.paper_width, options.paper_height,
+          options.margin_top, options.margin_bottom, options.margin_left,
+          options.margin_right, /*header_template=*/std::nullopt,
+          /*footer_template=*/std::nullopt,
+          /*prefer_css_page_size=*/std::nullopt,
+          /*generate_tagged_pdf=*/std::nullopt,
+          /*generate_document_outline=*/std::nullopt);
   if (std::holds_alternative<std::string>(params)) {
     std::move(done).Run(std::nullopt, std::get<std::string>(params));
     return;
   }
   manager->PrintToPdf(
-      frame, "",
+      frame, options.page_ranges,
       std::move(std::get<printing::mojom::PrintPagesParamsPtr>(params)),
       base::BindOnce(
           [](CaptureCallback done, print_to_pdf::PdfPrintResult result,
