@@ -158,10 +158,11 @@ public final class BDKRuntime {
 
     // MARK: Registrations
 
-    /// Hands the configuration's UI handlers, commands, events and settings to the runtime. Both are
-    /// registrations, so this runs before the freeze.
+    /// Hands the configuration's UI handlers, page routes, commands, events and settings to the
+    /// runtime. All are registrations, so this runs before the freeze.
     private func register(_ configuration: BDKConfiguration) throws {
         try ui.attach(to: self, from: configuration)
+        try configuration.pages.adopt(into: self)
         try commands.adopt(configuration.commands)
         try configuration.settings.adopt(into: self)
     }
