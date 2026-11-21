@@ -6,8 +6,9 @@ import Foundation
 /// session of the DevTools protocol on the page, in this process only: nothing listens on a port.
 @MainActor
 public final class DevTools {
+    // The page caches this object, so neither it nor a stored scope (which holds the page
+    // strongly) may keep the page alive.
     private unowned let contents: BDKWebContents
-    private let scope: BDKServiceScope
     private var stateTask: Task<Void, Never>?
 
     /// Whether the front end is open. It starts false when this object is created, follows the
@@ -17,7 +18,6 @@ public final class DevTools {
 
     init(contents: BDKWebContents) {
         self.contents = contents
-        scope = BDKServiceScope(runtime: contents.profile.runtime, profile: nil, contents: contents)
         watchState()
     }
 
@@ -51,6 +51,11 @@ public final class DevTools {
     /// it (the page closed, the front end took over) or until the runtime shuts down.
     public func attachProtocol() async throws -> BDKDevToolsProtocol {
         try await BDKDevToolsProtocol.attach(to: contents)
+    }
+
+    /// Made for each call rather than stored: see `contents`.
+    private var scope: BDKServiceScope {
+        BDKServiceScope(runtime: contents.profile.runtime, profile: nil, contents: contents)
     }
 
     private func refresh() async {

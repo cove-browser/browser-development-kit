@@ -117,6 +117,19 @@ extension BDKStubTests {
             }
         }
 
+        @Test func devToolsDoesNotKeepThePageAlive() async throws {
+            try await withProfile { _, profile in
+                weak var weakPage: BDKWebContents?
+                do {
+                    let page = try profile.webContents.create()
+                    weakPage = page
+                    _ = page.devTools
+                    page.destroy()
+                }
+                #expect(weakPage == nil)
+            }
+        }
+
         @Test func devToolsOfAClosedPageIsStale() async throws {
             try await withProfile { _, profile in
                 let page = try profile.webContents.create()
