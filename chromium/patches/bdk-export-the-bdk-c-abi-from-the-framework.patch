@@ -19,15 +19,15 @@ build.
 
 Used by: the BDK engine (//bdk/engine) and the Swift SDK.
 ---
- chrome/app/framework.exports | 92 ++++++++++++++++++++++++++++++++++++
- chrome/app/framework.order   | 92 ++++++++++++++++++++++++++++++++++++
- 2 files changed, 184 insertions(+)
+ chrome/app/framework.exports | 97 ++++++++++++++++++++++++++++++++++++
+ chrome/app/framework.order   | 97 ++++++++++++++++++++++++++++++++++++
+ 2 files changed, 194 insertions(+)
 
 diff --git a/chrome/app/framework.exports b/chrome/app/framework.exports
-index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..71d7c4d3cedb1f17ebce693f9950321efd65936d 100644
+index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..d4576fabb6f24531657ff5901278beb4fa5e6346 100644
 --- a/chrome/app/framework.exports
 +++ b/chrome/app/framework.exports
-@@ -20,3 +20,95 @@ _ChromeAppModeStart_v8
+@@ -20,3 +20,100 @@ _ChromeAppModeStart_v8
  _ChromeMain
  _ChromeWebAppShortcutCopierMain
  _bdk_overlay_marker
@@ -100,7 +100,12 @@ index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..71d7c4d3cedb1f17ebce693f9950321e
 +_bdk_profile_open_private
 +_bdk_profile_rename
 +_bdk_profiles_list
++_bdk_provider_is_cancelled
++_bdk_provider_progress
 +_bdk_provider_register
++_bdk_provider_reject
++_bdk_provider_report
++_bdk_provider_resolve
 +_bdk_provider_set_key
 +_bdk_release
 +_bdk_runtime_freeze_registrations
@@ -124,10 +129,10 @@ index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..71d7c4d3cedb1f17ebce693f9950321e
 +_OBJC_METACLASS_$_BDKApplicationBase
 +_OBJC_CLASS_$_BDKApplicationBase
 diff --git a/chrome/app/framework.order b/chrome/app/framework.order
-index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..d4b35c4157bd79e048aef9cf04ad65125b415029 100644
+index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..691c2c2a86908afa0fc4471ee3f7b3cd76ada4a0 100644
 --- a/chrome/app/framework.order
 +++ b/chrome/app/framework.order
-@@ -33,5 +33,97 @@ _ChromeWebAppShortcutCopierMain
+@@ -33,5 +33,102 @@ _ChromeWebAppShortcutCopierMain
  # repository.
  _bdk_overlay_marker
  
@@ -197,7 +202,12 @@ index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..d4b35c4157bd79e048aef9cf04ad6512
 +_bdk_profile_open_private
 +_bdk_profile_rename
 +_bdk_profiles_list
++_bdk_provider_is_cancelled
++_bdk_provider_progress
 +_bdk_provider_register
++_bdk_provider_reject
++_bdk_provider_report
++_bdk_provider_resolve
 +_bdk_provider_set_key
 +_bdk_release
 +_bdk_runtime_freeze_registrations

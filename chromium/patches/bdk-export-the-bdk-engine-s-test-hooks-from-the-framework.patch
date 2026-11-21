@@ -29,10 +29,10 @@ tests in the BDK repository.
  2 files changed, 34 insertions(+)
 
 diff --git a/chrome/app/framework.exports b/chrome/app/framework.exports
-index 71d7c4d3cedb1f17ebce693f9950321efd65936d..178ccf8bf7e5e39044eebf644fadd94bddb963bf 100644
+index d4576fabb6f24531657ff5901278beb4fa5e6346..ee7dccdb1434e4cd863fb67e6879fa2930387e82 100644
 --- a/chrome/app/framework.exports
 +++ b/chrome/app/framework.exports
-@@ -112,3 +112,20 @@ _bdk_window_register
+@@ -117,3 +117,20 @@ _bdk_window_register
  _bdk_window_unregister
  _OBJC_METACLASS_$_BDKApplicationBase
  _OBJC_CLASS_$_BDKApplicationBase
@@ -54,10 +54,10 @@ index 71d7c4d3cedb1f17ebce693f9950321efd65936d..178ccf8bf7e5e39044eebf644fadd94b
 +_bdk_testing_tab_info
 +_bdk_testing_withdraw_ui_requests
 diff --git a/chrome/app/framework.order b/chrome/app/framework.order
-index d4b35c4157bd79e048aef9cf04ad65125b415029..395216aa1012e3cb10bef661338cdb41544ec89b 100644
+index 691c2c2a86908afa0fc4471ee3f7b3cd76ada4a0..d5bbfb1cd534253b53b640ad3b57a4d08d8788b7 100644
 --- a/chrome/app/framework.order
 +++ b/chrome/app/framework.order
-@@ -121,6 +121,23 @@ _bdk_unsubscribe
+@@ -126,6 +126,23 @@ _bdk_unsubscribe
  _bdk_window_register
  _bdk_window_unregister
  

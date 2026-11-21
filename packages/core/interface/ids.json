@@ -93,7 +93,17 @@
     { "name": "search.setDefault", "id": 91 },
     { "name": "search.classify", "id": 92 },
     { "name": "search.suggestions", "id": 93 },
-    { "name": "search.deleteSuggestion", "id": 94 }
+    { "name": "search.deleteSuggestion", "id": 94 },
+    { "name": "translation.provider", "id": 95 },
+    { "name": "translation.languages", "id": 96 },
+    { "name": "translation.preferences", "id": 97 },
+    { "name": "translation.setPreferences", "id": 98 },
+    { "name": "translation.downloadModel", "id": 99 },
+    { "name": "translation.removeModel", "id": 100 },
+    { "name": "translation.state", "id": 101 },
+    { "name": "translation.translate", "id": 102 },
+    { "name": "translation.revert", "id": 103 },
+    { "name": "translation.present", "id": 104 }
   ],
   "events": [
     { "name": "autofill.changed", "id": 1 },
@@ -118,7 +128,10 @@
     { "name": "profiles.renamed", "id": 20 },
     { "name": "profiles.deleted", "id": 21 },
     { "name": "settings.changed", "id": 22 },
-    { "name": "search.enginesChanged", "id": 23 }
+    { "name": "search.enginesChanged", "id": 23 },
+    { "name": "translation.preferencesChanged", "id": 24 },
+    { "name": "translation.modelsChanged", "id": 25 },
+    { "name": "translation.stateChanged", "id": 26 }
   ],
   "constants": {
     "domains": [
@@ -174,7 +187,8 @@
       { "name": "CLOSED", "id": 7 },
       { "name": "RENDERER_GONE", "id": 8 },
       { "name": "VISIBILITY_CHANGED", "id": 9 },
-      { "name": "FIND_RESULT", "id": 10 }
+      { "name": "FIND_RESULT", "id": 10 },
+      { "name": "TRANSLATION", "id": 11 }
     ],
     "eventFlags": [
       { "name": "MAIN_FRAME", "id": 1 },

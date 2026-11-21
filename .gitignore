@@ -26,6 +26,7 @@ packages/js/internal/src/profiles.ts
 packages/js/internal/src/search.ts
 packages/js/internal/src/settings.ts
 packages/js/internal/src/system.ts
+packages/js/internal/src/translation.ts
 packages/js/internal/src/types.ts
 # CMake builds of packages/core next to build/ (engine conformance, sanitizers)
 packages/core/build-*/

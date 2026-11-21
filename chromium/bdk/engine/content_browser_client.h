@@ -6,6 +6,7 @@
 #define BDK_ENGINE_CONTENT_BROWSER_CLIENT_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "chrome/browser/chrome_content_browser_client.h"
@@ -14,9 +15,10 @@ namespace bdk {
 
 // Chrome's browser client, plus what the BDK engine adds: the navigation
 // interceptor the engine's test hooks script (testing.cc), HTTP
-// authentication as a UI request (ui_auth.h), and internal pages
-// (engine/pages): the branded scheme in every child process, the URL handler
-// pair, the navigation throttle and the page broker's interface broker.
+// authentication as a UI request (ui_auth.h), the geolocation provider the
+// application chose, and internal pages (engine/pages): the branded scheme in
+// every child process, the URL handler pair, the navigation throttle and the
+// page broker's interface broker.
 class BdkContentBrowserClient : public ChromeContentBrowserClient {
  public:
   BdkContentBrowserClient();
@@ -53,6 +55,12 @@ class BdkContentBrowserClient : public ChromeContentBrowserClient {
       content::GuestPageHolder* guest_page_holder,
       content::LoginDelegate::LoginAuthRequiredCallback auth_required_callback)
       override;
+
+  // Providers (T-PRV-04, T-PRV-09): the application's location provider for
+  // geolocation = "app", and the Google key only for geolocation = "google".
+  std::unique_ptr<device::LocationProvider> OverrideSystemLocationProvider()
+      override;
+  std::string GetGeolocationApiKey() override;
 };
 
 }  // namespace bdk

@@ -77,7 +77,8 @@
         "CLOSED": 7,
         "RENDERER_GONE": 8,
         "VISIBILITY_CHANGED": 9,
-        "FIND_RESULT": 10
+        "FIND_RESULT": 10,
+        "TRANSLATION": 11
       }
     },
     {

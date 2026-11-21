@@ -21,11 +21,14 @@ extern const t_test_t t_broker_tests[];
 extern const t_test_t t_profile_tests[];
 extern const t_test_t t_contents_tests[];
 extern const t_test_t t_ui_tests[];
+extern const t_test_t t_provider_tests[];
 extern const t_test_t t_pages_tests[];
 #ifdef BDK_HARNESS_ENGINE_TESTS
 extern const t_test_t t_engine_tests[];
 extern const t_test_t t_engine_ui_tests[];
 extern const t_test_t t_engine_prompt_tests[];
+extern const t_test_t t_engine_provider_tests[];
+extern const t_test_t t_engine_privacy_tests[];
 extern const t_test_t t_engine_pages_tests[];
 #endif
 #ifdef BDK_HARNESS_OWNS_MAIN

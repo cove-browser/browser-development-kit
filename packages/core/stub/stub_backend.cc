@@ -11,6 +11,7 @@
 #include "../runtime/routes.h"
 #include "bdk_abi_hash.h"
 #include "bdk_stub.h"
+#include "stub_providers.h"
 #include "stub_services.h"
 
 using namespace bdkcore;
@@ -18,6 +19,7 @@ using namespace bdkcore;
 namespace {
 
 constexpr int32_t kErrAborted = -3;
+constexpr int32_t kErrBlocked = -20; /* net::ERR_BLOCKED_BY_CLIENT */
 constexpr uint32_t kMainFrame = BDK_EVENT_FLAG_MAIN_FRAME;
 
 /* Chromium's zoom steps (components/zoom/page_zoom_constants.cc), so zoom in and out move as they
@@ -151,7 +153,23 @@ void begin_nav(const std::shared_ptr<Contents>& c, const std::string& requested,
         return;
     }
     post([c, nav, url, target_index, flags, route_error] {
-        commit_nav(c, nav, url, target_index, flags, route_error);
+        if (nav->cancelled || c->dead)
+            return;
+        /* The reputation provider sees the URL before it commits (T-PRV-05). */
+        bdkstub::providers_check_navigation(
+            c, url, [c, nav, url, target_index, flags, route_error](bool go) {
+                if (nav->cancelled || c->dead)
+                    return;
+                if (go) {
+                    commit_nav(c, nav, url, target_index, flags, route_error);
+                    return;
+                }
+                StubContents& blocked = data_of(*c);
+                blocked.nav.reset();
+                blocked.loading = false;
+                emit_contents_event_now(c, BDK_CONTENTS_EVENT_NAVIGATION_FAILED, shown(*c, url),
+                                        "{\"code\":\"blocked\"}", kErrBlocked, kMainFrame);
+            });
     });
 }
 
@@ -329,6 +347,7 @@ class StubBackend final : public Backend {
         S().app_settings.clear();
         set_outcome(BDK_STUB_UI_NONE, 0, "", "");
         bdkstub::services_reset();
+        bdkstub::providers_reset();
         return BDK_OK;
     }
 
@@ -714,7 +733,8 @@ class StubBackend final : public Backend {
     void UnregisterWindow(const Window&) override {}
 
     void ExecuteCommand(Runtime& rt, const std::shared_ptr<BuiltinCall>& call) override {
-        bdkstub::services_execute(rt, call);
+        if (!bdkstub::providers_execute(rt, call))
+            bdkstub::services_execute(rt, call);
     }
 
     void Authenticate(Runtime&, const std::string&, std::function<void(bool)> done) override {

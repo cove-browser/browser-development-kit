@@ -393,6 +393,8 @@ Completions are named in the interface definition for each surface, with the sam
 
 Provider callbacks may be invoked off the UI thread if the provider declares it; this is the only ABI surface where that is allowed, and the header marks each such callback.
 
+Built in M6 (2026-11-20): `bdk_provider.h` declares the vtable (a descriptor, `cancel` and one callback per operation, all on the UI thread for now) and `bdk_provider_resolve`, `_reject`, `_progress`, `_report` and `_is_cancelled`. The Google key is `google_api_key` in `bdk_start_config_t`, because Chromium reads it before it starts; `bdk_provider_set_key` answers `config.keyUnused`. Credentials (S14) and leak check (S16) have no operations yet. The contract is in `packages/core/docs/conventions.md`, "Providers".
+
 ## 10. The stub runtime and the conformance suite
 
 Plan, M1, tasks T-ABI-02 and T-ABI-05.

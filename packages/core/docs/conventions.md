@@ -57,8 +57,8 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
    `bdk_key_unhandled_cb`, `bdk_native_page_cb`. Provisional shapes are in the headers.
 8. `bdk_subscribe_named` was added (by-name pair of `bdk_subscribe`): application events have names and no
    generated identifier, so they could not be observed otherwise.
-9. `bdk_provider_register` and `bdk_provider_set_key` take a `bdk_runtime_t` (c-abi.md omits it). The vtable has no
-   callbacks yet because their signatures are not specified.
+9. `bdk_provider_register` and `bdk_provider_set_key` take a `bdk_runtime_t` (c-abi.md omits it). The vtable and its
+   contract are in "Providers" below (T-PRV-01).
 10. Application command and event names must start with `app.` (`config.nameNotApp`). Duplicates fail
     with `config.duplicateName` (not in the swift-api error table).
 10a. Application settings (`bdk_app_setting_register`, T-SVC-08): the broker, not the backend, answers `settings.get`,
@@ -240,9 +240,103 @@ Decisions taken where the specification was silent (2026-11-19):
     `notImplemented` (the first four are in the swift-api.md table; `notImplemented` is new, domain `broker`).
     `gestureRequired` is reused in domain `capability`.
 
+15. A call that names a page and no profile addresses the page's profile (`translation.state`). A session must
+    have that profile in its scope (`capability.outOfScope`).
+
 Not done here: subscribing to events (the capability check of services.md section 7, scope and back-pressure), the
-`translation`, `favicons`, `extensions`, `contents`, `scripts` and `debug` namespaces, and the Swift and
+`favicons`, `extensions`, `contents`, `scripts` and `debug` namespaces (`search` arrived with M4, `translation` with M6), and the Swift and
 TypeScript wrappers generated from the definitions.
+
+## Providers
+
+Specification: architecture.md 11 and 11.1, configuration.md 3.8, swift-api.md 11.2, c-abi.md 9. Tasks T-PRV-01
+(contracts) and T-PRV-09 (choosing a provider). The core does everything here once (`runtime/providers.cc`,
+`translation.cc`, `reputation_lists.cc`, `providers_internal.h`), so the stub and the engine behave the same.
+
+Choosing a provider. `bdk_runtime_start` reads `services` from the resolved configuration before the backend starts:
+
+| Service | Built in this runtime | Start error for a name BDK documents but has not built | `endpoint` |
+|---|---|---|---|
+| `translation` | `default`, `app` | `apple`, `deepl`, `microsoft`, `google`: `config.providerUnavailable` (T-PRV-08) | `config.endpointUnsupported` |
+| `reputation` | `default`, `app`, `google` | `web-risk`: `config.providerUnavailable` | Only with `default`: where the lists are fetched (https, or http on the loopback address) |
+| `geolocation` | `system`, `app`, `google` | | `config.endpointUnsupported`: the network provider's host is a constant (T-PRV-14) |
+| `credentials`, `leak_check` | Only their defaults (`chromium`, `none`); S14 and S16 are proposals | Anything else: `config.providerUnavailable` | |
+
+An unknown name or a value of the wrong kind is `config.resolvedInvalid` (the CLI's `services.provider_unknown` comes
+first). The Google key is `google_api_key` in `bdk_start_config_t`, not `bdk_provider_set_key`, because Chromium reads
+its key before it starts and allows setting it only once (`InitializeApiKeyCacheInstance`, `google_api_keys.cc`). A
+service with `provider = "google"` and no key is `config.keyMissing`; a key with no such service is `config.keyUnused`,
+so a key never reaches Chromium for services the application did not configure that way (architecture.md 16,
+invariant 9). `bdk_provider_set_key` fails with `config.keyUnused`: no named provider in this runtime takes a key.
+
+Registering. `bdk_provider_register(runtime, service, vtable, ctx, release, err)` works between start and the freeze
+for a service configured `app` (otherwise `config.providerNotApp`); the freeze fails with `config.providerMissing`
+while one has none. The vtable starts with `descriptor_json`: `id`, `name`, `privacy` (`onDevice` or `remote`) and,
+for a remote provider, `host` and an https `policyUrl` (`config.descriptorInvalid`, swift-api.md 11.2). Required
+operations: translation `supported_pairs` and `translate`; reputation `check_url`; geolocation `start`. An unknown
+service (also `credentials` and `leak_check`), a null vtable or a missing required operation is
+`BDK_ERR_INVALID_ARGUMENT`.
+
+Calls. The core calls an operation with a `bdk_context_t` and a JSON input, on the UI thread and never from the call
+that caused it. The provider answers once with `bdk_provider_resolve` or `bdk_provider_reject`, reports with
+`bdk_provider_progress` (prepare) and `bdk_provider_report` (geolocation positions). Reports sent before the answer
+are delivered before it. The optional `cancel` operation is called, from a task of its own, when BDK no longer wants
+the answer (the page navigated, the translation was reverted, the watch stopped, the runtime shuts down); afterwards
+the context is stale, `bdk_provider_is_cancelled` answers 1 and any answer is ignored. At shutdown every outstanding
+call is cancelled before the provider's release callback runs. c-abi.md's geolocation `stop` is this `cancel`.
+
+The contract, checked by the core on every answer (`provider.contractViolation` names the problem):
+
+| Operation | Answer |
+|---|---|
+| `supported_pairs` | `{"pairs":[{"from","to","installed"}]}`: two different language codes (two or three letters, then `-` subtags); `installed` defaults to true |
+| `translate` | `{"texts":[...]}` with as many strings as were sent |
+| `detect` | `null`, or `{"language","reliable"}` |
+| `check_url` | `{"verdict"}`: `safe`, `unknown`, `malware`, `phishing`, `unwantedSoftware` |
+| `check_download` | `{"verdict"}`: `safe`, `unknown`, `malware`, `unwantedSoftware`, `dangerousDownload` |
+| `start` reports | `{"latitude","longitude","accuracy"}` in range, optional `altitude`, `altitudeAccuracy`, `heading`, `speed`, `timestamp`; or `{"error":"permissionDenied" \| "positionUnavailable" \| "timeout","message"}`. A malformed report ends the watch, so a page is never given a wrong place |
+
+A rejection keeps its code in the `provider` domain; one in another domain becomes `provider.remoteError` with the
+original in the message. A backend's own provider (the default translation engine) answers through the same checks
+(`translation_call`).
+
+Translation. `translation_job_start` sends a page's text segments: the provider's pairs first
+(`provider.unsupportedPair`; languages match on the primary subtag), `prepare` for a pair that is not installed, then
+batches of at most 64 segments and 16 KiB, one at a time; blank segments are not sent, and a segment over 16 KiB goes as
+pieces that fit (split at a space, else at a character boundary) whose answers are joined. The page's state
+(`translation_set_state`) is reported as a `BDK_CONTENTS_EVENT_TRANSLATION` event (detail: the `TranslationState` JSON)
+and as `translation.stateChanged` (`page` is the contents handle as a decimal string, provisional until M7's page
+identifiers). `translation_decide`: no offer for an undetermined language or the target; a language on the always list
+is translated without asking; otherwise an offer unless offers are off, the language is on the never list or the site
+is. A disabled `translation` surface turns the service off: every `translation.*` command fails with
+`provider.unavailable`. The request (ui-requests.md 5.10) is raised for an offer and by `translation.present`; its
+payload is `phase` (`offer`, `translating`, `translated`, `failed`), `detected`, `target`, `languages`, `provider`. It
+is the offer, not a request that moves through the phases: later phases are the events. Completions (none grants):
+`translate` (`from`, `to`), `revert`, `always` and `never` (`language`, default the detected one), `neverForSite`,
+`dismiss`.
+
+Reputation lists (decision D2, T-PRV-05). The default provider's format, parsed by `reputation_list_parse`:
+
+```json
+{ "format": "bdk-reputation-list", "version": 1, "sequence": 42, "generated": 1763600000000,
+  "expires": 1763686400000, "source": "…",
+  "entries": [ { "expression": "evil.example/", "verdict": "phishing" } ] }
+```
+
+An expression is a lower-case host and a path, as Safe Browsing forms them: a URL is looked up by up to five host
+suffixes (the host, then the last five components successively shortened, not the bare top-level domain; an IP
+literal only as itself) times up to six paths (the path with its query, without it, `/` and up to three prefixes
+ending in `/`). Verdicts are `malware`, `phishing` and `unwantedSoftware`. A list replaces the current one only with a
+higher `sequence`; an expired list answers `unknown` for everything, which blocks nothing. The backend that fetches a
+list checks its signature before parsing it. The warning's payload (`reputation_warning_payload`) carries the
+provider's descriptor; for the default lists it says "reduced protection" (architecture.md 11).
+
+The stub. `stub/stub_providers.cc` runs the translation commands over page text the test sets
+(`stub/bdk_stub_providers.h`, through `tests/harness_providers.h`), checks each http(s) navigation with the reputation
+provider before it commits (a blocked one fails with `{"code":"blocked"}` and `net::ERR_BLOCKED_BY_CLIENT`), and
+starts geolocation watches. Its default translation provider is unavailable, as the engine's is until the engine of
+T-PRV-02 lands. Provider tests that need those hooks are skipped by a runtime without them (the engine runs the same
+behaviour on real pages, `tests/tests_engine_providers.c`).
 
 ## The ABI hash
 

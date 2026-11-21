@@ -11,12 +11,15 @@
 #include "bdk/engine/pages/page_broker.mojom.h"
 #include "bdk/engine/pages/page_routes.h"
 #include "bdk/engine/pages/pages_navigation_throttle.h"
+#include "bdk/engine/providers/geolocation_provider.h"
+#include "bdk/engine/providers/provider_settings.h"
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_auth.h"
 #include "content/public/browser/browser_url_handler.h"
 #include "content/public/browser/navigation_throttle_registry.h"
 #include "content/public/browser/url_loader_request_interceptor.h"
 #include "content/public/browser/web_ui_browser_interface_broker_registry.h"
+#include "services/device/public/cpp/geolocation/location_provider.h"
 
 namespace bdk {
 
@@ -93,6 +96,21 @@ BdkContentBrowserClient::CreateLoginDelegate(
   return CreateBdkLoginDelegate(auth_info, web_contents,
                                 do_not_prompt_for_login,
                                 std::move(auth_required_callback));
+}
+
+std::unique_ptr<device::LocationProvider>
+BdkContentBrowserClient::OverrideSystemLocationProvider() {
+  return CreateApplicationLocationProvider();
+}
+
+std::string BdkContentBrowserClient::GetGeolocationApiKey() {
+  // The network provider gets a key only when the application chose Google:
+  // the key may be present for another Google provider (architecture.md 16,
+  // invariant 9).
+  if (CurrentProviderSettings().geolocation != "google") {
+    return std::string();
+  }
+  return ChromeContentBrowserClient::GetGeolocationApiKey();
 }
 
 }  // namespace bdk

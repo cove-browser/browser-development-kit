@@ -34,7 +34,8 @@ enum Type : uint8_t {
     T_CALL,
     T_SUB,
     T_SESSION,
-    T_CONTEXT
+    T_CONTEXT,
+    T_PROVIDER_CALL /* providers.cc */
 };
 
 struct Err {
@@ -46,8 +47,9 @@ struct Buf {
 
 struct Runtime;
 struct Contents;
-struct BuiltinCall; /* broker_internal.h */
-struct RouteTable;  /* routes.h */
+struct BuiltinCall;   /* broker_internal.h */
+struct ProviderTable; /* providers.cc */
+struct RouteTable;    /* routes.h */
 
 struct Sub {
     bool active = true;
@@ -246,7 +248,7 @@ struct Runtime {
     std::map<std::string, Owned> page_handlers, providers;
     std::shared_ptr<RouteTable> routes;                  /* routes.h */
     std::vector<std::weak_ptr<CallCtx>> native_contexts; /* native page requests not answered */
-    std::map<std::string, std::string> provider_keys;
+    std::shared_ptr<ProviderTable> provider_table;       /* providers_internal.h */
     std::map<uint32_t, UiHandler> ui_handlers;
     std::map<uint32_t, UiMode> ui_modes; /* by surface; a surface not listed is kDefault */
     std::map<std::pair<bdk_contents_t, uint32_t>, UiQueue> ui_queues;

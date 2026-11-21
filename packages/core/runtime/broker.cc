@@ -186,6 +186,18 @@ bool check_scope(const std::shared_ptr<Pending>& p) {
             return false;
         }
     }
+    /* A call that names a page and no profile addresses the page's profile (translation.state). */
+    if (mode != table::kProfileNone && !p->profile && p->contents && p->contents->profile &&
+        p->contents->profile->open) {
+        bdk_profile_t own = p->contents->profile->handle;
+        if (caller.kind == CallerKind::kSession && !caller.scope.all_profiles &&
+            !is_member(caller.scope.profiles, own)) {
+            refuse(p, BDK_DOMAIN_CAPABILITY, BDK_CODE_OUT_OF_SCOPE,
+                   "the page's profile is outside the session's scope");
+            return false;
+        }
+        p->profile = p->contents->profile;
+    }
     if (mode == table::kProfileRequired && !p->profile) {
         refuse(p, BDK_DOMAIN_BROKER, BDK_CODE_INVALID_ARGUMENTS,
                "'" + p->name + "' needs a profile: name one in the invoke options");
