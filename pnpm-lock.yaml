@@ -228,6 +228,9 @@ importers:
 
   packages/cli:
     dependencies:
+      '@bdk/vite':
+        specifier: workspace:*
+        version: link:../js/vite
       ajv:
         specifier: 8.20.0
         version: 8.20.0
@@ -246,6 +249,12 @@ importers:
   packages/js/internal: {}
 
   packages/js/protocol: {}
+
+  packages/js/vite:
+    devDependencies:
+      vite:
+        specifier: 8.3.8
+        version: 8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.0)
 
   tooling: {}
 
