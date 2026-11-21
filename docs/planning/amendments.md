@@ -248,6 +248,22 @@ No `BdkBrowserWindow` method that logs (`NOTIMPLEMENTED_LOG_ONCE`) was reached b
 
 Four patches were added or changed: the series is ten (the test-hook export patch also lists `bdk_testing_host_context_count` and `bdk_testing_tab_info`).
 
+### 2.14 Providers and privacy in M6 (2026-11-20)
+
+M6 departs from architecture 11, 11.1 and 12, feasibility 6 and tasks T-PRV-02 to T-PRV-09 as follows. The engine half is written, not built.
+
+| Planned | Built | Why |
+|---|---|---|
+| A BDK renderer agent replacing script injection (architecture 11) | Two scripts run by the browser in the translate isolated world of the main frame read and write text nodes; no renderer code | The browser-process API (`ExecuteJavaScriptInIsolatedWorld`) needs no patch and keeps the page's script away from them. Frames other than the main frame are not translated |
+| Chromium's language detection reused | Reused, but on macOS it needs a TFLite model the optimization guide downloads from Google; BDK does not fetch it, so detection rests on the page's declared language or the provider's `detect` | No Google request by default (feasibility 6) |
+| The Google key "supplied at start" | `google_api_key` in `bdk_start_config_t`; `bdk_provider_set_key` takes no key in this runtime | Chromium allows the key to be set once, before anything reads it (`InitializeApiKeyCacheInstance`) |
+| Endpoint remap for every provider | Only for the default reputation lists; Safe Browsing's and the network location provider's hosts are constants (T-PRV-10, after v1) | No overlay hook reaches them |
+| A component-data mirror (D5 options a to c) | The data ships with each runtime release and the component updater is off | Update-check responses are signed by Google per request (CUP) |
+| `translation.*` from services.md 5.12 | Plus `translation.present`; every command takes a profile (a call that names a page addresses the page's profile) | Swift's `page.translation.present()` needs a command; the generator puts one namespace on one scope |
+| A translation request that moves through its phases (ui-requests.md 5.10) | The request is the offer; later phases are events | A request is completed once |
+
+New tasks: T-PRV-10 (after v1), T-PRV-11, T-PRV-12 and T-PRV-13 (M6). The task list is 122.
+
 ## 3. Tasks and workflows
 
 | Task | Change |

@@ -237,6 +237,8 @@ Extra keys:
 
 The spec's illustrative `[services.google]` table of booleans is not used. Choosing Google is `provider = "google"` on the service concerned, so there is one way to say it.
 
+Built in M6 (2026-11-20; core, stub and Swift tested, engine written and not yet built). The runtime reads the resolved `services` at start. A provider BDK names but this runtime does not have (`apple`, `deepl`, `microsoft`, `google` for translation, `web-risk`: T-PRV-08) is the start error `config.providerUnavailable`. `endpoint` is accepted only for the default reputation provider (where its lists come from; https, or http on the loopback address); for any other provider it is `config.endpointUnsupported`, because Chromium's Safe Browsing and network-location hosts are constants (T-PRV-10, after v1). The list download itself is not built (T-PRV-11), so `update_interval` and the endpoint have no effect yet. `models`, `bundled_languages` and `model_source` have no effect until the default translation engine exists (T-PRV-02). A Google key with no `provider = "google"` is `config.keyUnused`, and a Google provider with no key `config.keyMissing`. The rules are in `packages/core/docs/conventions.md`, "Providers".
+
 #### `[services.credentials]` (Added, S14)
 
 | Key | Type | Default | Meaning |

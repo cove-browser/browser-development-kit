@@ -301,6 +301,8 @@ A settings page manages preferences and models. Translating a page is done from 
 
 Events: `translation.preferencesChanged`, `translation.modelsChanged`, `translation.stateChanged` (sessions and Swift).
 
+Built in M6 (2026-11-20): defined in `packages/core/interface/translation.json`, answered by the stub and written for the engine (build pending). Every command takes a profile (the page's when a page is named); `translation.present` was added to raise the request from Swift or a session. Shapes: `translation.provider` answers the provider's descriptor (`id`, `name`, `privacy`, `host`, `policyUrl`, `protection`); `languages` answers `{pairs: [{from, to, installed}]}`; preferences are `{target, alwaysTranslate, neverTranslate, neverSites, offers}`, kept in Chromium's translate preferences; `state` and `translate` answer `{phase, detected, from, to, progress, error}`. `translation.stateChanged` is `{page, state}` with `page` the page's handle as a decimal string (provisional until M7's page identifiers). With the default provider the commands that need a provider answer `provider.unavailable` until the engine of T-PRV-02 exists. A disabled `translation` surface makes every command answer `provider.unavailable`.
+
 ### 5.13 `search`: address-bar services (Added, S1)
 
 | Command | Capability | Marks | Does |
