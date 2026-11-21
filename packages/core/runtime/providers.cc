@@ -150,9 +150,12 @@ std::string builtin_descriptor(Service s, const std::string& provider) {
 }
 
 /* The required operations of each service, and every operation it has. */
+/* A member of the vtable: the operation's callback. */
+using OperationSlot = bdk_provider_op_cb bdk_provider_vtable_t::*;
+
 struct Operation {
     const char* name;
-    bdk_provider_op_cb bdk_provider_vtable_t::* slot;
+    OperationSlot slot;
     Service service;
     bool required;
 };
