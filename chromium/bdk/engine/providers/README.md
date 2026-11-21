@@ -40,6 +40,9 @@ settings turn it off; the network audit (`tests_engine_privacy.c`) is the check.
 | Privacy Sandbox (attestations, topics, protected audiences) | Google | Data comes from the component updater | `privacy_sandbox.m1.*` false |
 | Media router | Local discovery | | `media_router.enable_media_router` false |
 | GCM (push messaging) | `mtalk.google.com` | Lazy: starts on a push subscription (`gcm_driver_desktop.cc:527, 589`) | **Not settled**: no switch or preference; T-PRV-12 |
+| Omnibox AI Mode eligibility | `www.google.com/async/folae` | **On**, asked at start-up (`aim_eligibility_service.cc`); found by the network audit | Features `AimEnabled`, `AimServerEligibilityEnabled` off |
+| Search-engine preconnect | The default search engine (Google until T-PRV-10) | **On**, at start-up (`search_engine_preconnector.cc`); found by the network audit | Feature `PreconnectToSearch` off |
+| Translate ranker model | `www.gstatic.com/chrome/intelligence/assist/ranker/` | **On**, downloaded when translate starts (`translate_ranker_impl.cc`); found by the network audit | Features `TranslateRankerQuery`, `TranslateRankerEnforcement` off |
 | Extension updates from the Chrome Web Store | `clients2.google.com` | Only with a store extension installed | M5's sources (T-EXT-09) |
 
 Not settled from the source, so left to the network audit and task T-PRV-12: what registers with GCM at

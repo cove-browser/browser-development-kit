@@ -108,8 +108,14 @@ std::vector<std::string> ProviderSwitches(const ProviderSettings& settings) {
       // Network time asks clients2.google.com at start-up; translate would
       // send page text to Google for the always-translate list as soon as a
       // key exists; optimization-guide hints and models come from Google.
+      // Found by the network audit (tests_engine_privacy.c): the omnibox's AI
+      // Mode eligibility check asks www.google.com/async/folae, the search
+      // preconnector opens www.google.com at start-up, and the translate
+      // ranker downloads its model from www.gstatic.com.
       "disable-features=NetworkTimeServiceQuerying,TranslateTrigger,"
-      "OptimizationHints,OptimizationTargetPrediction",
+      "OptimizationHints,OptimizationTargetPrediction,AimEnabled,"
+      "AimServerEligibilityEnabled,PreconnectToSearch,TranslateRankerQuery,"
+      "TranslateRankerEnforcement",
   };
   // On macOS Chromium defaults to the hybrid mode, which can fall back to
   // Google's network provider (device_features.cc). "system" is the operating
