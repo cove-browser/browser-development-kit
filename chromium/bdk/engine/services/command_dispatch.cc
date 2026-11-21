@@ -25,6 +25,7 @@ const HandlerTable& Handlers() {
     AddProfilesHandlers(t);
     AddSystemHandlers(t);
     AddTranslationHandlers(t);
+    AddSearchHandlers(t);
     return t;
   }());
   return *table;

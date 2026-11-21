@@ -275,7 +275,7 @@ bdk_status_t providers_configure(Runtime& rt, const std::string& resolved,
                                 "services." + name + ".endpoint is not an https URL");
                 /* Only the default reputation provider's protocol (BDK's lists) can be sent
                    elsewhere without patching Chromium: Safe Browsing's and the network location
-                   provider's hosts are constants (T-PRV-10). */
+                   provider's hosts are constants (T-PRV-14). */
                 if (!(s == Service::kReputation && choice.provider == "default"))
                     return fail(out_error, BDK_DOMAIN_CONFIG, "endpointUnsupported",
                                 "services." + name + ".endpoint cannot be used with provider \"" +

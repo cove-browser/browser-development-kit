@@ -54,8 +54,16 @@ void t_pump(void) {
 }
 
 bdk_runtime_t t_start(void) {
+    return t_start_with(NULL);
+}
+
+bdk_runtime_t t_start_with(const char* resolved_json) {
     bdk_start_config_t c;
     t_fill_start_config(&c);
+    if (resolved_json) {
+        c.resolved_config_json = S(resolved_json);
+        bdk_harness_prepare_start_config(&c);
+    }
     bdk_error_t err = 0;
     bdk_status_t s = bdk_runtime_start(&c, &t_runtime, &err);
     if (s != BDK_OK)
@@ -229,6 +237,7 @@ static const t_test_t* const kTables[] = {
     t_ui_tests,
     t_provider_tests, /* providers: contracts, configuration, translation, reputation
                          (tests_providers.c) */
+    t_pages_tests,
 #ifdef BDK_HARNESS_ENGINE_TESTS
     t_engine_tests,          /* scenarios only a real engine can run (tests_engine.c) */
     t_engine_ui_tests,       /* browser-owned surfaces on the engine (tests_engine_ui.c) */
@@ -236,6 +245,7 @@ static const t_test_t* const kTables[] = {
     t_engine_provider_tests, /* providers on Chromium (tests_engine_providers.c) */
     t_engine_privacy_tests,  /* the network audit and Google-free start-up (tests_engine_privacy.c)
                               */
+    t_engine_pages_tests,    /* internal pages, search and M3 follow-ups (tests_engine_pages.c) */
 #endif
 };
 

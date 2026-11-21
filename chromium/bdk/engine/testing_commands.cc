@@ -19,12 +19,16 @@
 #include "base/command_line.h"
 #include "base/compiler_specific.h"
 #include "base/containers/span.h"
+#include "base/feature_list.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
+#include "base/metrics/field_trial_params.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
 #include "base/threading/thread_restrictions.h"
+#include "base/time/time.h"
 #include "base/values.h"
 #include "bdk/core/runtime/core_internal.h"
 #include "bdk/engine/bdk_testing.h"
@@ -42,11 +46,14 @@
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
+#include "components/heavy_ad_intervention/heavy_ad_features.h"
 #include "components/prefs/pref_service.h"
+#include "content/public/browser/storage_partition.h"
 #include "content/public/browser/web_contents.h"
 #include "google_apis/google_api_keys.h"
 #include "services/device/public/cpp/device_features.h"
 #include "services/device/public/mojom/geolocation_internals.mojom.h"
+#include "services/network/public/mojom/network_context.mojom.h"
 #include "url/gurl.h"
 
 namespace bdk {
@@ -182,6 +189,19 @@ bool Run(const std::string& name,
     result.Set("value", pref->GetValue()->Clone());
     return true;
   }
+  if (name == "heavy_ad.store") {
+    // Where the heavy-ad intervention keeps its opt-out store, decided as
+    // HeavyAdService::Initialize decides it: "disk" or "memory" (BDK keeps
+    // it in memory; chromium_main_mac.mm).
+    const bool on_disk =
+        base::FeatureList::IsEnabled(
+            heavy_ad_intervention::features::kHeavyAdPrivacyMitigations) &&
+        !base::GetFieldTrialParamByFeatureAsBool(
+            heavy_ad_intervention::features::kHeavyAdPrivacyMitigations,
+            "OptOutStoreDisabled", false);
+    result.Set("store", on_disk ? "disk" : "memory");
+    return true;
+  }
   if (name == "capture.start") {
     // {"contents", "path", "format": "png" | "pdf"}; poll capture.state.
     EngineContents* page = PageOf(args);
@@ -284,6 +304,21 @@ bool Run(const std::string& name,
       list.Append(host);
     }
     result.Set("hosts", std::move(list));
+    return true;
+  }
+  if (name == "hsts.add") {
+    // {"contents", "host"}: the page's profile treats the host as HSTS, so a
+    // certificate error there is not overridable (T-UIR-07).
+    EngineContents* page = PageOf(args);
+    const std::string* host = args.FindString("host");
+    if (!page || !host) {
+      return false;
+    }
+    ProfileOf(*page->Core())
+        ->GetDefaultStoragePartition()
+        ->GetNetworkContext()
+        ->AddHSTS(*host, base::Time::Now() + base::Days(1),
+                  /*include_subdomains=*/false, base::DoNothing());
     return true;
   }
   if (name == "script_page") {

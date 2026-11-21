@@ -1,6 +1,7 @@
 /* The stub's test hooks for the broker (bdk_stub_broker.h). */
 #include "bdk_stub_broker.h"
 
+#include "../runtime/routes.h"
 #include "stub_services.h"
 
 using namespace bdkcore;
@@ -101,6 +102,63 @@ BDK_EXPORT bdk_status_t bdk_stub_caller_revoke(bdk_runtime_t h, bdk_stub_caller_
         return BDK_ERR_STALE_HANDLE;
     broker_revoke_caller(it->second);
     return BDK_OK;
+}
+
+BDK_EXPORT bdk_status_t bdk_stub_page_bind(bdk_runtime_t h, bdk_contents_t contents,
+                                           uint8_t subframe, bdk_stub_caller_t* out,
+                                           bdk_error_t* out_error) {
+    clear_out(out_error);
+    if (bdk_status_t s = check_thread())
+        return s;
+    auto rt = runtime_of(h);
+    auto c = contents_of(contents);
+    if (!rt || !c)
+        return BDK_ERR_STALE_HANDLE;
+    if (!out)
+        return BDK_ERR_INVALID_ARGUMENT;
+    std::string why;
+    auto caller = page_caller_bind(*rt, bdkstub::page_committed_url(*c),
+                                   c->profile ? c->profile->handle : 0, subframe == 0, &why);
+    if (!caller) {
+        bdkstub::page_renderer_gone(c, "badMessage");
+        return fail(out_error, BDK_DOMAIN_CAPABILITY, BDK_CODE_DENIED, why);
+    }
+    bdkstub::page_keep_caller(*c, caller);
+    static bdk_stub_caller_t next_page = bdk_stub_caller_t{1}
+                                         << 20U; /* apart from bdk_stub_caller_create's */
+    bdkstub::callers()[next_page] = caller;
+    *out = next_page++;
+    return BDK_OK;
+}
+
+BDK_EXPORT bdk_status_t bdk_stub_page_navigate(bdk_contents_t contents, bdk_string_t url) {
+    if (bdk_status_t s = check_thread())
+        return s;
+    auto c = contents_of(contents);
+    if (!c)
+        return BDK_ERR_STALE_HANDLE;
+    if (!string_ok(url))
+        return BDK_ERR_INVALID_ARGUMENT;
+    bdkstub::page_navigate(c, str(url));
+    return BDK_OK;
+}
+
+BDK_EXPORT bdk_subscription_t bdk_stub_subscribe_as(bdk_runtime_t h, bdk_stub_caller_t id,
+                                                    bdk_string_t event, bdk_event_cb cb, void* ctx,
+                                                    bdk_release_cb rel, bdk_error_t* out_error) {
+    clear_out(out_error);
+    if (check_thread() != BDK_OK || !cb || !string_ok(event))
+        return 0;
+    auto rt = runtime_of(h);
+    auto it = bdkstub::callers().find(id);
+    if (!rt || it == bdkstub::callers().end())
+        return 0;
+    std::string domain, code, message;
+    bdk_subscription_t sub =
+        broker_subscribe_as(rt, it->second, str(event), cb, ctx, rel, &domain, &code, &message);
+    if (!sub && out_error)
+        *out_error = make_error(domain, code, message);
+    return sub;
 }
 
 BDK_EXPORT bdk_status_t bdk_stub_set_authentication(bdk_runtime_t h, uint32_t mode) {

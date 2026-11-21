@@ -1,7 +1,7 @@
 # swift
 
 The macOS SDK: a Swift layer over the C ABI in `packages/core`. Spec: `docs/planning/sdk/swift-api.md`. Tasks
-T-SWF-01 to T-SWF-04, T-SVC-05 and the Swift wrappers of T-SVC-02, T-SVC-03, T-SVC-04 and T-SVC-06 are implemented and tested against the in-memory stub runtime. Nothing here has run against
+T-SWF-01 to T-SWF-04, T-SWF-06, T-SVC-05 and the Swift wrappers of T-SVC-02, T-SVC-03, T-SVC-04 and T-SVC-06 are implemented and tested against the in-memory stub runtime. Nothing here has run against
 Chromium, and nothing in this package claims engine behaviour works: the real runtime arrives with T-PKG-04 and
 the engine tasks.
 
@@ -43,7 +43,7 @@ session (a logged-in Mac or the hosted macOS runner).
 | Configuration | `BDKConfiguration` (resolved JSON, bundle URL, `LaunchOptions.userDataDirectory`), `load(from:)` reads `bdk.resolved.json` from a bundle. Route resolution is the CLI's job. | T-SWF-02 |
 | Runtime | `BDKRuntime`: `start`, `shared`, `isRunning`, `info`, `events`, `shutdown()`, `terminate(replyingTo:)`. `start` freezes the registrations. | T-SWF-02 |
 | Profiles | `BDKProfiles` (`list`, `create`, `open(id:)`, `open(_:createIfMissing:)`, `openPrivate`, `delete`, `loaded`), `BDKProfile` (`info`, `rename`, `close`, `webContents`) | T-SWF-02 |
-| Pages | `BDKWebContents`: create, `close()`, `destroy()`, `state()` and state properties, `navigation` (`load`, `reload`, `stop`, `goBack`, `goForward`, `go(toOffset:)`, `go(toIndex:)`, `entries`), `setMuted`, `setZoom`, `setUserAgent`, `discard`, `setAutoDiscardable`, `sessionState`, `restore`, `focus`, `events` | T-SWF-02 |
+| Pages | `BDKWebContents`: create, `close()`, `destroy()`, `state()` and state properties, `navigation` (`load`, `reload`, `stop`, `goBack`, `goForward`, `go(toOffset:)`, `go(toIndex:)`, `entries`), `setMuted`, `setZoom`, `zoom` (`factor`, `set(_:scope:)`), `media` (`isMuted`, `exitPictureInPicture()`), `canPerform(_:)` and `perform(_:)` for `PageCommand`, `setUserAgent`, `discard`, `setAutoDiscardable`, `sessionState`, `restore`, `focus`, `events` | T-SWF-02 |
 | Errors | `BDKError` with `domain`, `code`, `message`, `details`; `stale` for any object used after destruction, profile close or shutdown | T-SWF-02 |
 | Events | `BDKEventSequence`: any number of iterators, each sees every event from when it was created (call `makeAsyncIterator()` before the action, since an iterator created inside a `Task` subscribes when the task first runs) | T-SWF-02 |
 | Calls | Asynchronous ABI calls bridge to `async throws` with a continuation resumed once; cancelling the task calls `bdk_call_cancel` and throws `broker.cancelled` | T-SWF-02 |
@@ -51,9 +51,32 @@ session (a logged-in Mac or the hosted macOS runner).
 | UI requests | `BDKUIHandlers` (`config.ui`, `runtime.ui`): one `Surface<Request>` per surface with `setHandler(_:)` and `mode`; `BDKUIResponse` (`.handled`, `.useDefault`, `.reject`); `BDKUIRequest` and a typed subclass per surface (see below) | T-SWF-04 |
 | Settings | `BDKSettingKey`, `BDKSettingRegistry` (`config.settings`), typed `settings.get`, `set`, `reset`, `describe` on `BDKSettings`, `config.declarations` | T-SVC-08 |
 | Providers | `config.services` (`BDKServiceRegistry`), the provider protocols, `page.translation`, `TranslationRequest` (see below) | T-PRV-01, T-PRV-03, T-PRV-09 |
+| Page routes | `config.pages` (`PageRegistrations.register(_:_:)`), `PageMode` (`.chromium`, `.bundled`, `.native`, `.disabled`), `NativePageRequest`, `NativePageResult` | T-SWF-06 |
 | Commands | `BDKCommand`, `BDKEvent`, `BDKCommandRegistry` (`config.commands`), `BDKCommands` (`runtime.commands`: `register`, `declare`, `emit`, `events`, `invoke`), `BDKCommandContext`, `BDKDeclarations` | T-SVC-05 |
 
 Pages and profiles dropped without `close()` are closed on deinit with a warning in the log.
+
+### Page routes and page commands
+
+`config.pages.register("downloads", .native { request in … return .handled })` sets how a route is served, as in
+architecture.md 8.2. `start` hands each registration to `bdk_page_handler_register` between the runtime start and
+the freeze, so a registration the runtime refuses (`config.noBuiltin`, `routeUnknown`, `routeInvalid`, `routeMode`,
+and `handlerMissing` at the freeze) is the start error and nothing is left running. Registering a route twice keeps
+the last registration, so only one per route crosses the ABI. A native handler runs on the main actor and gets a
+`NativePageRequest` (`route`, `url`, `path`, `query`, `source`, `profile`); `source` is the page object the
+application holds for the page that asked, nil for one it does not hold. A request whose profile the application
+does not hold, or whose JSON is malformed, is answered `.blocked`. The handler's context is released with the
+runtime.
+
+`page.canPerform(_:)` and `page.perform(_:)` take a `PageCommand`; `canPerform` is false on a closed page and
+`perform` throws `contents.stale` there, or `contents.commandDisabled` for a command that cannot be performed now.
+`page.zoom.set(_:scope:)` (`.page`, `.site`), `page.media.isMuted` and `page.media.exitPictureInPicture()` are the
+page controls. `page.zoom` is a `ZoomControl`; the factor is `page.zoom.factor`.
+
+`profile.search` is the generated `BDKSearch`. Against the stub its commands answer `broker.notImplemented`, so the
+tests do not call them. Native routes and page commands are tested in `PageTests.swift` against the stub's route
+table (the resolved JSON of `packages/core/tests/tests_pages.c`); a native route commits nothing, so those tests
+start the load through the ABI instead of awaiting `navigation.load`.
 
 ### UI requests
 
@@ -239,11 +262,11 @@ so a test can start a load and act on it (supersede it, stop it) before the stub
 
 | Left out | Why | Task |
 |---|---|---|
-| Page registration on `BDKConfiguration`; wrappers for services with no definition yet (search, extensions, favicons, top sites; page-scoped capture) | The ABI declares `bdk_page_handler_register`; the wrappers are generated, so each arrives with its definition | T-ABI-03, T-SWF-04, T-SVC-06 |
+| Wrappers for services with no definition yet (extensions, favicons, top sites; page-scoped capture) | The wrappers are generated, so each arrives with its definition | T-ABI-03, T-SWF-04, T-SVC-06 |
 | `config.services.<service>.setKey(_:)`, and the credentials and leak-check providers | `bdk_provider_set_key` always fails `config.keyUnused`: no provider in this runtime takes a key that way (the Google key is `google.apiKey`). The credential and leak-check providers (S14, S16) are proposals | — |
 | `BDKProfiles.events` for the `profiles.*` events | `profiles` is a native namespace | T-ABI-03 |
 | `BDKWindow`, anchors, window delegate, host contexts | `bdk_window_register` takes a window and a kind and nothing more yet; the other `bdk_window_*` functions are not declared | T-UIR-01, T-ADP-06 |
-| Page commands (`perform`, `canPerform`), capture, scripting, user scripts | Not declared in the ABI | T-UIR-04, T-UIR-06, T-SVC-06, T-AUT-03 |
+| Capture, scripting, user scripts | Not declared in the ABI | T-SVC-06, T-AUT-03 |
 | `BDKRuntime.contents` lookup by id, `BDKProfiles.events`, `ProfileDescriptor.lastUsed`, profile rename by id | Not in the ABI (a rename needs an open profile handle) | T-ABI-03 |
 | `displayURL`, favicon, `capture`, `isCrashed`, `isDiscarded`, `isAutoDiscardable` getter, `isFullscreen`, opener, `extensionTabID`, `hoveredLinkChanged`, discard events (renderer loss is `.rendererGone`) | `bdk_contents_state_t` and the event kinds do not carry them | T-ABI-03 |
 | Navigation `LoadOptions`, `prune`, `deferInitialLoad`, `userAgent` and `isInitiallyMuted` creation options | Not in `bdk_contents_options_t` or `bdk_contents_load` | T-ABI-03 |

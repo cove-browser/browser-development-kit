@@ -41,6 +41,9 @@
 #include "bdk/engine/host_view.h"
 #include "bdk/engine/identity.h"
 #include "bdk/engine/json_util.h"
+#include "bdk/engine/pages/bundled_page_ui.h"
+#include "bdk/engine/pages/page_commands.h"
+#include "bdk/engine/pages/page_routes.h"
 #include "bdk/engine/providers/provider_settings.h"
 #include "bdk/engine/providers/reputation_service.h"
 #include "bdk/engine/services/authentication.h"
@@ -191,6 +194,15 @@ class EngineBackend final : public bdkcore::Backend {
         options.switches.push_back(std::move(extra));
       }
       InstallReputationService();
+      // The branded scheme is registered in every process as Chromium starts
+      // (the scheme patch reads the switch; the browser client copies it to
+      // each child). Chromium starts once per process, so a later runtime of
+      // the same process keeps the first runtime's registration.
+      const std::string scheme = InternalSchemeOf(resolved);
+      if (!scheme.empty()) {
+        options.switches.push_back(std::string(kInternalSchemeSwitch) + "=" +
+                                   scheme);
+      }
       std::string error;
       if (!StartChromium(options, &error)) {
         return bdkcore::fail(out_error, BDK_DOMAIN_RUNTIME, "startFailed",
@@ -204,6 +216,8 @@ class EngineBackend final : public bdkcore::Backend {
           {base::MayBlock(), base::TaskShutdownBehavior::BLOCK_SHUTDOWN});
     }
     SetRuntimeInfo(resolved);
+    SetPagesBundlePath(base::FilePath(bdkcore::str(config.bundle_path)));
+    RegisterBundledPageUIs(rt);
     // The profile Chromium started with. A runtime started in a Chromium that
     // is still running (BDK_ENGINE_KEEP_CHROMIUM) keeps it: the last used
     // profile may by then be one BDK opened and closed, which is unloaded.
@@ -539,7 +553,7 @@ class EngineBackend final : public bdkcore::Backend {
         continue;
       }
       entries->push_back(
-          bdkcore::Entry{entry->GetURL().spec(),
+          bdkcore::Entry{DisplayUrl(entry->GetURL()),
                          base::UTF16ToUTF8(entry->GetTitleForDisplay())});
     }
     *current = entries->empty() ? -1 : controller.GetLastCommittedEntryIndex();
@@ -549,7 +563,7 @@ class EngineBackend final : public bdkcore::Backend {
     EngineContents& page = Page(c);
     content::WebContents* contents = page.web_contents();
     const GURL url = contents->GetLastCommittedURL();
-    state->url = url.is_valid() ? url.spec() : "about:blank";
+    state->url = url.is_valid() ? DisplayUrl(url) : "about:blank";
     content::NavigationEntry* entry =
         contents->GetController().GetLastCommittedEntry();
     state->title = entry && !entry->IsInitialEntry()
@@ -626,8 +640,9 @@ class EngineBackend final : public bdkcore::Backend {
 
   bdk_status_t SetZoom(Contents& c,
                        double zoom,
+                       uint32_t scope,
                        bdk_error_t* out_error) override {
-    Page(c).SetZoom(zoom);
+    SetPageZoom(Page(c), zoom, scope);
     return BDK_OK;
   }
 
@@ -683,6 +698,35 @@ class EngineBackend final : public bdkcore::Backend {
     // The path the print command takes: a `printing` request, then the
     // application's choice or the default presenter.
     OnPrintRequested(Page(*c).web_contents(), /*is_user_initiated=*/true);
+    return BDK_OK;
+  }
+
+  bool CanPerformCommand(const std::shared_ptr<Contents>& c,
+                         uint32_t command) override {
+    return CanPerformPageCommand(Page(*c), command);
+  }
+
+  bdk_status_t PerformCommand(const std::shared_ptr<Contents>& c,
+                              uint32_t command,
+                              bdk_error_t* out_error) override {
+    switch (command) {
+      case BDK_PAGE_COMMAND_FIND:
+        return FindPresent(c, out_error);
+      case BDK_PAGE_COMMAND_FIND_NEXT:
+      case BDK_PAGE_COMMAND_FIND_PREVIOUS:
+        return FindNext(c, command == BDK_PAGE_COMMAND_FIND_NEXT, out_error);
+      case BDK_PAGE_COMMAND_PRINT:
+        return Print(c, out_error);
+      default:
+        Page(*c).LoadIfDiscarded();
+        PerformPageCommand(Page(*c), command);
+        return BDK_OK;
+    }
+  }
+
+  bdk_status_t ExitPictureInPicture(const std::shared_ptr<Contents>& c,
+                                    bdk_error_t* out_error) override {
+    ExitPageFromPictureInPicture(Page(*c));
     return BDK_OK;
   }
 

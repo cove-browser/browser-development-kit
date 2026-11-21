@@ -305,6 +305,8 @@ Built in M6 (2026-11-20): defined in `packages/core/interface/translation.json`,
 
 ### 5.13 `search`: address-bar services (Added, S1)
 
+Built in M4 (T-SVC-10) as `interface/search.json`, with `search.enginesChanged`: done in the stub; the engine service on `TemplateURLService` and the omnibox is written and waits for an engine build. Engine ids are Chromium's sync GUIDs. Changing the default engine's suggest or favicon URL is refused (Chromium changes only name, keyword and URL in place). Not built: the first-run engines from `[search]` (S1 is unconfirmed) and the suggest setting off by default; Chromium's prepopulated engines and its search-suggest preference apply (T-PRV-10, M6).
+
 | Command | Capability | Marks | Does |
 |---|---|---|---|
 | `search.engines` | `search.read` | | Identifier, name, keyword, URLs, whether it is the default, whether the product or the user added it |
@@ -446,7 +448,7 @@ Rules:
 |---|---|
 | Subscribing | By event name, with an optional filter. Requires the read capability of the namespace: `history.read` for `history.visited`. `app.` events need the capability with the event's name. |
 | Delivery | In order per source. Not replayed: a subscriber sees events from the moment it subscribes, and reads current state with a command. |
-| Scope | A page receives events for its own profile. A session receives events for the profiles and pages in its scope. |
+| Scope | A page receives events for its own profile and application-wide events (such as `profiles.created` or an application-scope `settings.changed`), never another profile's. It does not receive `settings.changed` for an `app.` key declared with `exposedToPages: false`. A session receives events for the profiles and pages in its scope. |
 | Back-pressure | A subscriber that falls behind has events coalesced where the event type allows (progress, state) and is disconnected with an error where it does not (changes). The limit is set in T-SVC-01. |
 | End | A subscription ends with its page or session. |
 

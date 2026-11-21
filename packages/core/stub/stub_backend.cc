@@ -8,6 +8,7 @@
 #include <mutex>
 
 #include "../runtime/core_internal.h"
+#include "../runtime/routes.h"
 #include "bdk_abi_hash.h"
 #include "bdk_stub.h"
 #include "stub_providers.h"
@@ -20,6 +21,11 @@ namespace {
 constexpr int32_t kErrAborted = -3;
 constexpr int32_t kErrBlocked = -20; /* net::ERR_BLOCKED_BY_CLIENT */
 constexpr uint32_t kMainFrame = BDK_EVENT_FLAG_MAIN_FRAME;
+
+/* Chromium's zoom steps (components/zoom/page_zoom_constants.cc), so zoom in and out move as they
+   do in the engine. */
+constexpr double kZoomSteps[] = {0.25, 1.0 / 3.0, 0.5,  2.0 / 3.0, 0.75, 0.8, 0.9, 1.0, 1.1,
+                                 1.25, 1.5,       1.75, 2.0,       2.5,  3.0, 4.0, 5.0};
 
 struct Nav {
     bool cancelled = false;
@@ -35,10 +41,26 @@ struct StubContents : BackendData {
     bool find_open = false; /* a find request is outstanding */
     double progress = 0.0, zoom = 1.0;
     std::shared_ptr<Nav> nav;
+    /* The broker callers bound for the page (bdk_stub_page_bind): revoked when it navigates. */
+    std::vector<std::shared_ptr<Caller>> callers;
 };
 
 StubContents& data_of(const Contents& c) {
     return *static_cast<StubContents*>(c.data.get());
+}
+
+/* The URL the application sees for one the stub keeps: the branded form of an internal page. */
+std::string shown(const Contents& c, const std::string& url) {
+    auto rt = c.rt.lock();
+    return rt ? display_url(*rt, url) : url;
+}
+
+/* Privilege ends when the page's document changes (architecture.md 9.2). */
+void revoke_callers(Contents& c) {
+    auto callers = std::move(data_of(c).callers);
+    data_of(c).callers.clear();
+    for (auto& caller : callers)
+        broker_revoke_caller(caller);
 }
 
 /* The state of the stub that the tests script and inspect. */
@@ -77,75 +99,37 @@ void cancel_nav(const std::shared_ptr<Contents>& c, const char* why) {
     d.loading = false;
     std::string url =
         d.current >= 0 ? d.entries[static_cast<size_t>(d.current)].url : "about:blank";
-    emit_contents_event(c, BDK_CONTENTS_EVENT_NAVIGATION_FAILED, url,
+    emit_contents_event(c, BDK_CONTENTS_EVENT_NAVIGATION_FAILED, shown(*c, url),
                         std::string("{\"code\":\"") + why + "\"}", kErrAborted, kMainFrame);
 }
 
-/* Commits a navigation the reputation provider let through: an error page for a scripted
-   failure, otherwise the entry, its title and the load. */
 void commit_nav(const std::shared_ptr<Contents>& c, const std::shared_ptr<Nav>& nav,
-                const std::string& url, int target_index, uint32_t flags) {
-    StubContents& d2 = data_of(*c);
-    int32_t net_error = 0;
-    std::string title = url;
-    {
-        auto it = S().scripts.find(url);
-        if (it != S().scripts.end()) {
-            net_error = it->second.first;
-            if (!it->second.second.empty())
-                title = it->second.second;
-        }
-    }
-    if (net_error != 0) {
-        /* As in Chromium, the error page commits as an entry for the URL that failed (a new
-           entry, or the history entry being revisited). */
-        if (target_index < 0) {
-            d2.entries.resize(static_cast<size_t>(d2.current) + 1);
-            d2.entries.push_back(Entry{url, url});
-            d2.current = static_cast<int>(d2.entries.size()) - 1;
-        } else {
-            d2.current = target_index;
-        }
-        d2.nav.reset();
-        d2.loading = false;
-        d2.progress = 1.0;
-        emit_contents_event_now(c, BDK_CONTENTS_EVENT_NAVIGATION_FAILED, url,
-                                "{\"code\":\"netError\"}", net_error,
-                                flags | BDK_EVENT_FLAG_ERROR_PAGE);
-        return;
-    }
-    /* Like Chromium, a title event only when the entry's title changes: a new entry always,
-       a reload or a history navigation only if the title differs. */
-    bool title_changed = true;
-    if (target_index < 0) {
-        d2.entries.resize(static_cast<size_t>(d2.current) + 1);
-        d2.entries.push_back(Entry{url, title});
-        d2.current = static_cast<int>(d2.entries.size()) - 1;
-    } else {
-        d2.current = target_index;
-        Entry& entry = d2.entries[static_cast<size_t>(target_index)];
-        title_changed = entry.title != title;
-        entry.title = title;
-    }
-    d2.progress = 0.8;
-    emit_contents_event_now(c, BDK_CONTENTS_EVENT_NAVIGATION_COMMITTED, url, "{}", 0, flags);
-    if (title_changed) {
-        emit_contents_event_now(c, BDK_CONTENTS_EVENT_TITLE_CHANGED, url,
-                                "{\"title\":\"" + json_escape(title) + "\"}", 0, kMainFrame);
-    }
-    post([c, nav, url, flags] {
-        if (nav->cancelled || c->dead)
-            return;
-        StubContents& d3 = data_of(*c);
-        d3.nav.reset();
-        d3.loading = false;
-        d3.progress = 1.0;
-        emit_contents_event_now(c, BDK_CONTENTS_EVENT_LOAD_FINISHED, url, "{}", 0, flags);
-    });
-}
+                const std::string& url, int target_index, uint32_t flags, int32_t route_error);
 
-/* target_index -1: a new entry. Otherwise history navigation (or reload) to that entry. */
-void begin_nav(const std::shared_ptr<Contents>& c, const std::string& url, int target_index) {
+/* target_index -1: a new entry. Otherwise history navigation (or reload) to that entry. trusted is
+   false for a navigation a web page starts (bdk_stub_page_navigate). */
+void begin_nav(const std::shared_ptr<Contents>& c, const std::string& requested, int target_index,
+               bool trusted = true) {
+    auto rt = c->rt.lock();
+    if (!rt)
+        return;
+    std::string url = requested;
+    int32_t route_error = 0;
+    RouteNavigation route = resolve_navigation(*rt, requested, trusted);
+    switch (route.kind) {
+    case RouteNavigation::Kind::kRefused:
+        return; /* as Chromium drops a web page's navigation to chrome:// */
+    case RouteNavigation::Kind::kLoad:
+        url = route.url;
+        break;
+    case RouteNavigation::Kind::kBlocked:
+        url = route.display;
+        route_error = route.net_error;
+        break;
+    case RouteNavigation::Kind::kNative:
+    case RouteNavigation::Kind::kPass:
+        break;
+    }
     cancel_nav(c, "superseded");
     StubContents& d = data_of(*c);
     auto nav = std::make_shared<Nav>();
@@ -153,25 +137,111 @@ void begin_nav(const std::shared_ptr<Contents>& c, const std::string& url, int t
     d.loading = true;
     d.progress = 0.1;
     uint32_t flags = kMainFrame | BDK_EVENT_FLAG_USER_INITIATED;
-    emit_contents_event(c, BDK_CONTENTS_EVENT_NAVIGATION_STARTED, url, "{}", 0, flags);
-    post([c, nav, url, target_index, flags] {
+    emit_contents_event(c, BDK_CONTENTS_EVENT_NAVIGATION_STARTED, shown(*c, url), "{}", 0, flags);
+    if (route.kind == RouteNavigation::Kind::kNative) {
+        /* The navigation is cancelled in the page; the handler decides what the user sees. */
+        std::string display = route.display;
+        dispatch_native_page(rt, route, c, [c, nav, display, flags](bool handled) {
+            if (nav->cancelled || c->dead)
+                return;
+            if (handled) {
+                cancel_nav(c, "aborted");
+                return;
+            }
+            commit_nav(c, nav, display, -1, flags, kNetErrorBlockedByClient);
+        });
+        return;
+    }
+    post([c, nav, url, target_index, flags, route_error] {
         if (nav->cancelled || c->dead)
             return;
         /* The reputation provider sees the URL before it commits (T-PRV-05). */
-        bdkstub::providers_check_navigation(c, url, [c, nav, url, target_index, flags](bool go) {
+        bdkstub::providers_check_navigation(
+            c, url, [c, nav, url, target_index, flags, route_error](bool go) {
+                if (nav->cancelled || c->dead)
+                    return;
+                if (go) {
+                    commit_nav(c, nav, url, target_index, flags, route_error);
+                    return;
+                }
+                StubContents& blocked = data_of(*c);
+                blocked.nav.reset();
+                blocked.loading = false;
+                emit_contents_event_now(c, BDK_CONTENTS_EVENT_NAVIGATION_FAILED, shown(*c, url),
+                                        "{\"code\":\"blocked\"}", kErrBlocked, kMainFrame);
+            });
+    });
+}
+
+void commit_nav(const std::shared_ptr<Contents>& c, const std::shared_ptr<Nav>& nav,
+                const std::string& url, int target_index, uint32_t flags, int32_t route_error) {
+    {
+        if (nav->cancelled || c->dead)
+            return;
+        StubContents& d2 = data_of(*c);
+        int32_t net_error = route_error;
+        std::string title = shown(*c, url);
+        {
+            auto it = S().scripts.find(url);
+            if (it == S().scripts.end())
+                it = S().scripts.find(title);
+            if (it != S().scripts.end() && net_error == 0) {
+                net_error = it->second.first;
+                if (!it->second.second.empty())
+                    title = it->second.second;
+            }
+        }
+        if (net_error != 0) {
+            revoke_callers(*c);
+            /* As in Chromium, the error page commits as an entry for the URL that failed (a new
+               entry, or the history entry being revisited). */
+            if (target_index < 0) {
+                d2.entries.resize(static_cast<size_t>(d2.current) + 1);
+                d2.entries.push_back(Entry{url, shown(*c, url)});
+                d2.current = static_cast<int>(d2.entries.size()) - 1;
+            } else {
+                d2.current = target_index;
+            }
+            d2.nav.reset();
+            d2.loading = false;
+            d2.progress = 1.0;
+            emit_contents_event_now(c, BDK_CONTENTS_EVENT_NAVIGATION_FAILED, shown(*c, url),
+                                    "{\"code\":\"netError\"}", net_error,
+                                    flags | BDK_EVENT_FLAG_ERROR_PAGE);
+            return;
+        }
+        revoke_callers(*c);
+        /* Like Chromium, a title event only when the entry's title changes: a new entry always,
+           a reload or a history navigation only if the title differs. */
+        bool title_changed = true;
+        if (target_index < 0) {
+            d2.entries.resize(static_cast<size_t>(d2.current) + 1);
+            d2.entries.push_back(Entry{url, title});
+            d2.current = static_cast<int>(d2.entries.size()) - 1;
+        } else {
+            d2.current = target_index;
+            Entry& entry = d2.entries[static_cast<size_t>(target_index)];
+            title_changed = entry.title != title;
+            entry.title = title;
+        }
+        d2.progress = 0.8;
+        const std::string display = shown(*c, url);
+        emit_contents_event_now(c, BDK_CONTENTS_EVENT_NAVIGATION_COMMITTED, display, "{}", 0,
+                                flags);
+        if (title_changed) {
+            emit_contents_event_now(c, BDK_CONTENTS_EVENT_TITLE_CHANGED, display,
+                                    "{\"title\":\"" + json_escape(title) + "\"}", 0, kMainFrame);
+        }
+        post([c, nav, display, flags] {
             if (nav->cancelled || c->dead)
                 return;
-            if (go) {
-                commit_nav(c, nav, url, target_index, flags);
-                return;
-            }
-            StubContents& blocked = data_of(*c);
-            blocked.nav.reset();
-            blocked.loading = false;
-            emit_contents_event_now(c, BDK_CONTENTS_EVENT_NAVIGATION_FAILED, url,
-                                    "{\"code\":\"blocked\"}", kErrBlocked, kMainFrame);
+            StubContents& d3 = data_of(*c);
+            d3.nav.reset();
+            d3.loading = false;
+            d3.progress = 1.0;
+            emit_contents_event_now(c, BDK_CONTENTS_EVENT_LOAD_FINISHED, display, "{}", 0, flags);
         });
-    });
+    }
 }
 
 enum class ParseState : uint8_t { kOk, kTooNew, kMalformed };
@@ -329,11 +399,13 @@ class StubBackend final : public Backend {
     }
 
     void CloseContents(const std::shared_ptr<Contents>& c) override {
+        revoke_callers(*c);
         cancel_nav(c, "aborted");
         emit_contents_event(c, BDK_CONTENTS_EVENT_CLOSED, "", "{}", 0, 0);
     }
 
     void DestroyContents(Runtime&, Contents& c) override {
+        revoke_callers(c);
         StubContents& d = data_of(c);
         if (d.nav)
             d.nav->cancelled = true;
@@ -363,12 +435,14 @@ class StubBackend final : public Backend {
     void Entries(const Contents& c, int* current, std::vector<Entry>* entries) override {
         *current = data_of(c).current;
         *entries = data_of(c).entries;
+        for (Entry& e : *entries)
+            e.url = shown(c, e.url);
     }
 
     void State(const Contents& c, ContentsState* st) override {
         const StubContents& d = data_of(c);
         bool has = d.current >= 0;
-        st->url = has ? d.entries[static_cast<size_t>(d.current)].url : "about:blank";
+        st->url = shown(c, has ? d.entries[static_cast<size_t>(d.current)].url : "about:blank");
         st->title = has ? d.entries[static_cast<size_t>(d.current)].title : "";
         st->loading = d.loading;
         st->progress = d.progress;
@@ -422,8 +496,17 @@ class StubBackend final : public Backend {
         return BDK_OK;
     }
 
-    bdk_status_t SetZoom(Contents& c, double zoom, bdk_error_t*) override {
+    bdk_status_t SetZoom(Contents& c, double zoom, uint32_t scope, bdk_error_t*) override {
         data_of(c).zoom = zoom;
+        auto rt = c.rt.lock();
+        if (scope != BDK_ZOOM_SCOPE_SITE || !rt)
+            return BDK_OK;
+        /* The site's level: every page of the profile on the same host follows it. */
+        const std::string host = host_of(c);
+        for (auto& o : rt->contents) {
+            if (o.get() != &c && o->profile == c.profile && !host.empty() && host_of(*o) == host)
+                data_of(*o).zoom = zoom;
+        }
         return BDK_OK;
     }
 
@@ -506,6 +589,122 @@ class StubBackend final : public Backend {
         return BDK_OK;
     }
 
+    /* The host of the page's current URL, or empty. */
+    static std::string host_of(const Contents& c) {
+        const StubContents& d = data_of(c);
+        if (d.current < 0)
+            return std::string();
+        const std::string& url = d.entries[static_cast<size_t>(d.current)].url;
+        size_t start = url.find("://");
+        if (start == std::string::npos)
+            return std::string();
+        start += 3;
+        return url.substr(start, url.find_first_of("/?#:", start) - start);
+    }
+
+    /* Whether the current URL is one Chromium can save or show the source of (IsSavableURL). */
+    static bool savable(const Contents& c) {
+        const StubContents& d = data_of(c);
+        if (d.current < 0)
+            return false;
+        const std::string& url = d.entries[static_cast<size_t>(d.current)].url;
+        for (const char* scheme : {"http:", "https:", "file:", "data:"}) {
+            if (url.compare(0, strlen(scheme), scheme) == 0)
+                return true;
+        }
+        return false;
+    }
+
+    static double zoom_step(double zoom, int direction) {
+        if (direction > 0) {
+            for (double step : kZoomSteps) {
+                if (step > zoom + 1e-9)
+                    return step;
+            }
+            return zoom;
+        }
+        double found = zoom;
+        for (double step : kZoomSteps) {
+            if (step < zoom - 1e-9)
+                found = step;
+        }
+        return found;
+    }
+
+    /* The stub renders nothing, so edit commands are enabled as Chromium's command controller
+       enables them (whenever there is a page) and do nothing. */
+    bool CanPerformCommand(const std::shared_ptr<Contents>& c, uint32_t command) override {
+        const StubContents& d = data_of(*c);
+        const bool has_page = d.current >= 0;
+        auto rt = c->rt.lock();
+        switch (command) {
+        case BDK_PAGE_COMMAND_BACK:
+            return d.current > 0;
+        case BDK_PAGE_COMMAND_FORWARD:
+            return has_page && d.current + 1 < static_cast<int>(d.entries.size());
+        case BDK_PAGE_COMMAND_STOP:
+            return d.loading;
+        case BDK_PAGE_COMMAND_FIND_NEXT:
+        case BDK_PAGE_COMMAND_FIND_PREVIOUS:
+            return !d.find_text.empty();
+        case BDK_PAGE_COMMAND_ZOOM_IN:
+            return zoom_step(d.zoom, 1) != d.zoom;
+        case BDK_PAGE_COMMAND_ZOOM_OUT:
+            return zoom_step(d.zoom, -1) != d.zoom;
+        case BDK_PAGE_COMMAND_ZOOM_RESET:
+            return d.zoom != 1.0;
+        case BDK_PAGE_COMMAND_SAVE_PAGE_AS:
+        case BDK_PAGE_COMMAND_VIEW_SOURCE:
+            return savable(*c);
+        case BDK_PAGE_COMMAND_TOGGLE_DEV_TOOLS:
+            return has_page && rt && ui_surface_available(*rt, BDK_SURFACE_DEVTOOLS);
+        case BDK_PAGE_COMMAND_TOGGLE_FULLSCREEN:
+            return false; /* the stub's pages never enter HTML fullscreen */
+        default:
+            return has_page;
+        }
+    }
+
+    bdk_status_t PerformCommand(const std::shared_ptr<Contents>& c, uint32_t command,
+                                bdk_error_t* err) override {
+        StubContents& d = data_of(*c);
+        switch (command) {
+        case BDK_PAGE_COMMAND_BACK:
+            return GoToIndex(c, d.current - 1, err);
+        case BDK_PAGE_COMMAND_FORWARD:
+            return GoToIndex(c, d.current + 1, err);
+        case BDK_PAGE_COMMAND_RELOAD:
+        case BDK_PAGE_COMMAND_RELOAD_BYPASSING_CACHE:
+            return Reload(c, command == BDK_PAGE_COMMAND_RELOAD_BYPASSING_CACHE, err);
+        case BDK_PAGE_COMMAND_STOP:
+            Stop(c);
+            return BDK_OK;
+        case BDK_PAGE_COMMAND_FIND:
+            return FindPresent(c, err);
+        case BDK_PAGE_COMMAND_FIND_NEXT:
+        case BDK_PAGE_COMMAND_FIND_PREVIOUS:
+            return FindNext(c, command == BDK_PAGE_COMMAND_FIND_NEXT, err);
+        case BDK_PAGE_COMMAND_ZOOM_IN:
+        case BDK_PAGE_COMMAND_ZOOM_OUT:
+            d.zoom = zoom_step(d.zoom, command == BDK_PAGE_COMMAND_ZOOM_IN ? 1 : -1);
+            return BDK_OK;
+        case BDK_PAGE_COMMAND_ZOOM_RESET:
+            d.zoom = 1.0;
+            return BDK_OK;
+        case BDK_PAGE_COMMAND_PRINT:
+            return Print(c, err);
+        case BDK_PAGE_COMMAND_TOGGLE_MUTE:
+            d.muted = !d.muted;
+            return BDK_OK;
+        default:
+            return BDK_OK; /* edit commands, save, view source, DevTools: nothing to act on */
+        }
+    }
+
+    bdk_status_t ExitPictureInPicture(const std::shared_ptr<Contents>&, bdk_error_t*) override {
+        return BDK_OK; /* the stub never opens picture-in-picture */
+    }
+
     bdk_status_t NativeView(Contents&, bdk_native_handle_t*, bdk_error_t* err) override {
         return fail(err, BDK_DOMAIN_PLATFORM, "unsupported",
                     "the stub runtime has no native views");
@@ -544,6 +743,31 @@ class StubBackend final : public Backend {
 };
 
 } // namespace
+
+namespace bdkstub {
+
+std::string page_committed_url(const Contents& c) {
+    const StubContents& d = data_of(c);
+    return d.current >= 0 ? d.entries[static_cast<size_t>(d.current)].url : "about:blank";
+}
+
+void page_keep_caller(Contents& c, std::shared_ptr<Caller> caller) {
+    data_of(c).callers.push_back(std::move(caller));
+}
+
+void page_navigate(const std::shared_ptr<Contents>& c, const std::string& url) {
+    auto rt = c->rt.lock();
+    if (rt)
+        begin_nav(c, url, -1, is_internal_page(*rt, page_committed_url(*c)));
+}
+
+void page_renderer_gone(const std::shared_ptr<Contents>& c, const char* reason) {
+    revoke_callers(*c);
+    emit_contents_event(c, BDK_CONTENTS_EVENT_RENDERER_GONE, shown(*c, page_committed_url(*c)),
+                        std::string("{\"reason\":\"") + reason + "\"}", 0, kMainFrame);
+}
+
+} // namespace bdkstub
 
 namespace bdkcore {
 

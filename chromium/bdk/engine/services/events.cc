@@ -240,6 +240,7 @@ class ProfileEvents : public ServiceEvents {
               BookmarkModelFactory::GetForBrowserContext(profile)) {
         bookmarks_ = std::make_unique<BookmarkEvents>(model, bdk_profile);
       }
+      search_ = CreateSearchEvents(profile, bdk_profile);
     }
     if (content::DownloadManager* manager = profile->GetDownloadManager()) {
       downloads_ = std::make_unique<DownloadEvents>(manager, bdk_profile);
@@ -256,6 +257,7 @@ class ProfileEvents : public ServiceEvents {
   std::unique_ptr<ServiceEvents> cookies_;
   std::unique_ptr<ServiceEvents> passwords_;
   std::unique_ptr<ServiceEvents> autofill_;
+  std::unique_ptr<ServiceEvents> search_;
 };
 
 }  // namespace

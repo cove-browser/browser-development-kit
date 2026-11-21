@@ -20,10 +20,10 @@ class Profile;
 
 namespace bdk {
 
-// Observes one profile's history, bookmarks, downloads, cookies, passwords and
-// autofill data and emits their events for it, until destroyed (with the
-// profile's engine data). Every observer is removed on destruction, so the
-// profile can unload.
+// Observes one profile's history, bookmarks, downloads, cookies, passwords,
+// autofill data and search engines and emits their events for it, until
+// destroyed (with the profile's engine data). Every observer is removed on
+// destruction, so the profile can unload.
 class ServiceEvents {
  public:
   virtual ~ServiceEvents() = default;
@@ -43,6 +43,9 @@ std::unique_ptr<ServiceEvents> CreatePasswordEvents(
     Profile* profile,
     std::weak_ptr<bdkcore::Profile> bdk_profile);
 std::unique_ptr<ServiceEvents> CreateAutofillEvents(
+    Profile* profile,
+    std::weak_ptr<bdkcore::Profile> bdk_profile);
+std::unique_ptr<ServiceEvents> CreateSearchEvents(
     Profile* profile,
     std::weak_ptr<bdkcore::Profile> bdk_profile);
 

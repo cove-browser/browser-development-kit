@@ -21,6 +21,7 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/time/time.h"
 #include "bdk/engine/content_browser_client.h"
+#include "chrome/app/chrome_main.h"
 #include "chrome/app/chrome_main_delegate.h"
 #include "chrome/app/chrome_main_mac.h"
 #include "chrome/app/startup_timestamps.h"
@@ -165,10 +166,18 @@ bool StartChromium(const ChromiumStartOptions& options, std::string* error) {
   // (MacAppCodeSignClone) so that an in-place update cannot invalidate the
   // running code's signature. BDK never updates itself, and a copy left by a
   // process that does not exit cleanly is never removed: engine test runs
-  // left gigabytes. Chromium reads only the last --disable-features and
-  // --enable-features, so the caller's lists are merged into one switch each.
+  // left gigabytes.
   std::string disabled_features = "MacAppCodeSignClone";
-  std::string enabled_features;
+  // The heavy-ad intervention's opt-out store is kept in memory, as Chrome
+  // keeps it for an off-the-record profile. On disk, it opens a database at
+  // best-effort priority when the profile starts; a profile deleted before
+  // that load finishes is a fatal check in the SQL layer, and the application
+  // decides when its profiles are deleted. The cost: how often the
+  // intervention has fired on a site is forgotten when the application quits.
+  std::string enabled_features =
+      "HeavyAdPrivacyMitigations:OptOutStoreDisabled/true";
+  // Chromium reads only the last --disable-features and --enable-features, so
+  // the caller's lists are merged into one switch each.
   constexpr std::string_view kDisableFeatures = "disable-features=";
   constexpr std::string_view kEnableFeatures = "enable-features=";
   for (const std::string& s : options.switches) {
@@ -177,16 +186,13 @@ bool StartChromium(const ChromiumStartOptions& options, std::string* error) {
       continue;
     }
     if (s.starts_with(kEnableFeatures)) {
-      enabled_features += (enabled_features.empty() ? "" : ",") +
-                          s.substr(kEnableFeatures.size());
+      enabled_features += "," + s.substr(kEnableFeatures.size());
       continue;
     }
     state.args.push_back("--" + s);
   }
   state.args.push_back("--disable-features=" + disabled_features);
-  if (!enabled_features.empty()) {
-    state.args.push_back("--enable-features=" + enabled_features);
-  }
+  state.args.push_back("--enable-features=" + enabled_features);
   for (const std::string& a : state.args) {
     state.argv.push_back(a.c_str());
   }
@@ -200,6 +206,10 @@ bool StartChromium(const ChromiumStartOptions& options, std::string* error) {
     base::CommandLine::Init(static_cast<int>(state.argv.size()),
                             state.argv.data());
   }
+  // ChromeMain() records this snapshot; chrome://policy and launch reporting
+  // read it (patch:
+  // bdk-let-an-embedder-record-the-initial-browser-command-line).
+  SetInitialBrowserCommandLine(*base::CommandLine::ForCurrentProcess());
   SetUpBundleOverrides();
   base::PoissonAllocationSampler::Init();
 

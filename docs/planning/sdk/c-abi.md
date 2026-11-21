@@ -174,6 +174,7 @@ The functions behind the Swift objects in [swift-api.md](swift-api.md) sections 
 | `bdk_contents_set_muted`, `_set_zoom`, `_set_user_agent`, `_perform_command`, `_can_perform_command` | Page controls |
 | `bdk_contents_discard`, `_set_auto_discardable` | Added (S15). Discard a hidden page's renderer; exempt a page from Chromium's automatic discarding. The `bdk_contents_t` handle stays valid across a discard, including when Chromium replaces the underlying WebContents. |
 | `bdk_contents_find_start`, `_find_next`, `_find_previous`, `_find_stop`, `_find_present`, `bdk_contents_print` | Find in page and printing, started by the application (T-SWF-07). `find_start` takes the text and an optional size-prefixed options struct (`match_case`); `find_stop` takes whether to clear the selection. Results arrive as `BDK_CONTENTS_EVENT_FIND_RESULT` events with `{"matchCount","activeIndex","rect","final"}`. `find_present` and `print` raise a `find` and a `printing` UI request. |
+| `bdk_contents_can_perform_command`, `_perform_command`, `_set_zoom_scoped`, `_exit_picture_in_picture` | Added in M4 (T-SWF-06): page commands (`BDK_PAGE_COMMAND_*`), zoom for the page or the site (`BDK_ZOOM_SCOPE_*`), leaving picture-in-picture. `perform` on a disabled command is `contents.commandDisabled`. |
 | `bdk_contents_set_host_context` | Conditional on decision D1 |
 
 Scripting, capture, translation and DevTools go through broker commands, not host functions, because automation uses them too.
@@ -277,6 +278,8 @@ BDK_EXPORT bdk_status_t bdk_page_handler_register(bdk_runtime_t, bdk_string_t ro
 ```
 
 `declaration_json` of `bdk_app_setting_register` is `{"key": "app.…", "default": <json>, "scope": "profile" | "application", "exposedToPages": bool}`; `default` defaults to null, `scope` to `profile` and `exposedToPages` to false. A key that does not start with `app.` is `config.nameNotApp`, a second registration of a key is `config.duplicateName`. The core answers `settings.*` for `app.` keys itself and keeps the values through `Backend::LoadAppSettings` and `SaveAppSettings` (packages/core/docs/conventions.md).
+
+`bdk_page_handler_register` takes a `BDK_PAGE_MODE_*` (M4, T-WUI-02); a native route's callback answers with `bdk_native_page_complete(ctx, BDK_NATIVE_PAGE_HANDLED | BLOCKED)` and can read the asking page with `bdk_native_page_source`. The rules are in `bdk_broker.h` and packages/core/docs/conventions.md decision 15.
 
 All registration functions must be called between `bdk_runtime_start` and `bdk_runtime_freeze_registrations`.
 

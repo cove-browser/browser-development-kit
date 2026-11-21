@@ -10,6 +10,7 @@
 #include "broker_internal.h"
 #include "core_internal.h"
 #include "providers_internal.h"
+#include "routes.h"
 
 using namespace bdkcore;
 
@@ -585,6 +586,8 @@ BDK_EXPORT bdk_status_t bdk_runtime_start(const bdk_start_config_t* config, bdk_
         return s;
     if (bdk_status_t s = providers_configure(*rt, resolved, c, out_error))
         return s;
+    if (bdk_status_t s = routes_configure(*rt, resolved, out_error))
+        return s;
     {
         std::lock_guard<std::mutex> lock(g.mutex);
         g.ui_set = true;
@@ -610,6 +613,7 @@ BDK_EXPORT bdk_call_t bdk_runtime_shutdown(bdk_runtime_t h, bdk_result_cb cb, vo
         return 0;
     emit_runtime_event(rt, BDK_RUNTIME_EVENT_SHUTDOWN_STARTED, "{}", true);
     rt->shutting = true;
+    routes_shutdown(*rt);
     auto call = new_call(rt, cb, nullptr, ctx, rel);
     call->done = true; /* completed by the task below; a cancel has no effect */
 
@@ -700,6 +704,8 @@ BDK_EXPORT bdk_status_t bdk_runtime_freeze_registrations(bdk_runtime_t h, bdk_er
     if (bdk_status_t s = ui_check_handlers(*rt, out_error))
         return s;
     if (bdk_status_t s = providers_check_registrations(*rt, out_error))
+        return s;
+    if (bdk_status_t s = routes_check_handlers(*rt, out_error))
         return s;
     rt->frozen = true;
     emit_runtime_event(rt, BDK_RUNTIME_EVENT_REGISTRATIONS_FROZEN, "{}");
@@ -963,19 +969,38 @@ BDK_EXPORT bdk_status_t bdk_app_setting_register(bdk_runtime_t h, bdk_string_t d
 BDK_EXPORT bdk_status_t bdk_page_handler_register(bdk_runtime_t h, bdk_string_t route,
                                                   uint32_t mode, bdk_native_page_cb cb, void* ctx,
                                                   bdk_release_cb rel, bdk_error_t* out_error) {
-    (void)mode;
     bdk_status_t st;
     auto rt = registration_runtime(h, out_error, &st);
     if (!rt)
         return st;
-    if (!cb || !string_ok(route) || route.length == 0)
+    if (!string_ok(route) || route.length == 0)
         return BDK_ERR_INVALID_ARGUMENT;
     std::string r = str(route);
     if (rt->page_handlers.count(r))
         return fail(out_error, BDK_DOMAIN_CONFIG, "duplicateName",
                     "route '" + r + "' is already registered");
+    if (bdk_status_t s = routes_register(*rt, r, mode, cb, ctx, out_error))
+        return s;
     rt->page_handlers[r] = Owned{ctx, rel};
     return BDK_OK;
+}
+
+BDK_EXPORT void bdk_native_page_complete(bdk_context_t h, uint32_t result) {
+    if (check_thread() != BDK_OK)
+        return;
+    auto cc = get<CallCtx>(h, T_CONTEXT);
+    if (!cc || !cc->native_done ||
+        (result != BDK_NATIVE_PAGE_HANDLED && result != BDK_NATIVE_PAGE_BLOCKED))
+        return;
+    table_free(h);
+    auto finish = std::move(cc->native_done);
+    cc->native_done = nullptr;
+    post([finish, result] { finish(result); });
+}
+
+BDK_EXPORT bdk_contents_t bdk_native_page_source(bdk_context_t h) {
+    auto cc = get<CallCtx>(h, T_CONTEXT);
+    return cc && contents_of(cc->source) ? cc->source : 0;
 }
 
 /* ---- bdk_provider.h, bdk_automation.h, bdk_diagnostics.h ---- */

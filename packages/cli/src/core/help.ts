@@ -3,12 +3,17 @@ export function helpText(steps: readonly string[]): string {
   return `bdk: the Browser Development Kit command line tool
 
 Usage:
+  bdk build [<step>...]
   bdk build config [--out <file>]
+  bdk build codegen [--out <dir>] [--commands <file>] [--resolved <file>]
+  bdk build pages [--bundle <App.app>] [--resolved <file>]
   bdk build sign --bundle <App.app> --identity <name|-> [--team <id>] [--entitlements <file>]
   bdk --help | --version
 
 Commands:
-  build         Run build steps. Steps: ${steps.join(", ")}
+  build         Run build steps. Steps: ${steps.join(", ")}.
+                With no step, runs those that apply, in that order: pages needs a bundle (--bundle, or an
+                Xcode build); sign needs an Xcode build or --identity
 
 Options:
   --project <dir>         Use the project in <dir> instead of the nearest ancestor with bdk.toml
@@ -16,7 +21,16 @@ Options:
   --offline               Never use the network (fail instead)
   --diagnostics <form>    Print diagnostics as "human" or "xcode" (file:line: error: message).
                           Default: "xcode" inside an Xcode build, otherwise "human"
-  --out <file>            For \`build config\`: where to write bdk.resolved.json
+  --out <path>            For \`build config\`: the file to write bdk.resolved.json to. For \`build codegen\`:
+                          the directory to write the @bdk packages to (Xcode: $DERIVED_FILE_DIR/bdk/js,
+                          else <project>/.bdk/js). Not both in one run
+  --commands <file>       For \`build codegen\`: the application's declarations, bdk.commands.json (Xcode:
+                          $BDK_COMMANDS_FILE, else $DERIVED_FILE_DIR/bdk.commands.json; else
+                          <project>/.bdk/bdk.commands.json). A missing file means no app. declarations
+  --bundle, --resolved    For \`build pages\`: the application to write the pages into (in an Xcode build,
+                          CODESIGNING_FOLDER_PATH, else TARGET_BUILD_DIR/WRAPPER_NAME) and the resolved
+                          configuration to read (default: bdk.resolved.json next to bdk.toml; \`build codegen\`
+                          reads the same file)
   --bundle, --identity, --team, --entitlements
                           For \`build sign\`. In an Xcode build they default to CODESIGNING_FOLDER_PATH,
                           EXPANDED_CODE_SIGN_IDENTITY, DEVELOPMENT_TEAM and CODE_SIGN_ENTITLEMENTS.

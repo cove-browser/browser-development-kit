@@ -143,7 +143,8 @@ BDK_EXPORT bdk_status_t bdk_testing_tab_info(bdk_contents_t,
    would providers.settings -> {"componentUpdatesDisabled", "syncDisabled",
    "platformOnlyGeolocation", "googleKey", "geolocation", "reputation"}  what
    Chromium runs with network.hosts {"path"} -> {"hosts": [...]}  the hosts a
-   net log written with --log-net-log has requests or resolutions for */
+   net log written with --log-net-log has requests or resolutions for
+   hsts.add {"contents", "host"}  the page's profile treats host as HSTS */
 BDK_EXPORT bdk_status_t bdk_testing_command(bdk_runtime_t,
                                             bdk_string_t command,
                                             bdk_string_t args_json,

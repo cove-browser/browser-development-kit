@@ -16,6 +16,8 @@ public struct BDKConfiguration: Sendable {
     /// UI-request handlers (swift-api.md section 10). Set the handler of a `custom` surface here.
     /// The object is shared by copies of the configuration; the runtime copies its handlers at start.
     public var ui = BDKUIHandlers()
+    /// How routes are served, beyond `bdk.toml` (swift-api.md section 4.2).
+    public var pages = PageRegistrations()
     /// Application commands and events (swift-api.md section 12).
     public var commands = BDKCommandRegistry()
     /// Application settings (swift-api.md section 12.3).

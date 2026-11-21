@@ -1423,6 +1423,39 @@ static void test_changing_an_application_setting_announces_settings_changed(void
     bdk_unsubscribe(sub);
 }
 
+static void count_event(void* ctx, uint32_t id, bdk_string_t name, bdk_string_t payload) {
+    (void)id, (void)name, (void)payload;
+    ++*(int*)ctx;
+}
+
+static void test_a_page_hears_settings_changed_for_its_profile_and_the_application_only(void) {
+    NEED_HOOKS();
+    start_with_settings();
+    bdk_profile_t p = t_new_profile("Heard");
+    bdk_profile_t q = t_new_profile("Elsewhere");
+    bdk_harness_caller_t page = page_in(p, "[\"settings.read\"]");
+    int page_events = 0, host_events = 0;
+    bdk_error_t err = 0;
+    REQUIRE(bdk_harness_subscribe_as(t_runtime, page, "settings.changed", count_event, &page_events,
+                                     NULL, &err) != 0);
+    bdk_subscription_t host = bdk_subscribe_named(t_runtime, S("settings.changed"), S(""), NULL,
+                                                  count_event, &host_events, NULL);
+    REQUIRE(host != 0);
+    t_capture_t cap;
+    /* A setting not exposed to pages: the host hears it, the page does not. */
+    host_call("settings.set", "{\"key\":\"app.secret\",\"value\":\"y\"}", p, &cap);
+    CHECK(page_events == 0 && host_events == 1);
+    /* An application-wide setting reaches pages in every profile. */
+    host_call("settings.set", "{\"key\":\"app.lastProfile\",\"value\":\"Heard\"}", p, &cap);
+    CHECK(page_events == 1 && host_events == 2);
+    /* Another profile's setting does not. */
+    host_call("settings.set", "{\"key\":\"app.sidebar.width\",\"value\":250}", q, &cap);
+    CHECK(page_events == 1 && host_events == 3);
+    host_call("settings.set", "{\"key\":\"app.sidebar.width\",\"value\":250}", p, &cap);
+    CHECK(page_events == 2 && host_events == 4);
+    bdk_unsubscribe(host);
+}
+
 static void test_a_setting_not_exposed_to_pages_is_refused_to_every_page_and_session(void) {
     NEED_HOOKS();
     start_with_settings();
@@ -1459,6 +1492,246 @@ static void test_a_setting_not_exposed_to_pages_is_refused_to_every_page_and_ses
     bdk_harness_caller_t reader = page_in(p, "[\"settings.read\"]");
     caller_call(reader, "settings.set", "{\"key\":\"app.sidebar.width\",\"value\":1}", 0, 0, &cap);
     CHECK(failed_with(&cap, "capability", "denied"));
+}
+
+/* Search (T-SVC-10): the stub's engines, classification and suggestions. */
+
+static void add_engine(bdk_profile_t p, const char* name, const char* keyword, const char* url,
+                       char* id, size_t id_size) {
+    char args[320];
+    t_capture_t cap;
+    snprintf(args, sizeof args, "{\"name\":\"%s\",\"keyword\":\"%s\",\"searchUrl\":\"%s\"}", name,
+             keyword, url);
+    host_call("search.addEngine", args, p, &cap);
+    REQUIRE(!cap.has_error);
+    REQUIRE(t_json_string(cap.json, "id", id, id_size));
+}
+
+static void test_search_engines_are_added_changed_and_removed_per_profile(void) {
+    NEED_HOOKS();
+    t_start_frozen();
+    bdk_profile_t a = t_new_profile("SearchA"), b = t_new_profile("SearchB");
+    t_capture_t cap;
+    host_call("search.engines", "{}", a, &cap);
+    CHECK(strcmp(cap.json, "{\"engines\":[]}") == 0); /* none is compiled in */
+    char ddg[32], other[32], args[256];
+    add_engine(a, "DuckDuckGo", "ddg", "https://ddg.example/?q={searchTerms}", ddg, sizeof ddg);
+    host_call(
+        "search.addEngine",
+        "{\"name\":\"N\",\"keyword\":\"ddg\",\"searchUrl\":\"https://n.example/{searchTerms}\"}", a,
+        &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments") && strstr(cap.message, "keyword"));
+    host_call("search.addEngine",
+              "{\"name\":\"\",\"keyword\":\"x\",\"searchUrl\":\"https://n.example/{searchTerms}\"}",
+              a, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments") && strstr(cap.message, "name"));
+    host_call("search.addEngine",
+              "{\"name\":\"N\",\"keyword\":\"\",\"searchUrl\":\"https://n.example/{searchTerms}\"}",
+              a, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments") && strstr(cap.message, "keyword"));
+    host_call("search.addEngine",
+              "{\"name\":\"N\",\"keyword\":\"n\",\"searchUrl\":\"https://n.example/\"}", a, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments") && strstr(cap.message, "searchUrl"));
+    host_call("search.addEngine",
+              "{\"name\":\"N\",\"keyword\":\"n\",\"searchUrl\":\"ftp://n.example/{searchTerms}\"}",
+              a, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments") && strstr(cap.message, "searchUrl"));
+    /* The keyword is unique within a profile only. */
+    add_engine(b, "Other", "ddg", "http://o.example/?q={searchTerms}", other, sizeof other);
+    add_engine(a, "Other", "oth", "http://o.example/?q={searchTerms}", other, sizeof other);
+    host_call("search.engines", "{}", a, &cap);
+    CHECK(strstr(cap.json, "\"source\":\"user\"") && strstr(cap.json, "\"isDefault\":false"));
+
+    snprintf(args, sizeof args, "{\"id\":\"%s\",\"keyword\":\"ddg\"}", other);
+    host_call("search.updateEngine", args, a, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments") && strstr(cap.message, "keyword"));
+    snprintf(args, sizeof args, "{\"id\":\"%s\",\"name\":\"Renamed\",\"keyword\":\"r\"}", other);
+    host_call("search.updateEngine", args, a, &cap);
+    CHECK(!cap.has_error && strstr(cap.json, "\"name\":\"Renamed\"") &&
+          strstr(cap.json, "o.example"));
+    host_call("search.updateEngine", "{\"id\":\"nope\",\"name\":\"x\"}", a, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+    host_call("search.removeEngine", "{\"id\":\"nope\"}", a, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", ddg);
+    host_call("search.setDefault", args, a, &cap);
+    CHECK(!cap.has_error);
+    host_call("search.removeEngine", args, a, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments") && strstr(cap.message, "default"));
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", other);
+    host_call("search.setDefault", args, a, &cap);
+    host_call("search.engines", "{}", a, &cap);
+    CHECK(strstr(cap.json, "\"isDefault\":true") != NULL);
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", ddg);
+    host_call("search.removeEngine", args, a, &cap);
+    CHECK(!cap.has_error);
+    host_call("search.engines", "{}", a, &cap);
+    CHECK(strstr(cap.json, "DuckDuckGo") == NULL && strstr(cap.json, "Renamed") != NULL);
+    host_call("search.engines", "{}", b, &cap);
+    CHECK(strstr(cap.json, "\"name\":\"Other\"") != NULL && strstr(cap.json, "Renamed") == NULL);
+}
+
+static void test_search_classify_tells_a_url_from_a_query(void) {
+    NEED_HOOKS();
+    t_start_frozen();
+    bdk_profile_t p = t_new_profile("Classify");
+    t_capture_t cap;
+    host_call("search.classify", "{\"text\":\"  \"}", p, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+    /* No engine: a query has no URL. */
+    host_call("search.classify", "{\"text\":\"cats and dogs\"}", p, &cap);
+    CHECK(strcmp(cap.json, "{\"kind\":\"search\",\"url\":null,\"engineId\":null}") == 0);
+    struct {
+        const char* text;
+        const char* url;
+    } urls[] = {{"https://x.example/a b", NULL},
+                {"about:blank", "\"about:blank\""},
+                {"conf://settings", "\"conf://settings\""},
+                {"example.com", "\"https://example.com\""},
+                {" example.com/path?q=1 ", "\"https://example.com/path?q=1\""},
+                {"localhost", "\"http://localhost\""},
+                {"localhost:3000/x", "\"http://localhost:3000/x\""},
+                {"192.168.0.1:80", "\"https://192.168.0.1:80\""}};
+    for (size_t i = 0; i < sizeof urls / sizeof urls[0]; ++i) {
+        char args[96];
+        snprintf(args, sizeof args, "{\"text\":\"%s\"}", urls[i].text);
+        host_call("search.classify", args, p, &cap);
+        if (!urls[i].url) { /* a space after the scheme: a query */
+            CHECK(strstr(cap.json, "\"kind\":\"search\"") != NULL);
+            continue;
+        }
+        CHECK(strstr(cap.json, "\"kind\":\"url\"") != NULL);
+        CHECK(strstr(cap.json, urls[i].url) != NULL);
+    }
+    char ddg[32], args[96];
+    add_engine(p, "DDG", "ddg", "https://ddg.example/?q={searchTerms}", ddg, sizeof ddg);
+    /* A keyword engine is used without being the default. */
+    host_call("search.classify", "{\"text\":\"ddg hello world&x\"}", p, &cap);
+    CHECK(strstr(cap.json, "\"kind\":\"search\"") &&
+          strstr(cap.json, "https://ddg.example/?q=hello%20world%26x") && strstr(cap.json, ddg));
+    host_call("search.classify", "{\"text\":\"hello world\"}", p, &cap);
+    CHECK(strstr(cap.json, "\"url\":null") != NULL); /* an engine, but no default */
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", ddg);
+    host_call("search.setDefault", args, p, &cap);
+    host_call("search.classify", "{\"text\":\"hello world\"}", p, &cap);
+    CHECK(strstr(cap.json, "\"kind\":\"search\"") &&
+          strstr(cap.json, "https://ddg.example/?q=hello%20world") && strstr(cap.json, ddg));
+    host_call("search.classify", "{\"text\":\"ddg\"}", p, &cap); /* a keyword alone is a query */
+    CHECK(strstr(cap.json, "?q=ddg") != NULL);
+    host_call("search.classify", "{\"text\":\"example.com\"}", p, &cap);
+    CHECK(strstr(cap.json, "\"kind\":\"url\"") != NULL);
+}
+
+static void test_search_suggestions_come_from_history_and_bookmarks_only(void) {
+    NEED_HOOKS();
+    t_start_frozen();
+    bdk_profile_t p = t_new_profile("Suggest");
+    t_capture_t cap;
+    host_call("history.add", "{\"url\":\"https://www.cats.example/page\",\"title\":\"Cat page\"}",
+              p, &cap);
+    host_call("history.add", "{\"url\":\"https://dogs.example/\",\"title\":\"Dogs\"}", p, &cap);
+    host_call(
+        "bookmarks.create",
+        "{\"parentId\":\"bar\",\"title\":\"Cats forever\",\"url\":\"https://cats2.example/\"}", p,
+        &cap);
+    host_call("search.suggestions", "{\"text\":\"cats\"}", p, &cap);
+    CHECK(strstr(cap.json, "\"type\":\"history\"") && strstr(cap.json, "\"type\":\"bookmark\"") &&
+          strstr(cap.json, "dogs.example") == NULL &&
+          strstr(cap.json, "\"type\":\"search\"") == NULL);
+    CHECK(strstr(cap.json, "\"inlineCompletion\":\".example/page\"") != NULL);
+    CHECK(strstr(cap.json, "\"inlineCompletion\":\"2.example/\"") != NULL);
+    /* Bookmarks rank above history. */
+    CHECK(strstr(cap.json, "bookmark") < strstr(cap.json, "history"));
+    host_call("search.suggestions", "{\"text\":\"CAT\",\"limit\":1}", p, &cap);
+    CHECK(strstr(cap.json, "bookmark") && strstr(cap.json, "history") == NULL);
+    host_call("search.suggestions", "{\"text\":\"cats\",\"limit\":0}", p, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+    host_call("search.suggestions", "{\"text\":\"\"}", p, &cap);
+    CHECK(strcmp(cap.json, "{\"suggestions\":[]}") == 0);
+
+    char ddg[32], args[96];
+    add_engine(p, "DDG", "ddg", "https://ddg.example/?q={searchTerms}", ddg, sizeof ddg);
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", ddg);
+    host_call("search.setDefault", args, p, &cap);
+    host_call("search.suggestions", "{\"text\":\"dogs.example\"}", p, &cap);
+    CHECK(strstr(cap.json, "\"type\":\"url\"") && strstr(cap.json, "\"type\":\"history\"") &&
+          strstr(cap.json, "\"type\":\"search\"") &&
+          strstr(cap.json, "ddg.example/?q=dogs.example"));
+    host_call("search.suggestions", "{\"text\":\"ddg cats\"}", p, &cap);
+    CHECK(strstr(cap.json, "\"type\":\"keyword\"") != NULL);
+
+    host_call("search.deleteSuggestion", "{\"url\":\"https://www.cats.example/page\"}", p, &cap);
+    CHECK(!cap.has_error);
+    host_call("history.search", "{\"text\":\"cats\"}", p, &cap);
+    CHECK(strstr(cap.json, "cats.example") == NULL);
+    host_call("search.suggestions", "{\"text\":\"cats\"}", p, &cap);
+    CHECK(strstr(cap.json, "\"type\":\"history\"") == NULL && strstr(cap.json, "cats2") != NULL);
+}
+
+static void test_search_commands_need_their_capability_and_set_default_a_gesture(void) {
+    NEED_HOOKS();
+    t_start_frozen();
+    bdk_profile_t p = t_new_profile("SearchCaps");
+    t_capture_t cap;
+    char ddg[32], args[96];
+    add_engine(p, "DDG", "ddg", "https://ddg.example/?q={searchTerms}", ddg, sizeof ddg);
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", ddg);
+    bdk_harness_caller_t manager = page_in(p, "[\"search.manage\"]");
+    bdk_harness_caller_t reader = page_in(p, "[\"search.read\"]");
+    unsigned before = reached_services();
+    caller_call(manager, "search.engines", "{}", 0, 1, &cap);
+    CHECK(failed_with(&cap, "capability", "denied"));
+    caller_call(manager, "search.classify", "{\"text\":\"a b\"}", 0, 1, &cap);
+    CHECK(failed_with(&cap, "capability", "denied"));
+    caller_call(
+        reader, "search.addEngine",
+        "{\"name\":\"N\",\"keyword\":\"n\",\"searchUrl\":\"https://n.example/{searchTerms}\"}", 0,
+        1, &cap);
+    CHECK(failed_with(&cap, "capability", "denied"));
+    caller_call(reader, "search.deleteSuggestion", "{\"url\":\"https://x.example/\"}", 0, 1, &cap);
+    CHECK(failed_with(&cap, "capability", "denied")); /* it needs history.write */
+    CHECK(reached_services() == before);
+    caller_call(manager, "search.setDefault", args, 0, 0, &cap);
+    CHECK(failed_with(&cap, "capability", "gestureRequired"));
+    CHECK(reached_services() == before);
+    caller_call(manager, "search.setDefault", args, 0, 1, &cap);
+    CHECK(!cap.has_error);
+    caller_call(reader, "search.engines", "{}", 0, 0, &cap);
+    CHECK(!cap.has_error && strstr(cap.json, "\"isDefault\":true") != NULL);
+}
+
+static void test_every_engine_change_is_announced_with_all_engines(void) {
+    NEED_HOOKS();
+    t_start_frozen();
+    bdk_profile_t a = t_new_profile("SearchEventsA"), b = t_new_profile("SearchEventsB");
+    event_log_t for_a, for_b;
+    memset(&for_a, 0, sizeof for_a);
+    memset(&for_b, 0, sizeof for_b);
+    bdk_invoke_options_t oa = options_for(a, 0), ob = options_for(b, 0);
+    REQUIRE(bdk_subscribe_named(t_runtime, S("search.enginesChanged"), S(""), &oa, on_event, &for_a,
+                                NULL) != 0);
+    REQUIRE(bdk_subscribe_named(t_runtime, S("search.enginesChanged"), S(""), &ob, on_event, &for_b,
+                                NULL) != 0);
+    char ddg[32], args[96];
+    add_engine(a, "DDG", "ddg", "https://ddg.example/?q={searchTerms}", ddg, sizeof ddg);
+    for (int i = 0; i < 300 && for_a.count == 0; ++i)
+        t_pump();
+    CHECK(for_a.count == 1 && for_b.count == 0);
+    CHECK(strstr(for_a.payload, "\"engines\":[{") && strstr(for_a.payload, ddg) &&
+          strstr(for_a.payload, "\"source\":\"application\""));
+    t_capture_t cap;
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", ddg);
+    host_call("search.setDefault", args, a, &cap);
+    for (int i = 0; i < 300 && for_a.count == 1; ++i)
+        t_pump();
+    CHECK(for_a.count == 2 && strstr(for_a.payload, "\"isDefault\":true") != NULL);
+    /* A refused change announces nothing. */
+    host_call("search.removeEngine", args, a, &cap);
+    CHECK(cap.has_error);
+    for (int i = 0; i < 20; ++i)
+        t_pump();
+    CHECK(for_a.count == 2);
 }
 
 const t_test_t t_broker_tests[] = {
@@ -1539,6 +1812,13 @@ const t_test_t t_broker_tests[] = {
     {"services.history_is_paginated", test_history_is_paginated_with_an_opaque_cursor},
     {"services.bookmarks_nest", test_bookmarks_nest_and_remove_with_their_contents},
     {"services.listings_carry_no_secret", test_a_listing_never_carries_a_secret},
+    {"search.engines_are_managed_per_profile",
+     test_search_engines_are_added_changed_and_removed_per_profile},
+    {"search.classify", test_search_classify_tells_a_url_from_a_query},
+    {"search.suggestions", test_search_suggestions_come_from_history_and_bookmarks_only},
+    {"search.capabilities_and_gesture",
+     test_search_commands_need_their_capability_and_set_default_a_gesture},
+    {"search.changes_are_announced", test_every_engine_change_is_announced_with_all_engines},
     {"settings.registration_is_validated", test_setting_registration_is_validated},
     {"settings.registered_setting_reads_default_and_validates",
      test_a_registered_setting_reads_its_default_and_validates_what_is_set},
@@ -1550,6 +1830,8 @@ const t_test_t t_broker_tests[] = {
      test_a_profile_scoped_setting_survives_closing_and_reopening_the_profile},
     {"settings.change_is_announced",
      test_changing_an_application_setting_announces_settings_changed},
+    {"settings.changed_reaches_a_page_for_its_profile_and_the_application",
+     test_a_page_hears_settings_changed_for_its_profile_and_the_application_only},
     {"settings.not_exposed_is_refused_to_pages_and_sessions",
      test_a_setting_not_exposed_to_pages_is_refused_to_every_page_and_session},
     {NULL, NULL}};

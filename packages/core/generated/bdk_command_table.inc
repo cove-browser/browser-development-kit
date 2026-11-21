@@ -249,6 +249,7 @@ inline constexpr Field kTypeFields28[] = {
     {"name", {0, Prim::kString, false, false}},
     {"profile", {0, Prim::kString, false, true}},
     {"capabilities", {0, Prim::kString, true, false}},
+    {"internalScheme", {0, Prim::kString, false, true}},
 };
 inline constexpr const char* kTypeValues29[] = {
     "user",
@@ -258,70 +259,107 @@ inline constexpr const char* kTypeValues29[] = {
     "extension",
 };
 inline constexpr const char* kTypeValues30[] = {
-    "profile",
-    "application",
-};
-inline constexpr const char* kTypeValues31[] = {
     "product",
     "user",
 };
-inline constexpr Field kTypeFields32[] = {
+inline constexpr Field kTypeFields31[] = {
+    {"id", {0, Prim::kString, false, false}},
+    {"name", {0, Prim::kString, false, false}},
+    {"keyword", {0, Prim::kString, false, false}},
+    {"searchUrl", {0, Prim::kString, false, false}},
+    {"suggestUrl", {0, Prim::kString, false, true}},
+    {"faviconUrl", {0, Prim::kUrl, false, true}},
+    {"isDefault", {0, Prim::kBool, false, false}},
+    {"source", {30, Prim::kNamed, false, false}},
+};
+inline constexpr const char* kTypeValues32[] = {
+    "url",
+    "search",
+};
+inline constexpr Field kTypeFields33[] = {
+    {"kind", {32, Prim::kNamed, false, false}},
+    {"url", {0, Prim::kUrl, false, true}},
+    {"engineId", {0, Prim::kString, false, true}},
+};
+inline constexpr const char* kTypeValues34[] = {
+    "url",
+    "history",
+    "bookmark",
+    "keyword",
+    "search",
+};
+inline constexpr Field kTypeFields35[] = {
+    {"type", {34, Prim::kNamed, false, false}},
+    {"text", {0, Prim::kString, false, false}},
+    {"url", {0, Prim::kUrl, false, false}},
+    {"relevance", {0, Prim::kInt, false, false}},
+    {"inlineCompletion", {0, Prim::kString, false, true}},
+};
+inline constexpr const char* kTypeValues36[] = {
+    "profile",
+    "application",
+};
+inline constexpr const char* kTypeValues37[] = {
+    "product",
+    "user",
+};
+inline constexpr Field kTypeFields38[] = {
     {"key", {0, Prim::kString, false, false}},
     {"type", {0, Prim::kString, false, false}},
     {"default", {0, Prim::kJson, false, false}},
     {"value", {0, Prim::kJson, false, false}},
     {"allowed", {0, Prim::kJson, false, true}},
-    {"scope", {30, Prim::kNamed, false, false}},
-    {"source", {31, Prim::kNamed, false, false}},
+    {"scope", {36, Prim::kNamed, false, false}},
+    {"source", {37, Prim::kNamed, false, false}},
     {"locked", {0, Prim::kBool, false, false}},
 };
-inline constexpr Field kTypeFields33[] = {
+inline constexpr Field kTypeFields39[] = {
     {"isDefault", {0, Prim::kBool, false, false}},
     {"canBeDefault", {0, Prim::kBool, false, false}},
 };
-inline constexpr const char* kTypeValues34[] = {
+inline constexpr const char* kTypeValues40[] = {
     "onDevice",
     "remote",
 };
-inline constexpr Field kTypeFields35[] = {
+inline constexpr Field kTypeFields41[] = {
     {"id", {0, Prim::kString, false, false}},
     {"name", {0, Prim::kString, false, false}},
-    {"privacy", {34, Prim::kNamed, false, false}},
+    {"privacy", {40, Prim::kNamed, false, false}},
     {"host", {0, Prim::kString, false, true}},
     {"policyUrl", {0, Prim::kUrl, false, true}},
     {"protection", {0, Prim::kString, false, true}},
 };
-inline constexpr Field kTypeFields36[] = {
+inline constexpr Field kTypeFields42[] = {
     {"from", {0, Prim::kString, false, false}},
     {"to", {0, Prim::kString, false, false}},
     {"installed", {0, Prim::kBool, false, false}},
 };
-inline constexpr Field kTypeFields37[] = {
+inline constexpr Field kTypeFields43[] = {
     {"target", {0, Prim::kString, false, false}},
     {"alwaysTranslate", {0, Prim::kString, true, false}},
     {"neverTranslate", {0, Prim::kString, true, false}},
     {"neverSites", {0, Prim::kString, true, false}},
     {"offers", {0, Prim::kBool, false, false}},
 };
-inline constexpr const char* kTypeValues38[] = {
+inline constexpr const char* kTypeValues44[] = {
     "unavailable",
     "available",
     "translating",
     "translated",
     "failed",
 };
-inline constexpr Field kTypeFields39[] = {
+inline constexpr Field kTypeFields45[] = {
     {"domain", {0, Prim::kString, false, false}},
     {"code", {0, Prim::kString, false, false}},
     {"message", {0, Prim::kString, false, false}},
 };
-inline constexpr Field kTypeFields40[] = {
-    {"phase", {38, Prim::kNamed, false, false}},
+inline constexpr Field kTypeFields46[] = {
+    {"phase", {44, Prim::kNamed, false, false}},
     {"detected", {0, Prim::kString, false, true}},
     {"from", {0, Prim::kString, false, true}},
     {"to", {0, Prim::kString, false, true}},
     {"progress", {0, Prim::kDouble, false, true}},
-    {"error", {39, Prim::kNamed, false, true}},
+    {"error", {45, Prim::kNamed, false, true}},
 };
 inline constexpr TypeDef kTypes[] = {
     {"AddressFields", kTypeFields0, 9, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
@@ -352,21 +390,27 @@ inline constexpr TypeDef kTypes[] = {
     {"ProfileInfo", kTypeFields25, 4, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
     {"RuntimeInfo", kTypeFields26, 5, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
     {"CallerKind", nullptr, 0, kTypeValues27, 3, {0, Prim::kVoid, false, false}, Kind::kEnum},
-    {"CallerInfo", kTypeFields28, 4, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"CallerInfo", kTypeFields28, 5, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
     {"ChangeSource", nullptr, 0, kTypeValues29, 5, {0, Prim::kVoid, false, false}, Kind::kEnum},
-    {"SettingScope", nullptr, 0, kTypeValues30, 2, {0, Prim::kVoid, false, false}, Kind::kEnum},
-    {"SettingSource", nullptr, 0, kTypeValues31, 2, {0, Prim::kVoid, false, false}, Kind::kEnum},
-    {"SettingInfo", kTypeFields32, 8, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
-    {"DefaultBrowserStatus", kTypeFields33, 2, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
-    {"ProviderPrivacy", nullptr, 0, kTypeValues34, 2, {0, Prim::kVoid, false, false}, Kind::kEnum},
-    {"ProviderDescriptor", kTypeFields35, 6, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
-    {"LanguagePair", kTypeFields36, 3, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
-    {"TranslationPreferences", kTypeFields37, 5, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
-    {"TranslationPhase", nullptr, 0, kTypeValues38, 5, {0, Prim::kVoid, false, false}, Kind::kEnum},
-    {"TranslationError", kTypeFields39, 3, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
-    {"TranslationState", kTypeFields40, 6, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"SearchEngineSource", nullptr, 0, kTypeValues30, 2, {0, Prim::kVoid, false, false}, Kind::kEnum},
+    {"SearchEngine", kTypeFields31, 8, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"InputKind", nullptr, 0, kTypeValues32, 2, {0, Prim::kVoid, false, false}, Kind::kEnum},
+    {"Classification", kTypeFields33, 3, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"SuggestionType", nullptr, 0, kTypeValues34, 5, {0, Prim::kVoid, false, false}, Kind::kEnum},
+    {"Suggestion", kTypeFields35, 5, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"SettingScope", nullptr, 0, kTypeValues36, 2, {0, Prim::kVoid, false, false}, Kind::kEnum},
+    {"SettingSource", nullptr, 0, kTypeValues37, 2, {0, Prim::kVoid, false, false}, Kind::kEnum},
+    {"SettingInfo", kTypeFields38, 8, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"DefaultBrowserStatus", kTypeFields39, 2, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"ProviderPrivacy", nullptr, 0, kTypeValues40, 2, {0, Prim::kVoid, false, false}, Kind::kEnum},
+    {"ProviderDescriptor", kTypeFields41, 6, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"LanguagePair", kTypeFields42, 3, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"TranslationPreferences", kTypeFields43, 5, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"TranslationPhase", nullptr, 0, kTypeValues44, 5, {0, Prim::kVoid, false, false}, Kind::kEnum},
+    {"TranslationError", kTypeFields45, 3, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
+    {"TranslationState", kTypeFields46, 6, nullptr, 0, {0, Prim::kVoid, false, false}, Kind::kStruct},
 };
-inline constexpr size_t kTypeCount = 41;
+inline constexpr size_t kTypeCount = 47;
 
 inline constexpr Field kArgs1[] = {
     {"fields", {0, Prim::kNamed, false, false}},
@@ -615,22 +659,53 @@ inline constexpr Field kArgs82[] = {
 inline constexpr Field kArgs83[] = {
     {"key", {0, Prim::kString, false, false}},
 };
+inline constexpr Field kArgs87[] = {
+    {"name", {0, Prim::kString, false, false}},
+    {"keyword", {0, Prim::kString, false, false}},
+    {"searchUrl", {0, Prim::kString, false, false}},
+    {"suggestUrl", {0, Prim::kString, false, true}},
+    {"faviconUrl", {0, Prim::kUrl, false, true}},
+};
+inline constexpr Field kArgs88[] = {
+    {"id", {0, Prim::kString, false, false}},
+    {"name", {0, Prim::kString, false, true}},
+    {"keyword", {0, Prim::kString, false, true}},
+    {"searchUrl", {0, Prim::kString, false, true}},
+    {"suggestUrl", {0, Prim::kString, false, true}},
+    {"faviconUrl", {0, Prim::kUrl, false, true}},
+};
 inline constexpr Field kArgs89[] = {
+    {"id", {0, Prim::kString, false, false}},
+};
+inline constexpr Field kArgs90[] = {
+    {"id", {0, Prim::kString, false, false}},
+};
+inline constexpr Field kArgs91[] = {
+    {"text", {0, Prim::kString, false, false}},
+};
+inline constexpr Field kArgs92[] = {
+    {"text", {0, Prim::kString, false, false}},
+    {"limit", {0, Prim::kInt, false, true}},
+};
+inline constexpr Field kArgs93[] = {
+    {"url", {0, Prim::kUrl, false, false}},
+};
+inline constexpr Field kArgs97[] = {
     {"target", {0, Prim::kString, false, true}},
     {"alwaysTranslate", {0, Prim::kString, true, true}},
     {"neverTranslate", {0, Prim::kString, true, true}},
     {"neverSites", {0, Prim::kString, true, true}},
     {"offers", {0, Prim::kBool, false, true}},
 };
-inline constexpr Field kArgs90[] = {
+inline constexpr Field kArgs98[] = {
     {"from", {0, Prim::kString, false, false}},
     {"to", {0, Prim::kString, false, false}},
 };
-inline constexpr Field kArgs91[] = {
+inline constexpr Field kArgs99[] = {
     {"from", {0, Prim::kString, false, false}},
     {"to", {0, Prim::kString, false, false}},
 };
-inline constexpr Field kArgs93[] = {
+inline constexpr Field kArgs101[] = {
     {"from", {0, Prim::kString, false, true}},
     {"to", {0, Prim::kString, false, true}},
 };
@@ -722,18 +797,26 @@ inline constexpr CommandDef kCommands[] = {
     {"settings.reset", "settings.write", nullptr, kArgs83, 1, 84u, 7, 1, 0, 0},
     {"system.defaultBrowser.status", "system.default-browser", nullptr, nullptr, 0, 85u, 7, 0, 0, 0},
     {"system.defaultBrowser.request", "system.default-browser", nullptr, nullptr, 0, 86u, 7, 0, kGesture, 0},
-    {"translation.provider", "translation.read", nullptr, nullptr, 0, 87u, 7, 2, 0, 0},
-    {"translation.languages", "translation.read", nullptr, nullptr, 0, 88u, 7, 2, 0, 0},
-    {"translation.preferences", "translation.read", nullptr, nullptr, 0, 89u, 7, 2, 0, 0},
-    {"translation.setPreferences", "translation.manage", nullptr, kArgs89, 5, 90u, 7, 2, 0, 0},
-    {"translation.downloadModel", "translation.manage", nullptr, kArgs90, 2, 91u, 7, 2, kProgress, 0},
-    {"translation.removeModel", "translation.manage", nullptr, kArgs91, 2, 92u, 7, 2, 0, 0},
-    {"translation.state", "contents.read", nullptr, nullptr, 0, 93u, 5, 2, 0, 0},
-    {"translation.translate", "contents.control", nullptr, kArgs93, 2, 94u, 5, 2, kProgress, 0},
-    {"translation.revert", "contents.control", nullptr, nullptr, 0, 95u, 5, 2, 0, 0},
-    {"translation.present", "contents.control", nullptr, nullptr, 0, 96u, 5, 2, 0, 13},
+    {"search.engines", "search.read", nullptr, nullptr, 0, 87u, 7, 2, 0, 0},
+    {"search.addEngine", "search.manage", nullptr, kArgs87, 5, 88u, 7, 2, 0, 0},
+    {"search.updateEngine", "search.manage", nullptr, kArgs88, 6, 89u, 7, 2, 0, 0},
+    {"search.removeEngine", "search.manage", nullptr, kArgs89, 1, 90u, 7, 2, 0, 0},
+    {"search.setDefault", "search.manage", nullptr, kArgs90, 1, 91u, 7, 2, kGesture, 0},
+    {"search.classify", "search.read", nullptr, kArgs91, 1, 92u, 7, 2, 0, 0},
+    {"search.suggestions", "search.read", nullptr, kArgs92, 2, 93u, 7, 2, 0, 0},
+    {"search.deleteSuggestion", "history.write", nullptr, kArgs93, 1, 94u, 7, 2, 0, 0},
+    {"translation.provider", "translation.read", nullptr, nullptr, 0, 95u, 7, 2, 0, 0},
+    {"translation.languages", "translation.read", nullptr, nullptr, 0, 96u, 7, 2, 0, 0},
+    {"translation.preferences", "translation.read", nullptr, nullptr, 0, 97u, 7, 2, 0, 0},
+    {"translation.setPreferences", "translation.manage", nullptr, kArgs97, 5, 98u, 7, 2, 0, 0},
+    {"translation.downloadModel", "translation.manage", nullptr, kArgs98, 2, 99u, 7, 2, kProgress, 0},
+    {"translation.removeModel", "translation.manage", nullptr, kArgs99, 2, 100u, 7, 2, 0, 0},
+    {"translation.state", "contents.read", nullptr, nullptr, 0, 101u, 5, 2, 0, 0},
+    {"translation.translate", "contents.control", nullptr, kArgs101, 2, 102u, 5, 2, kProgress, 0},
+    {"translation.revert", "contents.control", nullptr, nullptr, 0, 103u, 5, 2, 0, 0},
+    {"translation.present", "contents.control", nullptr, nullptr, 0, 104u, 5, 2, 0, 13},
 };
-inline constexpr size_t kCommandCount = 96;
+inline constexpr size_t kCommandCount = 104;
 
 inline constexpr EventDef kEvents[] = {
     {"autofill.changed", "autofill.read", 1u},
@@ -758,11 +841,12 @@ inline constexpr EventDef kEvents[] = {
     {"profiles.renamed", "profiles.read", 20u},
     {"profiles.deleted", "profiles.read", 21u},
     {"settings.changed", "settings.read", 22u},
-    {"translation.preferencesChanged", "translation.read", 23u},
-    {"translation.modelsChanged", "translation.read", 24u},
-    {"translation.stateChanged", "contents.read", 25u},
+    {"search.enginesChanged", "search.read", 23u},
+    {"translation.preferencesChanged", "translation.read", 24u},
+    {"translation.modelsChanged", "translation.read", 25u},
+    {"translation.stateChanged", "contents.read", 26u},
 };
-inline constexpr size_t kEventCount = 25;
+inline constexpr size_t kEventCount = 26;
 
 inline constexpr const char* kNeverForPages[] = {
     "contents.*",

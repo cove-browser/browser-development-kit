@@ -5,6 +5,7 @@ import { serialiseResolved } from "../config/index.js";
 import type { Diagnostic } from "../diagnostics.js";
 import { hasErrors } from "../diagnostics-format.js";
 import { CliError, ExitCode } from "../exit-codes.js";
+import { buildFileLists } from "../filelists.js";
 import type { Step, StepResult } from "./step.js";
 
 export const SCHEMA_ASSET = "bdk.schema.json";
@@ -66,10 +67,24 @@ export const configStep: Step = {
       args.out === undefined ? resolve(project.dir, RESOLVED_FILE) : resolve(ctx.cwd, args.out);
     await mkdir(dirname(out), { recursive: true });
     await writeFile(out, serialiseResolved(result.resolved));
+    const locations = ctx.platform.buildLocations(ctx.env);
+    const fileLists =
+      locations === undefined
+        ? []
+        : await ctx.platform.writeFileLists(
+            ctx.env,
+            await buildFileLists({
+              project,
+              ctx,
+              resolvedFile: out,
+              jsOut: locations.jsOut,
+              commandsFile: locations.commandsFile,
+            }),
+          );
     return {
       diagnostics,
       exitCode: ExitCode.Success,
-      data: { wrote: true, out },
+      data: { wrote: true, out, ...(fileLists.length === 0 ? {} : { fileLists }) },
     };
   },
 };

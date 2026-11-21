@@ -97,7 +97,10 @@ std::string caller_info(const Caller& c) {
     out += ",\"capabilities\":[";
     for (size_t i = 0; i < c.capabilities.size(); ++i)
         out += (i ? ",\"" : "\"") + json_escape(c.capabilities[i]) + "\"";
-    return out + "]}";
+    out += ']';
+    if (c.kind == CallerKind::kPage && !c.internal_scheme.empty())
+        out += ",\"internalScheme\":\"" + json_escape(c.internal_scheme) + "\"";
+    return out + "}";
 }
 
 /* ---- One call ---- */
@@ -479,9 +482,21 @@ bool emit_builtin_event(const std::shared_ptr<Runtime>& rt, const std::string& n
     if (id == 0)
         return false;
     post([rt, name, id, profile, payload_json] {
+        bool hidden_from_pages = false;
+        if (name == "settings.changed") {
+            JsonValue parsed;
+            std::string not_exposed;
+            hidden_from_pages = !json_parse(payload_json, &parsed) ||
+                                !app_settings_exposed(*rt, parsed, &not_exposed);
+        }
         auto subs = rt->subs;
         for (auto& s : subs) {
-            if (!s->active || !s->ecb || (s->profile != 0 && s->profile != profile))
+            if (!s->active || !s->ecb)
+                continue;
+            if (s->page && hidden_from_pages)
+                continue;
+            const bool everywhere = profile == 0 && s->page; /* application-wide, to pages */
+            if (s->profile != 0 && s->profile != profile && !everywhere)
                 continue;
             if ((!s->event_name.empty() && s->event_name == name) ||
                 (s->event_id != 0 && s->event_id == id))
@@ -499,6 +514,61 @@ void broker_revoke_caller(const std::shared_ptr<Caller>& caller) {
         if (auto c = w.lock())
             cancel_with(c, "the caller was revoked");
     }
+    auto subs = std::move(caller->subs);
+    caller->subs.clear();
+    for (auto& w : subs) {
+        if (auto s = w.lock())
+            deactivate(s);
+    }
+}
+
+bdk_subscription_t broker_subscribe_as(const std::shared_ptr<Runtime>& rt,
+                                       const std::shared_ptr<Caller>& caller,
+                                       const std::string& event, bdk_event_cb cb, void* ctx,
+                                       bdk_release_cb rel, std::string* domain, std::string* code,
+                                       std::string* message) {
+    auto refuse_with = [&](const char* d, const char* c, const std::string& m) {
+        *domain = d;
+        *code = c;
+        *message = m;
+        return bdk_subscription_t{0};
+    };
+    if (caller->kind != CallerKind::kPage)
+        return refuse_with(BDK_DOMAIN_BROKER, BDK_CODE_NOT_IMPLEMENTED,
+                           "only internal pages subscribe through the broker before M7");
+    if (caller->revoked)
+        return refuse_with(BDK_DOMAIN_CAPABILITY, BDK_CODE_DENIED, "the caller was revoked");
+    std::string capability;
+    uint32_t id = 0;
+    for (size_t i = 0; i < table::kEventCount; ++i) {
+        if (event == table::kEvents[i].name) {
+            capability = table::kEvents[i].capability;
+            id = table::kEvents[i].id;
+        }
+    }
+    if (id == 0) {
+        auto declared = rt->events.find(event);
+        if (declared == rt->events.end())
+            return refuse_with(BDK_DOMAIN_BROKER, "unknownEvent",
+                               "there is no event '" + event + "'");
+        capability = event;
+        id = declared->second;
+    }
+    if (!capability_granted(*caller, capability))
+        return refuse_with(BDK_DOMAIN_CAPABILITY, BDK_CODE_DENIED,
+                           "'" + event + "' needs the capability '" + capability + "'");
+    auto s = std::make_shared<Sub>();
+    s->ecb = cb;
+    s->ctx = ctx;
+    s->rel = rel;
+    s->event_id = id;
+    s->event_name = event;
+    s->profile = caller->profile; /* a page sees its own profile's and application-wide events */
+    s->page = true;
+    s->handle = table_make(T_SUB, s);
+    rt->subs.push_back(s);
+    caller->subs.push_back(s);
+    return s->handle;
 }
 
 void resolve_call(const std::shared_ptr<Call>& call, const std::string& result_json) {

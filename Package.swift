@@ -32,6 +32,7 @@ let package = Package(
                 "runtime/core.cc", "runtime/core_host.cc", "runtime/ui_router.cc",
                 "runtime/app_settings.cc", "runtime/broker.cc", "runtime/broker_args.cc",
                 "runtime/providers.cc", "runtime/translation.cc", "runtime/reputation_lists.cc",
+                "runtime/routes.cc",
                 "stub/stub_backend.cc", "stub/stub_services.cc", "stub/stub_broker.cc",
                 "stub/stub_providers.cc",
             ],

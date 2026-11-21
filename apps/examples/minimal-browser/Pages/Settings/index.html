@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Settings</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Settings</h1>
+      <p id="where" class="muted">Loading</p>
+
+      <h2>Capabilities</h2>
+      <ul id="capabilities"></ul>
+
+      <h2>Do Not Track</h2>
+      <label>
+        <input id="do-not-track" type="checkbox" disabled />
+        Send a "Do Not Track" request with browsing traffic
+      </label>
+      <p id="status" class="muted" role="status"></p>
+    </main>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

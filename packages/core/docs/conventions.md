@@ -59,7 +59,7 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
    generated identifier, so they could not be observed otherwise.
 9. `bdk_provider_register` and `bdk_provider_set_key` take a `bdk_runtime_t` (c-abi.md omits it). The vtable and its
    contract are in "Providers" below (T-PRV-01).
-10. Application command, event and page-route names must start with `app.` (`config.nameNotApp`). Duplicates fail
+10. Application command and event names must start with `app.` (`config.nameNotApp`). Duplicates fail
     with `config.duplicateName` (not in the swift-api error table).
 10a. Application settings (`bdk_app_setting_register`, T-SVC-08): the broker, not the backend, answers `settings.get`,
     `getMany`, `describe`, `set` and `reset` for `app.` keys (`runtime/app_settings.cc`), so every runtime behaves the
@@ -100,6 +100,17 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
 14. A surface's mode comes from `surfaces` in the resolved configuration. A surface that is not listed is `default`
     (the resolver lists them all). `[ui] default_browser_surfaces` is already folded into the listed modes by the
     resolver, so the core never reads it.
+
+15. Logical routes (`runtime/routes.{h,cc}`, M4). The core reads `browser.internal_scheme`, `routes` and `aliases`
+    at start and owns every rule of architecture.md section 8: `bdk_page_handler_register` sets a route's mode before
+    the freeze (`config.noBuiltin`, `routeUnknown`, `routeInvalid`, `routeMode`; `config.handlerMissing` at the
+    freeze for a native route with no handler), `resolve_navigation` says what a URL becomes (load the internal URL,
+    native, blocked with `ERR_BLOCKED_BY_CLIENT` for a disabled route and `ERR_INVALID_URL` for an unknown one, or
+    dropped when a web page asks), `display_url` gives the branded form a backend must report, `page_caller_bind`
+    makes a bundled page's caller, and `broker_subscribe_as` subscribes it to events it holds (sessions subscribe in
+    M7). An alias is shown as its target route. The built-in routes and their Chromium hosts are a table in
+    `routes.cc`, checked at the pin; packages/cli lists the same routes. Internal pages are not recorded in history,
+    as in Chrome. Page subscriptions take no filter yet.
 
 ### The UI request router
 
@@ -154,7 +165,7 @@ from the registry is a renumbering and fails; so does a new constant that takes 
 
 To add an identifier: edit the definition, run `pnpm exec nx run js-codegen:codegen` (rewrites `ids.json`,
 `bdk_ids.h` and `generated/bdk_command_table.inc`, the tables the broker reads), run `cmake -DMODE=generate -P packages/core/cmake/abi-hash.cmake` (the definitions are hashed), and
-commit all of it. `pnpm exec nx run js-codegen:codegen-check` fails when the committed outputs are stale; `js-codegen:test`
+commit all of it except the `@bdk/internal` modules, which are git-ignored build outputs (amendments.md 2.14). `pnpm exec nx run js-codegen:codegen-check` fails when the committed outputs are stale; `js-codegen:test`
 and the `abi-linux` job run the same check. To remove one, delete it from the definition and regenerate. Do not edit
 `ids.json` by hand except to resolve a merge: two branches that add identifiers conflict there, and the fix is to keep
 both sides and re-run the generator, which fails if two names ended up with one identifier.
@@ -218,7 +229,8 @@ Decisions taken where the specification was silent (2026-11-19):
     `deleteUrls`, `deleteRange`, `deleteAll`), bookmarks (`roots`, `get`, `children`, `create`, `createFolder`, `update`, `move`, `remove`,
     `search`, `forUrl`), `downloads.list` and `get` (empty), `permissions.get`, `set`, `reset`, `getDefault`,
     `setDefault`, `cookies.sites` (empty), `privacy.clear` (clears history; reports progress), `passwords.add`, `list`,
-    `forOrigin`, `reveal`, `update`, `remove`, `autofill.addresses.add`, `list`, `remove` and
+    `forOrigin`, `reveal`, `update`, `remove`, `autofill.addresses.add`, `list`, `remove`, `search.engines`, `addEngine`, `updateEngine`, `removeEngine`, `setDefault`, `classify` (a stand-in for
+    Chromium's classifier), `suggestions` (stub history and bookmarks only), `deleteSuggestion`, and
     `system.defaultBrowser.status`. Everything else answers `broker.notImplemented`. It is the reference for result
     shapes, not for Chromium's behaviour. `runtime.caller` is answered by the core itself.
 13. The conformance tests that need an internal caller or the stub's services check `bdk_harness_broker_hooks()` and are
@@ -232,7 +244,7 @@ Decisions taken where the specification was silent (2026-11-19):
     have that profile in its scope (`capability.outOfScope`).
 
 Not done here: subscribing to events (the capability check of services.md section 7, scope and back-pressure), the
-`search`, `favicons`, `extensions`, `contents`, `scripts` and `debug` namespaces (`translation` arrived with M6), and the Swift and
+`favicons`, `extensions`, `contents`, `scripts` and `debug` namespaces (`search` arrived with M4, `translation` with M6), and the Swift and
 TypeScript wrappers generated from the definitions.
 
 ## Providers
@@ -247,7 +259,7 @@ Choosing a provider. `bdk_runtime_start` reads `services` from the resolved conf
 |---|---|---|---|
 | `translation` | `default`, `app` | `apple`, `deepl`, `microsoft`, `google`: `config.providerUnavailable` (T-PRV-08) | `config.endpointUnsupported` |
 | `reputation` | `default`, `app`, `google` | `web-risk`: `config.providerUnavailable` | Only with `default`: where the lists are fetched (https, or http on the loopback address) |
-| `geolocation` | `system`, `app`, `google` | | `config.endpointUnsupported`: the network provider's host is a constant (T-PRV-10) |
+| `geolocation` | `system`, `app`, `google` | | `config.endpointUnsupported`: the network provider's host is a constant (T-PRV-14) |
 | `credentials`, `leak_check` | Only their defaults (`chromium`, `none`); S14 and S16 are proposals | Anything else: `config.providerUnavailable` | |
 
 An unknown name or a value of the wrong kind is `config.resolvedInvalid` (the CLI's `services.provider_unknown` comes
@@ -374,9 +386,15 @@ pthreads, and builds on macOS and Linux.
 it drives the engine through `chromium/bdk/engine/bdk_testing.h`. Chromium starts once per process, so the
 harness keeps it between runtimes (`BDK_ENGINE_KEEP_CHROMIUM`), forgets persistent profiles at each start (the
 suite expects a new data directory) and serves every http(s) load from the engine's interceptor. It needs a
-logged-in Mac. The whole suite runs in one process: a runtime start and stop leaves nothing behind, and a profile
+logged-in Mac. Each run has a new data directory under `/tmp` (`bdk-engine-conformance-*`, a Chromium profile tree): `scripts/test-engine.sh` makes it, passes it as `BDK_ENGINE_DATA_DIR` and removes it once the app has exited, even after a crash. Run directly, the harness makes its own and removes it at exit; a crash then leaves it. The whole suite runs in one process: a runtime start and stop leaves nothing behind, and a profile
 BDK closes is unloaded by Chromium (`engine_a_closed_profile_releases_its_descriptors` counts descriptors). Scenarios that need a key window (an input method's composition) are skipped, with a message,
 when macOS does not let the harness come to the front. `BDK_TEST_TRACE=1` prints every contents event.
+
+`BDK_ENGINE_SILENT=1` (or `nx run core:test-engine:silent`) runs it without getting in the way of whoever is using
+the Mac: the harness never activates, has no Dock icon or menu bar, keeps its windows behind every other window and
+never takes one fullscreen, and Chromium keeps drawing its occluded pages (`disable-backgrounding-occluded-windows`).
+The scenarios that need a key window are skipped, as above. The screen must still be unlocked: with it locked, page
+capture, the accessibility tree and both HTML fullscreen scenarios fail.
 
 A harness implements four hooks besides pumping and acting as Chromium: `bdk_harness_prepare_start_config`,
 `bdk_harness_attach_view` (focus needs a window in a real runtime), `bdk_harness_session_format` (tests that

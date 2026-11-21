@@ -107,6 +107,8 @@ public enum NativePageResult { case handled, blocked }
 
 A `native` route loads no page. The navigation is cancelled in the page that asked, and the handler decides what the user sees. `blocked` shows the standard error page.
 
+Built (T-SWF-06, 2026-11-20), done against the stub; the engine side is written and waits for an engine build. `BDKRuntime.start` registers `config.pages` with `bdk_page_handler_register` between the runtime start and the freeze, so a refusal is the start error with the runtime's domain and code (`config.noBuiltin`, `routeUnknown`, `routeInvalid`, `routeMode`, and `handlerMissing` at the freeze). Registering a route twice in Swift keeps the last registration, so one registration per route reaches the ABI. `source` is the application's `BDKWebContents` for the page that asked, or nil when the application does not hold it; `query` is percent-decoded. A request whose profile the application does not hold is answered `blocked`.
+
 ### 4.3 `BDKRuntime`
 
 ```swift
@@ -432,7 +434,7 @@ try page.print()                       // goes through the printing surface
 
 `page.translation` is built (M6, T-PRV-03; against the stub, engine pending) as `state() async throws`, `translate(to:from:) async throws`, `revert() async throws` and `present() async throws`, with state changes as the page event `.translation(BDKTranslationState)`.
 
-Not built at the end of M3 (2026-11-20): `page.capture` (T-SVC-09, M7, with the `contents.*` commands); `page.zoom.set`, a settable `isMuted` and `exitPictureInPicture()` (T-SWF-06, M4). `page.zoom` and `page.isMuted` can be read. Find and printing are built (T-SWF-07): the calls throw `contents.stale` on a closed page, like the other page calls. `find.start` returns the results of that search as a stream: one report when it starts and one for each move of the active match, each with `matchCount`, `activeIndex` (from 1, 0 for none), `rect` in the page view's coordinates and `isFinal` (the engine reports while it is still counting). The stream ends at `stop`, at the next `start` and when the page closes. `FindRequest.session` is the same `page.find`. The stub renders nothing, so its searches always report zero matches.
+Not built: `page.capture` (T-SVC-09, M7, with the `contents.*` commands). Built against the stub (T-SWF-06, 2026-11-20; the engine side is written and waits for an engine build): `page.zoom.set(_:scope:)` and `page.media.isMuted` (settable; the setter ignores a failure on a closed page, `setMuted(_:)` throws) with `exitPictureInPicture()`. `page.zoom` is now a `ZoomControl`: the factor is `page.zoom.factor`. `page.isMuted` and `setMuted(_:)` stay. Find and printing are built (T-SWF-07): the calls throw `contents.stale` on a closed page, like the other page calls. `find.start` returns the results of that search as a stream: one report when it starts and one for each move of the active match, each with `matchCount`, `activeIndex` (from 1, 0 for none), `rect` in the page view's coordinates and `isFinal` (the engine reports while it is still counting). The stream ends at `stop`, at the next `start` and when the page closes. `FindRequest.session` is the same `page.find`. The stub renders nothing, so its searches always report zero matches.
 
 ### 6.8 Session state
 
@@ -589,7 +591,7 @@ public enum PageCommand {
 }
 ```
 
-`canPerform` and `perform` are not built at the end of M3 (T-SWF-06, M4).
+Built against the stub (T-SWF-06, 2026-11-20; the engine side is written and waits for an engine build). `canPerform` is false on a closed page, `perform` throws `contents.stale` there and `contents.commandDisabled` for a command that cannot be performed now.
 
 The standard AppKit edit actions (`cut:`, `copy:`, `paste:`, `selectAll:`, `undo:`, `redo:`) are expected to work through the responder chain when the page is first responder, so an ordinary Edit menu needs no BDK call. Unverified outside Chromium's own window.
 

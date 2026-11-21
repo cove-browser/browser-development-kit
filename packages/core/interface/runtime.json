@@ -16,7 +16,8 @@
       "kind": "CallerKind",
       "name": "string",
       "profile": "string?",
-      "capabilities": "string[]"
+      "capabilities": "string[]",
+      "internalScheme": "string?"
     },
     "ChangeSource": {
       "enum": ["user", "application", "page", "session", "extension"]

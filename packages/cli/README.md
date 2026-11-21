@@ -8,7 +8,10 @@ Task: T-CLI-05. This is the foundation; commands are added as their tasks land.
 
 | Command | Status |
 |---|---|
-| `bdk build config [--out <file>]` | Resolves `bdk.toml` against the embedded schema (`assets/bdk.schema.json`) and, on macOS inside Xcode, the `Info.plist` and entitlements Xcode names. Writes `bdk.resolved.json` next to `bdk.toml` (or to `--out`) only when there are no errors. The resolver itself is T-CFG-02 (`src/core/config/`). |
+| `bdk build config [--out <file>]` | Resolves `bdk.toml` against the embedded schema (`assets/bdk.schema.json`) and, on macOS inside Xcode, the `Info.plist` and entitlements Xcode names. Writes `bdk.resolved.json` next to `bdk.toml` (or to `--out`) only when there are no errors. In Xcode it also writes the build phases' `.xcfilelist` files (see "Xcode" below). The resolver itself is T-CFG-02 (`src/core/config/`). |
+| `bdk build` | With no step, runs the steps that apply, in order: `config` and `codegen` always (`codegen` does nothing without `Pages/` or `Automation/`), `pages` when a bundle is named (`--bundle`, or an Xcode build), `sign` in an Xcode build or with `--identity`. `--out` is a file for `config` and a directory for `codegen`, so it is refused when both run. Not built: `runtime`, `automation`, `embed`. |
+| `bdk build codegen [--out <dir>] [--commands <file>] [--resolved <file>]` | Writes the `@bdk` packages for editors, `tsc` and Vite (T-CLI-04, see "Codegen" below). |
+| `bdk build pages [--bundle <App.app>] [--resolved <file>]` | Packages the bundled pages and the SDK into the application (T-CLI-04, see "Pages" below). Reads the `mode: "bundled"` routes of `bdk.resolved.json` (next to `bdk.toml`, or `--resolved`; missing means run `bdk build config` first) and writes each page to `<App.app>/Contents/Resources/<route path>`, replacing what was there. With `Pages/vite.config.*` it runs the project's own Vite once per page; otherwise it copies the page directory as it is. Refuses output the content security policy would block (`pages.csp`) and any file over 16 MiB (`pages.too_large`). Copies the `@bdk/internal` modules to `Contents/Resources/BDK/js/internal/`. In Xcode `--bundle` defaults to `CODESIGNING_FOLDER_PATH`, else `TARGET_BUILD_DIR/WRAPPER_NAME`. `--watch` is not built. |
 | `bdk build sign --bundle <App.app> --identity <name\|-> [--team <id>] [--entitlements <file>]` | Re-signs the application and the runtime nested in it with the application's identity (T-PKG-03): rewrites each helper's `CFBundleIdentifier` to `<app id>.helper[.renderer]` (Alerts: `<app id>.framework.AlertNotificationService`), then signs inside-out (libraries, loose executables, helpers with the JIT entitlement for renderer and GPU, framework, application) and verifies with `codesign --verify --deep --strict`. Refuses an application entitlement on the deny list. `BDK_SKIP_SIGNING=1` skips it. In Xcode the flags default to `CODESIGNING_FOLDER_PATH`, `EXPANDED_CODE_SIGN_IDENTITY`, `DEVELOPMENT_TEAM` and `CODE_SIGN_ENTITLEMENTS`. An ad hoc identity (`-`) gets no `--options`; see [sdk/cli.md](../../docs/planning/sdk/cli.md) section 5.1. |
 
 Global flags: `--help`, `--version`, `--json` (one JSON document on standard output; diagnostics stay on standard
@@ -26,6 +29,7 @@ set, as Xcode sets it for build phases, and in a human form otherwise. Colour on
 src/
 ├── main.ts          # the entry point; the only file that wires the real process, assets and platform
 ├── assets.ts        # the one adapter for embedded assets (node:sea, or assets/ when unpackaged)
+├── asset-sources.ts # where the SDK modules and packages come from (packages/js/*/dist) and the embedded asset index
 ├── core/            # platform-neutral: args, project discovery, diagnostics, steps, config seam
 └── platform/
     ├── platform.ts  # the interface the core sees
@@ -60,14 +64,70 @@ how tests supply fakes.
 
 1. Bundles `src/main.ts` into one CommonJS file with Rolldown (`dist/sea/bdk.cjs`). The version from `package.json`
    is substituted for `__BDK_CLI_VERSION__` at this point; unpackaged runs read `package.json` instead.
-2. Lists every file under `assets/` (except `assets/README.md`) and writes `dist/sea/sea-config.json` with them as
-   named assets. A new asset needs no configuration change.
+2. Lists every file under `assets/` (except `assets/README.md`), adds the built `@bdk/internal` modules
+   (`packages/js/internal/dist/*.js`) as `js/internal/<module>.js`, and the `.js` and `.d.ts` files of the
+   `@bdk/internal`, `@bdk/protocol` and `@bdk/vite` builds as `js/sdk/@bdk/<package>/<file>`, and writes an `asset-index.json` of every name,
+   because `node:sea` cannot list assets. It writes `dist/sea/sea-config.json` with them all as named assets. A new
+   asset in `assets/` needs no configuration change. Packaging fails, naming the fix, when the SDK is not built;
+   `cli:package` builds it first (`js-internal`, `js-protocol`, `js-vite`, `js-codegen`).
 3. Runs `node --build-sea` with the Node that runs the script (the release pinned in `.node-version`), with code
    cache on. Code cache ties the executable to that Node build and architecture, so cross builds would need it off.
 4. On macOS, signs ad hoc (`codesign --sign - --force`) and lays out `dist/bdk.artifactbundle/` with an `info.json`
    (schema version 1.0, artifact `bdk`, type `executable`, variant for `arm64-apple-macosx`).
 
 Signing with a Developer ID identity and notarization are part of the release procedure (T-PKG-06), not done here.
+
+## Pages
+
+`bdk build pages` (`src/core/steps/pages.ts`, helpers in `src/core/pages/`). The layout it writes is the one the
+runtime serves: a bundled route's files at `Contents/Resources/<path>` (the route's `path` in `bdk.resolved.json`,
+for example `Pages/Settings`), and the SDK at `Contents/Resources/BDK/js/internal/<module>.js`, which the runtime
+serves to every bundled page as `/@bdk/internal/<module>.js`.
+
+| Part | Behaviour |
+|---|---|
+| Pages directory | `[pages] directory` of `bdk.toml`, default `Pages`. Where `vite.config.{ts,mts,js,mjs}` is looked for. |
+| Plain page | The directory is copied as it is, skipping dot-files and dot-directories. Links are followed (the resolver already refused links that leave the project). |
+| Vite project | Vite is loaded from the pages directory's own `node_modules` (`module.createRequire`) and run in this process with the Node that runs the CLI, so no second Node is needed. It runs once per page that is a direct child of the pages directory, with `BDK_PAGE=<directory>` for the `@bdk/vite` preset ([packages/js/vite](../js/vite/README.md)), so each page's output is self-contained, with `index.html` and `assets/` at its top. A route that an override points elsewhere is copied as it is. Vite's output goes to a temporary directory; nothing is written into the project. |
+| Checks | Every HTML file is scanned with `cspIssues` from `@bdk/vite`; every file is checked against the size limit. All files of all pages are checked before anything is written, so a failure leaves the bundle as it was. |
+| Size limit | 16 MiB per file (`MAX_PAGE_FILE_BYTES` in `src/core/pages/files.ts`). The runtime's data source is to enforce the same limit. |
+| SDK | The `*.js` files of `packages/js/internal/dist`, embedded in the executable (read from the repository when unpackaged). Missing: `cli.asset_missing`, exit 3. |
+
+Diagnostics: `pages.resolved_missing`, `pages.resolved_invalid`, `pages.vite_missing`, `pages.vite_failed`,
+`pages.csp` (with the file and line), `pages.too_large` and `cli.asset_missing`. Every `pages.` code exits 1;
+`cli.asset_missing` exits 3. `--json` reports the pages written with their file
+counts and the number of SDK modules.
+
+## Codegen
+
+`bdk build codegen` (`src/core/steps/codegen.ts`, helpers in `src/core/codegen/`). Design:
+[javascript-api.md section 7](../../docs/planning/sdk/javascript-api.md). It never runs a package manager or Swift.
+
+| Part | Behaviour |
+|---|---|
+| Applies when | The pages directory (`[pages] directory`, default `Pages`) or the automation directory (`[automation] directory`, default `Automation`) exists. With neither it writes nothing (javascript-api.md section 7, "No JavaScript"). |
+| Inputs | `bdk.resolved.json` (`--resolved`, else next to `bdk.toml`; missing is `codegen.resolved_missing`) and the application's declarations, `bdk.commands.json`, written by `BDKDeclarations.write(to:)`. |
+| Declarations file | `--commands <file>`; in Xcode `$BDK_COMMANDS_FILE` (relative to `SRCROOT`), else `$DERIVED_FILE_DIR/bdk.commands.json`; otherwise `<project>/.bdk/bdk.commands.json`. A missing file is not an error: it generates with no `app.` declarations and reports a `note`, `codegen.no_declarations`. |
+| Output | `--out <dir>`; in Xcode `$DERIVED_FILE_DIR/bdk/js`; otherwise `<project>/.bdk/js`. It holds `@bdk/internal/` (the built `.js` and `.d.ts`, `package.json`, and the generated `app.d.ts`), `@bdk/protocol/` (its `.d.ts`, which the internal ones import for types), `@bdk/vite/` (the preset, so `import { bdk } from "@bdk/vite"` resolves in `Pages/vite.config.ts`), `@bdk/env.d.ts`, `sdk.digest`, and `node_modules/@bdk`, a link to `@bdk` so that the packages find each other once a tool follows a link to its real path. Each `package.json` has `exports` for every module that has a `.d.ts`. |
+| Incremental | `app.d.ts` and `env.d.ts` record the digest of the declarations and of the resolved file; `sdk.digest` records the digest of the embedded packages. When all three match the inputs nothing is written. Otherwise `@bdk/` is rewritten whole and `sdk.digest` goes last. |
+| Links | `<pages directory>/node_modules/@bdk` and `<automation directory>/node_modules/@bdk` (the ones whose directory exists) point at `<out>/@bdk`. A link that points elsewhere is replaced. A real file or directory is never replaced: `codegen.link_blocked`, a warning. A `node_modules` the step creates gets a `.gitignore` with `*`. |
+| Source | The packages are embedded in the executable as `js/sdk/@bdk/<package>/<file>` (`src/asset-sources.ts`; read from `packages/js/<package>/dist` when unpackaged). |
+
+Diagnostics: `codegen.resolved_missing` (exit 1), `codegen.resolved_invalid` and `codegen.declarations_invalid` (exit 1,
+one per issue of the generator, `$.path: message`, at the file that holds it), `codegen.no_declarations` (note),
+`codegen.link_blocked` (warning) and `cli.asset_missing` (exit 3). A "note" is a third severity, printed as `note:`.
+Not built: the Swift declaration extractor (the CLI reads the file it writes), and a check that a Vite page was built
+against current declarations. The types of `@bdk/vite` import `vite`, which does not resolve from the generated
+directory: set `skipLibCheck` (usual) or accept `any` for the preset's options.
+
+## Xcode
+
+cli.md section 8. The CLI knows Xcode only through `src/platform/xcode/`, which supplies `buildLocations` (from
+`DERIVED_FILE_DIR`: the declarations file, the codegen output and the file-list directory) and `writeFileLists`.
+`bdk build config` computes the lists (`src/core/filelists.ts`) and, only when the platform has locations, has the
+platform write four files, `$DERIVED_FILE_DIR/bdk/{runtime,bundle}.{input,output}.xcfilelist`, whose contents
+are described in [apps/templates/swift-browser/README.md](../../apps/templates/swift-browser/README.md), with the build
+phase scripts. Not verified in Xcode itself.
 
 ## Signing
 
@@ -96,5 +156,12 @@ It clones the runtime with `ditto` (a copy-on-write clone on APFS, so it takes u
 | Run from an Xcode run-script phase, or Xcode's own build of the package | Not verified. `xcodebuild` on this machine reports that CoreSimulator is out of date and found no scheme in the throwaway package. The Xcode environment is simulated in tests by setting `XCODE_VERSION_ACTUAL`. |
 | Re-signing a packaged runtime as another application, verifying it and launching it headless | Pass, ad hoc (`sign.runtime.test.ts`; details in cli.md section 5.1). `spctl` rejects it, as expected. Notarization and a real Developer ID identity were not tested. |
 | Gatekeeper with a signed and notarized binary | Not verified; release procedure (T-PKG-06) |
-| Vite loaded from a project's `node_modules` with the embedded Node | Not verified; waits for pages (T-CLI-04) |
+| `bdk build pages` on a plain page project, packaged, with no `node` on `PATH` | Pass (`src/packaged.test.ts`): page and 23 SDK modules written; the SDK list comes from the embedded `asset-index.json` |
+| Vite loaded from a project's `node_modules` and run in the packaged executable with no `node` on `PATH` | Pass with Vite 8.3.8 (`src/packaged.test.ts`). `import()` of a file is not available in a single executable (it reports "No such built-in module"), so Vite is loaded with `require`, which Node 26 allows for an ES module. A Vite that uses top-level `await` in its entry would not load this way; 8.3.8 does not. |
+| `bdk build pages` unit tests (plain copy, Vite fixture with the workspace's Vite linked in, CSP, size limit, missing and invalid resolved file, stale files, SDK, Xcode defaults) | Pass (`src/core/steps/pages.test.ts`) |
+| `bdk build pages --watch` | Not built (recorded gap) |
+| `bdk build pages` inside an Xcode run-script phase | Not verified; the Xcode variables are simulated in tests |
 | The embedded asset file system (`node:sea` virtual file system) | Not used; plain named assets only, per risk R31 |
+| `bdk build config codegen` on a project with `Pages/`, packaged, with no `node` on `PATH` | Pass (`src/packaged.test.ts`): the packages and `app.d.ts` written, `Pages/node_modules/@bdk` linked |
+| `tsc` (module resolution `bundler`) on a file importing `@bdk/internal/page`, `@bdk/internal/settings` and `@bdk/vite` through the link | Pass for `@bdk/internal` and `@bdk/protocol`; `@bdk/vite`'s own `import "vite"` does not resolve unless `skipLibCheck` is set (checked once by hand on `apps/examples/minimal-browser`) |
+| `bdk build codegen`, the file lists and the Xcode defaults in an Xcode run-script phase, with user script sandboxing on or off | Not verified; the Xcode variables are simulated in tests (`src/core/steps/codegen.test.ts`, `src/platform/xcode/build.test.ts`) |
