@@ -570,7 +570,23 @@ EngineContents* EngineContents::RequestNewWindow(
   return raw;
 }
 
+bool EngineContents::DevToolsOpen() const {
+  return devtools_page_ && !devtools_page_->close_reported_;
+}
+
+void EngineContents::ToggleDevTools() {
+  if (DevToolsOpen()) {
+    devtools_page_->RequestClose();
+    devtools_page_ = nullptr;
+    return;
+  }
+  OpenDevTools();
+}
+
 void EngineContents::OpenDevTools() {
+  if (DevToolsOpen()) {
+    return;
+  }
   const GURL url = DevToolsFrontend::FrontendURL();
   std::unique_ptr<content::WebContents> frontend = content::WebContents::Create(
       content::WebContents::CreateParams(web_contents_->GetBrowserContext()));
@@ -586,6 +602,7 @@ void EngineContents::OpenDevTools() {
     return;
   }
   base::WeakPtr<EngineContents> weak_page = page->weak_factory_.GetWeakPtr();
+  devtools_page_ = weak_page;
   page->devtools_ = std::make_unique<DevToolsFrontend>(
       frontend_contents, web_contents_.get(),
       base::BindRepeating(

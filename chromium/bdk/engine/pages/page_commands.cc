@@ -160,7 +160,7 @@ void PerformPageCommand(EngineContents& page, uint32_t command) {
       page.SetMuted(!contents->IsAudioMuted());
       return;
     case BDK_PAGE_COMMAND_TOGGLE_DEV_TOOLS:
-      page.OpenDevTools();
+      page.ToggleDevTools();
       return;
     case BDK_PAGE_COMMAND_TOGGLE_FULLSCREEN:
       contents->ExitFullscreen(/*will_cause_resize=*/true);
