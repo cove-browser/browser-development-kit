@@ -233,7 +233,9 @@ struct Parser {
         out->type = JsonValue::Type::kNumber;
         out->number = strtod(token.c_str(), nullptr);
         out->integral = integral;
-        return true;
+        /* A number too large for a double (1e999) would be infinity, which JSON cannot write
+           back: it is refused here, wherever it is nested, rather than saved as "inf". */
+        return std::isfinite(out->number);
     }
 };
 

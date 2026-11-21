@@ -29,6 +29,24 @@ extension BDKStubTests {
             await runtime.shutdown()  // a second shutdown does nothing
         }
 
+        @Test func aStartThatFailsAtTheFreezeLeavesNothingRunning() async throws {
+            let configuration = BDKConfiguration(
+                resolvedJSON: "{\"surfaces\":{\"find\":\"custom\"}}")
+            await expectError(.config, "handlerMissing") { try BDKRuntime.startStub(configuration) }
+            #expect(!BDKRuntime.isRunning)
+            // The native runtime shuts down too: a correct start succeeds once it has.
+            for _ in 0..<200 {
+                do {
+                    let runtime = try BDKRuntime.startStub()
+                    await runtime.shutdown()
+                    return
+                } catch let error as BDKError where error.code == "alreadyStarted" {
+                    try await Task.sleep(for: .milliseconds(10))
+                }
+            }
+            Issue.record("the runtime of the failed start never shut down")
+        }
+
         @Test func secondStartFailsWithAlreadyStarted() async throws {
             try await withStubRuntime { _ in
                 await expectError(.runtime, "alreadyStarted") { try BDKRuntime.startStub() }

@@ -43,6 +43,15 @@ static void caller_handler(void* ctx, bdk_context_t call, bdk_string_t input) {
     bdk_app_command_resolve(call, S(out));
 }
 
+/* The profile the last app.profile call addressed. */
+static bdk_profile_t g_call_profile;
+static void profile_handler(void* ctx, bdk_context_t call, bdk_string_t input) {
+    (void)ctx;
+    (void)input;
+    g_call_profile = bdk_app_command_profile(call);
+    bdk_app_command_resolve(call, S("{}"));
+}
+
 static void bad_output_handler(void* ctx, bdk_context_t call, bdk_string_t input) {
     (void)ctx;
     (void)input;
@@ -64,6 +73,8 @@ static void register_all(void) {
     REQUIRE(bdk_app_command_register(t_runtime, S("app.caller"), S("{}"), caller_handler, &g_calls,
                                      NULL, &err) == BDK_OK);
     REQUIRE(bdk_app_command_register(t_runtime, S("app.badOutput"), S("{}"), bad_output_handler,
+                                     &g_calls, NULL, &err) == BDK_OK);
+    REQUIRE(bdk_app_command_register(t_runtime, S("app.profile"), S("{}"), profile_handler,
                                      &g_calls, NULL, &err) == BDK_OK);
 }
 
@@ -449,6 +460,34 @@ static void test_builtin_commands_resolve_by_name_and_by_identifier(void) {
     CHECK(by_id.results == 1 && !by_id.has_error);
     CHECK(strcmp(by_name.json, by_id.json) == 0);
     CHECK(strstr(by_name.json, "\"bdkVersion\"") != NULL);
+}
+
+static void test_an_application_command_sees_the_profile_its_call_addresses(void) {
+    start_with_commands();
+    bdk_profile_t p = t_new_profile("Addressed");
+    t_capture_t cap;
+    g_call_profile = 1;
+    host_call("app.profile", "{}", 0, &cap);
+    CHECK(!cap.has_error);
+    CHECK(g_call_profile == 0); /* none named */
+    host_call("app.profile", "{}", p, &cap);
+    CHECK(!cap.has_error);
+    CHECK(g_call_profile == p); /* the host's caller identity carries no profile; the call does */
+}
+
+static void test_finished_builtin_calls_are_freed(void) {
+    NEED_HOOKS();
+    t_start_frozen();
+    for (int i = 0; i < 4; ++i) {
+        t_capture_t cap;
+        t_cap_init(&cap);
+        REQUIRE(bdk_invoke(t_runtime, BDK_COMMAND_RUNTIME_INFO, S("{}"), NULL, t_on_result, NULL,
+                           &cap, t_on_release) != 0);
+        t_pump();
+        CHECK(cap.results == 1 && !cap.has_error && cap.releases == 1);
+    }
+    /* Answered and released: nothing keeps a call, nor its service's control, alive. */
+    CHECK(bdk_harness_service_count(t_runtime, BDK_HARNESS_COUNT_LIVE_CALLS) == 0);
 }
 
 static void test_unknown_builtin_names_and_identifiers_are_refused(void) {
@@ -1090,6 +1129,9 @@ static void test_history_is_paginated_with_an_opaque_cursor(void) {
     CHECK(strstr(cap.json, "a.example") != NULL && strstr(cap.json, "\"nextCursor\":null") != NULL);
     host_call("history.search", "{\"cursor\":\"not-a-cursor\"}", p, &cap);
     CHECK(failed_with(&cap, "broker", "invalidArguments"));
+    /* Digits only, but more than any cursor could hold: refused, not a crash. */
+    host_call("history.search", "{\"cursor\":\"99999999999999999999999999999999\"}", p, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
     host_call("history.search", "{\"text\":\"b.example\"}", p, &cap);
     CHECK(strstr(cap.json, "b.example") != NULL && strstr(cap.json, "c.example") == NULL);
     host_call("history.deleteUrls", "{\"urls\":[\"https://b.example/\"]}", p, &cap);
@@ -1136,6 +1178,32 @@ static void test_a_built_in_event_reaches_the_subscriptions_of_its_profile(void)
     CHECK(strstr(for_a.payload, "\"entry\"") != NULL &&
           strstr(for_a.payload, "events.example") != NULL &&
           strstr(for_a.payload, "\"source\"") != NULL);
+}
+
+/* Options of an older caller declare only struct_size: what lies past it is not the profile, so the
+   subscription is for every profile. */
+static void test_short_subscription_options_read_only_the_declared_bytes(void) {
+    t_start_frozen();
+    bdk_profile_t p = t_new_profile("Short options");
+    event_log_t log;
+    memset(&log, 0, sizeof log);
+    union {
+        bdk_invoke_options_t o;
+        unsigned char bytes[sizeof(bdk_invoke_options_t)];
+    } u;
+    memset(&u, 0xff, sizeof u);
+    u.o.struct_size = sizeof(size_t);
+    bdk_subscription_t sub =
+        bdk_subscribe_named(t_runtime, S("history.visited"), S(""), &u.o, on_event, &log, NULL);
+    REQUIRE(sub != 0);
+    t_capture_t cap;
+    host_call("history.add", "{\"url\":\"https://short.example/\",\"title\":\"S\"}", p, &cap);
+    CHECK(!cap.has_error);
+    for (int i = 0; i < 300 && log.count == 0; ++i)
+        t_pump();
+    CHECK(log.count == 1);
+    bdk_unsubscribe(sub);
+    t_pump();
 }
 
 static void test_bookmarks_nest_and_remove_with_their_contents(void) {
@@ -1201,6 +1269,21 @@ static void start_with_settings(void) {
     register_setting("{\"key\":\"app.lastProfile\",\"default\":\"\",\"scope\":\"application\","
                      "\"exposedToPages\":true}");
     t_freeze();
+}
+
+static void test_a_number_too_large_for_a_double_is_refused_and_nothing_is_saved(void) {
+    t_start();
+    register_setting("{\"key\":\"app.layout\",\"default\":{\"panes\":[1]},\"scope\":\"profile\"}");
+    register_setting("{\"key\":\"app.zoom\",\"default\":1,\"scope\":\"profile\"}");
+    t_freeze();
+    bdk_profile_t p = t_new_profile("Huge numbers");
+    t_capture_t cap;
+    host_call("settings.set", "{\"key\":\"app.zoom\",\"value\":1e999}", p, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+    host_call("settings.set", "{\"key\":\"app.layout\",\"value\":{\"panes\":[2,-1e999]}}", p, &cap);
+    CHECK(failed_with(&cap, "broker", "invalidArguments"));
+    host_call("settings.getMany", "{\"keys\":[\"app.zoom\",\"app.layout\"]}", p, &cap);
+    CHECK(strcmp(cap.json, "{\"values\":{\"app.zoom\":1,\"app.layout\":{\"panes\":[1]}}}") == 0);
 }
 
 static void test_setting_registration_is_validated(void) {
@@ -1400,11 +1483,16 @@ const t_test_t t_broker_tests[] = {
     {"broker.command_names_are_validated", test_command_names_are_validated},
     {"broker.application_events_are_delivered_in_order",
      test_application_events_are_declared_emitted_and_delivered_in_order},
+    {"broker.short_subscription_options_read_only_their_bytes",
+     test_short_subscription_options_read_only_the_declared_bytes},
     {"broker.subscribe_by_id_validates", test_subscribe_by_id_rejects_the_zero_identifier},
     {"broker.settings_and_providers_register_before_freeze",
      test_settings_handlers_and_providers_register_before_the_freeze},
     {"broker.builtin_commands_resolve_by_name_and_id",
      test_builtin_commands_resolve_by_name_and_by_identifier},
+    {"broker.finished_builtin_calls_are_freed", test_finished_builtin_calls_are_freed},
+    {"broker.application_command_sees_the_call_profile",
+     test_an_application_command_sees_the_profile_its_call_addresses},
     {"broker.unknown_builtin_names_and_ids_are_refused",
      test_unknown_builtin_names_and_identifiers_are_refused},
     {"broker.host_has_full_authority", test_host_has_full_authority},
@@ -1456,6 +1544,8 @@ const t_test_t t_broker_tests[] = {
     {"settings.registration_is_validated", test_setting_registration_is_validated},
     {"settings.registered_setting_reads_default_and_validates",
      test_a_registered_setting_reads_its_default_and_validates_what_is_set},
+    {"settings.a_number_too_large_for_a_double_is_refused",
+     test_a_number_too_large_for_a_double_is_refused_and_nothing_is_saved},
     {"settings.scope_decides_whether_a_profile_is_needed",
      test_profile_scope_needs_a_profile_and_application_scope_does_not},
     {"settings.profile_scoped_setting_survives_reopening_the_profile",

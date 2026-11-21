@@ -260,9 +260,11 @@ typedef void (*bdk_app_command_cb)(void* context, bdk_context_t call_context, bd
 BDK_EXPORT void bdk_app_command_progress(bdk_context_t, double fraction, bdk_string_t message);
 BDK_EXPORT void bdk_app_command_resolve(bdk_context_t, bdk_string_t output_json);
 BDK_EXPORT void bdk_app_command_reject(bdk_context_t, bdk_string_t domain, bdk_string_t code, bdk_string_t message);
-/* And can ask who called and whether the call was cancelled: */
-BDK_EXPORT bdk_string_t bdk_app_command_caller_json(bdk_context_t);
-BDK_EXPORT uint8_t      bdk_app_command_is_cancelled(bdk_context_t);
+/* And can ask who called, which profile the call addresses (0 for none) and whether the call was
+   cancelled: */
+BDK_EXPORT bdk_string_t  bdk_app_command_caller_json(bdk_context_t);
+BDK_EXPORT bdk_profile_t bdk_app_command_profile(bdk_context_t);
+BDK_EXPORT uint8_t       bdk_app_command_is_cancelled(bdk_context_t);
 
 BDK_EXPORT bdk_status_t bdk_app_command_register(bdk_runtime_t, bdk_string_t name, bdk_string_t declaration_json,
                                                  bdk_app_command_cb, void* ctx, bdk_release_cb, bdk_error_t*);

@@ -82,12 +82,16 @@ bool word_in(const char* words, const std::string& word) {
     return list.find(" " + word + " ") != std::string::npos;
 }
 
+} // namespace
+
 bool completion_grants(uint32_t surface, const std::string& completion) {
     if (completion == "grant")
         return true;
     const SurfaceInfo* s = surface_by_id(surface);
     return s && word_in(s->grants, completion);
 }
+
+namespace {
 
 /* ---- A small JSON reader ------------------------------------------------------------------- */
 

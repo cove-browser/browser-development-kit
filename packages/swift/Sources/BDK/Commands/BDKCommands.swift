@@ -254,8 +254,9 @@ private final class CommandBox {
     /// Runs the handler in a task, answers the call when it ends, and cancels the task when the
     /// caller cancels the call.
     func run(call: bdk_context_t, inputJSON: String, callerJSON: String) {
-        let profile = BDKJSValue(jsonString: callerJSON)?.objectValue?["profile"]?.stringValue
-            .flatMap { id in runtime?.profiles.loaded.first { $0.id.rawValue == id } }
+        // The profile the call addresses, which the caller's identity does not carry for the
+        // host: the core resolved it from the invoke options or the page caller.
+        let profile = runtime?.profiles.loaded(handle: bdk_app_command_profile(call))
         let context = BDKCommandContext(call: call, callerJSON: callerJSON, profile: profile)
         let invoke = self.invoke
         let run = CommandRun()

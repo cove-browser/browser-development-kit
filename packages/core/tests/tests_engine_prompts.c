@@ -21,6 +21,10 @@ extern const char* bdk_harness_engine_surfaces;
  */
 extern int bdk_harness_engine_keep_profiles;
 
+/* From harness_engine.mm: the event a person's click or key press leaves (kind 0: a recent
+   mouse-up in the page's window). */
+bdk_native_handle_t bdk_harness_engine_gesture(bdk_contents_t contents, int kind);
+
 /* ---- helpers ---- */
 
 static void control(const char* verb, const char* args, char* out, size_t n) {
@@ -381,12 +385,10 @@ static bdk_ui_response_t hold(void* ctx, const bdk_ui_request_info_t* info) {
     return BDK_UI_HANDLED;
 }
 
-static bdk_native_handle_t gesture(void) {
-    bdk_native_handle_t g;
-    memset(&g, 0, sizeof g);
-    g.kind = BDK_NATIVE_NSEVENT;
-    g.id = 1;
-    return g;
+/* A recent mouse-up in the page's window: the engine grants only with the operating system's
+   event, not a handle of the right kind alone. */
+static bdk_native_handle_t gesture(bdk_contents_t c) {
+    return bdk_harness_engine_gesture(c, 0);
 }
 
 static bdk_native_handle_t no_gesture(void) {
@@ -494,7 +496,7 @@ static void test_engine_a_password_prompt_reaches_a_handler_and_saving_needs_a_g
     invoke_ok(p, "passwords.list", "{}", &cap);
     CHECK(strstr(cap.json, "ada") == NULL); /* nothing saved without the gesture */
     err = 0;
-    CHECK(bdk_ui_complete(g_seen.request, S("grant"), S("{}"), gesture(), &err) == BDK_OK);
+    CHECK(bdk_ui_complete(g_seen.request, S("grant"), S("{}"), gesture(c), &err) == BDK_OK);
     t_pump();
     invoke_ok(p, "passwords.list", "{}", &cap);
     CHECK(strstr(cap.json, "\"username\":\"ada\"") != NULL);
@@ -716,7 +718,7 @@ static void test_engine_a_dangerous_download_is_kept_only_with_a_gesture(void) {
         t_pump();
     CHECK(access(g_dl_chosen, F_OK) != 0); /* still not kept */
     err = 0;
-    CHECK(bdk_ui_complete(g_seen.request, S("grant"), S("{}"), gesture(), &err) == BDK_OK);
+    CHECK(bdk_ui_complete(g_seen.request, S("grant"), S("{}"), gesture(c), &err) == BDK_OK);
     CHECK(wait_for_file(g_dl_chosen));
     bdk_ui_request_release(g_seen.request);
     control("downloads.ask", "{\"on\":false}", NULL, 0);
@@ -875,9 +877,9 @@ static void test_engine_a_certificate_error_request_proceeds_only_with_a_gesture
     title_of(c, title, sizeof title);
     CHECK(strcmp(title, "Privacy error") == 0); /* still blocked */
     err = 0;
-    CHECK(bdk_ui_complete(g_seen.request, S("grant"), S("{}"), gesture(), &err) != BDK_OK);
+    CHECK(bdk_ui_complete(g_seen.request, S("grant"), S("{}"), gesture(c), &err) != BDK_OK);
     err = 0;
-    CHECK(bdk_ui_complete(g_seen.request, S("proceed"), S("{}"), gesture(), &err) == BDK_OK);
+    CHECK(bdk_ui_complete(g_seen.request, S("proceed"), S("{}"), gesture(c), &err) == BDK_OK);
     for (int i = 0; i < 60; ++i) {
         t_pump();
         title_of(c, title, sizeof title);
@@ -927,7 +929,7 @@ static void test_engine_certificate_exceptions_are_listed_and_revoked(void) {
         t_pump();
     REQUIRE(g_seen.calls == 1);
     err = 0;
-    REQUIRE(bdk_ui_complete(g_seen.request, S("proceed"), S("{}"), gesture(), &err) == BDK_OK);
+    REQUIRE(bdk_ui_complete(g_seen.request, S("proceed"), S("{}"), gesture(c), &err) == BDK_OK);
     bdk_ui_request_release(g_seen.request);
     CHECK(wait_for_title_not(c, "Privacy error"));
     invoke_ok(profile, "permissions.certificateExceptions", "{}", &cap);
@@ -1128,7 +1130,7 @@ static void test_engine_a_submitted_address_is_saved_with_a_gesture_and_offered_
     CHECK(bdk_ui_complete(g_seen.request, S("grant"), S("{}"), no_gesture(), &err) != BDK_OK);
     CHECK(!saved_addresses_contain(p, "1 Main St"));
     err = 0;
-    CHECK(bdk_ui_complete(g_seen.request, S("grant"), S("{}"), gesture(), &err) == BDK_OK);
+    CHECK(bdk_ui_complete(g_seen.request, S("grant"), S("{}"), gesture(c), &err) == BDK_OK);
     CHECK(wait_for_saved_address(p, "1 Main St"));
     bdk_ui_request_release(g_seen.request);
 
@@ -1150,7 +1152,7 @@ static void test_engine_a_submitted_address_is_saved_with_a_gesture_and_offered_
           BDK_OK);
     CHECK(wait_for_title(c, "empty")); /* refused: nothing filled */
     err = 0;
-    CHECK(bdk_ui_complete(g_suggestions.request, S("grant"), S(args), gesture(), &err) == BDK_OK);
+    CHECK(bdk_ui_complete(g_suggestions.request, S("grant"), S(args), gesture(c), &err) == BDK_OK);
     CHECK(wait_for_title(c, "1 Main St"));
     bdk_ui_request_release(g_suggestions.request);
     close_window();

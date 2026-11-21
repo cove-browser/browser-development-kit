@@ -195,8 +195,9 @@ static void test_engine_a_right_click_on_a_link_raises_a_context_menu_with_link_
     memset(&none, 0, sizeof none);
     bdk_error_t err = 0;
     g_new_windows.complete = "accept";
-    REQUIRE(bdk_ui_complete(g_menus.request, S("perform"), S("{\"id\":\"openLinkInNewPage\"}"),
-                            none, &err) == BDK_OK);
+    REQUIRE(bdk_ui_complete(g_menus.request, S("accept"),
+                            S("{\"action\":\"perform\",\"item\":\"openLinkInNewPage\"}"), none,
+                            &err) == BDK_OK);
     t_pump();
     REQUIRE(g_new_windows.calls == 1);
     CHECK(strstr(g_new_windows.payload, "\"kind\":\"newPage\"") != NULL);
@@ -232,8 +233,9 @@ static void test_engine_inspect_opens_devtools_through_a_new_window_request(void
     bdk_native_handle_t none;
     memset(&none, 0, sizeof none);
     bdk_error_t err = 0;
-    REQUIRE(bdk_ui_complete(g_menus.request, S("perform"), S("{\"id\":\"inspect\"}"), none, &err) ==
-            BDK_OK);
+    REQUIRE(bdk_ui_complete(g_menus.request, S("accept"),
+                            S("{\"action\":\"perform\",\"item\":\"inspect\"}"), none,
+                            &err) == BDK_OK);
     t_pump();
     REQUIRE(g_new_windows.calls == 1);
     CHECK(g_new_windows.contents == c);

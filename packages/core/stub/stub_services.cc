@@ -6,7 +6,9 @@
 #include "stub_services.h"
 
 #include <algorithm>
+#include <charconv>
 #include <map>
+#include <system_error>
 #include <vector>
 
 using namespace bdkcore;
@@ -232,11 +234,13 @@ bool run(Ctx& c) {
         size_t limit = c.arg("limit") ? static_cast<size_t>(c.arg("limit")->number) : 100;
         size_t offset = 0;
         if (c.arg("cursor")) {
+            /* Checked: a cursor of more digits than a size_t holds is refused, not thrown on. */
             const std::string& cursor = c.arg("cursor")->text;
-            if (cursor.empty() || cursor.find_first_not_of("0123456789") != std::string::npos)
+            const char* end = cursor.data() + cursor.size();
+            auto [last, error] = std::from_chars(cursor.data(), end, offset);
+            if (cursor.empty() || error != std::errc() || last != end)
                 return c.fail(BDK_CODE_INVALID_ARGUMENTS,
                               "the cursor is not one this call returned");
-            offset = static_cast<size_t>(std::stoull(cursor));
         }
         std::vector<HistoryRow> rows;
         for (auto& h : s.history) {

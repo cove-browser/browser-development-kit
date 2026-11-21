@@ -287,7 +287,7 @@ BDK_EXPORT bdk_status_t bdk_profile_open_private(bdk_runtime_t h, bdk_profile_t*
     p->id = "ephemeral:" + std::to_string(rt->next_id++);
     p->name = "Private";
     p->ephemeral = true;
-    if (bdk_status_t s = backend().OpenPrivateProfile(*rt, *p, err))
+    if (bdk_status_t s = backend().OpenPrivateProfile(*rt, p, err))
         return s;
     p->open = true;
     p->handle = table_make(T_PROFILE, p);

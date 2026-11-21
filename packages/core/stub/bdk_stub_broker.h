@@ -68,6 +68,7 @@ BDK_EXPORT bdk_status_t bdk_stub_release_held_commands(bdk_runtime_t);
 #define BDK_STUB_COUNT_HELD 1u            /* calls a service is holding */
 #define BDK_STUB_COUNT_STOPPED 2u         /* calls a service was told to stop */
 #define BDK_STUB_COUNT_AUTHENTICATIONS 3u /* times the operating system was asked */
+#define BDK_STUB_COUNT_LIVE_CALLS 4u      /* calls of the running runtime still allocated */
 BDK_EXPORT uint32_t bdk_stub_service_count(bdk_runtime_t, uint32_t which);
 
 #ifdef __cplusplus

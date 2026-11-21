@@ -276,7 +276,8 @@ class StubBackend final : public Backend {
         post([done] { done("", ""); });
     }
 
-    bdk_status_t OpenPrivateProfile(Runtime&, Profile&, bdk_error_t*) override {
+    bdk_status_t OpenPrivateProfile(Runtime&, const std::shared_ptr<Profile>&,
+                                    bdk_error_t*) override {
         return BDK_OK;
     }
 

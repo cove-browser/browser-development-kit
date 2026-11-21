@@ -64,6 +64,7 @@ bdk_status_t bdk_harness_release_held_commands(bdk_runtime_t);
 #define BDK_HARNESS_COUNT_HELD 1u            /* calls a service is holding */
 #define BDK_HARNESS_COUNT_STOPPED 2u         /* calls a service was told to stop */
 #define BDK_HARNESS_COUNT_AUTHENTICATIONS 3u /* times the operating system was asked */
+#define BDK_HARNESS_COUNT_LIVE_CALLS 4u      /* calls of the running runtime still allocated */
 unsigned bdk_harness_service_count(bdk_runtime_t, unsigned which);
 
 #ifdef __cplusplus

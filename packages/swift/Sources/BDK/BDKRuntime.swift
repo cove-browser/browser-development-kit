@@ -117,10 +117,25 @@ public final class BDKRuntime {
                 abiVersion: bdk_abi_version(), abiHash: swiftString(bdk_abi_hash())))
         current = runtime
         runtime.subscribeToEvents()
-        try runtime.register(configuration)
-        if freezingRegistrations { try runtime.freezeRegistrations() }
+        do {
+            // The core checks some registrations only now (a custom UI surface needs its handler
+            // by the freeze), after the native runtime has started.
+            try runtime.register(configuration)
+            if freezingRegistrations { try runtime.freezeRegistrations() }
+        } catch {
+            runtime.stopAfterFailedStart()
+            throw error
+        }
         EventLoop.kick()
         return runtime
+    }
+
+    /// Keeps the promise of `start` when it fails after the native runtime started: the runtime is
+    /// no longer current at once, and it shuts down on the main actor, as `shutdown()` does.
+    private func stopAfterFailedStart() {
+        if Self.current === self { Self.current = nil }
+        terminate(completion: {})
+        EventLoop.kick()
     }
 
     /// An ABI error that names what the host and the runtime each have, so that the fix is clear.

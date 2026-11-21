@@ -19,15 +19,15 @@ build.
 
 Used by: the BDK engine (//bdk/engine) and the Swift SDK.
 ---
- chrome/app/framework.exports | 85 ++++++++++++++++++++++++++++++++++++
- chrome/app/framework.order   | 85 ++++++++++++++++++++++++++++++++++++
- 2 files changed, 170 insertions(+)
+ chrome/app/framework.exports | 86 ++++++++++++++++++++++++++++++++++++
+ chrome/app/framework.order   | 86 ++++++++++++++++++++++++++++++++++++
+ 2 files changed, 172 insertions(+)
 
 diff --git a/chrome/app/framework.exports b/chrome/app/framework.exports
-index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..a9bcfc14ae87b90f6d84619ed64b3c34251be0dc 100644
+index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..12a1cf9db4b630e41af093fa331fcbcca9155c7c 100644
 --- a/chrome/app/framework.exports
 +++ b/chrome/app/framework.exports
-@@ -20,3 +20,88 @@ _ChromeAppModeStart_v8
+@@ -20,3 +20,89 @@ _ChromeAppModeStart_v8
  _ChromeMain
  _ChromeWebAppShortcutCopierMain
  _bdk_overlay_marker
@@ -39,6 +39,7 @@ index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..a9bcfc14ae87b90f6d84619ed64b3c34
 +_bdk_abi_version
 +_bdk_app_command_caller_json
 +_bdk_app_command_is_cancelled
++_bdk_app_command_profile
 +_bdk_app_command_progress
 +_bdk_app_command_register
 +_bdk_app_command_reject
@@ -117,10 +118,10 @@ index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..a9bcfc14ae87b90f6d84619ed64b3c34
 +_OBJC_METACLASS_$_BDKApplicationBase
 +_OBJC_CLASS_$_BDKApplicationBase
 diff --git a/chrome/app/framework.order b/chrome/app/framework.order
-index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..5dd16f0c003e2d36bb7ba413608471f5fa2760ba 100644
+index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..98a61a72a99abdcabd369d8fd682c7638ec56e12 100644
 --- a/chrome/app/framework.order
 +++ b/chrome/app/framework.order
-@@ -33,5 +33,90 @@ _ChromeWebAppShortcutCopierMain
+@@ -33,5 +33,91 @@ _ChromeWebAppShortcutCopierMain
  # repository.
  _bdk_overlay_marker
  
@@ -129,6 +130,7 @@ index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..5dd16f0c003e2d36bb7ba413608471f5
 +_bdk_abi_version
 +_bdk_app_command_caller_json
 +_bdk_app_command_is_cancelled
++_bdk_app_command_profile
 +_bdk_app_command_progress
 +_bdk_app_command_register
 +_bdk_app_command_reject

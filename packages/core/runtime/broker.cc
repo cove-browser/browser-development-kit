@@ -227,6 +227,7 @@ void validate_and_run(const std::shared_ptr<Pending>& p) {
         auto cc = std::make_shared<CallCtx>();
         cc->call = p->call;
         cc->caller = caller_json(*p->caller);
+        cc->profile = p->profile;
         bdk_context_t ch = table_make(T_CONTEXT, cc);
         p->app.cb(p->app.ctx, ch, view(input));
         return;
@@ -245,8 +246,13 @@ void validate_and_run(const std::shared_ptr<Pending>& p) {
     call->caller = p->caller;
     call->control =
         std::make_shared<CommandControl>(p->call, (p->def->flags & table::kProgress) != 0);
-    auto control = call->control;
-    p->call->on_stop = [control] { control->Stop(); };
+    /* Weak: the control holds the call, so a strong reference here would keep every finished call
+       alive. The BuiltinCall the backend holds keeps the control alive while it works. */
+    std::weak_ptr<CommandControl> control = call->control;
+    p->call->on_stop = [control] {
+        if (auto c = control.lock())
+            c->Stop();
+    };
     if (settings_call && app_settings_execute(*p->rt, call, parsed))
         return;
     backend().ExecuteCommand(*p->rt, call);
@@ -390,14 +396,20 @@ bool capability_granted(const Caller& caller, const std::string& capability) {
     return false;
 }
 
+bdk_invoke_options_t read_invoke_options(const bdk_invoke_options_t* o) {
+    bdk_invoke_options_t full;
+    memset(&full, 0, sizeof full);
+    if (o)
+        memcpy(&full, o, o->struct_size < sizeof full ? o->struct_size : sizeof full);
+    return full;
+}
+
 bool invoke_options_ok(const bdk_invoke_options_t* o) {
     if (!o)
         return true;
     if (o->struct_size < sizeof(size_t))
         return false;
-    bdk_invoke_options_t full;
-    memset(&full, 0, sizeof full);
-    memcpy(&full, o, o->struct_size < sizeof full ? o->struct_size : sizeof full);
+    const bdk_invoke_options_t full = read_invoke_options(o);
     if (full.profile && !get<Profile>(full.profile, T_PROFILE))
         return false;
     if (full.contents && !get<Contents>(full.contents, T_CONTENTS))
@@ -417,9 +429,7 @@ bdk_call_t broker_submit(const std::shared_ptr<Runtime>& rt, const std::shared_p
     p->ref = command;
     p->input = arguments_json;
     p->gesture = gesture;
-    if (options)
-        memcpy(&p->options, options,
-               options->struct_size < sizeof p->options ? options->struct_size : sizeof p->options);
+    p->options = read_invoke_options(options);
     if (caller->kind != CallerKind::kHost) {
         auto& calls = caller->calls;
         calls.erase(std::remove_if(calls.begin(), calls.end(),

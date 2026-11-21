@@ -110,6 +110,9 @@ struct CommandRef {
 
 /* Whether the options name live objects. */
 bool invoke_options_ok(const bdk_invoke_options_t*);
+/* The options as this version reads them: only the struct_size bytes the caller declared, the
+   rest zero. All zero for null. Call after invoke_options_ok. */
+bdk_invoke_options_t read_invoke_options(const bdk_invoke_options_t*);
 
 /* bdk_invoke and bdk_invoke_named: the call of the host, with full authority. name is null when the
    command is named by id. Returns 0 for a synchronous rejection (stale handle, wrong thread). */

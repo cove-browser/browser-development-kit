@@ -765,7 +765,7 @@ static bdk_subscription_t subscribe_impl(bdk_runtime_t h, uint32_t id, const std
     s->rel = rel;
     s->event_id = id;
     s->event_name = name;
-    s->profile = o ? o->profile : 0;
+    s->profile = read_invoke_options(o).profile; /* o may declare fewer bytes than profile needs */
     s->handle = table_make(T_SUB, s);
     rt->subs.push_back(s);
     return s->handle;
@@ -829,6 +829,12 @@ BDK_EXPORT void bdk_app_command_reject(bdk_context_t h, bdk_string_t domain, bdk
 BDK_EXPORT bdk_string_t bdk_app_command_caller_json(bdk_context_t h) {
     auto cc = get<CallCtx>(h, T_CONTEXT);
     return cc ? view(cc->caller) : bdk_string_t{nullptr, 0};
+}
+
+BDK_EXPORT bdk_profile_t bdk_app_command_profile(bdk_context_t h) {
+    auto cc = get<CallCtx>(h, T_CONTEXT);
+    auto p = cc ? cc->profile.lock() : nullptr;
+    return p && p->open ? p->handle : 0;
 }
 
 BDK_EXPORT uint8_t bdk_app_command_is_cancelled(bdk_context_t h) {

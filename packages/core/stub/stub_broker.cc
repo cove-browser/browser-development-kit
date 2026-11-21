@@ -142,7 +142,7 @@ BDK_EXPORT bdk_status_t bdk_stub_release_held_commands(bdk_runtime_t h) {
 }
 
 BDK_EXPORT uint32_t bdk_stub_service_count(bdk_runtime_t h, uint32_t which) {
-    (void)h; /* the counts outlive the runtime: a test reads them after shutdown */
+    /* The service counts outlive the runtime: a test reads them after shutdown. */
     if (check_thread() != BDK_OK)
         return 0;
     const bdkstub::Controls& c = bdkstub::controls();
@@ -155,6 +155,15 @@ BDK_EXPORT uint32_t bdk_stub_service_count(bdk_runtime_t h, uint32_t which) {
         return c.stopped;
     case BDK_STUB_COUNT_AUTHENTICATIONS:
         return c.authentications;
+    case BDK_STUB_COUNT_LIVE_CALLS: {
+        auto rt = runtime_of(h);
+        if (!rt)
+            return 0;
+        uint32_t live = 0;
+        for (const auto& w : rt->calls)
+            live += w.expired() ? 0 : 1;
+        return live;
+    }
     default:
         return 0;
     }

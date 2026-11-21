@@ -49,6 +49,9 @@ BDK_EXPORT void bdk_app_command_resolve(bdk_context_t, bdk_string_t output_json)
 BDK_EXPORT void bdk_app_command_reject(bdk_context_t, bdk_string_t domain, bdk_string_t code,
                                        bdk_string_t message);
 BDK_EXPORT bdk_string_t bdk_app_command_caller_json(bdk_context_t);
+/* The profile the call addresses, apart from who called: the one the invoke options named, or a
+   page caller's own. 0 when the call addresses none or the profile has closed. */
+BDK_EXPORT bdk_profile_t bdk_app_command_profile(bdk_context_t);
 BDK_EXPORT uint8_t bdk_app_command_is_cancelled(bdk_context_t);
 
 /* PROVISIONAL: c-abi.md names bdk_native_page_cb without a signature. */

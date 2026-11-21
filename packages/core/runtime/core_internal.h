@@ -88,9 +88,12 @@ inline void run_on_stop(const std::shared_ptr<Call>& c) {
     }
 }
 
+struct Profile;
+
 struct CallCtx {
     std::shared_ptr<Call> call;
     std::string caller = "{\"caller\":\"host\"}";
+    std::weak_ptr<Profile> profile; /* the profile the call addresses, if any */
 };
 
 /* What a backend keeps per profile or per page. */
@@ -271,7 +274,7 @@ class Backend {
     /* Profiles. The core keeps the list and the names; the backend keeps what is on disk. */
     virtual void ProfilesChanged(Runtime& rt) = 0;
     virtual void OpenProfile(Runtime& rt, const std::shared_ptr<Profile>& profile, Done done) = 0;
-    virtual bdk_status_t OpenPrivateProfile(Runtime& rt, Profile& profile,
+    virtual bdk_status_t OpenPrivateProfile(Runtime& rt, const std::shared_ptr<Profile>& profile,
                                             bdk_error_t* out_error) = 0;
     /* After the profile's contents are destroyed. */
     virtual void CloseProfile(Runtime& rt, Profile& profile) = 0;
@@ -411,6 +414,8 @@ void emit_contents_event_now(const std::shared_ptr<Contents>&, uint32_t kind,
    task. A request with no on_finish is a notice: it is delivered at once and never queued. */
 std::shared_ptr<Request> raise_ui_request(const std::shared_ptr<Runtime>&,
                                           std::shared_ptr<Request>);
+/* Whether `completion` grants on `surface` (ui-requests.md section 5), and so needs a gesture. */
+bool completion_grants(uint32_t surface, const std::string& completion);
 /* Reads [ui.surfaces] from the resolved configuration; fails with ui.surfaceUnknown or
    ui.surfaceMode. Called by bdk_runtime_start before the backend starts. */
 bdk_status_t ui_configure(Runtime&, const std::string& resolved_config, bdk_error_t* out_error);
