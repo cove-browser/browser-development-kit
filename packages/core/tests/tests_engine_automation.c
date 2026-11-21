@@ -532,10 +532,11 @@ static void test_engine_screenshots_pdfs_and_saved_pages(void) {
     CHECK(!pdf.has_error && pdf.has_binary && memcmp(pdf.head, "%PDF", 4) == 0);
     char dir[] = "/tmp/bdk-save-XXXXXX";
     REQUIRE(mkdtemp(dir) != NULL);
-    const char* formats[3] = {"htmlOnly", "completePage", "singleFile"};
-    for (int i = 0; i < 3; ++i) {
+    /* Complete pages and MHTML are written from the page itself. */
+    const char* formats[2] = {"completePage", "singleFile"};
+    for (int i = 0; i < 2; ++i) {
         char path[256], args[512];
-        snprintf(path, sizeof path, "%s/page-%d.%s", dir, i, i == 2 ? "mhtml" : "html");
+        snprintf(path, sizeof path, "%s/page-%d.%s", dir, i, i == 1 ? "mhtml" : "html");
         snprintf(args, sizeof args, "{\"path\":\"%s\",\"format\":\"%s\"}", path, formats[i]);
         big_capture_t saved;
         call("contents.save", args, 0, c, &saved);
@@ -544,6 +545,30 @@ static void test_engine_screenshots_pdfs_and_saved_pages(void) {
         CHECK(stat(path, &st) == 0 && st.st_size > 0);
     }
     char path[256], args[512];
+    struct stat st;
+    /* HTML only fetches the page again. The scripted page cannot be fetched again, and the save
+       fails rather than answering for a file Chromium did not write. */
+    snprintf(path, sizeof path, "%s/scripted.html", dir);
+    snprintf(args, sizeof args, "{\"path\":\"%s\",\"format\":\"htmlOnly\"}", path);
+    big_capture_t refetch;
+    call("contents.save", args, 0, c, &refetch);
+    CHECK(refetch.has_error && stat(path, &st) != 0);
+    /* A page that can be fetched again is saved as its own HTML. */
+    char source[256], url[300];
+    snprintf(source, sizeof source, "%s/source.html", dir);
+    FILE* f = fopen(source, "w");
+    REQUIRE(f != NULL);
+    fputs("<title>s</title><p>saved as is</p>", f);
+    fclose(f);
+    snprintf(url, sizeof url, "file://%s", source);
+    bdk_contents_t local = page_at(p, url);
+    snprintf(path, sizeof path, "%s/html-only.html", dir);
+    snprintf(args, sizeof args, "{\"path\":\"%s\",\"format\":\"htmlOnly\"}", path);
+    big_capture_t html_only;
+    call("contents.save", args, 0, local, &html_only);
+    CHECK(!html_only.has_error);
+    CHECK(stat(path, &st) == 0 && st.st_size > 0);
+    CHECK(bdk_contents_destroy(local) == BDK_OK);
     snprintf(path, sizeof path, "%s/shot.png", dir);
     snprintf(args, sizeof args, "{\"path\":\"%s\"}", path);
     big_capture_t to_file;

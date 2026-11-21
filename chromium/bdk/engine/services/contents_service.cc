@@ -40,6 +40,7 @@
 #include "bdk/engine/services/page_call.h"
 #include "bdk/engine/services/services.h"
 #include "components/download/public/common/download_item.h"
+#include "components/download/public/common/download_save_item_data.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/download_manager.h"
 #include "content/public/browser/render_frame_host.h"
@@ -1389,12 +1390,19 @@ void Pdf(const std::shared_ptr<ServiceCall>& c) {
 // next save-package item the profile's download manager creates is this
 // call's (a second save in the same profile at the same moment could be
 // confused with it). Deletes itself when it has answered.
+//
+// Chromium completes the item even when the page's own file failed: an
+// "HTML only" save fetches the page again, and a page that cannot be fetched
+// again (one an interceptor served, say) leaves no file. So a completed save
+// succeeds only when the item lists its main file among the files written.
+// An MHTML save is written in one piece and lists no files.
 class SaveWatch : public content::DownloadManager::Observer,
                   public download::DownloadItem::Observer {
  public:
   SaveWatch(content::DownloadManager* manager,
-            std::shared_ptr<ServiceCall> call)
-      : manager_(manager), call_(std::move(call)) {
+            std::shared_ptr<ServiceCall> call,
+            bool lists_files)
+      : manager_(manager), call_(std::move(call)), lists_files_(lists_files) {
     manager_->AddObserver(this);
     start_timeout_.Start(
         FROM_HERE, kSaveStartTimeout,
@@ -1437,7 +1445,9 @@ class SaveWatch : public content::DownloadManager::Observer,
   void OnDownloadUpdated(download::DownloadItem* item) override {
     switch (item->GetState()) {
       case download::DownloadItem::COMPLETE:
-        Finish(std::string());
+        Finish(WroteTheFile(item) ? std::string()
+                                  : "the page was not saved: its file could "
+                                    "not be written");
         return;
       case download::DownloadItem::CANCELLED:
       case download::DownloadItem::INTERRUPTED:
@@ -1456,6 +1466,18 @@ class SaveWatch : public content::DownloadManager::Observer,
 
  private:
   void TimedOut() { Finish("the page was not saved: Chromium did not start"); }
+
+  bool WroteTheFile(download::DownloadItem* item) const {
+    if (!lists_files_) {
+      return true;
+    }
+    const std::vector<download::DownloadSaveItemData::ItemInfo>* files =
+        download::DownloadSaveItemData::GetItemData(item);
+    const base::FilePath& main = item->GetTargetFilePath();
+    return files && std::ranges::any_of(*files, [&main](const auto& info) {
+             return info.file_path == main;
+           });
+  }
 
   // Answers once (an empty `error` is success) and has this deleted later,
   // not from inside the observer call that got here.
@@ -1478,6 +1500,7 @@ class SaveWatch : public content::DownloadManager::Observer,
   raw_ptr<content::DownloadManager> manager_;
   raw_ptr<download::DownloadItem> item_ = nullptr;
   std::shared_ptr<ServiceCall> call_;
+  const bool lists_files_;
   base::OneShotTimer start_timeout_;
   bool done_ = false;
   base::WeakPtrFactory<SaveWatch> weak_factory_{this};
@@ -1510,7 +1533,8 @@ void Save(const std::shared_ptr<ServiceCall>& c) {
   const base::FilePath directory =
       base::FilePath(file.RemoveExtension().value() + "_files");
   auto* watch =
-      new SaveWatch(web_contents->GetBrowserContext()->GetDownloadManager(), c);
+      new SaveWatch(web_contents->GetBrowserContext()->GetDownloadManager(), c,
+                    type != content::SAVE_PAGE_TYPE_AS_MHTML);
   c->control().OnCancel([weak = watch->GetWeakPtr()] {
     if (weak) {
       weak->Abandon();
