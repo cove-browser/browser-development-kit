@@ -3,6 +3,8 @@ node_modules/
 .bdk/
 dist/
 build/
+# the //bdk overlay's GN build scripts, not build output
+!chromium/bdk/build/
 .build/
 .swiftpm/
 *.tsbuildinfo
