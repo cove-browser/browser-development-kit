@@ -1425,6 +1425,39 @@ static void test_changing_an_application_setting_announces_settings_changed(void
     bdk_unsubscribe(sub);
 }
 
+static void count_event(void* ctx, uint32_t id, bdk_string_t name, bdk_string_t payload) {
+    (void)id, (void)name, (void)payload;
+    ++*(int*)ctx;
+}
+
+static void test_a_page_hears_settings_changed_for_its_profile_and_the_application_only(void) {
+    NEED_HOOKS();
+    start_with_settings();
+    bdk_profile_t p = t_new_profile("Heard");
+    bdk_profile_t q = t_new_profile("Elsewhere");
+    bdk_harness_caller_t page = page_in(p, "[\"settings.read\"]");
+    int page_events = 0, host_events = 0;
+    bdk_error_t err = 0;
+    REQUIRE(bdk_harness_subscribe_as(t_runtime, page, "settings.changed", count_event, &page_events,
+                                     NULL, &err) != 0);
+    bdk_subscription_t host = bdk_subscribe_named(t_runtime, S("settings.changed"), S(""), NULL,
+                                                  count_event, &host_events, NULL);
+    REQUIRE(host != 0);
+    t_capture_t cap;
+    /* A setting not exposed to pages: the host hears it, the page does not. */
+    host_call("settings.set", "{\"key\":\"app.secret\",\"value\":\"y\"}", p, &cap);
+    CHECK(page_events == 0 && host_events == 1);
+    /* An application-wide setting reaches pages in every profile. */
+    host_call("settings.set", "{\"key\":\"app.lastProfile\",\"value\":\"Heard\"}", p, &cap);
+    CHECK(page_events == 1 && host_events == 2);
+    /* Another profile's setting does not. */
+    host_call("settings.set", "{\"key\":\"app.sidebar.width\",\"value\":250}", q, &cap);
+    CHECK(page_events == 1 && host_events == 3);
+    host_call("settings.set", "{\"key\":\"app.sidebar.width\",\"value\":250}", p, &cap);
+    CHECK(page_events == 2 && host_events == 4);
+    bdk_unsubscribe(host);
+}
+
 static void test_a_setting_not_exposed_to_pages_is_refused_to_every_page_and_session(void) {
     NEED_HOOKS();
     start_with_settings();
@@ -1799,6 +1832,8 @@ const t_test_t t_broker_tests[] = {
      test_a_profile_scoped_setting_survives_closing_and_reopening_the_profile},
     {"settings.change_is_announced",
      test_changing_an_application_setting_announces_settings_changed},
+    {"settings.changed_reaches_a_page_for_its_profile_and_the_application",
+     test_a_page_hears_settings_changed_for_its_profile_and_the_application_only},
     {"settings.not_exposed_is_refused_to_pages_and_sessions",
      test_a_setting_not_exposed_to_pages_is_refused_to_every_page_and_session},
     {NULL, NULL}};

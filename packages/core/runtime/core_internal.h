@@ -61,6 +61,8 @@ struct Sub {
     uint32_t event_id = 0;
     std::string event_name;
     bdk_profile_t profile = 0; /* events of this profile only; 0 for every profile */
+    bool page = false; /* subscribed by a page: also sees application-wide events (profile 0), but
+                          not settings.changed for a setting that is not exposed to pages */
 };
 
 struct Call {

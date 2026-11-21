@@ -446,7 +446,7 @@ Rules:
 |---|---|
 | Subscribing | By event name, with an optional filter. Requires the read capability of the namespace: `history.read` for `history.visited`. `app.` events need the capability with the event's name. |
 | Delivery | In order per source. Not replayed: a subscriber sees events from the moment it subscribes, and reads current state with a command. |
-| Scope | A page receives events for its own profile. A session receives events for the profiles and pages in its scope. |
+| Scope | A page receives events for its own profile and application-wide events (such as `profiles.created` or an application-scope `settings.changed`), never another profile's. It does not receive `settings.changed` for an `app.` key declared with `exposedToPages: false`. A session receives events for the profiles and pages in its scope. |
 | Back-pressure | A subscriber that falls behind has events coalesced where the event type allows (progress, state) and is disconnected with an error where it does not (changes). The limit is set in T-SVC-01. |
 | End | A subscription ends with its page or session. |
 

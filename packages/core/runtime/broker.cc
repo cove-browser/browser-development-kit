@@ -470,9 +470,21 @@ bool emit_builtin_event(const std::shared_ptr<Runtime>& rt, const std::string& n
     if (id == 0)
         return false;
     post([rt, name, id, profile, payload_json] {
+        bool hidden_from_pages = false;
+        if (name == "settings.changed") {
+            JsonValue parsed;
+            std::string not_exposed;
+            hidden_from_pages = !json_parse(payload_json, &parsed) ||
+                                !app_settings_exposed(*rt, parsed, &not_exposed);
+        }
         auto subs = rt->subs;
         for (auto& s : subs) {
-            if (!s->active || !s->ecb || (s->profile != 0 && s->profile != profile))
+            if (!s->active || !s->ecb)
+                continue;
+            if (s->page && hidden_from_pages)
+                continue;
+            const bool everywhere = profile == 0 && s->page; /* application-wide, to pages */
+            if (s->profile != 0 && s->profile != profile && !everywhere)
                 continue;
             if ((!s->event_name.empty() && s->event_name == name) ||
                 (s->event_id != 0 && s->event_id == id))
@@ -539,7 +551,8 @@ bdk_subscription_t broker_subscribe_as(const std::shared_ptr<Runtime>& rt,
     s->rel = rel;
     s->event_id = id;
     s->event_name = event;
-    s->profile = caller->profile; /* a page sees its own profile's events only */
+    s->profile = caller->profile; /* a page sees its own profile's and application-wide events */
+    s->page = true;
     s->handle = table_make(T_SUB, s);
     rt->subs.push_back(s);
     caller->subs.push_back(s);
