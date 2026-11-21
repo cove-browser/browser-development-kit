@@ -5,6 +5,7 @@
 #include "bdk/engine/providers/translation_service.h"
 
 #include <algorithm>
+#include <array>
 #include <memory>
 #include <optional>
 #include <string>
@@ -15,6 +16,7 @@
 #include "base/json/json_writer.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
+#include "base/no_destructor.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
 #include "bdk/core/include/bdk/bdk_ids.h"
@@ -30,6 +32,7 @@
 #include "chrome/common/chrome_isolated_world_ids.h"
 #include "components/prefs/pref_service.h"
 #include "components/translate/content/browser/content_translate_driver.h"
+#include "components/translate/core/browser/translate_download_manager.h"
 #include "components/translate/core/browser/translate_pref_names.h"
 #include "components/translate/core/browser/translate_prefs.h"
 #include "components/translate/core/common/language_detection_details.h"
@@ -37,7 +40,6 @@
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "content/public/browser/web_contents_user_data.h"
-#include "ui/base/l10n/l10n_util.h"
 #include "url/origin.h"
 
 namespace bdk {
@@ -99,7 +101,7 @@ std::string DefaultTarget() {
   std::string locale = g_browser_process
                            ? g_browser_process->GetApplicationLocale()
                            : std::string("en");
-  return l10n_util::GetLanguage(locale);
+  return translate::TranslateDownloadManager::GetLanguageCode(locale);
 }
 
 bdkcore::TranslationPreferences ReadPrefs(Profile* profile) {
@@ -132,14 +134,16 @@ void WritePrefs(Profile* profile,
   if (after.target != before.target) {
     tp->SetRecentTargetLanguage(after.target);
   }
-  for (const std::string& l : before.never) {
-    if (!Has(after.never, l)) {
-      tp->UnblockLanguage(l);
-    }
-  }
+  // Block before unblocking: Chromium never removes the last language of its
+  // never-translate list, so a replaced list is applied only in this order.
   for (const std::string& l : after.never) {
     if (!Has(before.never, l)) {
       tp->BlockLanguage(l);
+    }
+  }
+  for (const std::string& l : before.never) {
+    if (!Has(after.never, l)) {
+      tp->UnblockLanguage(l);
     }
   }
   for (const std::string& l : before.always) {
@@ -188,7 +192,10 @@ Profile* ProfileOf(content::WebContents* contents) {
 
 // This runtime has no translation engine of its own yet (T-PRV-02): with
 // provider = "default" every step reports provider.unavailable.
-const bdkcore::BuiltinProviderCall kNoEngine;
+const bdkcore::BuiltinProviderCall& NoEngine() {
+  static const base::NoDestructor<bdkcore::BuiltinProviderCall> no_engine;
+  return *no_engine;
+}
 
 class PageTranslation
     : public content::WebContentsObserver,
@@ -289,7 +296,7 @@ class PageTranslation
         self->OnPairsForRequest(reply);
       }
     };
-    bdkcore::translation_call(rt, kNoEngine, "supported_pairs", "{}",
+    bdkcore::translation_call(rt, NoEngine(), "supported_pairs", "{}",
                               std::move(handlers));
   }
 
@@ -325,7 +332,9 @@ class PageTranslation
   }
 
   // translate::TranslateDriver::LanguageDetectionObserver:
+  // The driver's observer list must be empty when it goes, so leave it here.
   void OnTranslateDriverDestroyed(translate::TranslateDriver* driver) override {
+    driver->RemoveLanguageDetectionObserver(this);
     driver_ = nullptr;
   }
 
@@ -378,7 +387,7 @@ class PageTranslation
     for (const base::Value& text : *list) {
       spec.texts.push_back(text.is_string() ? text.GetString() : "");
     }
-    spec.builtin = kNoEngine;
+    spec.builtin = NoEngine();
     spec.progress = [self = weak_factory_.GetWeakPtr(), call](double f) {
       if (!self) {
         return;
@@ -498,9 +507,10 @@ class PageTranslation
     if (!payload) {
       return;
     }
-    RaiseUiRequest(*page, BDK_SURFACE_TRANSLATION, *payload,
-                   base::BindOnce(&PageTranslation::OnRequestFinished,
-                                  weak_factory_.GetWeakPtr(), *payload));
+    RaiseUiRequest(
+        *page, BDK_SURFACE_TRANSLATION, *payload,
+        base::BindOnce(&PageTranslation::OnRequestFinished,
+                       weak_factory_.GetWeakPtr(), payload->Clone()));
   }
 
   void OnRequestFinished(base::DictValue payload, const UiResult& result) {
@@ -597,10 +607,11 @@ class PageTranslation
         "translation", &page->host_view(), std::move(alert),
         base::BindOnce(
             [](base::WeakPtr<PageTranslation> self, int index) {
-              static constexpr const char* kAnswers[] = {
-                  "translate", "never", "neverForSite", "dismiss"};
-              if (self && index >= 0 && index < 4) {
-                self->Answer(kAnswers[index], "{}");
+              static constexpr auto kAnswers = std::to_array<const char*>(
+                  {"translate", "never", "neverForSite", "dismiss"});
+              if (self && index >= 0 &&
+                  static_cast<size_t>(index) < kAnswers.size()) {
+                self->Answer(kAnswers[static_cast<size_t>(index)], "{}");
               }
             },
             weak_factory_.GetWeakPtr()));
@@ -666,11 +677,11 @@ void Forward(const std::shared_ptr<ServiceCall>& call,
                                     r.result_json);
       }
     };
-    bdkcore::translation_call(rt, kNoEngine, "supported_pairs", "{}",
+    bdkcore::translation_call(rt, NoEngine(), "supported_pairs", "{}",
                               std::move(pairs));
   };
   std::shared_ptr<bdkcore::ProviderRequest> request = bdkcore::translation_call(
-      rt, kNoEngine, operation, input, std::move(handlers));
+      rt, NoEngine(), operation, input, std::move(handlers));
   if (request) {
     call->control().OnCancel([request] { request->Cancel(); });
   }

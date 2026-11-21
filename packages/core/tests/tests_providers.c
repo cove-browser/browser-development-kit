@@ -438,20 +438,23 @@ static void test_preferences_are_kept_per_profile_and_reported(void) {
                                            S(""), NULL, on_prefs_event, NULL, NULL);
     REQUIRE(sub != 0);
     t_capture_t cap;
-    REQUIRE(invoke("translation.setPreferences",
-                   "{\"target\":\"de\",\"neverTranslate\":[\"fr\"],\"alwaysTranslate\":[\"es\"]}",
-                   p, 0, &cap) != 0);
+    REQUIRE(
+        invoke(
+            "translation.setPreferences",
+            "{\"target\":\"de\",\"neverTranslate\":[\"fr\",\"it\"],\"alwaysTranslate\":[\"es\"]}",
+            p, 0, &cap) != 0);
     t_pump();
     CHECK(cap.results == 1 && !cap.has_error);
     CHECK(str_has(S(cap.json), "\"target\":\"de\""));
-    CHECK(str_has(S(cap.json), "\"neverTranslate\":[\"fr\"]"));
+    CHECK(str_has(S(cap.json), "\"neverTranslate\":[\"fr\",\"it\"]"));
     CHECK(str_has(S(cap.json), "\"alwaysTranslate\":[\"es\"]"));
     CHECK(g_prefs_events == 1 && str_has(S(g_prefs_payload), "\"target\":\"de\""));
-    /* A language is on one list only: putting it on the always list takes it off the never list. */
+    /* A language is on one list only: putting it on the always list takes it off the never list.
+       Two never languages, because Chromium never empties that list (services.md 5.12). */
     REQUIRE(invoke("translation.setPreferences", "{\"alwaysTranslate\":[\"fr\"]}", p, 0, &cap) !=
             0);
     t_pump();
-    CHECK(str_has(S(cap.json), "\"neverTranslate\":[]"));
+    CHECK(str_has(S(cap.json), "\"neverTranslate\":[\"it\"]"));
     REQUIRE(invoke("translation.setPreferences", "{\"target\":\"not a language\"}", p, 0, &cap) !=
             0);
     t_pump();
