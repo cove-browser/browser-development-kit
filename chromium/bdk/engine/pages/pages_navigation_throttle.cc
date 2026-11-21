@@ -96,7 +96,14 @@ content::NavigationThrottle::ThrottleCheckResult PagesNavigationThrottle::Check(
         // route table governs only what a page shows at its top level.
         return url.SchemeIs("chrome") ? PROCEED : CANCEL_AND_IGNORE;
       }
-      return {BLOCK_REQUEST, static_cast<net::Error>(nav.net_error)};
+      {
+        // BLOCK_REQUEST takes only a "blocked" error (navigation_request.cc
+        // DCHECKs it). Any other error, such as an unknown route's
+        // ERR_INVALID_URL, is a CANCEL, which commits the same error page.
+        const auto error = static_cast<net::Error>(nav.net_error);
+        return {net::IsRequestBlockedError(error) ? BLOCK_REQUEST : CANCEL,
+                error};
+      }
     case Kind::kNative: {
       if (!main_frame) {
         return CANCEL_AND_IGNORE;

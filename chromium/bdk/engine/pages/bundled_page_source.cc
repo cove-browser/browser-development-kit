@@ -167,7 +167,7 @@ void BundledPageSource::StartDataRequest(
 }
 
 std::string BundledPageSource::GetMimeType(const GURL& url) {
-  const std::string path = url.path();
+  const std::string path(url.path());
   for (const MimeType& m : kMimeTypes) {
     if (base::EndsWith(path, m.extension,
                        base::CompareCase::INSENSITIVE_ASCII)) {

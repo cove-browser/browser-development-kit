@@ -4,7 +4,11 @@
 
 #include "bdk/engine/pages/page_commands.h"
 
+#include <memory>
+
 #include "bdk/core/include/bdk/bdk_ids.h"
+#include "bdk/core/runtime/core_internal.h"
+#include "bdk/core/runtime/routes.h"
 #include "bdk/engine/engine_contents.h"
 #include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "components/find_in_page/find_tab_helper.h"
@@ -41,6 +45,15 @@ bool HasPage(content::WebContents* contents) {
   return contents->GetController().GetLastCommittedEntry() != nullptr;
 }
 
+// An internal page is neither saved nor shown as source, as in the stub: both
+// would show its chrome:// URL, which the application never sees.
+bool IsInternalPage(content::WebContents* contents) {
+  content::NavigationEntry* entry =
+      contents->GetController().GetLastCommittedEntry();
+  std::shared_ptr<bdkcore::Runtime> rt = bdkcore::current_runtime();
+  return entry && rt && bdkcore::is_internal_page(*rt, entry->GetURL().spec());
+}
+
 bool FindActive(content::WebContents* contents) {
   auto* helper = find_in_page::FindTabHelper::FromWebContents(contents);
   return helper && !helper->find_text().empty();
@@ -69,9 +82,10 @@ bool CanPerformPageCommand(EngineContents& page, uint32_t command) {
     case BDK_PAGE_COMMAND_ZOOM_RESET:
       return zoom < 1.0 - kEpsilon || zoom > 1.0 + kEpsilon;
     case BDK_PAGE_COMMAND_SAVE_PAGE_AS:
-      return HasPage(contents) && contents->IsSavable();
+      return HasPage(contents) && !IsInternalPage(contents) &&
+             contents->IsSavable();
     case BDK_PAGE_COMMAND_VIEW_SOURCE:
-      return controller.CanViewSource();
+      return !IsInternalPage(contents) && controller.CanViewSource();
     case BDK_PAGE_COMMAND_TOGGLE_DEV_TOOLS:
       return HasPage(contents) && page.CanOpenDevTools();
     case BDK_PAGE_COMMAND_TOGGLE_FULLSCREEN:
