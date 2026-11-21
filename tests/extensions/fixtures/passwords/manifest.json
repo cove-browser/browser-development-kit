@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "BDK Passwords Fixture",
+  "version": "0.1.0",
+  "description": "Test fixture: a password-manager-like extension with a popup, a context-menu item, storage and a content script that fills a login form on any site.",
+  "minimum_chrome_version": "127",
+  "permissions": ["activeTab", "contextMenus", "storage"],
+  "background": { "service_worker": "sw.js" },
+  "action": { "default_title": "BDK passwords", "default_popup": "popup.html" },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "all_frames": true,
+      "run_at": "document_idle"
+    }
+  ],
+  "externally_connectable": { "matches": ["http://127.0.0.1/*", "http://localhost/*"] }
+}
