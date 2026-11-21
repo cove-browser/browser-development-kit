@@ -90,7 +90,7 @@ The key is what goes in `[ui.surfaces]`. "Modes" lists what the surface allows: 
 | `notifications` | Web notifications | D C X | Plan | M3, T-UIR-06 |
 | `certificate_errors` | Certificate interstitials | D C | Plan | M3, T-UIR-05 |
 | `reputation_warnings` | Malware, phishing and download warnings | D C | Plan | M3, T-UIR-05 |
-| `devtools` | The DevTools front end | D C X | Plan | M7, T-AUT-05 |
+| `devtools` | The DevTools front end | D C X | Plan; built in M7, engine pending (T-AUT-06) | M7, T-AUT-05 |
 | `device_choosers` | WebUSB, Web Bluetooth, WebHID, Web Serial | D C X | Added (S3) | — |
 | `screen_capture` | The `getDisplayMedia` source picker | D C X | Added (S3) | — |
 | `webauthn` | Passkey and security-key dialogs | D C X | Added (S3) | — |

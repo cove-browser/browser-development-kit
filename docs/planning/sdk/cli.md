@@ -254,7 +254,8 @@ With no step, runs the steps that apply, in this order:
 | `runtime` | The resolved BDK version, `runtime.mode`, the source identity | A verified runtime in the store under `BDK_HOME`; `.bdk/runtime.json` in the project | Prebuilt: no published runtime for this version, or a digest mismatch. Source: see section 7. |
 | `codegen` | BDK's interface definitions, the application's Swift command declarations, the resolved file | `@bdk/*` packages in derived data; the `node_modules/@bdk` links | A declaration that is not `Codable`, a name that does not start with `app.`, a grant for an `app.` capability that no command or event declares |
 | `pages` | `Pages/` | Packaged pages in the bundle's resources; digests in the resolved file | A Vite failure; output that the content security policy would block; a page over the size the data source accepts |
-| `automation` | `Automation/` | Bundled scripts in the bundle's resources; digests in the resolved file | A Rolldown failure; an import that is not `@bdk/*` or bundled |
+| `automation` | `Automation/` | Bundled scripts in the bundle's resources; digests in the resolved file | A Rolldown failure; an import that is not `@bdk/*` or bundled. Built in M7: `Contents/Resources/BDK/Automation/<name>.js`, `@bdk/*` inlined, Rolldown from the project; `--watch` is T-AUT-07 |
+| `devtools` | `[devtools]` frontend and overlay | `Contents/Resources/BDK/DevTools/{Frontend,Overlay}` | Added in M7: a front end without `index.html`, an empty overlay, a URL |
 | `embed` | The runtime from the store | `Contents/Frameworks/BDKRuntime.framework`, copied with its symlinks | A copy that does not match the manifest |
 | `sign` | The built bundle, the Xcode signing identity and team | Helper bundle identifiers rewritten to the application's; everything signed inside-out: libraries, helpers, framework, then the application | A signing failure; a helper with the wrong entitlements; an application entitlement on the deny list |
 

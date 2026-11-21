@@ -609,6 +609,46 @@ Milestone M0's last step: on the first working build, a throwaway Swift window w
 
 Sheets are attached to the window of the page's host view, one at a time per window as AppKit queues them, and wait for the page to be in a window. Default presenters are replaceable per surface by a scripted presenter in tests (`bdk_testing_command`, `present.script`), so no test blocks on a panel; one test answers a real sheet.
 
+## 12. The automation host's runtime (T-AUT-01, 2026-11-20)
+
+**Question.** Where does an application's automation script run, so that it reaches nothing but the broker: not
+the application's process, not the operating system, not a page? Architecture 9.3 proposed V8 in a sandboxed utility
+process, with an external runtime on the local channel as the alternative (risk R21).
+
+**Decision.** Both, for different jobs, over one protocol. Bundled scripts run in V8 in a sandboxed utility process.
+External tools (the application's own CLI or agent gateway) use an external runtime of their own on the
+authenticated local socket (T-AUT-04). Both speak the same JSON frames (packages/core/docs/conventions.md,
+"Automation"), so `@bdk/automation` is one library with two transports and the core checks every frame the same way.
+
+| Option | Run against | Status |
+|---|---|---|
+| External runtime on the local channel | The stub runtime: `bdk_stub_automation_server` opens its endpoint; Node (`@bdk/automation/client`) connects with a token, is welcomed as its session, calls `runtime.caller`, `contents.list` and `contents.screenshot` (binary), and is refused `history.search` without the capability and a wrong token | Ran: `nx run js-automation:test`, `src/stub.integration.test.ts`, passes. The endpoint's own tests pass on the stub (`tests_endpoint.c`) |
+| V8 in a utility process | Written in `chromium/bdk/engine/automation` with one patch; not built | Engine build and test pending (T-AUT-06): `engine_a_script_drives_two_pages` runs one script that calls commands |
+
+Read in the source at the pin (158.0.8127.37):
+
+- `services/proxy_resolver/proxy_resolver_v8.cc` is the precedent: `gin::IsolateHolder` with
+  `IsolateType::kUtility`, `gin::V8Initializer::LoadV8Snapshot`, `--jitless`. Its mojom declares
+  `[ServiceSandbox=sandbox.mojom.Sandbox.kService]`, which `content::ServiceProcessHost::Launch` reads.
+- `sandbox/policy/mac/sandbox_mac.mm`: `kService`, `kServiceWithJit` and `kUtility` use the same `utility.sb` profile
+  on macOS.
+- `chrome/app/helper-renderer-entitlements.plist` and `helper-gpu-entitlements.plist` are the only helper
+  entitlements with `allow-jit`, so a utility process cannot map JIT memory: the host runs `--jitless` (passed to
+  `gin::IsolateHolder::Initialize` with V8 feature-flag overrides disallowed).
+- `gin/public/isolate_holder.h`: the `CreateParams` constructor gives the heap limit (512 MiB old generation).
+- `chrome/utility/services.cc` and `ChromeContentUtilityClient` register utility services with no embedder hook, so
+  one patch registers the host (Mac only).
+
+Why not the alternatives: a Node runtime would give scripts the file system and the network, which the broker
+cannot see, and adds an executable to every application; a hidden page would put scripts in a renderer next to
+internal pages, which architecture 9 keeps apart. What a script loses is Node's API (R21): it has the protocol,
+timers, `console`, `queueMicrotask` and `AbortController`, and every capability through the broker.
+
+Not verified until the engine is built (T-AUT-06): that the overlay compiles; that V8 starts in the `kService`
+sandbox on macOS (the snapshot files must be readable there; the proxy resolver's macOS path does not use V8 this
+way); that `--jitless` suffices; what a script costs in start-up and speed; that exceeding the heap limit ends the
+process as `automation.hostGone`.
+
 ## Open items carried into the plan
 
 | Item | Where it is handled |

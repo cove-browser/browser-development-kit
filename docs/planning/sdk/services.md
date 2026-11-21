@@ -328,7 +328,7 @@ Rules:
 
 Events: `topSites.changed`.
 
-### 5.15 `contents`: pages (Plan, M7, T-AUT-03)
+### 5.15 `contents`: pages (Plan, M7, T-AUT-03; written in M7; passes on the stub, engine build and test pending (T-AUT-06))
 
 For Swift and automation sessions. Never for internal pages. Swift normally uses the typed objects in [swift-api.md](swift-api.md) section 6, which are the same operations.
 
@@ -359,9 +359,11 @@ Rules:
 - A session cannot answer a UI request. A permission prompt raised by a page a session is driving waits for the user, or is denied if the application's handler says so.
 - Every `contents.*` call by a session emits an audit event to Swift.
 
-Events: `contents.created`, `contents.closed`, `contents.navigated`, `contents.loadingChanged`, `contents.titleChanged`, `contents.crashed`, `contents.dialogOpened` (so a script knows it is blocked on a dialog it cannot answer).
+Events: `contents.created`, `contents.closed`, `contents.navigated`, `contents.loadingChanged`, `contents.titleChanged`, `contents.crashed`, `contents.dialogOpened` (so a script knows it is blocked on a dialog it cannot answer), and `contents.attentionRequested`.
 
-### 5.16 `scripts`: persistent user scripts (Plan, M7, T-AUT-03)
+As built in M7 (the definitions are `interface/contents.json`; the rules are `packages/core/docs/conventions.md`, "Automation"): the page a command addresses is the invoke options' `contents` (a call frame's `contents`), never an argument; the runtime core answers `list`, `get`, `create`, `close`, `navigate`, the history moves, `waitFor` on `load` and `url`, `setMuted`, `setZoom` and `requestAttention`, the engine the rest. `contents.save` writes `htmlOnly`, `completePage` or `singleFile` (MHTML) to a path the caller names and appears in the profile's downloads. `screenshot` and `pdf` answer `{mimeType, byteLength, path?}` with the bytes outside the JSON, or write the file the caller names; PDF sizes and margins are in inches. A page created by a session belongs to the application, which is told by `contents.created` with `createdBy`. Errors added: `contents.internalPage`, `contents.scriptError`, `contents.notSerializable`, `contents.noElement`, `broker.timeout`.
+
+### 5.16 `scripts`: persistent user scripts (Plan, M7, T-AUT-03; written in M7; passes on the stub, engine build and test pending (T-AUT-06))
 
 | Command | Capability | Marks | Does |
 |---|---|---|---|
@@ -369,9 +371,9 @@ Events: `contents.created`, `contents.closed`, `contents.navigated`, `contents.l
 | `scripts.unregister` | `contents.script` | N | |
 | `scripts.list` | `contents.read` | N | |
 
-Scripts registered by a session are removed when the session is revoked.
+Scripts registered by a session are removed when the session is revoked. As built: kept by the runtime core in memory for the runtime's life (not across a relaunch); `runAt` defaults to `documentIdle` and `world` to an isolated world named like the id; a session may replace or remove only its own.
 
-### 5.17 `debug`: the DevTools protocol (Plan, M7, T-AUT-03)
+### 5.17 `debug`: the DevTools protocol (Plan, M7, T-AUT-03; written in M7; passes on the stub, engine build and test pending (T-AUT-06))
 
 | Command | Capability | Marks | Does |
 |---|---|---|---|
@@ -381,7 +383,7 @@ Scripts registered by a session are removed when the session is revoked.
 
 Events: `debug.event`, `debug.detached`.
 
-`contents.debug` is close to full control of a page. The protocol domains that reach beyond a page, such as `Browser`, `Target` for other pages, and `SystemInfo`, are refused for sessions. Internal pages cannot be attached to.
+`contents.debug` is close to full control of a page. The protocol domains that reach beyond a page, such as `Browser`, `Target` for other pages, and `SystemInfo`, are refused for sessions. Internal pages cannot be attached to. As built, the refused domains are Browser, Target, SystemInfo, Tethering, Storage, IO, ServiceWorker and BackgroundService; `[devtools] protocol = false` refuses `debug.*` to every caller (`devtools.protocolDisabled`); events go only to the caller that attached. Swift-only `devtools.open`, `close` and `state` with `devtools.stateChanged` drive the front end (`interface/devtools.json`).
 
 ### 5.18 `system` (Plan, M3, T-SVC-06)
 
@@ -472,7 +474,7 @@ The spec excludes any built-in sync and says an application may build its own on
 - `privacy.clear` cannot stop a removal that has begun: a cancelled call is answered cancelled and the removal runs on. `privacy.estimate` counts history, cookies and downloads within the call's `range` and `origins` (history and downloads by the origin of their URL, cookies by domain match on the origin's host and by creation time, downloads by start time); the other types report 0 items.
 - `downloads.start` starts the download directly; the downloads UI request it is marked with belongs to the downloads surface work. `downloads.retry` resumes an interrupted download that can resume and otherwise starts again from the URL.
 - Built-in events are emitted through the core (conventions.md, "The broker", item 12). `history.visited` says `application` for a visit added with `history.add` and `user` for a navigation.
-- Screenshots and PDFs are not commands until M7; the engine has the functions (`capture_service.cc`).
+- Screenshots, PDFs and saved pages are `contents.screenshot`, `pdf` and `save` since M7 (5.15).
 - `bookmarks.import` (T-SVC-07) reads the file with Chromium's `ContentBookmarkParser`, which runs the Netscape-format HTML parser in a utility process as Chromium's own import does, then adds the entries itself. They go into a new folder titled "Imported bookmarks" at the end of the other bookmarks (never the bar, and the profile's existing bookmarks are untouched), keeping the file's folders; an entry with an invalid URL is skipped. It answers `{imported}`, the number of bookmarks (folders are not counted), and reports progress (0 on starting to read, 0.5 once parsed, then every 100 added). A path that is empty, unreadable or not bookmarks HTML fails with `broker.invalidArguments`. A private profile imports into its parent's bookmarks.
 - `bookmarks.export` (T-SVC-07) writes the profile's bookmarks with Chromium's `bookmark_html_writer`, favicons included. It answers `null`; a file that cannot be written fails with `platform.failed`, and a second export while one runs for the same bookmarks with `platform.busy`.
 - `permissions.certificateExceptions` answers `{hosts}`: the hosts (sorted, no port) where a certificate error was proceeded past and the decision still holds, from Chromium's `StatefulSSLHostStateDelegate` (T-SVC-07). `permissions.revokeCertificateException` takes `{host}`, forgets the decision (and closes idle connections, so the next visit meets the error again) and answers `null`, also when there was none. Each profile keeps its own; a private profile's go with it.

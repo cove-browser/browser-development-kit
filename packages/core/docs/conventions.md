@@ -123,10 +123,10 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
 
 ### Named in c-abi.md and not declared (nothing states their shape)
 
-`bdk_contents_prune`, `_perform_command`, `_can_perform_command`, `_find_start/_next/_stop`, `_set_host_context`;
+`bdk_contents_prune`, `_perform_command`, `_can_perform_command`, `_set_host_context`;
 `bdk_window_set_anchor_provider`, `_set_request_handler`, `bdk_window_for_contents`, `_contents`, `_active_contents`;
-`bdk_session_run`, `bdk_task_*`, `bdk_automation_endpoint_*`, `bdk_automation_subscribe_audit`;
-`bdk_crash_reports_*`, `bdk_netlog_*`. Interface definition validation and generated identifiers are T-ABI-03.
+`bdk_crash_reports_*`, `bdk_netlog_*`. `bdk_automation_subscribe_audit` is not declared on purpose: the audit trail
+is the built-in events of namespace `automation` ("Automation" below). Interface definition validation and generated identifiers are T-ABI-03.
 
 ## Interface definitions and identifiers
 
@@ -228,9 +228,90 @@ Decisions taken where the specification was silent (2026-11-19):
     `notImplemented` (the first four are in the swift-api.md table; `notImplemented` is new, domain `broker`).
     `gestureRequired` is reused in domain `capability`.
 
-Not done here: subscribing to events (the capability check of services.md section 7, scope and back-pressure), the
-`translation`, `search`, `favicons`, `extensions`, `contents`, `scripts` and `debug` namespaces, and the Swift and
-TypeScript wrappers generated from the definitions.
+Not done here: the host's and pages' event subscriptions are not checked by capability (sessions' are, see
+"Automation"), the `translation`, `search`, `favicons` and `extensions` namespaces, and the TypeScript declarations
+generated from the definitions (T-JS-02).
+
+## Automation
+
+Specification: architecture.md 9.3, services.md 5.15 to 5.17, javascript-api.md 5, c-abi.md 9. Tasks T-AUT-01 to
+T-AUT-05, T-SVC-09. The core does everything that needs no Chromium (`runtime/automation.cc`,
+`runtime/contents_commands.cc`, `runtime/local_socket_posix.cc`); a backend runs scripts and renderer work. Decisions
+taken where the specification was silent (2026-11-20):
+
+1. A session (`bdk_session_create`) is a broker `Caller` of kind session with the application's capabilities (checked
+   by `grant_error`) and scope: `profiles` is `"all"` or a list of open profile ids, resolved to handles at creation
+   (a profile closed and reopened leaves the scope); `contents` is `"all"` (every page of those profiles),
+   `"created"` (default: pages the session creates) or `"explicit"` (pages granted with
+   `bdk_session_grant_contents`; pages it creates are added too). A page is in scope only in a profile that is
+   (`check_scope`). With one profile in scope it is the default profile of a call.
+2. Revocation (`bdk_session_revoke`, or `bdk_release` of the session) revokes the caller (its calls end with
+   `broker.cancelled`), ends its tasks with `automation.sessionRevoked`, closes its external connections with a
+   `closed` frame and removes its user scripts. At shutdown every session is revoked without the audit event.
+3. One wire protocol for scripts and external tools: one JSON object per frame, field `type`. Client to BDK: `hello
+   {protocol, token, client?}` (external only, first), `call {id, command, args?, profile?, contents?}`, `cancel {id}`,
+   `subscribe {id, event, profile?, contents?}`, `unsubscribe {id}`, and from a script only `progress {fraction,
+   message}`, `log {level, message}`, `done {result}`, `failed {error: {message, stack?}}`. BDK to client: `welcome
+   {protocol, session: {name, capabilities}}`, `start {protocol, task, script, arguments, session}` (a script's first
+   frame), `result {id, value, binary?}` (binary in base64), `error {id, error: {domain, code, message}}`, `progress
+   {id, fraction, message}`, `event {id, name, payload}`, `abort {error}` (the task is being torn down) and `closed
+   {error}` (sent before BDK closes a connection). Ids are positive integers unique per connection across calls and
+   subscriptions; a reused id, an unknown `type` or a frame that is not a JSON object closes the connection with
+   `broker.invalidArguments`. Pages are the decimal string of their handle, profiles their id. Protocol version 1.
+4. Tasks: `bdk_session_run` checks `[automation] enabled` (`automation.disabled`) and that the script is a key of
+   the resolved `automation.scripts` (`automation.scriptNotFound`), then, on a later task, calls
+   `Backend::StartTask` with a `TaskPort` and sends the `start` frame. Events reach `bdk_task_subscribe`:
+   PROGRESS, LOG, COMMAND (one per call, when it ends) and FINISHED last (`{"result"}` or `{"error"}`); a
+   subscription after the end gets FINISHED alone. `bdk_task_cancel` and releasing a running task's handle send
+   `abort` and finish it with `broker.cancelled`; a `failed` frame or a host that could not load the script is
+   `automation.scriptFailed`; a host crash `automation.hostGone`. `Backend::EndTask` tears the script down after any
+   end. A `done` result is capped at 4 MiB like any result.
+5. Audit: every call a session makes emits `automation.commandInvoked {session, task?, command, profile?, contents?,
+   error?}` when it ends, refused calls included; `automation.sessionCreated` and `automation.sessionRevoked` frame a
+   session's life. They are built-in events with capability `automation.audit`, so the host subscribes with
+   `bdk_subscribe_named` and an auditing session can be granted them; no separate audit function exists.
+6. A session subscribes to built-in events and declared `app.` events. The event's capability is checked when it
+   subscribes (an `app.` event needs the capability named like it), and each event is delivered only when its
+   profile and page are in the session's scope. Events of a page carry it: backends use `emit_builtin_event_for`
+   (scope by page) or `emit_builtin_event_to` (one caller only: `debug.event` goes to whoever attached).
+7. The external endpoint (`bdk_automation_endpoint_open`) needs `[automation.external] enabled`
+   (`automation.disabled`). It is a Unix-domain stream socket, 0600, in a new 0700 directory (`mkdtemp`) under the
+   temporary directory or a directory the application names (it must be the user's and not writable by others);
+   every connection's peer must have the user's uid (`getpeereid`, `SO_PEERCRED`). Frames are a 4-byte big-endian
+   length and the JSON, at most 32 MiB. Nothing listens on a network port; the conformance suite checks that no
+   socket of the process listens on anything but a Unix-domain address. The first frame must be `hello`; the
+   application gets it through its callback with a `bdk_context_t` and answers once, now or later, with
+   `bdk_automation_hello_accept` (a live session) or `_refuse` (a `closed` frame with `capability.denied` and its
+   message). At most 64 connections at a time; one that falls 64 MiB behind is closed (`automation.overloaded`)
+   instead of having events coalesced. A transport thread (`std::thread`, `poll`) moves bytes; everything else is
+   on the UI thread. `local_socket_posix.cc` is the core's one platform file; Windows replaces it.
+8. The core answers, on the Backend's page operations so every runtime behaves the same, `contents.list`, `get`,
+   `create` (the page belongs to the application, which gets `contents.created` with `createdBy` and destroys it like
+   any other), `close`, `navigate` (resolves `{url, errorPage}` at commit, or at load with `waitUntil: "finished"`; a
+   failed navigation is `navigation.<code>`), `reload`, `stop`, `goBack`, `goForward` (no entry:
+   `broker.invalidArguments`), `waitFor` with `load` and `url` (a `*` glob) only, deadline `timeoutMs` (default 30 s,
+   `broker.timeout`, through `Backend::PostDelayed`), `setMuted`, `setZoom` and `requestAttention` (the event
+   `contents.attentionRequested`; BDK moves no view). Every other `contents.*` command goes to the backend. A command
+   that needs a page and names none is `broker.invalidArguments`. Page events become `contents.navigated`,
+   `loadingChanged`, `titleChanged`, `closed` and `crashed`; a UI request raised for a page is
+   `contents.dialogOpened`, so a script knows it waits on the user (it cannot answer requests).
+9. `scripts.*`: the core keeps a profile's user scripts (in memory, for the runtime's life), in registration order,
+   and gives all of them to `Backend::UserScriptsChanged` after each change. A script needs an id, a match pattern
+   and JavaScript or CSS; `runAt` defaults to `documentIdle` and `world` to an isolated world named like the id. A
+   session can replace or remove only its own scripts (`capability.denied`); the host any.
+10. `debug.*`: `[devtools] protocol = false` refuses `debug.attach` and `debug.send` to every caller
+    (`devtools.protocolDisabled`); sessions are refused the methods of the domains Browser, Target, SystemInfo,
+    Tethering, Storage, IO, ServiceWorker and BackgroundService (`capability.denied`). `devtools.open` is refused when
+    `[devtools] frontend = "disabled"` (`devtools.disabled`).
+11. Binary results (commands marked `binary`): `CommandControl::ResolveBinary` delivers the bytes as the result
+    callback's `bdk_buffer_t`, borrowed for the callback, outside the 4 MiB JSON limit.
+12. The stub. `Backend::PostDelayed` has no clock: its time moves only when nothing else is queued (`bdk_stub_pump`
+    then runs the earliest delayed task). Its automation host runs scripts the test defines as callbacks
+    (`stub/bdk_stub_automation.h`, through `tests/harness_automation.h`; a runtime with a real host links
+    `tests/harness_automation_unsupported.c` and those tests are skipped). `contents.frames` and `text` answer the main
+    frame and `""`, `screenshot` and `pdf` fixed minimal PNG and PDF bytes; the rest of the renderer's commands answer
+    `broker.notImplemented`. `bdk_stub_automation_server` (tests/automation_server.c) is the stub with its endpoint
+    open, for clients in other languages.
 
 ## The ABI hash
 

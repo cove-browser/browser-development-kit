@@ -353,7 +353,7 @@ A renderer crash is an event, not an error and not a UI request. The application
 
 ### 6.5 Scripting
 
-Plan, M7, task T-AUT-03. The same operations are available to automation sessions as `contents.*` commands.
+Plan, M7, task T-AUT-03; written in M7; passes on the stub, engine build and test pending (T-AUT-06). The same operations are available to automation sessions as `contents.*` commands. As built (`packages/swift/README.md`): `.isolated("")` and `.isolated("page")` are refused; `.all` sends no frame except to `insertCSS`; synthesised input and `waitFor` have no Swift wrapper yet (T-AUT-07, M8) and are reachable through `runtime.commands.invoke`.
 
 ```swift
 public final class Scripting {
@@ -430,7 +430,7 @@ try page.print()                       // goes through the printing surface
 
 `present()` on find, translation and DevTools, and `print()`, are how an application-owned menu item or shortcut starts a flow whose UI is a browser-owned surface. The request then takes the normal path in [ui-requests.md](ui-requests.md).
 
-Not built at the end of M3 (2026-11-20): `page.capture` (T-SVC-09, M7, with the `contents.*` commands); `page.zoom.set`, a settable `isMuted` and `exitPictureInPicture()` (T-SWF-06, M4). `page.zoom` and `page.isMuted` can be read. Find and printing are built (T-SWF-07): the calls throw `contents.stale` on a closed page, like the other page calls. `find.start` returns the results of that search as a stream: one report when it starts and one for each move of the active match, each with `matchCount`, `activeIndex` (from 1, 0 for none), `rect` in the page view's coordinates and `isFinal` (the engine reports while it is still counting). The stream ends at `stop`, at the next `start` and when the page closes. `FindRequest.session` is the same `page.find`. The stub renders nothing, so its searches always report zero matches.
+`page.capture` is built in M7 (T-SVC-09; on the engine, build and test pending: T-AUT-06): screenshots are PNG, PDF sizes in inches. Not built at the end of M3 (2026-11-20): `page.zoom.set`, a settable `isMuted` and `exitPictureInPicture()` (T-SWF-06, M4). `page.zoom` and `page.isMuted` can be read. Find and printing are built (T-SWF-07): the calls throw `contents.stale` on a closed page, like the other page calls. `find.start` returns the results of that search as a stream: one report when it starts and one for each move of the active match, each with `matchCount`, `activeIndex` (from 1, 0 for none), `rect` in the page view's coordinates and `isFinal` (the engine reports while it is still counting). The stream ends at `stop`, at the next `start` and when the page closes. `FindRequest.session` is the same `page.find`. The stub renders nothing, so its searches always report zero matches.
 
 ### 6.8 Session state
 
@@ -846,7 +846,7 @@ Settled in T-SVC-08 (2026-11-20):
 
 ## 13. Automation
 
-Plan, M7, tasks T-AUT-01 to T-AUT-04. The host and its trust model are in `architecture.md` 9.3; the JavaScript side is in [javascript-api.md](javascript-api.md) section 5.
+Plan, M7, tasks T-AUT-01 to T-AUT-04; written in M7; passes on the stub, engine build and test pending (T-AUT-06). As built: `session.run` throws instead of being `async`; `external.open(directory:authenticate:)` takes an async authenticator; pages a session creates arrive as `runtime.automation.events` `.contentsCreated(page, bySession:)`, not yet through `webContentsCreated(_, by:)` (T-AUT-07, M8). The host and its trust model are in `architecture.md` 9.3; the JavaScript side is in [javascript-api.md](javascript-api.md) section 5.
 
 ```swift
 let session = try runtime.automation.makeSession(.init(
@@ -889,7 +889,7 @@ A page created by a session starts in the parking context and is not on screen. 
 
 ## 14. DevTools and the protocol
 
-Plan, M7, task T-AUT-05.
+Plan, M7, task T-AUT-05; written in M7; passes on the stub, engine build and test pending (T-AUT-06). As built, `present()` and `close()` are `async throws`, and a detached protocol session throws `devtools.detached`.
 
 ```swift
 page.devTools.present()                         // goes through the DevTools surface

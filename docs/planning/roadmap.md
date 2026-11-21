@@ -198,8 +198,24 @@ Exit criteria: representative real extensions, including a content blocker, a pa
 | SDK | T-JS-04 | `@bdk/automation` bundles with Rolldown. Its entry point is separate from `@bdk/internal`. |
 | DevTools | T-AUT-05 | Default, modified and replaced front ends work. |
 | Capture | T-SVC-09 | Screenshots, PDFs and saved pages through `contents.*` and `page.capture`. |
+| Engine verification | T-AUT-06 | The M7 engine work builds, and its engine scenarios pass. |
 
 Exit criteria: a downstream application can build a CLI or agent wrapper using sessions, capability sets and events, with its own authentication and policy.
+
+**Status, 2026-11-20: built and passing without Chromium; the engine work is written, engine build and test pending (T-AUT-06).** Everything that needs no Chromium is in `packages/core`, `packages/js/automation`, `packages/cli` and `packages/swift` and passes: the stub conformance suite (213 tests, 24 new), Swift (159, 25 new), `js-automation` (52), the CLI (280 and 8 skipped), codegen, lint and format. The engine code (`chromium/bdk`) and one new patch were checked against the source at the pin; `chromium:patch-check` passes for the 15 patches. Nothing was built against Chromium, so no M7 behaviour has been seen in a real page. Decisions are in [amendments.md](amendments.md) section 2.14 and `packages/core/docs/conventions.md` ("Automation").
+
+| Task | Status | Where it is recorded |
+|---|---|---|
+| T-AUT-01 | Decided: V8 in a `kService` utility process (`--jitless`, 512 MiB heap) for bundled scripts, an external runtime on the local socket for external tools, one protocol for both. The external option ran against the stub (Node client, `stub.integration.test.ts`); the V8 option is written, engine build and test pending (T-AUT-06). | [feasibility.md](feasibility.md) section 12 |
+| T-AUT-02 | Done in the core and passing on the stub: sessions with a capability set and a scope of profiles and pages, revocation ending tasks, calls, connections and user scripts, tasks with progress, logs and an audit event per command. A session without a capability is refused (stub and endpoint tests). The host (`chromium/bdk/engine/automation`) is written, engine build and test pending; its acceptance scenario is `engine_a_script_drives_two_pages`. | conventions.md, "Automation"; `tests_automation.c` |
+| T-AUT-03 | The core's half done and passing on the stub (`contents.list` to `requestAttention`, `waitFor` on load and URL, `scripts.*`, the `debug.*` checks). The renderer's half (evaluate in page and isolated worlds and frames, query, text, snapshots, CSS, input, user scripts, the DevTools protocol over an in-process client) is written, engine build and test pending; each operation has an engine scenario on two pages, with cleanup on navigation. | `chromium/bdk/README.md`; `tests_engine_automation.c` |
+| T-AUT-04 | Done and passing on the stub, in the core so the engine shares it: off unless `[automation.external] enabled`, a 0600 Unix socket in a 0700 directory, peer uid checked, hello with a token the application accepts or refuses; the suite checks that nothing listens on a network port. | `tests_endpoint.c`; Swift `EndpointTests` |
+| T-JS-04 | Done: `@bdk/automation` (with `/client`, `/commands`, `/events`), bundled by `bdk build automation` with Rolldown into one module with no imports (`@bdk/*` inlined, amendments 2.14); its entry points are its own, apart from `@bdk/internal`. A bundled script ran against a simulated host; the real host is T-AUT-06. Loosely typed until T-JS-02: T-JS-05, M8. | `packages/js/automation/README.md` |
+| T-AUT-05 | Written, engine build and test pending: default, modified (overlay) and replaced front ends, `[devtools] frontend = "disabled"`, the `devtools` request with an undocked window as the default presenter, `devtools.open`, `close`, `state`. | `chromium/bdk/README.md`; [sdk/javascript-api.md](sdk/javascript-api.md) section 6 |
+| T-SVC-09 | Commands, Swift (`page.capture`) and the stub's results done; the engine's screenshots (visible, full page, rectangle; PNG, JPEG), PDFs and saved pages are written, engine build and test pending. | [sdk/services.md](sdk/services.md) 5.15 |
+| Exit criterion | Met on the stub: an external tool, written in TypeScript with `@bdk/automation/client`, is admitted by the application's own authenticator, holds a session with a capability set, is refused what it lacks, receives events in its scope and is audited. Not yet shown on the engine (T-AUT-06). | `stub.integration.test.ts` |
+
+Not done, each a task: the engine build and scenarios (T-AUT-06, M7); typed declarations for scripts (T-JS-05, M8); Swift's `webContentsCreated(_, by:)`, Swift wrappers for synthesised input and `waitFor`, a CPU budget for the host, coalescing for slow clients, `--watch` (T-AUT-07, M8). `Page.translate` in `@bdk/automation` calls `translation.*`, which T-PRV-03 (M6) defines.
 
 ### M8 — Arc-style reference application (public v1 gate)
 
@@ -215,6 +231,7 @@ A reference test application in `apps/examples/arc-style-browser`. It is not a p
 | Extensions in the layout | T-ARC-03 | Popup and side panel appear in application-chosen containers. The probe's reports match the documented mapping. |
 | Internal pages | T-ARC-03 | A bundled settings page at the branded URL with granted capabilities. |
 | Automation | T-ARC-03 | A script drives two pages in different spaces, one of them signed in to a test site. |
+| Left over from M7 | T-AUT-07, T-JS-05 | Swift reports pages sessions create and wraps synthesised input; the host has a CPU budget; slow clients are coalesced; scripts are typed from the generated declarations. |
 
 Exit criteria: every scenario passes in CI, and no requirement in the brief's Cove section is met by weakening a browser service or an extension behaviour without that being recorded in the compatibility matrix.
 
