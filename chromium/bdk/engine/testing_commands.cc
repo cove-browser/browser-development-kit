@@ -23,6 +23,7 @@
 #include "bdk/engine/bdk_testing.h"
 #include "bdk/engine/engine_contents.h"
 #include "bdk/engine/extensions/extension_testing.h"
+#include "bdk/engine/extensions/extension_ui_testing.h"
 #include "bdk/engine/extensions/panel_testing.h"
 #include "bdk/engine/json_util.h"
 #include "bdk/engine/services/authentication.h"
@@ -221,6 +222,9 @@ bool Run(const std::string& name,
   }
   if (name.starts_with("extensions.")) {
     return RunExtensionTestingCommand(name, args, result);
+  }
+  if (name.starts_with("extui.")) {
+    return RunExtensionUiTestCommand(name, args, result);
   }
   if (name == "script_page") {
     // A page with content: {"url", "body", "contentType", "headers"}.

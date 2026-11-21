@@ -25,9 +25,12 @@ namespace bdk {
 
 // One item of a context menu the engine shows itself.
 struct MenuItem {
-  std::string id;  // empty: a separator
+  std::string id;  // empty: a separator, or a submenu when `children` is not
   std::string title;
   bool enabled = true;
+  bool checked = false;
+  // Not empty: a submenu titled `title` (one extension's context-menu items).
+  std::vector<MenuItem> children;
 };
 
 // The platform half of a page: the native view the application places, which

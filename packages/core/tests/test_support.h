@@ -28,6 +28,7 @@ extern const t_test_t t_engine_ui_tests[];
 extern const t_test_t t_engine_prompt_tests[];
 extern const t_test_t t_engine_extension_tests[];
 extern const t_test_t t_engine_extension_panel_tests[];
+extern const t_test_t t_engine_extension_ui_tests[];
 #endif
 #ifdef BDK_HARNESS_OWNS_MAIN
 int bdk_conformance_main(int argc, char** argv);

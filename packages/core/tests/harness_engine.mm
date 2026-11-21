@@ -55,11 +55,8 @@ int bdk_harness_engine_keep_profiles = 0;
 /* Set by a test that needs surfaces configured: the value of "surfaces" in the resolved
    configuration, for example {"notifications":"disabled"}. Cleared by the next start. */
 const char* bdk_harness_engine_surfaces = NULL;
-/* The same for "extensions" (for example {"ui":{"side_panels":"disabled"}}). */
-const char* bdk_harness_engine_extensions = NULL;
-
 /* Set by a test that needs extensions configured: the value of "extensions" in the resolved
-   configuration (a JSON object), for the next runtime only. */
+   configuration, for example {"ui":{"popups":"disabled"}}. Cleared by the next start. */
 const char* bdk_harness_engine_extensions = NULL;
 
 void bdk_harness_prepare_start_config(bdk_start_config_t* config) {
@@ -76,9 +73,9 @@ void bdk_harness_prepare_start_config(bdk_start_config_t* config) {
         resolved += std::string(",\"surfaces\":") + bdk_harness_engine_surfaces;
     if (bdk_harness_engine_extensions)
         resolved += std::string(",\"extensions\":") + bdk_harness_engine_extensions;
-    bdk_harness_engine_extensions = NULL;
     resolved += "}";
     bdk_harness_engine_surfaces = NULL;
+    bdk_harness_engine_extensions = NULL;
     config->resolved_config_json = View(resolved.c_str());
     config->user_data_path_override = View(g_data_dir.c_str());
 }
@@ -187,7 +184,7 @@ static NSMutableDictionary<NSNumber*, NSNumber*>* WindowHandles() {
     return handles;
 }
 
-int bdk_harness_engine_window_open(bdk_runtime_t rt) {
+static int OpenRegisteredWindow(bdk_runtime_t rt, uint32_t kind) {
     NSWindow* window = [[NSWindow alloc] initWithContentRect:NSMakeRect(100, 100, 640, 480)
                                                    styleMask:NSWindowStyleMaskTitled
                                                      backing:NSBackingStoreBuffered
@@ -200,12 +197,40 @@ int bdk_harness_engine_window_open(bdk_runtime_t rt) {
     native.pointer = (__bridge void*)window;
     bdk_window_t handle = 0;
     bdk_error_t error = 0;
-    if (bdk_window_register(rt, native, 1, &handle, &error) != BDK_OK)
+    if (bdk_window_register(rt, native, kind, &handle, &error) != BDK_OK)
         return -1;
     [RegisteredWindows() addObject:window];
     int index = (int)RegisteredWindows().count - 1;
     WindowHandles()[@(index)] = @(handle);
     return index;
+}
+
+/* A window registered as BDK_WINDOW_KIND_NORMAL (a popup-kind window's Browser takes one tab). */
+int bdk_harness_engine_window_open(bdk_runtime_t rt) {
+    return OpenRegisteredWindow(rt, BDK_WINDOW_KIND_NORMAL);
+}
+
+/* The bdk_window_t the registered window `window` (an index of the open functions) got. */
+bdk_window_t bdk_harness_engine_window_handle(int window) {
+    return (bdk_window_t)WindowHandles()[@(window)].unsignedLongLongValue;
+}
+
+/* Puts a native view (a popup's secure view) in the registered window, at the top right, as an
+   application embeds it. */
+void bdk_harness_engine_place_view(int window, bdk_native_handle_t view, double w, double h) {
+    if (!view.pointer)
+        return;
+    NSWindow* ns_window = RegisteredWindows()[window];
+    NSView* v = (__bridge NSView*)view.pointer;
+    NSRect bounds = ns_window.contentView.bounds;
+    v.frame = NSMakeRect(NSMaxX(bounds) - w, NSMaxY(bounds) - h, w, h);
+    [ns_window.contentView addSubview:v];
+    bdk_harness_pump();
+}
+
+void bdk_harness_engine_remove_view(bdk_native_handle_t view) {
+    if (view.pointer)
+        [(__bridge NSView*)view.pointer removeFromSuperview];
 }
 
 void bdk_harness_engine_window_attach(int window, bdk_contents_t contents) {

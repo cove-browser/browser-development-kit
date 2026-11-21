@@ -233,6 +233,7 @@ static const t_test_t* const kTables[] = {
     t_engine_ui_tests,              /* browser-owned surfaces on the engine (tests_engine_ui.c) */
     t_engine_prompt_tests,          /* services and prompts (tests_engine_prompts.c) */
     t_engine_extension_tests,       /* extension install and policy (tests_engine_extensions.c) */
+    t_engine_extension_ui_tests,    /* extension UI (tests_engine_ext_ui.c) */
     t_engine_extension_panel_tests, /* windows, side panels, DevTools extensions */
 #endif
 };

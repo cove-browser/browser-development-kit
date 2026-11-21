@@ -210,6 +210,7 @@ HostContext& HostContexts::Create(Profile* profile,
     browser_window->SetHostWindow(HostWindow::Wrap(
         native, base::BindRepeating(&BdkBrowserWindow::OnActiveChanged,
                                     base::Unretained(browser_window))));
+    browser_window->InstallExtensionsContainer(native);
     // The window may be the key window already.
     if (browser_window->IsActive()) {
       browser_window->OnActiveChanged(true);

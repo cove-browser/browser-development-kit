@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "UI Action Popup",
+  "version": "1.0",
+  "description": "An action with a popup that reports the tab it was opened for.",
+  "permissions": ["activeTab", "scripting"],
+  "background": { "service_worker": "sw.js" },
+  "externally_connectable": { "matches": ["https://bdk.test/*"] },
+  "action": { "default_title": "UI popup", "default_popup": "popup.html" }
+}
