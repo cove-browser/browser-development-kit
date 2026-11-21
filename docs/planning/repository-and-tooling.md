@@ -80,8 +80,8 @@ All edges below are declared with `implicitDependencies`. Nx does not discover t
 | `core` | `packages/core` | CMake + Ninja (clang) | none | `build`, `test`, `lint`, `format` |
 | `chromium` | `chromium` | depot_tools, GN, autoninja | `core` | `runtime`, `sync`, `patch-apply`, `patch-export`, `build`, `package`, `lint` |
 | `swift` | `packages/swift` | SwiftPM | `core`, `chromium` | `build`, `test`, `test-integration`, `lint`, `format` |
-| `js-protocol` | `packages/js/protocol` | tsc | `core` | `codegen`, `build`, `test`, `lint` |
-| `js-codegen` | `packages/js/codegen` | tsc | `js-protocol` | `build`, `test`, `lint` |
+| `js-protocol` | `packages/js/protocol` | tsc | none | `build`, `test`, `lint` |
+| `js-codegen` | `packages/js/codegen` | tsc | `js-protocol`, `core` | `codegen`, `codegen-check`, `build`, `test`, `lint` |
 | `js-internal` | `packages/js/internal` | tsc, Vite for samples | `js-protocol`, `js-codegen` | `build`, `test`, `lint` |
 | `js-automation` | `packages/js/automation` | tsc, Rolldown | `js-protocol`, `js-codegen` | `build`, `test`, `lint` |
 | `cli` | `packages/cli` | tsc, Rolldown; `node --build-sea` for one executable per platform | `core`, `js-codegen` | `build`, `test`, `lint`, `package` |

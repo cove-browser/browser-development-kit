@@ -11,9 +11,7 @@ graph.json
 .DS_Store
 # resolved from bdk.toml by the build
 apps/**/bdk.resolved.json
-# generated bindings are produced by the codegen targets
-packages/js/protocol/src/generated/
-# the @bdk/internal modules js-codegen:codegen writes; keep in step with its outputs (js-codegen tests check)
+# generated bindings: the @bdk/internal modules js-codegen:codegen writes; keep in step with its outputs (js-codegen tests check)
 packages/js/internal/src/autofill.ts
 packages/js/internal/src/bookmarks.ts
 packages/js/internal/src/downloads.ts
