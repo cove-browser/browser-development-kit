@@ -484,7 +484,7 @@ There is no BDK window, tab strip, toolbar or split-view type. A split is two vi
 
 Nothing, by default. The first time a page view is added to an `NSWindow`, BDK creates a host context for that window and keeps it until the window closes.
 
-Registration is optional and adds three things (Added, S11). Not built at the end of M3: windows are registered automatically and internally, and none of this is public yet (T-SWF-08, M5).
+Registration is optional and adds three things (Added, S11). Built in M5 against the stub (T-SWF-08); the engine side is written, engine build and test pending. Departures (a weak `nsWindow`, `extensionWindowID: Int?`, `WindowRequest` as a struct naming the extension) are in `packages/swift/README.md`.
 
 ```swift
 let window = runtime.windows.register(nsWindow, .init(kind: .normal))   // .normal, .popup

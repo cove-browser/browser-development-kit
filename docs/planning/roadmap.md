@@ -173,8 +173,27 @@ Also fixed in M3: a persistent profile stayed loaded in Chromium after the appli
 | Compatibility checks | T-EXT-06 | A manifest requiring a disabled surface is rejected with a reason, at install and at update. A disabled API is absent, not silently accepted. |
 | Suite and matrix | T-EXT-07, T-EXT-08 | The probe suite and a set of real extensions run in CI. The matrix is generated from results and lists known gaps. |
 | Window registration | T-SWF-08 | Extensions see the window kind the application registered; default presenters attach to the application's anchors. |
+| Probe (owed by M0) | T-EXT-01 | The assertions for T-EXT-01 pass on the engine. |
+| Left open by this milestone | T-EXT-10, T-EXT-11, T-EXT-12, T-EXT-13 | The matrix's remaining scenarios and the real extensions run; `extensions.inspectView`; new pages opened by extension UI with no handler; the store's update check when the store is off. |
 
 Exit criteria: representative real extensions, including a content blocker, a password manager and a developer tool, install and work. Every known difference from Chrome is documented.
+
+**Status, 2026-11-20: written and passing without Chromium; the engine work is written, engine build and test pending.** Nothing in M5 has been built against Chromium or run on the engine, so no exit criterion is met yet: the main session builds the engine and runs the scenarios below. What does run passes: the stub conformance suite (216 tests, 27 of them new for extensions and windows), Swift (163 tests, 29 new), codegen, the CLI tests, the extension suite's own tests and `chromium:patch-check` (17 patches, 3 new). Decisions taken where the documents were silent are in [amendments.md](amendments.md) section 2.14 and `packages/core/docs/conventions.md` ("Extensions (M5)").
+
+| Task | Status | Where it is recorded |
+|---|---|---|
+| T-EXT-02 | Written, engine build and test pending: action state (`extensions.actions`, `extensions.actionChanged`), activation and declared commands from the host with the confirming event (`bdk_extensions.h`), the window's `ExtensionsContainer` (Chromium's cross-platform toolbar model) so `action.openPopup` works, popups as open `extension_popups` requests with a secure view and size updates, the default menu (`bdk_extension_menu_present`, and a title-bar accessory button when actions are `default` and the window has no anchor provider). Stub and Swift: done. | `chromium/bdk/README.md`; extensions.md 4.1, 4.2, 4.7 |
+| T-EXT-03 | Written, engine build and test pending, with no patch: `chrome.sidePanel` reaches a BDK `SidePanelUI` for every host context; the panel is an open `extension_side_panels` request, BDK's frame at the trailing edge by default, and `getLayout()` reports the side the application gives. | `chromium/bdk/README.md`; extensions.md 4.3 |
+| T-EXT-04 | Written, engine build and test pending: extension items in the context-menu request (`source`, `extensionId`, one submenu per extension), performing one grants `activeTab`; options pages as `newPage` requests naming the extension (one patch: Chromium opens them as a tab of the hidden host context). | extensions.md 4.4, 4.5 |
+| T-EXT-05 | Written, engine build and test pending: unpacked, local CRX (BDK owns the off-store policy) and self-hosted update URLs, each refused by source with `extension.sourceNotAllowed` naming the key; every install, re-enable and permission request is an `extension_installs` request (one patch: Chromium's install and uninstall dialogs are Views). | extensions.md 4.6, 5 |
+| T-EXT-06 | Done in the shared core (`runtime/extension_policy`), tested on the stub; the engine's use of it at install and before an update is written, engine build and test pending. With `allow_all`, the APIs of disabled surfaces are removed from the granted permissions so they are absent. | extensions.md 6 |
+| T-EXT-07 | Done without Chromium: `tests/extensions` (the fixed probe, fixtures for a content blocker, a password manager and a developer tool, both incognito modes), `matrix.json` and the generated [compatibility matrix](../extensions/compatibility-matrix.md), committed in its "not run" state; `extensions-suite:test-extensions` runs the engine's scenarios and regenerates it. The real extensions are listed with no version yet and have not been fetched (T-EXT-10). | `tests/extensions/README.md` |
+| T-EXT-08 | Written, engine build and test pending: Chrome's bindings add `devtools_page` panels to BDK's undocked front end; `[extensions.ui] devtools = "disabled"` blocks them. A replaced front end loads none (the matrix says so). | extensions.md 4.8 |
+| T-EXT-09 | Written, engine build and test pending: `chrome-web-store` installs only when listed in `stores`; when listed, a script on the store's pages relabels "Add to Chrome" as "Add to <browser name>" and leaves the page alone if it finds no such button. The store's own update check may still be sent when the store is off (T-EXT-13). | extensions.md 5 |
+| T-SWF-08 | Done against the stub (Swift `runtime.windows.register`, `BDKWindow`, anchors, delegate, `page.window`); the engine's window kinds, attachments, anchors and window requests are written, engine build and test pending. The parking context is hidden from the extension windows API by a patch. | swift-api.md 8.1; `packages/swift/README.md` |
+| T-EXT-01 | Written, engine build and test pending: assertions 1 to 5, 7 and 10, and decision D1 (a), in `tests_engine_ext_probe.c`; 6, 8 and 9 are the popup, context-menu and side-panel scenarios. Settled from the source while writing it: Chromium lists the parking context in `windows.getAll` and fires `windows.onCreated` for it, so it is hidden. | [feasibility.md](feasibility.md) section 3 |
+
+Not done, each a task: the 25 matrix scenarios with no engine test yet and the run of the three real extensions (T-EXT-10, M5); `extensions.inspectView` (T-EXT-11, M5); a new page opened from extension UI (an options page, "Manage Extensions", a link in a popup) is dropped when the application has no new-window handler (T-EXT-12, M5); the store update check when the store is off (T-EXT-13, M6, where the network audit is). `developer_mode`, `blocklist` and `[extensions.bundled]` (S6) wait for the product owner's acceptance of those additions and are not read (T-EXT-14, M9).
 
 ### M6 — Providers and privacy (public v1 gate)
 
@@ -187,6 +206,7 @@ Exit criteria: representative real extensions, including a content blocker, a pa
 | Reputation | T-PRV-05 | The chosen default blocks a listed test URL with an interstitial. Documentation and default UI state the protection level. |
 | Security data | T-PRV-06 | Revocation and transparency data update through the chosen route, or the fallback and its staleness are documented. |
 | Audit | T-PRV-07 | The network audit passes: no Google-owned host is contacted except sites the test visits. No sign-in, sync, metrics or crash upload code path is reachable. |
+| Left over from M5 | T-EXT-13 | With the store source off, no extension update check reaches the store. |
 
 ### M7 — Automation host and DevTools
 
@@ -231,6 +251,7 @@ Exit criteria: every scenario passes in CI, and no requirement in the brief's Co
 | Chromium's own tests | T-ADP-09 | The `browser_tests` filters named in T-ADP-02 pass on the BDK window, or each failure is recorded. Needed for the process-isolation gate. |
 | Cross-platform review | T-XPL-01 | The ABI and service contracts are reviewed against Windows and Linux host requirements and a future .NET binding; findings are resolved or recorded. |
 | Legal | T-REL-02 | Third-party notices ship. The legal review covers the store source (D4), component data (D5) and system codecs (D7). Widevine is deferred and not part of v1 unless the product owner decides otherwise. |
+| Extension additions (after the product owner accepts S6) | T-EXT-14 | `developer_mode`, `blocklist` and bundled extensions behave as extensions.md says. |
 
 ### M10 — Windows feasibility
 
