@@ -2,13 +2,17 @@
   "name": "cli",
   "root": "packages/cli",
   "projectType": "library",
-  "implicitDependencies": ["core", "js-codegen"],
+  "implicitDependencies": ["core", "js-codegen", "js-vite", "js-internal"],
   "targets": {
     "build": {
       "executor": "nx:run-commands",
       "dependsOn": [
         {
           "projects": ["js-codegen"],
+          "target": "build"
+        },
+        {
+          "projects": ["js-vite"],
           "target": "build"
         }
       ],
@@ -34,6 +38,12 @@
         {
           "externalDependencies": ["vitest"]
         }
+      ],
+      "dependsOn": [
+        {
+          "projects": ["js-vite"],
+          "target": "build"
+        }
       ]
     },
     "lint": {
@@ -47,7 +57,13 @@
           "taplo format --check 'tests/config/valid/*.toml' 'tests/config/resolve/*/bdk.toml'"
         ],
         "parallel": false
-      }
+      },
+      "dependsOn": [
+        {
+          "projects": ["js-vite"],
+          "target": "build"
+        }
+      ]
     },
     "format": {
       "executor": "nx:run-commands",
@@ -68,7 +84,17 @@
           "externalDependencies": ["rolldown"]
         }
       ],
-      "outputs": ["{projectRoot}/dist/bdk", "{projectRoot}/dist/bdk.artifactbundle"]
+      "outputs": ["{projectRoot}/dist/bdk", "{projectRoot}/dist/bdk.artifactbundle"],
+      "dependsOn": [
+        {
+          "projects": ["js-vite"],
+          "target": "build"
+        },
+        {
+          "projects": ["js-internal"],
+          "target": "build"
+        }
+      ]
     }
   }
 }

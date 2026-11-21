@@ -10,3 +10,6 @@ only reader is `src/assets.ts`.
 - Read assets as text through `Assets.readText(name)`. Do not import `node:sea` anywhere else.
 
 Expected files: `bdk.schema.json`, the JSON Schema for `bdk.toml` (T-CFG-01).
+
+The built `@bdk/internal` modules (`packages/js/internal/dist/*.js`) are also embedded, as `js/internal/<module>.js`, and
+`Assets.list(prefix)` names them. They are not kept in this directory; `src/asset-sources.ts` says where they come from.

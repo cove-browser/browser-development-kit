@@ -20,6 +20,8 @@ export interface ParsedArgs {
   team?: string;
   /** `--entitlements <file>`: the application's entitlements, for `build sign`. */
   entitlements?: string;
+  /** `--resolved <file>`: the resolved configuration, for `build pages`. */
+  resolved?: string;
   positionals: string[];
 }
 
@@ -35,10 +37,18 @@ const OPTIONS = {
   identity: { type: "string" },
   team: { type: "string" },
   entitlements: { type: "string" },
+  resolved: { type: "string" },
 } as const;
 
 /** Options that belong to a step rather than to every command. */
-export const STEP_FLAGS = ["out", "bundle", "identity", "team", "entitlements"] as const;
+export const STEP_FLAGS = [
+  "out",
+  "bundle",
+  "identity",
+  "team",
+  "entitlements",
+  "resolved",
+] as const;
 export type StepFlag = (typeof STEP_FLAGS)[number];
 
 /** Parses `argv` (without the executable and script). Throws a usage error (exit 2) on bad input. */

@@ -34,7 +34,50 @@ describe("createAssets, unpackaged", () => {
   });
 });
 
+describe("createAssets, listing and the SDK modules", () => {
+  it("lists asset names by prefix, with the built @bdk/internal modules under js/internal/", async () => {
+    const assets = await tempDir();
+    const internal = await tempDir();
+    await writeFile(join(assets, "a.json"), "{}");
+    await writeFile(join(assets, "README.md"), "docs");
+    await writeFile(join(internal, "settings.js"), "export const s = 1;");
+    await writeFile(join(internal, "settings.d.ts"), "export {};");
+    await writeFile(join(internal, "settings.test.js"), "test");
+    await writeFile(join(internal, "index.js"), "export const i = 1;");
+    const list = createAssets({ packaged: false, assetsDir: assets, internalDir: internal });
+    expect(list.list("js/internal/")).toEqual(["js/internal/index.js", "js/internal/settings.js"]);
+    expect(list.list("")).toEqual(["a.json", "js/internal/index.js", "js/internal/settings.js"]);
+    expect(list.readText("js/internal/settings.js")).toBe("export const s = 1;");
+  });
+
+  it("lists nothing when the SDK has not been built", async () => {
+    const assets = createAssets({
+      packaged: false,
+      assetsDir: await tempDir(),
+      internalDir: join(await tempDir(), "missing"),
+    });
+    expect(assets.list("js/internal/")).toEqual([]);
+    expect(() => assets.readText("js/internal/index.js")).toThrow(AssetNotFoundError);
+  });
+
+  it("does not read outside the SDK directory", async () => {
+    const dir = await tempDir();
+    await mkdir(join(dir, "dist"));
+    await writeFile(join(dir, "secret.js"), "x");
+    const assets = createAssets({
+      packaged: false,
+      assetsDir: dir,
+      internalDir: join(dir, "dist"),
+    });
+    expect(() => assets.readText("js/internal/../secret.js")).toThrow(AssetNotFoundError);
+  });
+});
+
 describe("createAssets, packaged", () => {
+  it("lists nothing when the executable embeds no index", () => {
+    expect(createAssets({ packaged: true }).list("js/internal/")).toEqual([]);
+  });
+
   it("reports a name that the executable does not embed as not found", () => {
     // Outside a single executable, `node:sea` has no assets, so every name is missing.
     expect(() => createAssets({ packaged: true }).readText("bdk.schema.json")).toThrow(

@@ -50,8 +50,8 @@ describe("usage errors (exit 2)", () => {
     [[], "No command given"],
     [["frobnicate"], 'Unknown command "frobnicate". Commands: build'],
     [["build"], "needs a step. Steps: config"],
-    [["build", "pages"], 'Unknown build step "pages". Steps: config'],
-    [["build", "config", "pages"], 'Unknown build step "pages"'],
+    [["build", "embed"], 'Unknown build step "embed". Steps: config, pages, sign'],
+    [["build", "config", "embed"], 'Unknown build step "embed"'],
     [["--bogus"], "Unknown option"],
   ])("%j", async (argv, text) => {
     const ctx = testContext();
@@ -150,6 +150,7 @@ describe("bdk build config", () => {
         readText(name) {
           throw new AssetNotFoundError(name);
         },
+        list: () => [],
       },
     });
     expect(await run(["build", "config"], ctx)).toBe(ExitCode.Environment);

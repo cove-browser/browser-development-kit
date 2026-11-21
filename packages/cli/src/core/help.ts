@@ -4,6 +4,7 @@ export function helpText(steps: readonly string[]): string {
 
 Usage:
   bdk build config [--out <file>]
+  bdk build pages [--bundle <App.app>] [--resolved <file>]
   bdk build sign --bundle <App.app> --identity <name|-> [--team <id>] [--entitlements <file>]
   bdk --help | --version
 
@@ -17,6 +18,9 @@ Options:
   --diagnostics <form>    Print diagnostics as "human" or "xcode" (file:line: error: message).
                           Default: "xcode" inside an Xcode build, otherwise "human"
   --out <file>            For \`build config\`: where to write bdk.resolved.json
+  --bundle, --resolved    For \`build pages\`: the application to write the pages into (in an Xcode build,
+                          CODESIGNING_FOLDER_PATH, else TARGET_BUILD_DIR/WRAPPER_NAME) and the resolved
+                          configuration to read (default: bdk.resolved.json next to bdk.toml)
   --bundle, --identity, --team, --entitlements
                           For \`build sign\`. In an Xcode build they default to CODESIGNING_FOLDER_PATH,
                           EXPANDED_CODE_SIGN_IDENTITY, DEVELOPMENT_TEAM and CODE_SIGN_ENTITLEMENTS.

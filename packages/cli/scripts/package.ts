@@ -8,7 +8,13 @@ import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "no
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { rolldown } from "rolldown";
-import { artifactBundleInfo, listAssets, seaConfig } from "./package-lib.js";
+import {
+  ASSET_INDEX,
+  INTERNAL_MODULES_PREFIX,
+  internalModulesDir,
+  listInternalModules,
+} from "../src/asset-sources.js";
+import { artifactBundleInfo, internalAssets, listAssets, seaConfig } from "./package-lib.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dist = join(root, "dist");
@@ -50,7 +56,20 @@ async function main(): Promise<void> {
   const bundleFile = join(work, "bdk.cjs");
   await bundle(version, bundleFile);
 
-  const assets = listAssets(join(root, "assets"));
+  const modules = listInternalModules();
+  if (modules.length === 0) {
+    throw new Error(
+      `${internalModulesDir()} holds no built @bdk/internal modules, which \`bdk build pages\` copies into applications. Run \`pnpm exec nx run js-internal:build\` first.`,
+    );
+  }
+  const assets = {
+    ...listAssets(join(root, "assets")),
+    ...internalAssets(internalModulesDir(), modules, INTERNAL_MODULES_PREFIX),
+  };
+  // `node:sea` cannot list assets, so the executable carries the list, itself included.
+  const indexFile = join(work, ASSET_INDEX);
+  assets[ASSET_INDEX] = indexFile;
+  writeFileSync(indexFile, JSON.stringify(Object.keys(assets).sort()));
   const configFile = join(work, "sea-config.json");
   writeFileSync(
     configFile,
