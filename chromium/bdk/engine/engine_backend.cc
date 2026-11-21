@@ -34,12 +34,15 @@
 #include "base/values.h"
 #include "bdk/core/generated/bdk_abi_hash.h"
 #include "bdk/core/runtime/core_internal.h"
+#include "bdk/core/runtime/providers_internal.h"
 #include "bdk/engine/chromium_main.h"
 #include "bdk/engine/engine_contents.h"
 #include "bdk/engine/host_context.h"
 #include "bdk/engine/host_view.h"
 #include "bdk/engine/identity.h"
 #include "bdk/engine/json_util.h"
+#include "bdk/engine/providers/provider_settings.h"
+#include "bdk/engine/providers/reputation_service.h"
 #include "bdk/engine/services/authentication.h"
 #include "bdk/engine/services/download_prompts.h"
 #include "bdk/engine/services/events.h"
@@ -147,6 +150,16 @@ class EngineBackend final : public bdkcore::Backend {
       }
       user_data_dir = app_data.Append(identity->storage_directory);
     }
+    // Providers (T-PRV-09): Chromium's threads read the choice, and the
+    // Google key must reach Chromium before anything reads it.
+    SetProviderSettings(rt);
+    {
+      std::string key_error;
+      if (!ApplyGoogleKey(bdkcore::provider_google_key(rt), &key_error)) {
+        return bdkcore::fail(out_error, BDK_DOMAIN_RUNTIME, "startFailed",
+                             key_error);
+      }
+    }
     if (IsChromiumRunning()) {
       if (user_data_dir != requested_user_data_dir_) {
         return bdkcore::fail(
@@ -173,13 +186,18 @@ class EngineBackend final : public bdkcore::Backend {
       ChromiumStartOptions options;
       base::PathService::Get(base::FILE_EXE, &options.program);
       options.user_data_dir = user_data_dir;
-      options.switches = ExtraSwitches();
+      options.switches = ProviderSwitches(CurrentProviderSettings());
+      for (std::string& extra : ExtraSwitches()) {
+        options.switches.push_back(std::move(extra));
+      }
+      InstallReputationService();
       std::string error;
       if (!StartChromium(options, &error)) {
         return bdkcore::fail(out_error, BDK_DOMAIN_RUNTIME, "startFailed",
                              error);
       }
       ApplyIdentityAfterStart(*identity);
+      ApplyLocalStatePrivacyPrefs();
       InstallPromptHooks();
       chromium_tasks_.store(true);
       registry_writer_ = base::ThreadPool::CreateSequencedTaskRunner(
@@ -337,6 +355,7 @@ class EngineBackend final : public bdkcore::Backend {
                     // (ui_notifications.h).
                     InstallNotificationDisplay(loaded);
                     InstallDownloadPrompts(loaded);
+                    ApplyPrivacyPrefs(loaded);
                     auto data = std::make_unique<EngineProfile>();
                     data->profile = loaded;
                     data->events = CreateServiceEvents(loaded, p);
@@ -361,6 +380,7 @@ class EngineBackend final : public bdkcore::Backend {
                            "Chromium could not create a private profile");
     }
     InstallDownloadPrompts(otr);
+    ApplyPrivacyPrefs(otr);
     auto data = std::make_unique<EngineProfile>();
     data->profile = otr;
     // Cookie and download events; ProfileEvents leaves out the history and

@@ -21,6 +21,7 @@
 #include "bdk/engine/host_view.h"
 #include "bdk/engine/identity.h"
 #include "bdk/engine/json_util.h"
+#include "bdk/engine/providers/translation_service.h"
 #include "bdk/engine/services/interstitial_prompts.h"
 #include "bdk/engine/services/password_prompts.h"
 #include "bdk/engine/session_state.h"
@@ -277,6 +278,7 @@ void EngineContents::Attach(
   // Visits are recorded in history, except in a private profile (the helper
   // has no history service there). Creating it again does nothing.
   HistoryTabHelper::CreateForWebContents(web_contents_);
+  AttachTranslation(web_contents_);
   // A DevTools front end moves its bindings to the new front-end WebContents
   // before the old one goes.
   if (devtools_) {

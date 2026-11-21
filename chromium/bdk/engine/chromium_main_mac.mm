@@ -165,18 +165,28 @@ bool StartChromium(const ChromiumStartOptions& options, std::string* error) {
   // (MacAppCodeSignClone) so that an in-place update cannot invalidate the
   // running code's signature. BDK never updates itself, and a copy left by a
   // process that does not exit cleanly is never removed: engine test runs
-  // left gigabytes. Chromium reads only the last --disable-features, so the
-  // caller's list is merged into one switch.
+  // left gigabytes. Chromium reads only the last --disable-features and
+  // --enable-features, so the caller's lists are merged into one switch each.
   std::string disabled_features = "MacAppCodeSignClone";
+  std::string enabled_features;
   constexpr std::string_view kDisableFeatures = "disable-features=";
+  constexpr std::string_view kEnableFeatures = "enable-features=";
   for (const std::string& s : options.switches) {
     if (s.starts_with(kDisableFeatures)) {
       disabled_features += "," + s.substr(kDisableFeatures.size());
       continue;
     }
+    if (s.starts_with(kEnableFeatures)) {
+      enabled_features += (enabled_features.empty() ? "" : ",") +
+                          s.substr(kEnableFeatures.size());
+      continue;
+    }
     state.args.push_back("--" + s);
   }
   state.args.push_back("--disable-features=" + disabled_features);
+  if (!enabled_features.empty()) {
+    state.args.push_back("--enable-features=" + enabled_features);
+  }
   for (const std::string& a : state.args) {
     state.argv.push_back(a.c_str());
   }
