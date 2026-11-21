@@ -49,11 +49,16 @@ bdk_string_t View(const char* s) {
 
 /* Removes a data directory the harness made itself. Registered before Chromium starts, so it runs
    after Chromium's own exit work; Chromium's threads can still write a little after it, and a run
-   that crashes or is killed leaves the directory. scripts/test-engine.sh owns the directory
-   instead (BDK_ENGINE_DATA_DIR) and removes it once the process has gone. */
+   that crashes or is killed leaves the directory. A failed removal is reported on stderr.
+   scripts/test-engine.sh owns the directory instead (BDK_ENGINE_DATA_DIR) and removes it once the
+   process has gone. */
 void RemoveDataDir() {
-    std::error_code ignored;
-    std::filesystem::remove_all(g_data_dir, ignored);
+    std::error_code error;
+    std::filesystem::remove_all(g_data_dir, error);
+    if (error) {
+        fprintf(stderr, "could not remove the engine suite's data directory %s: %s\n",
+                g_data_dir.c_str(), error.message().c_str());
+    }
 }
 
 /* BDK_ENGINE_SILENT=1 runs the suite without getting in the way of whoever is using the Mac: the
