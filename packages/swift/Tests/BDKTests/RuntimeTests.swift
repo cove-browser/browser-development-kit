@@ -207,13 +207,22 @@ extension BDKStubTests {
 
         @Test func shutdownDuringShutdownWaitsForIt() async throws {
             let runtime = try BDKRuntime.startStub()
-            var second: Task<Void, Never>?
+            var second: Task<Bool, Never>?
+            var secondCalled = false
             let first = await duringShutdown(of: runtime) {
                 #expect(runtime.state == .shuttingDown)
-                second = Task { @MainActor in await runtime.shutdown() }
+                second = Task { @MainActor in
+                    secondCalled = true
+                    await runtime.shutdown()
+                    // An early return would see the runtime still shutting down.
+                    return runtime.state == .stopped
+                }
+                // From setting the flag to waiting inside `shutdown()` the task does not suspend, so
+                // once the flag is set the second call is waiting while pumping is still paused.
+                while !secondCalled { await Task.yield() }
+                #expect(runtime.state == .shuttingDown)
             }
-            await second?.value
-            #expect(runtime.state == .stopped)
+            #expect(await second?.value == true)
             #expect(!BDKRuntime.isRunning)
             await first.value
         }
