@@ -98,6 +98,10 @@
       "types": "./dist/testing.d.ts",
       "default": "./dist/testing.js"
     },
+    "./translation": {
+      "types": "./dist/translation.d.ts",
+      "default": "./dist/translation.js"
+    },
     "./types": {
       "types": "./dist/types.d.ts",
       "default": "./dist/types.js"
