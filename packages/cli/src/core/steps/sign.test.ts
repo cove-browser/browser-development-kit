@@ -144,6 +144,6 @@ describe("bdk build sign", () => {
   it("rejects a sign flag on another step", async () => {
     const ctx = testContext();
     expect(await run(["build", "config", "--bundle", "A.app"], ctx)).toBe(2);
-    expect(ctx.err.join("")).toContain("applies to `bdk build sign`");
+    expect(ctx.err.join("")).toContain("applies to `bdk build automation`, `bdk build sign`");
   });
 });

@@ -10,9 +10,9 @@ export interface ParsedArgs {
   project?: string;
   /** Forced diagnostics form; undefined means detect from the environment. */
   diagnostics?: DiagnosticFormat;
-  /** `--out <file>`, for `build config`. */
+  /** `--out <file>`, for `build config` and `build automation`. */
   out?: string;
-  /** `--bundle <App.app>`, for `build sign`. */
+  /** `--bundle <App.app>`, for `build automation` and `build sign`. */
   bundle?: string;
   /** `--identity <name|->`: the signing identity, `-` for ad hoc. */
   identity?: string;

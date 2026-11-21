@@ -1,0 +1,291 @@
+import { existsSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { createAssets } from "../../assets.js";
+import { tempDir, testContext } from "../../test-support.js";
+import type { Bundler } from "../automation/bundler.js";
+import { sha256 } from "../config/digest.js";
+import { resolveConfig } from "../config/index.js";
+import { configDigest } from "../config/resolve.js";
+import { run } from "../run.js";
+
+async function write(root: string, file: string, text: string): Promise<void> {
+  await mkdir(join(root, file, ".."), { recursive: true });
+  await writeFile(join(root, file), text);
+}
+
+/** A project with `Automation/hello.ts` and its own copy of `@bdk/automation`. */
+async function project(
+  script: string,
+  options: { enabled?: boolean } = {},
+): Promise<{ dir: string; app: string }> {
+  const dir = await tempDir();
+  await write(
+    dir,
+    "bdk.toml",
+    `[browser]\nname = "Demo"\n\n[automation]\nenabled = ${options.enabled ?? true}\n`,
+  );
+  await write(dir, "Automation/hello.ts", script);
+  await write(dir, "node_modules/@bdk/automation/package.json", '{"name":"@bdk/automation"}\n');
+  await write(
+    dir,
+    "node_modules/@bdk/automation/src/index.ts",
+    'import { call } from "./client.js";\nexport const contents = { list: () => call("contents.list") };\n',
+  );
+  await write(
+    dir,
+    "node_modules/@bdk/automation/src/client.ts",
+    "export function call(command: string): string { return `call ${command}`; }\n",
+  );
+  await write(
+    dir,
+    "node_modules/@bdk/automation/src/commands.ts",
+    'export const commands = { id: "commands" };\n',
+  );
+  await write(
+    dir,
+    "node_modules/@bdk/automation/src/events.ts",
+    'export const events = { id: "events" };\n',
+  );
+  return { dir, app: join(dir, "Build", "Demo.app") };
+}
+
+const real = (dir: string, overrides = {}) =>
+  testContext({
+    cwd: dir,
+    assets: createAssets({ packaged: false }),
+    resolveConfig,
+    ...overrides,
+  });
+
+async function build(dir: string) {
+  const ctx = real(dir);
+  expect(await run(["build", "config"], ctx)).toBe(0);
+  return { ctx };
+}
+
+async function resolvedOf(dir: string): Promise<Record<string, unknown>> {
+  return JSON.parse(await readFile(join(dir, "bdk.resolved.json"), "utf8"));
+}
+
+const HELLO = `import { contents } from "@bdk/automation";
+import { commands } from "@bdk/commands";
+import { events } from "@bdk/events";
+export default async function main() {
+  return [contents.list(), commands.id, events.id];
+}
+`;
+
+describe("bdk build automation", () => {
+  it("does nothing, and says so, when there are no scripts", async () => {
+    const { dir, app } = await project(HELLO, { enabled: false });
+    await build(dir);
+    const ctx = real(dir);
+    expect(await run(["build", "automation", "--bundle", app], ctx)).toBe(0);
+    expect(ctx.out.join("")).toContain("nothing to do");
+    expect(existsSync(app)).toBe(false);
+  });
+
+  it("bundles a script into one module with no imports and records its digest", async () => {
+    const { dir, app } = await project(HELLO);
+    await build(dir);
+    const before = await resolvedOf(dir);
+    const ctx = real(dir);
+    expect(await run(["build", "automation", "--bundle", app], ctx)).toBe(0);
+
+    const file = join(app, "Contents/Resources/BDK/Automation/hello.js");
+    const code = await readFile(file, "utf8");
+    expect(code).not.toMatch(/^\s*import\s/m);
+    expect(code).not.toMatch(/^\s*export\s.*\sfrom\s/m);
+    expect(code).toContain("call ");
+    expect(code).toContain("commands");
+    expect(code).toContain("events");
+
+    const after = await resolvedOf(dir);
+    const scripts = (after.automation as { scripts: Record<string, Record<string, string>> })
+      .scripts;
+    expect(scripts.hello).toMatchObject({
+      path: "Automation/hello.ts",
+      bundle: "BDK/Automation/hello.js",
+      bundle_digest: sha256(await readFile(file)),
+    });
+    expect(after.config_digest).not.toBe(before.config_digest);
+    const { config_digest, ...body } = after;
+    expect(config_digest).toBe(configDigest(body));
+    expect(Object.keys(after).slice(0, 3)).toEqual(Object.keys(before).slice(0, 3));
+  });
+
+  it("keeps the exact resolved serialisation when nothing is bundled but the fields", async () => {
+    const { dir, app } = await project(HELLO);
+    await build(dir);
+    await run(["build", "automation", "--bundle", app], real(dir));
+    const text = await readFile(join(dir, "bdk.resolved.json"), "utf8");
+    expect(text).toBe(`${JSON.stringify(JSON.parse(text), null, 2)}\n`);
+  });
+
+  it("does not rebuild when nothing changed, and rebuilds when a module changes", async () => {
+    const { dir, app } = await project(HELLO);
+    await build(dir);
+    expect(await run(["build", "automation", "--bundle", app], real(dir))).toBe(0);
+    const file = join(app, "Contents/Resources/BDK/Automation/hello.js");
+    const resolvedText = await readFile(join(dir, "bdk.resolved.json"), "utf8");
+
+    const second = real(dir);
+    expect(await run(["build", "automation", "--bundle", app, "--json"], second)).toBe(0);
+    expect(JSON.parse(second.out.join("")).result.automation).toEqual({
+      built: [],
+      unchanged: ["hello"],
+    });
+    expect(await readFile(join(dir, "bdk.resolved.json"), "utf8")).toBe(resolvedText);
+
+    // `build config` drops the bundle fields; the unchanged bundle is recorded again, not rebuilt.
+    await build(dir);
+    const third = real(dir);
+    expect(await run(["build", "automation", "--bundle", app, "--json"], third)).toBe(0);
+    expect(JSON.parse(third.out.join("")).result.automation.built).toEqual([]);
+    expect(await readFile(join(dir, "bdk.resolved.json"), "utf8")).toBe(resolvedText);
+
+    const bytes = await readFile(file);
+    await write(
+      dir,
+      "node_modules/@bdk/automation/src/client.ts",
+      "export function call(command: string): string { return `other ${command}`; }\n",
+    );
+    const fourth = real(dir);
+    expect(await run(["build", "automation", "--bundle", app, "--json"], fourth)).toBe(0);
+    expect(JSON.parse(fourth.out.join("")).result.automation.built).toEqual(["hello"]);
+    expect(await readFile(file)).not.toEqual(bytes);
+  });
+
+  it("rebuilds when the bundle on disk no longer has the recorded digest", async () => {
+    const { dir, app } = await project(HELLO);
+    await build(dir);
+    await run(["build", "automation", "--bundle", app], real(dir));
+    await writeFile(join(app, "Contents/Resources/BDK/Automation/hello.js"), "tampered");
+    const ctx = real(dir);
+    await run(["build", "automation", "--bundle", app, "--json"], ctx);
+    expect(JSON.parse(ctx.out.join("")).result.automation.built).toEqual(["hello"]);
+  });
+
+  it("takes the bundle from CODESIGNING_FOLDER_PATH", async () => {
+    const { dir, app } = await project(HELLO);
+    await build(dir);
+    const ctx = real(dir, { env: { CODESIGNING_FOLDER_PATH: app } });
+    expect(await run(["build", "automation"], ctx)).toBe(0);
+    expect(existsSync(join(app, "Contents/Resources/BDK/Automation/hello.js"))).toBe(true);
+  });
+
+  it("refuses a Node built-in", async () => {
+    const { dir, app } = await project(
+      'import { readFileSync } from "node:fs";\nexport default () => readFileSync;\n',
+    );
+    await build(dir);
+    const ctx = real(dir);
+    expect(await run(["build", "automation", "--bundle", app], ctx)).toBe(1);
+    expect(ctx.err.join("")).toContain("automation.import_not_allowed");
+    expect(ctx.err.join("")).toContain('"hello"');
+    expect(ctx.err.join("")).toContain("node:fs");
+    expect(existsSync(join(app, "Contents/Resources/BDK/Automation/hello.js"))).toBe(false);
+    const scripts = (await resolvedOf(dir)).automation as { scripts: Record<string, object> };
+    expect(scripts.scripts.hello).not.toHaveProperty("bundle");
+  });
+
+  it("refuses a bare built-in name too", async () => {
+    const { dir, app } = await project(
+      'import { join } from "path";\nexport default () => join;\n',
+    );
+    await build(dir);
+    const ctx = real(dir);
+    expect(await run(["build", "automation", "--bundle", app], ctx)).toBe(1);
+    expect(ctx.err.join("")).toContain("automation.import_not_allowed");
+  });
+
+  it("reports an import that cannot be resolved", async () => {
+    const { dir, app } = await project('import x from "left-pad-9000";\nexport default () => x;\n');
+    await build(dir);
+    const ctx = real(dir);
+    expect(await run(["build", "automation", "--bundle", app], ctx)).toBe(1);
+    expect(ctx.err.join("")).toContain("automation.import_unresolved");
+    expect(ctx.err.join("")).toContain("left-pad-9000");
+  });
+
+  it("inlines a package installed in the project", async () => {
+    const { dir, app } = await project(
+      'import { answer } from "left-pad";\nexport default () => answer;\n',
+    );
+    await write(
+      dir,
+      "node_modules/left-pad/package.json",
+      '{"name":"left-pad","main":"index.js"}\n',
+    );
+    await write(dir, "node_modules/left-pad/index.js", "exports.answer = 'inlined-42';\n");
+    await build(dir);
+    expect(await run(["build", "automation", "--bundle", app], real(dir))).toBe(0);
+    const code = await readFile(join(app, "Contents/Resources/BDK/Automation/hello.js"), "utf8");
+    expect(code).toContain("inlined-42");
+    expect(code).not.toMatch(/^\s*import\s/m);
+  });
+
+  it("reports a syntax error as automation.bundle_failed", async () => {
+    const { dir, app } = await project("export default function (( {\n");
+    await build(dir);
+    const ctx = real(dir);
+    expect(await run(["build", "automation", "--bundle", app], ctx)).toBe(1);
+    expect(ctx.err.join("")).toContain("automation.bundle_failed");
+  });
+
+  it("fails with automation.bundler_missing when no bundler can be loaded", async () => {
+    const { dir, app } = await project(HELLO);
+    await build(dir);
+    const ctx = real(dir, { loadBundler: () => Promise.resolve(undefined) });
+    expect(await run(["build", "automation", "--bundle", app], ctx)).toBe(3);
+    expect(ctx.err.join("")).toContain("automation.bundler_missing");
+    expect(ctx.err.join("")).toContain("rolldown@1.2.18");
+  });
+
+  it("uses the bundler it is given", async () => {
+    const { dir, app } = await project(HELLO);
+    await build(dir);
+    const bundler: Bundler = {
+      rolldown: () =>
+        Promise.resolve({
+          generate: () => Promise.resolve({ output: [{ type: "chunk", code: "// fake\n" }] }),
+          close: () => Promise.resolve(),
+        }),
+    };
+    const ctx = real(dir, { loadBundler: () => Promise.resolve(bundler) });
+    expect(await run(["build", "automation", "--bundle", app], ctx)).toBe(0);
+    expect(await readFile(join(app, "Contents/Resources/BDK/Automation/hello.js"), "utf8")).toBe(
+      "// fake\n",
+    );
+  });
+
+  it("is a usage error without --bundle", async () => {
+    const { dir } = await project(HELLO);
+    await build(dir);
+    const ctx = real(dir);
+    expect(await run(["build", "automation"], ctx)).toBe(2);
+    expect(ctx.err.join("")).toContain("--bundle");
+  });
+
+  it("asks for `bdk build config` when there is no resolved file", async () => {
+    const { dir, app } = await project(HELLO);
+    const ctx = real(dir);
+    expect(await run(["build", "automation", "--bundle", app], ctx)).toBe(1);
+    expect(ctx.err.join("")).toContain("bdk build config");
+  });
+
+  it("carries the step data in --json", async () => {
+    const { dir, app } = await project(HELLO);
+    await build(dir);
+    const ctx = real(dir);
+    expect(await run(["build", "automation", "--bundle", app, "--json"], ctx)).toBe(0);
+    const document = JSON.parse(ctx.out.join(""));
+    expect(document).toMatchObject({
+      ok: true,
+      command: "build automation",
+      result: { automation: { built: ["hello"], unchanged: [] } },
+    });
+  });
+});

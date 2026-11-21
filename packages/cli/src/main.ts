@@ -1,4 +1,5 @@
 import { createAssets } from "./assets.js";
+import { loadBundler } from "./core/automation/loader.js";
 import { resolveConfig } from "./core/config/index.js";
 import { ExitCode } from "./core/exit-codes.js";
 import { run } from "./core/run.js";
@@ -17,6 +18,7 @@ async function main(): Promise<number> {
     assets: createAssets(),
     platform: selectPlatform(),
     resolveConfig,
+    loadBundler,
   });
 }
 
