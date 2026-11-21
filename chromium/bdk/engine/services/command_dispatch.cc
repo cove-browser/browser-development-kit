@@ -23,6 +23,7 @@ const HandlerTable& Handlers() {
     AddPrivacyHandlers(t);
     AddProfilesHandlers(t);
     AddSystemHandlers(t);
+    AddExtensionsHandlers(t);
     return t;
   }());
   return *table;

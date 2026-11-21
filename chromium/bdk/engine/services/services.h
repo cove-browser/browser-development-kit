@@ -49,6 +49,7 @@ void AddCookiesHandlers(HandlerTable& table);
 void AddPrivacyHandlers(HandlerTable& table);
 void AddProfilesHandlers(HandlerTable& table);
 void AddSystemHandlers(HandlerTable& table);
+void AddExtensionsHandlers(HandlerTable& table);
 
 // Answers a built-in command, on the UI thread. A command with no handler here
 // is answered by the core's default: broker.notImplemented.

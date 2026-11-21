@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Install Update",
+  "version": "2.0",
+  "description": "Fixture for the install tests.",
+  "permissions": ["storage"],
+  "background": {
+    "service_worker": "sw.js"
+  }
+}

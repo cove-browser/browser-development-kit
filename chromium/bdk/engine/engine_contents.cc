@@ -17,6 +17,7 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/values.h"
 #include "bdk/engine/devtools_frontend.h"
+#include "bdk/engine/extensions/store_source.h"
 #include "bdk/engine/host_context.h"
 #include "bdk/engine/host_view.h"
 #include "bdk/engine/identity.h"
@@ -277,6 +278,8 @@ void EngineContents::Attach(
   // Visits are recorded in history, except in a private profile (the helper
   // has no history service there). Creating it again does nothing.
   HistoryTabHelper::CreateForWebContents(web_contents_);
+  // The store's install button carries the browser's name.
+  InstallStoreRelabeler(web_contents_);
   // A DevTools front end moves its bindings to the new front-end WebContents
   // before the old one goes.
   if (devtools_) {
