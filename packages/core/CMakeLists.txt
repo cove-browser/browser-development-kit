@@ -153,7 +153,7 @@ if(BDK_ENGINE_FRAMEWORK AND APPLE)
   # The automation scripts and DevTools front ends of tests_engine_automation.c, where `bdk build` puts
   # them in an application, with the digests the resolved configuration records.
   set(BDK_FIXTURES "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
-  foreach(script acceptance wait fail)
+  foreach(script acceptance wait fail debug)
     set(file "${BDK_FIXTURES}/automation/${script}.js")
     file(SHA256 "${file}" digest)
     string(TOUPPER "${script}" upper)

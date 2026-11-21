@@ -520,6 +520,10 @@ class EngineBackend final : public bdkcore::Backend {
     }
   }
 
+  void CallerRevoked(Runtime& rt, const bdkcore::Caller& caller) override {
+    DetachDebugClientsOf(caller);
+  }
+
   void Authenticate(Runtime& rt,
                     const std::string& reason,
                     std::function<void(bool)> done) override {

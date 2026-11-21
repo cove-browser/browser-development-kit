@@ -10,16 +10,19 @@
 // beyond a page for sessions; the client is also untrusted, so the browser
 // target, privileged schemes and local files are closed to it as well.
 
+#include <algorithm>
 #include <map>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "base/containers/span.h"
 #include "base/functional/bind.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
+#include "base/no_destructor.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_view_util.h"
 #include "base/task/sequenced_task_runner.h"
@@ -167,8 +170,28 @@ class DebugClient : public content::DevToolsAgentHostClient {
 class DebugSessions : public content::WebContentsUserData<DebugSessions> {
  public:
   ~DebugSessions() override {
+    std::erase(All(), this);
     for (auto& entry : clients_) {
       entry.second->Close("targetClosed");
+    }
+  }
+
+  // Every page's sessions, for DetachDebugClientsOf. UI thread only.
+  static std::vector<DebugSessions*>& All() {
+    static base::NoDestructor<std::vector<DebugSessions*>> all;
+    return *all;
+  }
+
+  // Detaches and forgets the clients `caller` attached, now.
+  void RemoveClientsOf(const bdkcore::Caller& caller) {
+    std::vector<std::string> ids;
+    for (const auto& entry : clients_) {
+      if (entry.second->owner().get() == &caller) {
+        ids.push_back(entry.first);
+      }
+    }
+    for (const std::string& id : ids) {
+      Remove(id);
     }
   }
 
@@ -203,7 +226,9 @@ class DebugSessions : public content::WebContentsUserData<DebugSessions> {
  private:
   friend class content::WebContentsUserData<DebugSessions>;
   explicit DebugSessions(content::WebContents* web_contents)
-      : content::WebContentsUserData<DebugSessions>(*web_contents) {}
+      : content::WebContentsUserData<DebugSessions>(*web_contents) {
+    All().push_back(this);
+  }
 
   std::map<std::string, std::unique_ptr<DebugClient>> clients_;
   base::WeakPtrFactory<DebugSessions> weak_factory_{this};
@@ -216,7 +241,8 @@ void DebugClient::DispatchProtocolMessage(
     content::DevToolsAgentHost* agent_host,
     base::span<const uint8_t> message) {
   // The caller that attached was revoked (its session ended): nothing more is
-  // sent to it, and it is detached, here, when its next event arrives.
+  // sent to it. DetachDebugClientsOf has detached it already; a message
+  // already on its way can still arrive.
   if (owner_->revoked) {
     if (sessions_) {
       sessions_->RemoveSoon(id_);
@@ -345,6 +371,18 @@ void Detach(const std::shared_ptr<ServiceCall>& c) {
 }
 
 }  // namespace
+
+void DetachDebugClientsOf(const bdkcore::Caller& caller) {
+  // A copy, each entry checked again before use: a page that goes away while
+  // another is detached leaves the list.
+  const std::vector<DebugSessions*> all = DebugSessions::All();
+  for (DebugSessions* sessions : all) {
+    if (std::ranges::find(DebugSessions::All(), sessions) !=
+        DebugSessions::All().end()) {
+      sessions->RemoveClientsOf(caller);
+    }
+  }
+}
 
 void AddDebugHandlers(HandlerTable& table) {
   table["debug.attach"] = &Attach;

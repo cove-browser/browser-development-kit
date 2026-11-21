@@ -5,6 +5,7 @@
 #include "bdk/engine/services/user_scripts.h"
 
 #include <algorithm>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <set>
@@ -154,36 +155,51 @@ class PageScripts : public content::WebContentsUserData<PageScripts>,
     if (!scripts.empty()) {
       protocol->KeepAttached();
     }
-    std::map<std::string, bdkcore::UserScript> next;
+    std::map<std::string, const bdkcore::UserScript*> next;
     for (const bdkcore::UserScript& script : scripts) {
-      next[script.id] = script;
+      next[script.id] = &script;
     }
     for (auto it = scripts_.begin(); it != scripts_.end();) {
       auto fresh = next.find(it->first);
-      if (fresh == next.end() || !Same(it->second, fresh->second)) {
+      if (fresh == next.end() || !Same(it->second, *fresh->second)) {
         Unregister(it->first);
         it = scripts_.erase(it);
       } else {
         ++it;
       }
     }
-    for (auto& entry : next) {
-      if (scripts_.contains(entry.first)) {
+    std::vector<std::string> kept;
+    std::ranges::copy_if(
+        order_, std::back_inserter(kept),
+        [this](const std::string& id) { return scripts_.contains(id); });
+    // A page runs registrations in the order they were made, so from the
+    // first script that is new or out of place on, every script's JavaScript
+    // is registered again: the page then runs them in the core's order.
+    order_.clear();
+    bool reregister = false;
+    for (size_t i = 0; i < scripts.size(); ++i) {
+      const bdkcore::UserScript& script = scripts[i];
+      order_.push_back(script.id);
+      if (!scripts_.contains(script.id)) {
+        reregister = true;
+        const bdkcore::UserScript& added =
+            scripts_.emplace(script.id, script).first->second;
+        generation_[added.id] = ++last_generation_;
+        RegisterEverywhere(added);
         continue;
       }
-      const bdkcore::UserScript& script =
-          scripts_.emplace(entry.first, std::move(entry.second)).first->second;
-      generation_[script.id] = ++last_generation_;
-      for (const std::string& session : protocol->Sessions()) {
-        Register(session, script);
+      reregister = reregister || i >= kept.size() || kept[i] != script.id;
+      if (reregister) {
+        UnregisterJavaScript(script.id);
+        RegisterEverywhere(scripts_.at(script.id));
       }
     }
   }
 
   // PageProtocol::SessionObserver:
   void OnSessionAttached(const std::string& session_id) override {
-    for (const auto& entry : scripts_) {
-      Register(session_id, entry.second);
+    for (const std::string& id : order_) {
+      Register(session_id, scripts_.at(id));
     }
   }
   void OnSessionDetached(const std::string& session_id) override {
@@ -196,8 +212,8 @@ class PageScripts : public content::WebContentsUserData<PageScripts>,
     if (name != "DOMContentLoaded") {
       return;
     }
-    for (const auto& entry : scripts_) {
-      ApplyCss(entry.second, frame_id, loader_id);
+    for (const std::string& id : order_) {
+      ApplyCss(scripts_.at(id), frame_id, loader_id);
     }
   }
 
@@ -219,7 +235,7 @@ class PageScripts : public content::WebContentsUserData<PageScripts>,
     if (!protocol || (!session_id.empty() && !script.all_frames)) {
       return;
     }
-    const int generation = generation_[script.id];
+    const int generation = js_generation_[script.id];
     for (const std::string& code : script.javascript) {
       base::DictValue params;
       params.Set("source", WrapperSource(script, code));
@@ -251,10 +267,11 @@ class PageScripts : public content::WebContentsUserData<PageScripts>,
                     sessions.end()) {
                   return;
                 }
-                auto live = self->generation_.find(script_id);
-                if (live == self->generation_.end() ||
+                auto live = self->js_generation_.find(script_id);
+                if (live == self->js_generation_.end() ||
                     live->second != generation) {
-                  // The script was removed or replaced while this was sent.
+                  // The script was removed, replaced or registered again
+                  // while this was sent.
                   self->RemoveRegistration(session_id, *identifier);
                   return;
                 }
@@ -276,10 +293,21 @@ class PageScripts : public content::WebContentsUserData<PageScripts>,
                    std::move(params), ProtocolCallback());
   }
 
-  // Takes a script's JavaScript out of every session, and its CSS out of the
-  // documents it was applied to.
-  void Unregister(const std::string& script_id) {
-    generation_.erase(script_id);
+  // Registers the script's JavaScript in every session, as a new generation.
+  void RegisterEverywhere(const bdkcore::UserScript& script) {
+    PageProtocol* protocol = protocol_.get();
+    if (!protocol) {
+      return;
+    }
+    js_generation_[script.id] = ++last_generation_;
+    for (const std::string& session : protocol->Sessions()) {
+      Register(session, script);
+    }
+  }
+
+  // Takes a script's JavaScript out of every session; its CSS stays.
+  void UnregisterJavaScript(const std::string& script_id) {
+    js_generation_.erase(script_id);
     for (auto& session : registered_) {
       auto found = session.second.find(script_id);
       if (found == session.second.end()) {
@@ -290,6 +318,13 @@ class PageScripts : public content::WebContentsUserData<PageScripts>,
       }
       session.second.erase(found);
     }
+  }
+
+  // Takes a script's JavaScript out of every session, and its CSS out of the
+  // documents it was applied to.
+  void Unregister(const std::string& script_id) {
+    generation_.erase(script_id);
+    UnregisterJavaScript(script_id);
     auto css = css_ids_.find(script_id);
     if (css != css_ids_.end()) {
       if (PageProtocol* protocol = protocol_.get()) {
@@ -386,15 +421,21 @@ class PageScripts : public content::WebContentsUserData<PageScripts>,
   }
 
   base::WeakPtr<PageProtocol> protocol_;
-  // What is applied: by script id.
+  // What is applied: by script id, for lookup.
   std::map<std::string, bdkcore::UserScript> scripts_;
+  // The ids of scripts_ in the core's order (registration order), which is
+  // the order the page runs them in.
+  std::vector<std::string> order_;
   // A script's registrations: session, then script id, then the protocol's
   // identifiers.
   std::map<std::string, std::map<std::string, std::vector<std::string>>>
       registered_;
   // Bumped when a script is added, so a late answer for a removed or
-  // replaced script can be told from a current one.
+  // replaced script can be told from a current one: generation_ for its CSS,
+  // js_generation_ for its JavaScript, which is also bumped when only its
+  // place in the order changed.
   std::map<std::string, int> generation_;
+  std::map<std::string, int> js_generation_;
   int last_generation_ = 0;
   // The CSS ids (page_protocol.h) of each script, and the documents already
   // given each script's CSS ("script|frame|loader").

@@ -1060,6 +1060,18 @@ void WaitForDone(const std::shared_ptr<WaitFor>& wait) {
   wait->call->ResolveNull();
 }
 
+void WaitForTimedOut(const std::shared_ptr<WaitFor>& wait) {
+  if (wait->finished || wait->call->cancelled()) {
+    return;
+  }
+  wait->finished = true;
+  std::string message = "timed out waiting for the page";
+  if (!wait->last_error.empty()) {
+    message += " (last error: " + wait->last_error + ")";
+  }
+  wait->call->Reject(BDK_DOMAIN_BROKER, BDK_CODE_TIMEOUT, message);
+}
+
 // Checks the script predicate, the last one, then finishes or tries again.
 void CheckWaitScript(std::shared_ptr<WaitFor> wait) {
   if (!wait->script) {
@@ -1138,8 +1150,13 @@ void PollWaitFor(std::shared_ptr<WaitFor> wait) {
                        "the page is closed");
     return;
   }
+  // Before any condition: a selector or script that keeps failing must not
+  // retry past the deadline.
+  if (base::TimeTicks::Now() >= wait->deadline) {
+    WaitForTimedOut(wait);
+    return;
+  }
   content::WebContents& web_contents = protocol->GetWebContents();
-  const bool in_time = base::TimeTicks::Now() < wait->deadline;
   const bool load_ok =
       !wait->load || *wait->load == "committed" || !web_contents.IsLoading();
   const bool url_ok =
@@ -1148,12 +1165,6 @@ void PollWaitFor(std::shared_ptr<WaitFor> wait) {
   const bool idle_ok = !wait->network_idle || protocol->NetworkIdle();
   if (load_ok && url_ok && idle_ok) {
     CheckWaitSelector(wait);
-    return;
-  }
-  if (!in_time) {
-    wait->finished = true;
-    wait->call->Reject(BDK_DOMAIN_BROKER, BDK_CODE_TIMEOUT,
-                       "timed out waiting for the page");
     return;
   }
   WaitForLater(wait);
@@ -1176,6 +1187,11 @@ void WaitForCommand(const std::shared_ptr<ServiceCall>& c,
   wait->network_idle = c->Bool("networkIdle").value_or(false);
   const double timeout = c->Number("timeoutMs").value_or(kDefaultTimeoutMs);
   wait->deadline = base::TimeTicks::Now() + base::Milliseconds(timeout);
+  // The deadline holds even while a check is in flight: a script predicate
+  // whose promise never settles does not come back to PollWaitFor.
+  base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
+      FROM_HERE, base::BindOnce(&WaitForTimedOut, wait),
+      base::Milliseconds(timeout));
   // Stops the polling; weak, because the call holds this function and a
   // strong reference would make a cycle.
   c->control().OnCancel([weak = std::weak_ptr<WaitFor>(wait)] {
@@ -1401,8 +1417,12 @@ class SaveWatch : public content::DownloadManager::Observer,
  public:
   SaveWatch(content::DownloadManager* manager,
             std::shared_ptr<ServiceCall> call,
+            base::FilePath file,
             bool lists_files)
-      : manager_(manager), call_(std::move(call)), lists_files_(lists_files) {
+      : manager_(manager),
+        call_(std::move(call)),
+        file_(std::move(file)),
+        lists_files_(lists_files) {
     manager_->AddObserver(this);
     start_timeout_.Start(
         FROM_HERE, kSaveStartTimeout,
@@ -1428,7 +1448,10 @@ class SaveWatch : public content::DownloadManager::Observer,
   // content::DownloadManager::Observer:
   void OnDownloadCreated(content::DownloadManager*,
                          download::DownloadItem* item) override {
-    if (item_ || !item->IsSavePackageDownload()) {
+    // Another save in the profile may start at the same time: its item is
+    // not this one's. A save item's target is the file SavePage was given.
+    if (item_ || !item->IsSavePackageDownload() ||
+        item->GetTargetFilePath() != file_) {
       return;
     }
     item_ = item;
@@ -1500,6 +1523,7 @@ class SaveWatch : public content::DownloadManager::Observer,
   raw_ptr<content::DownloadManager> manager_;
   raw_ptr<download::DownloadItem> item_ = nullptr;
   std::shared_ptr<ServiceCall> call_;
+  const base::FilePath file_;
   const bool lists_files_;
   base::OneShotTimer start_timeout_;
   bool done_ = false;
@@ -1534,7 +1558,7 @@ void Save(const std::shared_ptr<ServiceCall>& c) {
       base::FilePath(file.RemoveExtension().value() + "_files");
   auto* watch =
       new SaveWatch(web_contents->GetBrowserContext()->GetDownloadManager(), c,
-                    type != content::SAVE_PAGE_TYPE_AS_MHTML);
+                    file, type != content::SAVE_PAGE_TYPE_AS_MHTML);
   c->control().OnCancel([weak = watch->GetWeakPtr()] {
     if (weak) {
       weak->Abandon();

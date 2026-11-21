@@ -16,21 +16,23 @@
 #define BDK_TEST_ACCEPTANCE_DIGEST "sha256:unset"
 #define BDK_TEST_WAIT_DIGEST "sha256:unset"
 #define BDK_TEST_FAIL_DIGEST "sha256:unset"
+#define BDK_TEST_DEBUG_DIGEST "sha256:unset"
 #endif
 
 #define SCRIPT(name, digest)                                                                       \
     "\"" name "\":{\"path\":\"Automation/" name ".ts\",\"digest\":\"sha256:0\",\"bundle\":"        \
     "\"BDK/Automation/" name ".js\",\"bundle_digest\":\"" digest "\"}"
 
-#define AUTOMATION                                                                                                                                                                        \
-    "\"automation\":{\"enabled\":true,\"external\":{\"enabled\":false},\"scripts\":{" SCRIPT(                                                                                             \
-        "acceptance",                                                                                                                                                                     \
-        BDK_TEST_ACCEPTANCE_DIGEST) "," SCRIPT("wait",                                                                                                                                    \
-                                               BDK_TEST_WAIT_DIGEST) "," SCRIPT("fail",                                                                                                   \
-                                                                                BDK_TEST_FAIL_DIGEST) ","                                                                                 \
-                                                                                                      "\"tampered\":{\"path\":\"Automation/fail.ts\",\"digest\":\"sha256:0\",\"bundle\":" \
-                                                                                                      "\"BDK/Automation/fail.js\",\"bundle_digest\":\"sha256:0000\"},"                    \
-                                                                                                      "\"unbuilt\":{\"path\":\"Automation/fail.ts\",\"digest\":\"sha256:0\"}}}"
+#define AUTOMATION                                                                                                                                                                                                          \
+    "\"automation\":{\"enabled\":true,\"external\":{\"enabled\":false},\"scripts\":{" SCRIPT(                                                                                                                               \
+        "acceptance",                                                                                                                                                                                                       \
+        BDK_TEST_ACCEPTANCE_DIGEST) "," SCRIPT("wait",                                                                                                                                                                      \
+                                               BDK_TEST_WAIT_DIGEST) "," SCRIPT("fail",                                                                                                                                     \
+                                                                                BDK_TEST_FAIL_DIGEST) "," SCRIPT("debug",                                                                                                   \
+                                                                                                                 BDK_TEST_DEBUG_DIGEST) ","                                                                                 \
+                                                                                                                                        "\"tampered\":{\"path\":\"Automation/fail.ts\",\"digest\":\"sha256:0\",\"bundle\":" \
+                                                                                                                                        "\"BDK/Automation/fail.js\",\"bundle_digest\":\"sha256:0000\"},"                    \
+                                                                                                                                        "\"unbuilt\":{\"path\":\"Automation/fail.ts\",\"digest\":\"sha256:0\"}}}"
 
 /* ---- waiting on the engine ---- */
 
@@ -442,6 +444,63 @@ static void test_engine_user_scripts_follow_their_match_patterns(void) {
     CHECK(bdk_contents_destroy(b) == BDK_OK);
 }
 
+/* Each script is the page's own and records itself: they run in the order they were registered,
+   not by id. */
+static void test_engine_user_scripts_run_in_registration_order(void) {
+    start_plain();
+    bdk_profile_t p = t_new_profile("Order");
+    script_page("https://order.bdk.test/", "<title>o</title>");
+    big_capture_t cap;
+    const char* ids[2] = {"z-library", "a-consumer"};
+    for (int i = 0; i < 2; ++i) {
+        char args[512];
+        snprintf(args, sizeof args,
+                 "{\"script\":{\"id\":\"%s\",\"matches\":[\"https://order.bdk.test/*\"],"
+                 "\"runAt\":\"documentStart\",\"world\":\"page\",\"javascript\":["
+                 "\"(window.order = window.order || []).push('%s')\"]}}",
+                 ids[i], ids[i]);
+        call("scripts.register", args, p, 0, &cap);
+        REQUIRE(!cap.has_error);
+    }
+    bdk_contents_t c = page_at(p, "https://order.bdk.test/");
+    call("contents.evaluate", "{\"expression\":\"window.order.join()\",\"world\":\"page\"}", 0, c,
+         &cap);
+    CHECK(strcmp(cap.json, "{\"value\":\"z-library,a-consumer\"}") == 0);
+    /* Replacing the first keeps its place in the core's order, and on the page. */
+    call("scripts.register",
+         "{\"script\":{\"id\":\"z-library\",\"matches\":[\"https://order.bdk.test/*\"],"
+         "\"runAt\":\"documentStart\",\"world\":\"page\",\"javascript\":["
+         "\"(window.order = window.order || []).push('z2')\"]}}",
+         p, 0, &cap);
+    REQUIRE(!cap.has_error);
+    call("contents.reload", "{}", 0, c, &cap);
+    call("contents.waitFor", "{\"load\":\"finished\"}", 0, c, &cap);
+    call("contents.evaluate", "{\"expression\":\"window.order.join()\",\"world\":\"page\"}", 0, c,
+         &cap);
+    CHECK(strcmp(cap.json, "{\"value\":\"z2,a-consumer\"}") == 0);
+    CHECK(bdk_contents_destroy(c) == BDK_OK);
+}
+
+/* Conditions that keep failing, and a script whose promise never settles, end at the deadline. */
+static void test_engine_waits_that_never_hold_end_at_their_deadline(void) {
+    start_plain();
+    bdk_profile_t p = t_new_profile("Waits");
+    script_page("https://waits.bdk.test/", "<title>w</title>");
+    bdk_contents_t c = page_at(p, "https://waits.bdk.test/");
+    const char* waits[3] = {
+        "{\"selector\":\"#missing\",\"timeoutMs\":300}",
+        "{\"script\":\"false\",\"timeoutMs\":300}",
+        "{\"script\":\"new Promise(() => {})\",\"timeoutMs\":300}",
+    };
+    for (int i = 0; i < 3; ++i) {
+        big_capture_t cap;
+        call("contents.waitFor", waits[i], 0, c, &cap);
+        CHECK(cap.results == 1);
+        CHECK(cap.has_error && strcmp(cap.code, "timeout") == 0);
+    }
+    CHECK(bdk_contents_destroy(c) == BDK_OK);
+}
+
 typedef struct debug_log {
     int events, load_fired;
 } debug_log_t;
@@ -488,6 +547,39 @@ static void test_engine_the_devtools_protocol_attaches_sends_and_detaches(void) 
     snprintf(args, sizeof args, "{\"session\":\"%s\",\"method\":\"Runtime.enable\"}", session);
     call("debug.send", args, 0, c, &cap);
     CHECK(cap.has_error);
+    CHECK(bdk_contents_destroy(c) == BDK_OK);
+}
+
+/* A client that paused the page and then went quiet is detached when its session is revoked: the
+   page runs again and its protocol slots are free. */
+static void test_engine_a_revoked_sessions_debuggers_are_detached(void) {
+    char pid[64];
+    bdk_profile_t p = 0;
+    bdk_session_t s = start_session("[\"contents.read\",\"contents.control\",\"contents.debug\"]",
+                                    pid, sizeof pid, &p);
+    script_page("https://paused.bdk.test/",
+                "<title>p</title><script>setInterval(() => { window.ticks = "
+                "(window.ticks || 0) + 1; }, 10);</script>");
+    static task_log_t log;
+    (void)run(s, "debug", "{\"url\":\"https://paused.bdk.test/\"}", &log);
+    for (int i = 0; i < 200 && log.logs == 0 && !log.finished; ++i)
+        settle();
+    REQUIRE(log.logs >= 1); /* "paused" */
+    big_capture_t cap;
+    call("contents.list", "{}", p, 0, &cap);
+    char id[32];
+    REQUIRE(t_json_string(cap.json, "id", id, sizeof id)); /* the script's page, the only one */
+    bdk_contents_t c = (bdk_contents_t)strtoull(id, NULL, 10);
+    call("debug.attach", "{}", 0, c, &cap);
+    CHECK(cap.has_error && strcmp(cap.code, "overloaded") == 0);
+    bdk_error_t err = 0;
+    CHECK(bdk_session_revoke(s, &err) == BDK_OK);
+    REQUIRE(wait_until(&log.finished));
+    settle();
+    call("contents.evaluate", "{\"expression\":\"1 + 1\"}", 0, c, &cap);
+    CHECK(cap.results == 1 && strcmp(cap.json, "{\"value\":2}") == 0);
+    call("debug.attach", "{}", 0, c, &cap);
+    CHECK(!cap.has_error);
     CHECK(bdk_contents_destroy(c) == BDK_OK);
 }
 
@@ -569,6 +661,28 @@ static void test_engine_screenshots_pdfs_and_saved_pages(void) {
     CHECK(!html_only.has_error);
     CHECK(stat(path, &st) == 0 && st.st_size > 0);
     CHECK(bdk_contents_destroy(local) == BDK_OK);
+    /* Two pages saved at once each get their own answer, for their own file. */
+    bdk_contents_t second = page_at(p, "https://capture.bdk.test/");
+    bdk_contents_t both[2] = {c, second};
+    big_capture_t concurrent[2];
+    char paths[2][256];
+    for (int i = 0; i < 2; ++i) {
+        memset(&concurrent[i], 0, sizeof concurrent[i]);
+        snprintf(paths[i], sizeof paths[i], "%s/concurrent-%d.html", dir, i);
+        snprintf(args, sizeof args, "{\"path\":\"%s\",\"format\":\"completePage\"}", paths[i]);
+        bdk_invoke_options_t o;
+        memset(&o, 0, sizeof o);
+        o.struct_size = sizeof o;
+        o.contents = both[i];
+        REQUIRE(bdk_invoke_named(t_runtime, S("contents.save"), S(args), &o, on_big_result, NULL,
+                                 &concurrent[i], NULL) != 0);
+    }
+    for (int i = 0; i < 2; ++i) {
+        REQUIRE(wait_until(&concurrent[i].results));
+        CHECK(!concurrent[i].has_error);
+        CHECK(stat(paths[i], &st) == 0 && st.st_size > 0);
+    }
+    CHECK(bdk_contents_destroy(second) == BDK_OK);
     snprintf(path, sizeof path, "%s/shot.png", dir);
     snprintf(args, sizeof args, "{\"path\":\"%s\"}", path);
     big_capture_t to_file;
@@ -749,8 +863,14 @@ const t_test_t t_engine_automation_tests[] = {
      test_engine_css_and_input_reach_two_pages_and_end_with_the_document},
     {"engine_user_scripts_follow_their_match_patterns",
      test_engine_user_scripts_follow_their_match_patterns},
+    {"engine_user_scripts_run_in_registration_order",
+     test_engine_user_scripts_run_in_registration_order},
+    {"engine_waits_that_never_hold_end_at_their_deadline",
+     test_engine_waits_that_never_hold_end_at_their_deadline},
     {"engine_the_devtools_protocol_attaches_sends_and_detaches",
      test_engine_the_devtools_protocol_attaches_sends_and_detaches},
+    {"engine_a_revoked_sessions_debuggers_are_detached",
+     test_engine_a_revoked_sessions_debuggers_are_detached},
     {"engine_internal_pages_cannot_be_scripted_or_debugged",
      test_engine_internal_pages_cannot_be_scripted_or_debugged},
     {"engine_screenshots_pdfs_and_saved_pages", test_engine_screenshots_pdfs_and_saved_pages},

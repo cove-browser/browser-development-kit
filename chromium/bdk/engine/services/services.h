@@ -53,6 +53,11 @@ void AddContentsHandlers(HandlerTable& table);
 void AddDebugHandlers(HandlerTable& table);
 void AddDevToolsHandlers(HandlerTable& table);
 
+// Backend::CallerRevoked: detaches the caller's DevTools protocol clients from
+// every page now, so a quiet client neither keeps a page paused nor holds one
+// of the page's session slots (debug_service.cc).
+void DetachDebugClientsOf(const bdkcore::Caller& caller);
+
 // Answers a built-in command, on the UI thread. A command with no handler here
 // is answered by the core's default: broker.notImplemented.
 void ExecuteBuiltinCommand(bdkcore::Runtime& runtime,
