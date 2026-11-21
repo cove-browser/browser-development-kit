@@ -235,6 +235,7 @@ static const t_test_t* const kTables[] = {
     t_engine_tests,        /* scenarios only a real engine can run (tests_engine.c) */
     t_engine_ui_tests,     /* browser-owned surfaces on the engine (tests_engine_ui.c) */
     t_engine_prompt_tests, /* services and prompts (tests_engine_prompts.c) */
+    t_engine_pages_tests,  /* internal pages, search and M3 follow-ups (tests_engine_pages.c) */
 #endif
 };
 
