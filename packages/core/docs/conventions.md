@@ -119,12 +119,77 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
 | Notices | A request with no `on_finish` (a notice to a custom presenter, such as leaving fullscreen) is delivered at once and never queued. |
 | Dropped | An uncompleted request released by the application finishes `kCancelled`, never granted. |
 | Gesture kind | The core checks that the gesture is an `NSEVENT`. That it is recent and went to a window of this application is the backend's: while a completion's `on_finish` runs, `Request::gesture` holds the borrowed event so the engine can check it (the Chromium engine does: mouse-up or key-down, under 10 s old, delivered to one of the application's windows; anything less grants nothing). `withdraw_ui_request` withdraws one request, for a backend whose own UI went away. |
-| Extension surfaces | `[extensions.ui]` is not read by the core before M5. |
+| Extension surfaces | See "Extensions" below. |
+
+### Extensions (M5)
+
+Specification: [extensions.md](../../../docs/planning/sdk/extensions.md). Tasks T-EXT-02 to T-EXT-09 and T-SWF-08. Decided
+where it was silent (2026-11-20):
+
+1. Surfaces. Eight surfaces follow the ui-requests.md table: `EXTENSION_ACTIONS` 25, `EXTENSION_POPUPS` 26,
+   `EXTENSION_SIDE_PANELS` 27, `EXTENSION_CONTEXT_MENUS` 28, `EXTENSION_OPTIONS_PAGES` 29, `EXTENSION_DEVTOOLS` 30,
+   `EXTENSION_INSTALLS` 31, `EXTENSION_UNINSTALLS` 32. The first six are configured under `[extensions.ui]` by the
+   keys `actions`, `popups`, `side_panels`, `context_menus`, `options_pages`, `devtools` (the core's `kExtensionKeys`;
+   in the router's table they are named `extension_<key>` so they cannot collide with `[ui.surfaces]`, and those names
+   in `surfaces` are `ui.surfaceUnknown`). Install and uninstall prompts have no key and allow `default` and `custom`
+   only, so they cannot be disabled. `[extensions] enabled = false` makes all eight unavailable.
+2. Data-only surfaces. `actions` (state is data, extensions.md 4.1), `context_menus` (items arrive inside the
+   `context_menus` request), `options_pages` (a `new_windows` request) and `devtools` (panels load in the front end)
+   raise no request of their own, so `custom` needs no handler at the freeze. Their mode still decides what BDK shows
+   and what is refused at install.
+3. Open requests. A popup and a side panel are requests that stay open while their view is on screen, as the find bar
+   does. The application may complete them with `accept` `{"action":"close"}` (it closed its container) or `deny`
+   (it will not show this one); a withdrawal means the extension or BDK closed the view (blur, `window.close()`,
+   navigation, another panel). `bdk_ui_update` sends the application's side while it is open (`{"placed":true}`,
+   `{"side":"leading"|"trailing"}`), and `bdk_ui_set_update_handler` receives the runtime's
+   (`{"preferredSize":{"width","height"}}` for a popup, `{"visible":bool}` for a page-scoped panel). Both are
+   delivered later and in order; nothing is delivered after the request finishes, and the update handler is released
+   then. With no handler the default presenter shows the view (a transient panel at the extensions anchor; a panel at
+   the trailing edge of the page's window).
+4. Payloads. `extension_popups`: `extensionId`, `extensionName`, `url`, `trigger` (`userClick`, `openPopupAPI`,
+   `command`), `preferredSize`; `secure_view` is the popup's native view. `extension_side_panels`: `extensionId`,
+   `title`, `icon` (a `data:` URL or absent), `url`, `scope` (`window` or `page`), `contents` (the page, for `page`);
+   `secure_view` is the panel's view. `extension_installs`: `kind` (`install`, `permissionsIncrease`,
+   `optionalPermissions`, `reEnable`), `extensionId` (absent before the package is unpacked), `extensionName`, `icon`,
+   `source` (an `ExtensionSourceKind`), `warnings` and `hostWarnings` (Chromium's strings, in its order),
+   `compatibility` (a `CompatibilityReport`). `extension_uninstalls`: `extensionId`, `extensionName`, `requestedBy`
+   (`{"kind":"user"}` or `{"kind":"extension","extensionId"}`). An install or uninstall is completed by `grant`
+   (which needs the gesture, as on every surface) or `deny`; anything else, a dropped request and the default with
+   no presenter able to ask, refuse the install with `extension.cancelled`. There is no way to pre-approve.
+   An extension's context-menu items are in the `context_menus` request's `items` with `"source":"extension"` and
+   `extensionId`, under one submenu per extension when it adds more than one; an options page is a `new_windows`
+   request of kind `newPage` whose payload has `initiator` `{"extensionId"}`.
+5. Commands. `interface/extensions.json` defines the `extensions.*` commands and events of extensions.md section 3,
+   plus `extensions.actions` (the action states for the page named in the call's options, or the profile's defaults
+   with none) and the event `extensions.actionChanged`. Installing and uninstalling require a gesture from a page
+   and always raise the prompt, from any caller. Errors are in the domain `extension`: `notFound`,
+   `sourceNotAllowed` (naming the `bdk.toml` key), `incompatible` (naming the first blocking finding), `cancelled`,
+   `surfaceDisabled`, `manifestInvalid`, `notUnpacked` (reload), `privateNotAllowed` (`allow_in_private = "never"`).
+6. Policy before Chromium. `runtime/extension_policy.{h,cc}` decides, for the stub and the engine alike, whether a
+   source is allowed (`source_refusal`: `unpacked`, `crx`, `update_urls` patterns with `*`, named `stores`) and what a
+   manifest needs (`inspect_manifest`: manifest version and `minimum_chrome_version` against the engine's
+   `EngineFacts`, permissions for APIs BDK lacks, surfaces the configuration disables, `update_url` against
+   `update_urls`). A blocking finding refuses the install or update unless `install_policy = "allow_all"`, which
+   shows the findings in the prompt instead (`install_refused`). The keys with status Added (`developer_mode`,
+   `blocklist`, `[extensions.bundled]`) are not in the schema yet and are not read.
+7. Gestures from the host. `bdk_extension_action_activate`, `bdk_extension_command_perform` and
+   `bdk_extension_menu_present` (`bdk_extensions.h`) take the confirming event, like a granting completion: the core
+   checks its kind (`ui.gestureRequired`), the engine that it is recent and went to one of the application's windows.
+   They are functions, not commands, because a command from the host has no gesture to give. Activation is
+   synchronous, as Chromium's `ExtensionActionRunner::RunAction` is; a popup or panel follows as a request.
+8. Windows (T-SWF-08). `bdk_window_register` takes `BDK_WINDOW_KIND_NORMAL` or `_POPUP` (anything else is
+   `BDK_ERR_INVALID_ARGUMENT`); the engine creates that window's host contexts with the matching `Browser` type, so
+   `windows.get` reports it. `bdk_window_set_anchor_provider` is asked for `BDK_ANCHOR_*` rectangles when a default
+   presenter attaches; `bdk_window_set_request_handler` receives window requests from extensions and pages
+   (`BDK_UI_USE_DEFAULT` or no handler: BDK applies it to the native window). Both contexts are released at
+   replacement, unregistration or shutdown. `bdk_window_for_contents`, `bdk_window_contents`,
+   `bdk_window_active_contents` and `bdk_window_extension_id` answer from the backend
+   (`Backend::WindowForContents`, `WindowContents`, `WindowExtensionId`); a backend with no attachments answers 0,
+   an empty list and -1.
 
 ### Named in c-abi.md and not declared (nothing states their shape)
 
-`bdk_contents_prune`, `_perform_command`, `_can_perform_command`, `_find_start/_next/_stop`, `_set_host_context`;
-`bdk_window_set_anchor_provider`, `_set_request_handler`, `bdk_window_for_contents`, `_contents`, `_active_contents`;
+`bdk_contents_prune`, `_perform_command`, `_can_perform_command`, `_set_host_context`;
 `bdk_session_run`, `bdk_task_*`, `bdk_automation_endpoint_*`, `bdk_automation_subscribe_audit`;
 `bdk_crash_reports_*`, `bdk_netlog_*`. Interface definition validation and generated identifiers are T-ABI-03.
 

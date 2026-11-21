@@ -29,7 +29,9 @@ let package = Package(
                 "CMakeLists.txt", "README.md", "project.json", "generated/abi-hash.txt",
             ],
             sources: [
-                "runtime/core.cc", "runtime/core_host.cc", "runtime/ui_router.cc",
+                "runtime/core.cc", "runtime/core_host.cc", "runtime/core_windows.cc",
+                "runtime/ui_router.cc",
+                "runtime/extension_policy.cc",
                 "runtime/app_settings.cc", "runtime/broker.cc", "runtime/broker_args.cc",
                 "stub/stub_backend.cc", "stub/stub_services.cc", "stub/stub_broker.cc",
             ],

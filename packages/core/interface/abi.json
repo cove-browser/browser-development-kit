@@ -19,7 +19,8 @@
         "UI": "ui",
         "PROVIDER": "provider",
         "AUTOMATION": "automation",
-        "PLATFORM": "platform"
+        "PLATFORM": "platform",
+        "EXTENSION": "extension"
       }
     },
     {
@@ -47,7 +48,13 @@
         "OUT_OF_SCOPE": "outOfScope",
         "REAUTHENTICATION_FAILED": "reauthenticationFailed",
         "PAYLOAD_TOO_LARGE": "payloadTooLarge",
-        "NOT_IMPLEMENTED": "notImplemented"
+        "NOT_IMPLEMENTED": "notImplemented",
+        "SOURCE_NOT_ALLOWED": "sourceNotAllowed",
+        "INCOMPATIBLE": "incompatible",
+        "SURFACE_DISABLED": "surfaceDisabled",
+        "MANIFEST_INVALID": "manifestInvalid",
+        "NOT_UNPACKED": "notUnpacked",
+        "PRIVATE_NOT_ALLOWED": "privateNotAllowed"
       }
     },
     {
@@ -142,8 +149,30 @@
         "DEVICE_CHOOSERS": 21,
         "SCREEN_CAPTURE": 22,
         "WEBAUTHN": 23,
-        "EXTERNAL_PROTOCOLS": 24
+        "EXTERNAL_PROTOCOLS": 24,
+        "EXTENSION_ACTIONS": 25,
+        "EXTENSION_POPUPS": 26,
+        "EXTENSION_SIDE_PANELS": 27,
+        "EXTENSION_CONTEXT_MENUS": 28,
+        "EXTENSION_OPTIONS_PAGES": 29,
+        "EXTENSION_DEVTOOLS": 30,
+        "EXTENSION_INSTALLS": 31,
+        "EXTENSION_UNINSTALLS": 32
       }
+    },
+    {
+      "group": "windowKinds",
+      "kind": "enum",
+      "prefix": "BDK_WINDOW_KIND_",
+      "comment": "bdk_window_register's kind: what extensions see in windows.get (swift-api.md 8.1).",
+      "values": { "NORMAL": 0, "POPUP": 1 }
+    },
+    {
+      "group": "anchorRoles",
+      "kind": "enum",
+      "prefix": "BDK_ANCHOR_",
+      "comment": "Roles a window's anchor provider is asked for (swift-api.md 8.1): where default presenters attach.",
+      "values": { "ADDRESS_BAR": 1, "EXTENSIONS": 2, "DOWNLOADS": 3 }
     }
   ]
 }

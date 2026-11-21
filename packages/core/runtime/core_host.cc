@@ -731,38 +731,7 @@ BDK_EXPORT void bdk_contents_set_keyboard_handler(bdk_contents_t h, bdk_key_rese
     c->key_rel = rel;
 }
 
-/* ---- bdk_window.h ---- */
-
-BDK_EXPORT bdk_status_t bdk_window_register(bdk_runtime_t h, bdk_native_handle_t native,
-                                            uint32_t kind, bdk_window_t* out, bdk_error_t* err) {
-    clear_out(err);
-    if (bdk_status_t s = check_thread())
-        return s;
-    auto rt = runtime_of(h);
-    if (!rt)
-        return BDK_ERR_STALE_HANDLE;
-    if (!out || native.kind == 0)
-        return BDK_ERR_INVALID_ARGUMENT;
-    auto w = std::make_shared<Window>();
-    w->kind = kind;
-    w->native = native;
-    if (bdk_status_t s = backend().RegisterWindow(*rt, *w, err))
-        return s;
-    *out = table_make(T_WINDOW, w);
-    return BDK_OK;
-}
-
-BDK_EXPORT bdk_status_t bdk_window_unregister(bdk_window_t h, bdk_error_t* err) {
-    clear_out(err);
-    if (bdk_status_t s = check_thread())
-        return s;
-    auto w = get<Window>(h, T_WINDOW);
-    if (!w)
-        return BDK_ERR_STALE_HANDLE;
-    table_free(h);
-    backend().UnregisterWindow(*w);
-    return BDK_OK;
-}
+/* bdk_window.h and bdk_extensions.h are in core_windows.cc. */
 
 /* ---- bdk_ui.h ---- */
 
@@ -774,7 +743,7 @@ BDK_EXPORT bdk_status_t bdk_ui_set_handler(bdk_runtime_t h, uint32_t surface, bd
     auto rt = runtime_of(h);
     if (!rt)
         return BDK_ERR_STALE_HANDLE;
-    if (!cb || surface < BDK_SURFACE_PERMISSIONS || surface > BDK_SURFACE_EXTERNAL_PROTOCOLS)
+    if (!cb || !ui_surface_known(surface))
         return BDK_ERR_INVALID_ARGUMENT;
     if (rt->frozen)
         return fail(err, BDK_DOMAIN_CONFIG, BDK_CODE_REGISTRATION_AFTER_START,
@@ -825,6 +794,32 @@ BDK_EXPORT void bdk_ui_set_withdrawn_handler(bdk_request_t h, void (*cb)(void*),
     r->withdrawn = cb;
     r->wctx = ctx;
     r->wrel = rel;
+}
+
+BDK_EXPORT void bdk_ui_set_update_handler(bdk_request_t h, bdk_ui_update_cb cb, void* ctx,
+                                          bdk_release_cb rel) {
+    auto r = check_thread() == BDK_OK ? get<Request>(h, T_REQUEST) : nullptr;
+    if (!r || r->finished) { /* rejected or already over: BDK will never use the context */
+        release_later(ctx, rel);
+        return;
+    }
+    release_update(*r); /* a replaced handler is released */
+    r->update_cb = cb;
+    r->update_ctx = ctx;
+    r->update_rel = rel;
+}
+
+BDK_EXPORT bdk_status_t bdk_ui_update(bdk_request_t h, bdk_string_t update, bdk_error_t* err) {
+    clear_out(err);
+    if (bdk_status_t s = check_thread())
+        return s;
+    std::shared_ptr<Runtime> rt;
+    auto r = request_of(h, &rt);
+    if (!r || !rt)
+        return BDK_ERR_STALE_HANDLE;
+    if (!string_ok(update))
+        return BDK_ERR_INVALID_ARGUMENT;
+    return ui_receive_update(rt, r, str(update), err);
 }
 
 BDK_EXPORT void bdk_ui_request_release(bdk_request_t h) {

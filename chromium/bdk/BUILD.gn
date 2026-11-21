@@ -23,6 +23,9 @@ source_set("core") {
     "core/runtime/core.cc",
     "core/runtime/core_host.cc",
     "core/runtime/core_internal.h",
+    "core/runtime/core_windows.cc",
+    "core/runtime/extension_policy.cc",
+    "core/runtime/extension_policy.h",
     "core/runtime/ui_router.cc",
   ]
   public_configs = [ ":core_config" ]

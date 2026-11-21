@@ -44,6 +44,20 @@ BDK_EXPORT void bdk_ui_set_withdrawn_handler(bdk_request_t, void (*cb)(void*), v
 /* An uncompleted request is cancelled. */
 BDK_EXPORT void bdk_ui_request_release(bdk_request_t);
 
+/* Some requests stay open while their UI is up, and end with a completion or a withdrawal: an
+   extension popup or side panel (extensions.md 4.2, 4.3). While one is open, either side can
+   report a change without ending it.
+
+   The runtime's changes (a popup's preferred size, whether a page-scoped panel should be visible)
+   reach the update handler as JSON objects, in order, later, until the request finishes. Setting
+   a handler releases the previous one; the last is released when the request finishes. */
+typedef void (*bdk_ui_update_cb)(void* context, bdk_request_t request, bdk_string_t update_json);
+BDK_EXPORT void bdk_ui_set_update_handler(bdk_request_t, bdk_ui_update_cb, void* ctx,
+                                          bdk_release_cb);
+/* The application's changes (it placed the view, the side a panel is on), as a JSON object. Fails
+   with ui.requestCompleted once the request finished. */
+BDK_EXPORT bdk_status_t bdk_ui_update(bdk_request_t, bdk_string_t update_json, bdk_error_t*);
+
 #ifdef __cplusplus
 }
 #endif

@@ -280,6 +280,292 @@ public struct BDKDownloadItem: Codable, Sendable, Equatable {
     }
 }
 
+public enum BDKExtensionSourceKind: String, Codable, Sendable, Equatable, CaseIterable {
+    case unpacked
+    case crx
+    case updateUrl
+    case store
+    case bundled
+}
+
+public struct BDKExtensionSource: Codable, Sendable, Equatable {
+    public var kind: BDKExtensionSourceKind
+    public var path: String?
+    public var id: String?
+    public var updateUrl: URL?
+    public var store: String?
+
+    public init(
+        kind: BDKExtensionSourceKind,
+        path: String? = nil,
+        id: String? = nil,
+        updateUrl: URL? = nil,
+        store: String? = nil
+    ) {
+        self.kind = kind
+        self.path = path
+        self.id = id
+        self.updateUrl = updateUrl
+        self.store = store
+    }
+}
+
+public enum BDKExtensionDisableReason: String, Codable, Sendable, Equatable, CaseIterable {
+    case user
+    case incompatible
+    case blocklisted
+    case permissionsIncreased
+    case corrupted
+    case other
+}
+
+public enum BDKExtensionSiteAccess: String, Codable, Sendable, Equatable, CaseIterable {
+    case onClick
+    case onSpecificSites
+    case onAllSites
+}
+
+public enum BDKExtensionSurface: String, Codable, Sendable, Equatable, CaseIterable {
+    case action
+    case popup
+    case sidePanel
+    case contextMenus
+    case optionsPage
+    case devTools
+    case omnibox
+}
+
+public struct BDKExtensionPermissions: Codable, Sendable, Equatable {
+    public var apiPermissions: [String]
+    public var hostPatterns: [String]
+    public var warnings: [String]
+
+    public init(
+        apiPermissions: [String],
+        hostPatterns: [String],
+        warnings: [String]
+    ) {
+        self.apiPermissions = apiPermissions
+        self.hostPatterns = hostPatterns
+        self.warnings = warnings
+    }
+}
+
+public enum BDKCompatibilityVerdict: String, Codable, Sendable, Equatable, CaseIterable {
+    case compatible
+    case degraded
+    case incompatible
+}
+
+public enum BDKFindingSeverity: String, Codable, Sendable, Equatable, CaseIterable {
+    case blocking
+    case degrading
+    case informational
+}
+
+public struct BDKCompatibilityFinding: Codable, Sendable, Equatable {
+    public var severity: BDKFindingSeverity
+    public var code: String
+    public var subject: String
+    public var message: String
+
+    public init(
+        severity: BDKFindingSeverity,
+        code: String,
+        subject: String,
+        message: String
+    ) {
+        self.severity = severity
+        self.code = code
+        self.subject = subject
+        self.message = message
+    }
+}
+
+public struct BDKCompatibilityReport: Codable, Sendable, Equatable {
+    public var verdict: BDKCompatibilityVerdict
+    public var findings: [BDKCompatibilityFinding]
+
+    public init(
+        verdict: BDKCompatibilityVerdict,
+        findings: [BDKCompatibilityFinding]
+    ) {
+        self.verdict = verdict
+        self.findings = findings
+    }
+}
+
+public enum BDKExtensionErrorKind: String, Codable, Sendable, Equatable, CaseIterable {
+    case manifest
+    case runtime
+    case unavailableApi
+}
+
+public struct BDKExtensionError: Codable, Sendable, Equatable {
+    public var kind: BDKExtensionErrorKind
+    public var message: String
+    public var source: String?
+    public var line: Int?
+    public var count: Int
+
+    public init(
+        kind: BDKExtensionErrorKind,
+        message: String,
+        source: String? = nil,
+        line: Int? = nil,
+        count: Int
+    ) {
+        self.kind = kind
+        self.message = message
+        self.source = source
+        self.line = line
+        self.count = count
+    }
+}
+
+public struct BDKExtensionInfo: Codable, Sendable, Equatable {
+    public var id: String
+    public var name: String
+    public var version: String
+    public var description: String
+    public var icon: String?
+    public var manifestVersion: Int
+    public var source: BDKExtensionSourceKind
+    public var store: String?
+    public var isEnabled: Bool
+    public var disableReasons: [BDKExtensionDisableReason]
+    public var permissions: BDKExtensionPermissions
+    public var siteAccess: BDKExtensionSiteAccess
+    public var siteAccessPatterns: [String]
+    public var allowedInPrivate: Bool
+    public var allowedFileAccess: Bool
+    public var isPinned: Bool
+    public var surfaces: [BDKExtensionSurface]
+    public var optionsPage: URL?
+    public var errors: [BDKExtensionError]?
+    public var compatibility: BDKCompatibilityReport
+
+    public init(
+        id: String,
+        name: String,
+        version: String,
+        description: String,
+        icon: String? = nil,
+        manifestVersion: Int,
+        source: BDKExtensionSourceKind,
+        store: String? = nil,
+        isEnabled: Bool,
+        disableReasons: [BDKExtensionDisableReason],
+        permissions: BDKExtensionPermissions,
+        siteAccess: BDKExtensionSiteAccess,
+        siteAccessPatterns: [String],
+        allowedInPrivate: Bool,
+        allowedFileAccess: Bool,
+        isPinned: Bool,
+        surfaces: [BDKExtensionSurface],
+        optionsPage: URL? = nil,
+        errors: [BDKExtensionError]? = nil,
+        compatibility: BDKCompatibilityReport
+    ) {
+        self.id = id
+        self.name = name
+        self.version = version
+        self.description = description
+        self.icon = icon
+        self.manifestVersion = manifestVersion
+        self.source = source
+        self.store = store
+        self.isEnabled = isEnabled
+        self.disableReasons = disableReasons
+        self.permissions = permissions
+        self.siteAccess = siteAccess
+        self.siteAccessPatterns = siteAccessPatterns
+        self.allowedInPrivate = allowedInPrivate
+        self.allowedFileAccess = allowedFileAccess
+        self.isPinned = isPinned
+        self.surfaces = surfaces
+        self.optionsPage = optionsPage
+        self.errors = errors
+        self.compatibility = compatibility
+    }
+}
+
+public struct BDKExtensionActionState: Codable, Sendable, Equatable {
+    public var id: String
+    public var title: String
+    public var icon: String?
+    public var badgeText: String?
+    public var badgeColor: String?
+    public var isEnabled: Bool
+    public var hasPopup: Bool
+    public var wantsAccess: Bool
+    public var isPinned: Bool
+
+    public init(
+        id: String,
+        title: String,
+        icon: String? = nil,
+        badgeText: String? = nil,
+        badgeColor: String? = nil,
+        isEnabled: Bool,
+        hasPopup: Bool,
+        wantsAccess: Bool,
+        isPinned: Bool
+    ) {
+        self.id = id
+        self.title = title
+        self.icon = icon
+        self.badgeText = badgeText
+        self.badgeColor = badgeColor
+        self.isEnabled = isEnabled
+        self.hasPopup = hasPopup
+        self.wantsAccess = wantsAccess
+        self.isPinned = isPinned
+    }
+}
+
+public struct BDKExtensionCommand: Codable, Sendable, Equatable {
+    public var extensionId: String
+    public var name: String
+    public var description: String
+    public var suggestedKey: String?
+    public var shortcut: String?
+    public var isAction: Bool
+
+    public init(
+        extensionId: String,
+        name: String,
+        description: String,
+        suggestedKey: String? = nil,
+        shortcut: String? = nil,
+        isAction: Bool
+    ) {
+        self.extensionId = extensionId
+        self.name = name
+        self.description = description
+        self.suggestedKey = suggestedKey
+        self.shortcut = shortcut
+        self.isAction = isAction
+    }
+}
+
+public enum BDKExtensionView: String, Codable, Sendable, Equatable, CaseIterable {
+    case serviceWorker
+    case popup
+    case sidePanel
+    case options
+    case background
+}
+
+public enum BDKExtensionUnloadReason: String, Codable, Sendable, Equatable, CaseIterable {
+    case disabled
+    case uninstalled
+    case updated
+    case terminated
+    case blocklisted
+    case other
+}
+
 public struct BDKHistoryEntry: Codable, Sendable, Equatable {
     public var url: URL
     public var title: String
@@ -1432,6 +1718,371 @@ public struct BDKDownloads {
     }
 }
 
+/// The `extensions` commands.
+@MainActor
+public struct BDKExtensions {
+    let scope: BDKServiceScope
+
+    /// `extensions.list`. Needs the capability `extensions.list` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func list() async throws -> [BDKExtensionInfo] {
+        return try await scope.call("extensions.list", BDKVoid(), as: [BDKExtensionInfo].self)
+    }
+
+    /// `extensions.get`. Needs the capability `extensions.list` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func get(
+        _ id: String
+    ) async throws -> BDKExtensionInfo {
+        struct Arguments: Encodable {
+            var id: String
+        }
+        return try await scope.call("extensions.get", Arguments(id: id), as: BDKExtensionInfo.self)
+    }
+
+    /// `extensions.inspect`. Needs the capability `extensions.list` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func inspect(
+        source: BDKExtensionSource? = nil,
+        id: String? = nil
+    ) async throws -> BDKCompatibilityReport {
+        struct Arguments: Encodable {
+            var source: BDKExtensionSource?
+            var id: String?
+        }
+        return try await scope.call("extensions.inspect", Arguments(source: source, id: id), as: BDKCompatibilityReport.self)
+    }
+
+    /// `extensions.install`. Needs the capability `extensions.manage` from a page or a session; a call from Swift is not checked.
+    /// A page must have been given a user gesture to call it; a call from Swift needs none.
+    /// Raises a UI request on the `extension_installs` surface.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func install(
+        source: BDKExtensionSource
+    ) async throws -> BDKExtensionInfo {
+        struct Arguments: Encodable {
+            var source: BDKExtensionSource
+        }
+        return try await scope.call("extensions.install", Arguments(source: source), as: BDKExtensionInfo.self)
+    }
+
+    /// `extensions.uninstall`. Needs the capability `extensions.manage` from a page or a session; a call from Swift is not checked.
+    /// A page must have been given a user gesture to call it; a call from Swift needs none.
+    /// Raises a UI request on the `extension_uninstalls` surface.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func uninstall(
+        _ id: String
+    ) async throws {
+        struct Arguments: Encodable {
+            var id: String
+        }
+        try await scope.run("extensions.uninstall", Arguments(id: id))
+    }
+
+    /// `extensions.setEnabled`. Needs the capability `extensions.manage` from a page or a session; a call from Swift is not checked.
+    /// Raises a UI request on the `extension_installs` surface.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func setEnabled(
+        _ id: String,
+        enabled: Bool
+    ) async throws {
+        struct Arguments: Encodable {
+            var id: String
+            var enabled: Bool
+        }
+        try await scope.run("extensions.setEnabled", Arguments(id: id, enabled: enabled))
+    }
+
+    /// `extensions.setSiteAccess`. Needs the capability `extensions.manage` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func setSiteAccess(
+        _ id: String,
+        access: BDKExtensionSiteAccess,
+        patterns: [String]? = nil
+    ) async throws {
+        struct Arguments: Encodable {
+            var id: String
+            var access: BDKExtensionSiteAccess
+            var patterns: [String]?
+        }
+        try await scope.run("extensions.setSiteAccess", Arguments(id: id, access: access, patterns: patterns))
+    }
+
+    /// `extensions.setAllowedInPrivate`. Needs the capability `extensions.manage` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func setAllowedInPrivate(
+        _ id: String,
+        allowed: Bool
+    ) async throws {
+        struct Arguments: Encodable {
+            var id: String
+            var allowed: Bool
+        }
+        try await scope.run("extensions.setAllowedInPrivate", Arguments(id: id, allowed: allowed))
+    }
+
+    /// `extensions.setAllowedFileAccess`. Needs the capability `extensions.manage` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func setAllowedFileAccess(
+        _ id: String,
+        allowed: Bool
+    ) async throws {
+        struct Arguments: Encodable {
+            var id: String
+            var allowed: Bool
+        }
+        try await scope.run("extensions.setAllowedFileAccess", Arguments(id: id, allowed: allowed))
+    }
+
+    /// `extensions.setPinned`. Needs the capability `extensions.manage` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func setPinned(
+        _ id: String,
+        pinned: Bool
+    ) async throws {
+        struct Arguments: Encodable {
+            var id: String
+            var pinned: Bool
+        }
+        try await scope.run("extensions.setPinned", Arguments(id: id, pinned: pinned))
+    }
+
+    /// `extensions.reload`. Needs the capability `extensions.manage` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func reload(
+        _ id: String
+    ) async throws {
+        struct Arguments: Encodable {
+            var id: String
+        }
+        try await scope.run("extensions.reload", Arguments(id: id))
+    }
+
+    public struct CheckForUpdatesResult: Codable, Sendable, Equatable {
+        public var updated: [String]
+        public var refused: [BDKCompatibilityFinding]
+    }
+
+    /// `extensions.checkForUpdates`. Needs the capability `extensions.manage` from a page or a session; a call from Swift is not checked.
+    /// `onProgress` runs on the main actor for each progress report.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func checkForUpdates(
+        id: String? = nil,
+        onProgress: (@MainActor (Double, String) -> Void)? = nil
+    ) async throws -> CheckForUpdatesResult {
+        struct Arguments: Encodable {
+            var id: String?
+        }
+        return try await scope.call("extensions.checkForUpdates", Arguments(id: id), as: CheckForUpdatesResult.self, onProgress: onProgress)
+    }
+
+    /// `extensions.openOptions`. Needs the capability `extensions.list` from a page or a session; a call from Swift is not checked.
+    /// Raises a UI request on the `new_windows` surface.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func openOptions(
+        _ id: String
+    ) async throws {
+        struct Arguments: Encodable {
+            var id: String
+        }
+        try await scope.run("extensions.openOptions", Arguments(id: id))
+    }
+
+    /// `extensions.inspectView`. Needs the capability `extensions.manage` from a page or a session; a call from Swift is not checked.
+    /// Raises a UI request on the `new_windows` surface.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func inspectView(
+        _ id: String,
+        view: BDKExtensionView
+    ) async throws {
+        struct Arguments: Encodable {
+            var id: String
+            var view: BDKExtensionView
+        }
+        try await scope.run("extensions.inspectView", Arguments(id: id, view: view))
+    }
+
+    /// `extensions.clearErrors`. Needs the capability `extensions.manage` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func clearErrors(
+        _ id: String
+    ) async throws {
+        struct Arguments: Encodable {
+            var id: String
+        }
+        try await scope.run("extensions.clearErrors", Arguments(id: id))
+    }
+
+    /// `extensions.commands`. Needs the capability `extensions.list` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func commands() async throws -> [BDKExtensionCommand] {
+        return try await scope.call("extensions.commands", BDKVoid(), as: [BDKExtensionCommand].self)
+    }
+
+    /// `extensions.setCommandShortcut`. Needs the capability `extensions.manage` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func setCommandShortcut(
+        extensionId: String,
+        name: String,
+        shortcut: String? = nil
+    ) async throws {
+        struct Arguments: Encodable {
+            var extensionId: String
+            var name: String
+            var shortcut: String?
+        }
+        try await scope.run("extensions.setCommandShortcut", Arguments(extensionId: extensionId, name: name, shortcut: shortcut))
+    }
+
+    /// `extensions.actions`. Needs the capability `extensions.list` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func actions() async throws -> [BDKExtensionActionState] {
+        return try await scope.call("extensions.actions", BDKVoid(), as: [BDKExtensionActionState].self)
+    }
+
+    /// `extensions.*` events. Each is delivered with the event's payload.
+    public enum Event: Sendable, Equatable {
+        case installed(Installed)
+        case updated(Updated)
+        case uninstalled(Uninstalled)
+        case enabledChanged(EnabledChanged)
+        case loaded(Loaded)
+        case unloaded(Unloaded)
+        case errorAdded(ErrorAdded)
+        case actionChanged(ActionChanged)
+
+        public struct Installed: Codable, Sendable, Equatable {
+            public var `extension`: BDKExtensionInfo
+
+            public init(
+                `extension`: BDKExtensionInfo
+            ) {
+                self.`extension` = `extension`
+            }
+        }
+
+        public struct Updated: Codable, Sendable, Equatable {
+            public var `extension`: BDKExtensionInfo
+            public var previousVersion: String
+
+            public init(
+                `extension`: BDKExtensionInfo,
+                previousVersion: String
+            ) {
+                self.`extension` = `extension`
+                self.previousVersion = previousVersion
+            }
+        }
+
+        public struct Uninstalled: Codable, Sendable, Equatable {
+            public var id: String
+
+            public init(
+                id: String
+            ) {
+                self.id = id
+            }
+        }
+
+        public struct EnabledChanged: Codable, Sendable, Equatable {
+            public var id: String
+            public var isEnabled: Bool
+            public var disableReasons: [BDKExtensionDisableReason]
+
+            public init(
+                id: String,
+                isEnabled: Bool,
+                disableReasons: [BDKExtensionDisableReason]
+            ) {
+                self.id = id
+                self.isEnabled = isEnabled
+                self.disableReasons = disableReasons
+            }
+        }
+
+        public struct Loaded: Codable, Sendable, Equatable {
+            public var id: String
+
+            public init(
+                id: String
+            ) {
+                self.id = id
+            }
+        }
+
+        public struct Unloaded: Codable, Sendable, Equatable {
+            public var id: String
+            public var reason: BDKExtensionUnloadReason
+
+            public init(
+                id: String,
+                reason: BDKExtensionUnloadReason
+            ) {
+                self.id = id
+                self.reason = reason
+            }
+        }
+
+        public struct ErrorAdded: Codable, Sendable, Equatable {
+            public var id: String
+            public var error: BDKExtensionError
+
+            public init(
+                id: String,
+                error: BDKExtensionError
+            ) {
+                self.id = id
+                self.error = error
+            }
+        }
+
+        public struct ActionChanged: Codable, Sendable, Equatable {
+            public var id: String
+            public var contents: String?
+
+            public init(
+                id: String,
+                contents: String? = nil
+            ) {
+                self.id = id
+                self.contents = contents
+            }
+        }
+
+        static let names = ["extensions.installed", "extensions.updated", "extensions.uninstalled", "extensions.enabledChanged", "extensions.loaded", "extensions.unloaded", "extensions.errorAdded", "extensions.actionChanged"]
+
+        /// Decodes one delivered event; nil for a name this version does not know.
+        static func decode(name: String, payload: String) throws -> Event? {
+            switch name {
+            case "extensions.installed":
+                return .installed(try BDKServiceCoding.decode(Installed.self, from: payload))
+            case "extensions.updated":
+                return .updated(try BDKServiceCoding.decode(Updated.self, from: payload))
+            case "extensions.uninstalled":
+                return .uninstalled(try BDKServiceCoding.decode(Uninstalled.self, from: payload))
+            case "extensions.enabledChanged":
+                return .enabledChanged(try BDKServiceCoding.decode(EnabledChanged.self, from: payload))
+            case "extensions.loaded":
+                return .loaded(try BDKServiceCoding.decode(Loaded.self, from: payload))
+            case "extensions.unloaded":
+                return .unloaded(try BDKServiceCoding.decode(Unloaded.self, from: payload))
+            case "extensions.errorAdded":
+                return .errorAdded(try BDKServiceCoding.decode(ErrorAdded.self, from: payload))
+            case "extensions.actionChanged":
+                return .actionChanged(try BDKServiceCoding.decode(ActionChanged.self, from: payload))
+            default:
+                return nil
+            }
+        }
+    }
+
+    /// The events of this namespace. Reading the property subscribes at once, so events that happen
+    /// after it are delivered. The stream ends when it is no longer iterated or the runtime shuts down.
+    public var events: AsyncStream<Event> {
+        scope.events(Event.names, decode: Event.decode)
+    }
+}
+
 /// The `history` commands.
 @MainActor
 public struct BDKHistory {
@@ -2233,6 +2884,11 @@ extension BDKProfile {
     /// The `downloads` commands in this profile.
     public var downloads: BDKDownloads {
         BDKDownloads(scope: BDKServiceScope(runtime: runtime, profile: self))
+    }
+
+    /// The `extensions` commands in this profile.
+    public var extensions: BDKExtensions {
+        BDKExtensions(scope: BDKServiceScope(runtime: runtime, profile: self))
     }
 
     /// The `history` commands in this profile.

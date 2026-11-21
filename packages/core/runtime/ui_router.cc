@@ -53,8 +53,52 @@ constexpr SurfaceInfo kSurfaces[] = {
     {"screen_capture", BDK_SURFACE_SCREEN_CAPTURE, kDCX, "share"},
     {"webauthn", BDK_SURFACE_WEBAUTHN, kDCX, ""},
     {"external_protocols", BDK_SURFACE_EXTERNAL_PROTOCOLS, kDCX, "open"},
+    {"extension_actions", BDK_SURFACE_EXTENSION_ACTIONS, kDCX, ""},
+    {"extension_popups", BDK_SURFACE_EXTENSION_POPUPS, kDCX, ""},
+    {"extension_side_panels", BDK_SURFACE_EXTENSION_SIDE_PANELS, kDCX, ""},
+    {"extension_context_menus", BDK_SURFACE_EXTENSION_CONTEXT_MENUS, kDCX, ""},
+    {"extension_options_pages", BDK_SURFACE_EXTENSION_OPTIONS_PAGES, kDCX, ""},
+    {"extension_devtools", BDK_SURFACE_EXTENSION_DEVTOOLS, kDCX, ""},
+    {"extension_installs", BDK_SURFACE_EXTENSION_INSTALLS, kDC, ""},
+    {"extension_uninstalls", BDK_SURFACE_EXTENSION_UNINSTALLS, kDC, ""},
 };
 // clang-format on
+
+/* The extension surfaces are configured under [extensions.ui] (extensions.md section 4), by these
+   keys, not under [ui.surfaces]. Install and uninstall prompts have no key: they cannot be
+   disabled, and a handler may still take them over. Same layout as above: units.test.ts checks the
+   keys and modes against the schema's extensions.ui. */
+struct ExtensionKey {
+    const char* key;
+    uint32_t id;
+    /* The surface raises no request of its own (action state is data, extension menu items arrive
+       in a context-menu request, options pages in a new-window request, DevTools panels load in
+       the front end), so custom mode needs no handler at the freeze. */
+    bool data_only;
+};
+
+// clang-format off
+constexpr ExtensionKey kExtensionKeys[] = {
+    {"actions", BDK_SURFACE_EXTENSION_ACTIONS, true},
+    {"popups", BDK_SURFACE_EXTENSION_POPUPS, false},
+    {"side_panels", BDK_SURFACE_EXTENSION_SIDE_PANELS, false},
+    {"context_menus", BDK_SURFACE_EXTENSION_CONTEXT_MENUS, true},
+    {"options_pages", BDK_SURFACE_EXTENSION_OPTIONS_PAGES, true},
+    {"devtools", BDK_SURFACE_EXTENSION_DEVTOOLS, true},
+};
+// clang-format on
+
+bool is_extension_surface(uint32_t id) {
+    return id >= BDK_SURFACE_EXTENSION_ACTIONS && id <= BDK_SURFACE_EXTENSION_UNINSTALLS;
+}
+
+bool data_only(uint32_t id) {
+    for (const ExtensionKey& k : kExtensionKeys) {
+        if (k.id == id)
+            return k.data_only;
+    }
+    return false;
+}
 
 const SurfaceInfo* surface_by_id(uint32_t id) {
     for (const SurfaceInfo& s : kSurfaces) {
@@ -286,6 +330,23 @@ UiMode mode_of(const Runtime& rt, uint32_t surface) {
     return it == rt.ui_modes.end() ? UiMode::kDefault : it->second;
 }
 
+/* Sets one surface's mode from its configured value; label names it in the message. */
+bdk_status_t set_mode(Runtime& rt, const SurfaceInfo& info, const std::string& label,
+                      const Json& value, bdk_error_t* out_error) {
+    UiMode mode;
+    uint32_t bit;
+    if (value.kind != Json::kString || !parse_mode(value.text, &mode, &bit))
+        return fail(out_error, BDK_DOMAIN_CONFIG, BDK_CODE_RESOLVED_INVALID,
+                    "the mode of the UI surface \"" + label +
+                        "\" is not default, custom or disabled");
+    if (!(info.modes & bit))
+        return fail(out_error, BDK_DOMAIN_UI, "surfaceMode",
+                    "the UI surface \"" + label + "\" does not allow the mode \"" + value.text +
+                        "\"");
+    rt.ui_modes[info.id] = mode;
+    return BDK_OK;
+}
+
 /* ---- Finishing ----------------------------------------------------------------------------- */
 
 using QueueKey = std::pair<bdk_contents_t, uint32_t>;
@@ -327,6 +388,8 @@ void finish_request(Request& r, UiOutcome outcome, std::string completion = "",
     }
     r.finished = true;
     release_withdrawn(r);
+    release_update(r);
+    r.on_update = nullptr;
     if (r.holds_slot) {
         r.holds_slot = false;
         QueueKey key{r.contents, r.surface};
@@ -398,20 +461,55 @@ bdk_status_t ui_configure(Runtime& rt, const std::string& resolved, bdk_error_t*
                     "\"surfaces\" in the resolved configuration is not an object");
     for (const auto& [name, value] : surfaces->members) {
         const SurfaceInfo* info = surface_by_name(name);
-        if (!info)
+        if (!info || is_extension_surface(info->id))
             return fail(out_error, BDK_DOMAIN_UI, "surfaceUnknown",
                         "unknown UI surface \"" + name + "\" in the resolved configuration");
-        UiMode mode;
-        uint32_t bit;
-        if (value.kind != Json::kString || !parse_mode(value.text, &mode, &bit))
-            return fail(out_error, BDK_DOMAIN_CONFIG, BDK_CODE_RESOLVED_INVALID,
-                        "the mode of the UI surface \"" + name +
-                            "\" is not default, custom or disabled");
-        if (!(info->modes & bit))
-            return fail(out_error, BDK_DOMAIN_UI, "surfaceMode",
-                        "the UI surface \"" + name + "\" does not allow the mode \"" + value.text +
-                            "\"");
-        rt.ui_modes[info->id] = mode;
+        if (bdk_status_t st = set_mode(rt, *info, name, value, out_error))
+            return st;
+    }
+    return BDK_OK;
+}
+
+bdk_status_t ui_configure_extensions(Runtime& rt, const std::string& resolved,
+                                     bdk_error_t* out_error) {
+    Json root;
+    if (!read_json(resolved, &root) || root.kind != Json::kObject)
+        return fail(out_error, BDK_DOMAIN_CONFIG, BDK_CODE_RESOLVED_INVALID,
+                    "the resolved configuration is not a JSON object");
+    const Json* extensions = root.find("extensions");
+    if (!extensions)
+        return BDK_OK;
+    if (extensions->kind != Json::kObject)
+        return fail(out_error, BDK_DOMAIN_CONFIG, BDK_CODE_RESOLVED_INVALID,
+                    "\"extensions\" in the resolved configuration is not an object");
+    const Json* enabled = extensions->find("enabled");
+    if (enabled && enabled->kind == Json::kOther && enabled->text == "false") {
+        /* No extension system: every extension surface is unavailable, whatever [extensions.ui]
+           says, and nothing raises an install prompt. */
+        for (const SurfaceInfo& s : kSurfaces) {
+            if (is_extension_surface(s.id))
+                rt.ui_modes[s.id] = UiMode::kDisabled;
+        }
+        return BDK_OK;
+    }
+    const Json* ui = extensions->find("ui");
+    if (!ui)
+        return BDK_OK;
+    if (ui->kind != Json::kObject)
+        return fail(out_error, BDK_DOMAIN_CONFIG, BDK_CODE_RESOLVED_INVALID,
+                    "\"extensions.ui\" in the resolved configuration is not an object");
+    for (const auto& [key, value] : ui->members) {
+        const ExtensionKey* found = nullptr;
+        for (const ExtensionKey& k : kExtensionKeys) {
+            if (key == k.key)
+                found = &k;
+        }
+        if (!found)
+            return fail(out_error, BDK_DOMAIN_UI, "surfaceUnknown",
+                        "unknown extension surface \"" + key + "\" in the resolved configuration");
+        if (bdk_status_t st =
+                set_mode(rt, *surface_by_id(found->id), "extensions.ui." + key, value, out_error))
+            return st;
     }
     return BDK_OK;
 }
@@ -419,7 +517,8 @@ bdk_status_t ui_configure(Runtime& rt, const std::string& resolved, bdk_error_t*
 bdk_status_t ui_check_handlers(const Runtime& rt, bdk_error_t* out_error) {
     std::string missing;
     for (const SurfaceInfo& s : kSurfaces) {
-        if (mode_of(rt, s.id) == UiMode::kCustom && rt.ui_handlers.count(s.id) == 0)
+        if (mode_of(rt, s.id) == UiMode::kCustom && !data_only(s.id) &&
+            rt.ui_handlers.count(s.id) == 0)
             missing += (missing.empty() ? "" : ", ") + std::string(s.name);
     }
     if (missing.empty())
@@ -430,6 +529,14 @@ bdk_status_t ui_check_handlers(const Runtime& rt, bdk_error_t* out_error) {
 
 bool ui_surface_available(const Runtime& rt, uint32_t surface) {
     return mode_of(rt, surface) != UiMode::kDisabled;
+}
+
+UiMode ui_surface_mode(const Runtime& rt, uint32_t surface) {
+    return mode_of(rt, surface);
+}
+
+bool ui_surface_known(uint32_t surface) {
+    return surface_by_id(surface) != nullptr;
 }
 
 /* ---- Raising ------------------------------------------------------------------------------- */
@@ -589,6 +696,43 @@ bdk_status_t ui_use_default(Request& r, bdk_error_t* err) {
 void ui_release(Request& r) {
     if (!r.finished)
         finish_request(r, UiOutcome::kCancelled);
+}
+
+/* ---- Open requests ------------------------------------------------------------------------- */
+
+void release_update(Request& r) {
+    if (r.update_cb || r.update_rel) {
+        release_later(r.update_ctx, r.update_rel);
+        r.update_cb = nullptr;
+        r.update_ctx = nullptr;
+        r.update_rel = nullptr;
+    }
+}
+
+void ui_send_update(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Request>& r,
+                    const std::string& update_json) {
+    post([rt, r, update_json] {
+        if (rt->shutting || r->finished || !r->update_cb)
+            return;
+        r->update_cb(r->update_ctx, r->handle, view(update_json));
+    });
+}
+
+bdk_status_t ui_receive_update(const std::shared_ptr<Runtime>& rt,
+                               const std::shared_ptr<Request>& r, const std::string& update_json,
+                               bdk_error_t* err) {
+    if (r->finished)
+        return fail(err, BDK_DOMAIN_UI, BDK_CODE_REQUEST_COMPLETED,
+                    "the request is already completed");
+    bool object = false;
+    if (!valid_json(update_json, &object) || !object)
+        return BDK_ERR_INVALID_ARGUMENT;
+    post([rt, r, update_json] {
+        if (rt->shutting || r->finished || !r->on_update)
+            return;
+        r->on_update(update_json);
+    });
+    return BDK_OK;
 }
 
 } // namespace bdkcore
