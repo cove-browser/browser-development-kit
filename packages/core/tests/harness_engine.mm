@@ -20,6 +20,7 @@
 #include <condition_variable>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -44,6 +45,15 @@ char** g_argv;
 
 bdk_string_t View(const char* s) {
     return bdk_string_t{s, s ? strlen(s) : 0};
+}
+
+/* Removes a data directory the harness made itself. Registered before Chromium starts, so it runs
+   after Chromium's own exit work; Chromium's threads can still write a little after it, and a run
+   that crashes or is killed leaves the directory. scripts/test-engine.sh owns the directory
+   instead (BDK_ENGINE_DATA_DIR) and removes it once the process has gone. */
+void RemoveDataDir() {
+    std::error_code ignored;
+    std::filesystem::remove_all(g_data_dir, ignored);
 }
 
 /* BDK_ENGINE_SILENT=1 runs the suite without getting in the way of whoever is using the Mac: the
@@ -598,9 +608,6 @@ void RunSuite(void*) {
         rc = 1;
     }
     fflush(stdout);
-    /* Each run has a new data directory (a Chromium profile tree of a few hundred megabytes);
-       a finished run leaves none behind. A run that crashes or is killed still does. */
-    [[NSFileManager defaultManager] removeItemAtPath:@(g_data_dir.c_str()) error:nil];
     exit(rc);
 }
 
@@ -660,12 +667,19 @@ int main(int argc, char** argv) {
             switches += " disable-backgrounding-occluded-windows";
             setenv("BDK_ENGINE_SWITCHES", switches.c_str(), 1);
         }
-        char dir[] = "/tmp/bdk-engine-conformance-XXXXXX";
-        if (!mkdtemp(dir)) {
-            perror("mkdtemp");
-            return 2;
+        /* Each run has a new data directory, a Chromium profile tree of up to hundreds of
+           megabytes: the caller's, or one the harness makes and removes. */
+        if (const char* given = getenv("BDK_ENGINE_DATA_DIR"); given && *given) {
+            g_data_dir = given;
+        } else {
+            char dir[] = "/tmp/bdk-engine-conformance-XXXXXX";
+            if (!mkdtemp(dir)) {
+                perror("mkdtemp");
+                return 2;
+            }
+            g_data_dir = dir;
+            atexit(RemoveDataDir);
         }
-        g_data_dir = dir;
         g_argc = argc;
         g_argv = argv;
         [BDKHarnessApplication sharedApplication];
