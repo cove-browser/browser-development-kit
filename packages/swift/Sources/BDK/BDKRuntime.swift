@@ -46,13 +46,14 @@ public final class BDKRuntime {
     public private(set) lazy var ui = BDKUIHandlers()
     /// Application commands and events, and invocation of any command by name.
     public private(set) lazy var commands = BDKCommands(runtime: self)
+    /// The application windows registered with the runtime.
+    public private(set) lazy var windows = BDKWindows(runtime: self)
     public private(set) var areRegistrationsFrozen = false
 
     package private(set) var handle: bdk_runtime_t
     private(set) var state = State.running
     /// The shutdown in progress, which every later caller waits for.
     private var shutdownTask: Task<Void, Never>?
-    let windows = BDKWindows()
     private var liveContents: [UInt64: WeakBox<BDKWebContents>] = [:]
     private let broadcaster = EventBroadcaster<Event>()
 
