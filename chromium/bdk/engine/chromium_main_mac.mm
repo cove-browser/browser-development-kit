@@ -21,6 +21,7 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/time/time.h"
 #include "bdk/engine/content_browser_client.h"
+#include "chrome/app/chrome_main.h"
 #include "chrome/app/chrome_main_delegate.h"
 #include "chrome/app/chrome_main_mac.h"
 #include "chrome/app/startup_timestamps.h"
@@ -190,6 +191,10 @@ bool StartChromium(const ChromiumStartOptions& options, std::string* error) {
     base::CommandLine::Init(static_cast<int>(state.argv.size()),
                             state.argv.data());
   }
+  // ChromeMain() records this snapshot; chrome://policy and launch reporting
+  // read it (patch:
+  // bdk-let-an-embedder-record-the-initial-browser-command-line).
+  SetInitialBrowserCommandLine(*base::CommandLine::ForCurrentProcess());
   SetUpBundleOverrides();
   base::PoissonAllocationSampler::Init();
 
