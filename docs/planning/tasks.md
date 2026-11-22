@@ -186,7 +186,7 @@ Load the probe unpacked with two pages A and B visible, B focused.
 2. `tabs.query({active: true, currentWindow: true})` returns exactly B. `windows.getCurrent()` matches B's window.
 3. Focusing A fires `tabs.onActivated` for A.
 4. Moving A to a second window keeps A's tab identifier and fires detach then attach.
-5. Clicking the action with B focused lets the worker inject into B and not into A. Navigating B removes the grant.
+5. Clicking the action with B focused lets the worker inject into B and not into A. Navigating B to another origin removes the grant (Chromium keeps it across navigations within the origin).
 6. The popup opens in a BDK host anchored to an arbitrary rectangle, reports the same active tab, and closes on blur.
 7. `tabs.sendMessage` reaches the content script in both pages, and still reaches A after the move.
 8. The context-menu item is present in the menu model and its click event names the right tab.

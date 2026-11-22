@@ -32,6 +32,9 @@ extern const char* bdk_harness_engine_extensions;
 #define PAGE_A "https://bdk.test/ext-ui-a"
 #define PAGE_B "https://bdk.test/ext-ui-b"
 #define PAGE_C "https://bdk.test/ext-ui-c"
+/* Another origin: Chromium keeps an activeTab grant across navigations within the origin
+   (ActiveTabPermissionGranter::DidFinishNavigation) and drops it here. */
+#define PAGE_D "https://other.bdk.test/ext-ui-d"
 
 /* ---- what the handlers recorded ---- */
 
@@ -384,8 +387,11 @@ static void test_engine_ext_ui_activation_targets_the_focused_page(void) {
     CHECK(strstr(out, "\"granted\":true") != NULL);
     page_ui(g_a, "extui.has_active_tab", extra, out, sizeof out);
     CHECK(strstr(out, "\"granted\":false") != NULL);
-    /* Navigating B removes the grant. */
+    /* A navigation of B within its origin keeps the grant, one to another origin removes it. */
     load_page(g_b, PAGE_C);
+    page_ui(g_b, "extui.has_active_tab", extra, out, sizeof out);
+    CHECK(strstr(out, "\"granted\":true") != NULL);
+    load_page(g_b, PAGE_D);
     page_ui(g_b, "extui.has_active_tab", extra, out, sizeof out);
     CHECK(strstr(out, "\"granted\":false") != NULL);
     stop();
