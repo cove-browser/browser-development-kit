@@ -69,6 +69,22 @@ static void section(const char* text, const char* from, const char* to, char* ou
     snprintf(out, n, "%.*s", (int)(len < n ? len : n - 1), start);
 }
 
+/* The first event record of `type` in the probe's events: {"detail":...,"t":...,"type":...}, whose
+   type comes last. */
+static void event_of(const char* events, const char* type, char* out, size_t n) {
+    out[0] = '\0';
+    char key[64];
+    snprintf(key, sizeof key, "\"type\":\"%s\"", type);
+    const char* end = strstr(events, key);
+    if (!end)
+        return;
+    const char* start = end;
+    while (start > events && strncmp(start, "{\"detail\"", 9) != 0)
+        --start;
+    size_t len = (size_t)(end - start) + strlen(key);
+    snprintf(out, n, "%.*s", (int)(len < n ? len : n - 1), start);
+}
+
 static int mentions_tab(const char* text, int tab) {
     char id[32], tab_key[32];
     snprintf(id, sizeof id, "\"id\":%d,", tab);
@@ -145,8 +161,10 @@ static void test_engine_ext_probe_focus_fires_on_activated(void) {
     ext_pumps(10);
     probe("events", "{}", out, sizeof out);
     char activated[1024];
-    section(out, "tabs.onActivated", "}", activated, sizeof activated);
+    event_of(out, "tabs.onActivated", activated, sizeof activated);
     CHECK(activated[0] != '\0');
+    if (!mentions_tab(activated, tab_id(g_a)))
+        printf("    tab %d focused; the events were %s\n", tab_id(g_a), out);
     CHECK(mentions_tab(activated, tab_id(g_a)));
 }
 

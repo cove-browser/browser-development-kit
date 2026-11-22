@@ -351,11 +351,13 @@ static void test_ext_windows_remove_raises_close_but_moving_a_page_out_does_not(
     bdk_ext_window_attach(second, c);
     ext_pumps(10);
     CHECK(!ext_has(g_wlog.all, "\"kind\":\"close\""));
-    /* An extension removing the window is one. */
+    /* An extension removing the window is one. The window is the page's: in a silent run no
+       window has focus, so windows.getCurrent may name another. */
     bdk_ext_window_attach(first, c);
     ext_pumps(5);
-    ext_ask(c, ext, "chrome.windows.getCurrent().then(w=>chrome.windows.remove(w.id))", out,
-            sizeof out);
+    ext_ask(c, ext,
+            "chrome.tabs.query({url:'" PAGE "'}).then(t=>chrome.windows.remove(t[0].windowId))",
+            out, sizeof out);
     for (int i = 0; i < 20 && !ext_has(g_wlog.all, "\"kind\":\"close\""); ++i)
         t_pump();
     CHECK(ext_has(g_wlog.all, "\"kind\":\"close\""));
