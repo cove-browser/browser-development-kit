@@ -647,7 +647,10 @@ static void test_ext_a_disabled_side_panel_surface_creates_nothing(void) {
     int window;
     bdk_window_t w;
     char ext[64], out[1024];
-    bdk_contents_t c = start_panel_page("{\"ui\":{\"side_panels\":\"disabled\"}}",
+    /* allow_all: the manifest's sidePanel is a blocking finding otherwise. The API is then
+       withheld, so sidePanel.open is absent. */
+    bdk_contents_t c = start_panel_page("{\"install_policy\":\"allow_all\",\"ui\":{"
+                                        "\"side_panels\":\"disabled\"}}",
                                         register_panel_handler, &window, &w, ext, sizeof ext);
     g_plog.window = window;
     open_panel_from_page(c, ext, "openWindow");
