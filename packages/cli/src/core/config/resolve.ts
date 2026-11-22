@@ -262,6 +262,7 @@ export function assemble(input: AssembleInput): Record<string, unknown> | undefi
     automation: {
       enabled: automationEnabled,
       scripts: sortedObject(scripts),
+      cpu_budget_ms: pick(automation.cpu_budget_ms, 60000),
       external: { enabled: pick(table(automation, "external").enabled, false) },
     },
     devtools: {

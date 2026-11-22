@@ -1,0 +1,11 @@
+{
+  "diagnostics": [
+    {
+      "code": "config.type",
+      "severity": "error",
+      "message": "\"automation.cpu_budget_ms\" must be between 100 and 3600000, found 99.",
+      "file": "bdk.toml",
+      "line": 5
+    }
+  ]
+}

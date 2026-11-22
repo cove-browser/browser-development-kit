@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "bdk_version": "0.0.0",
-  "config_digest": "sha256:aaebbcdd3b9b964437bced4532d89f956476125a13d5c2477468d6b45cea5b02",
+  "config_digest": "sha256:3a7ce9ba88275daad6561e37cbd353086e6aacde37d7bc29ab0435a5c20d4140",
   "browser": {
     "name": "Tide",
     "internal_scheme": "tide",
@@ -82,6 +82,7 @@
   "automation": {
     "enabled": false,
     "scripts": {},
+    "cpu_budget_ms": 60000,
     "external": {
       "enabled": false
     }

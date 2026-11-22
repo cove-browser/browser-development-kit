@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "bdk_version": "0.0.0",
-  "config_digest": "sha256:03950a0edc035e7981147c4b87cdf63e561b6290a9762a1454280193065c3988",
+  "config_digest": "sha256:26bd77baa8eac1b577928b9853b595e989d64d24239af81c413a23fa69a5ed90",
   "browser": {
     "name": "Cove",
     "internal_scheme": "cove",
@@ -111,6 +111,7 @@
   "automation": {
     "enabled": false,
     "scripts": {},
+    "cpu_budget_ms": 60000,
     "external": {
       "enabled": false
     }

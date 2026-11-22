@@ -413,6 +413,13 @@
           "default": "Automation",
           "description": "Where application-authored scripts live. Each top-level .ts or .js file is one script."
         },
+        "cpu_budget_ms": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 3600000,
+          "default": 60000,
+          "description": "The CPU time in milliseconds one task's script may use before the automation host stops it. Not wall-clock time: a script waiting on a command costs nothing."
+        },
         "external": {
           "type": "object",
           "description": "The authenticated local endpoint. There is no key for a network port.",

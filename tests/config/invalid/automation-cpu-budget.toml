@@ -1,0 +1,8 @@
+[browser]
+name = "Cove"
+
+[automation]
+cpu_budget_ms = 99
+
+[automation.external]
+enabled = false
