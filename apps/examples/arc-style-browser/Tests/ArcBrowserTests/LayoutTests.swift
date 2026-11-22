@@ -129,6 +129,13 @@ struct LayoutTests {
         #expect(try layout.space(personal).pages.first == page)
         try layout.close(page)
         #expect(layout.pages[page] == nil && layout.spaceOf(page) == nil)
+        // Closing the window's only pane shows the space's next page instead of nothing.
+        let shown = try layout.window(layout.windows[0].id).panes
+        try layout.addPage(url: "https://next.example/", to: personal)
+        try layout.close(shown[0])
+        let next = try layout.window(layout.windows[0].id).panes
+        #expect(next.count == 1 && next != shown)
+        #expect(layout.pages[next[0]]?.url == "https://next.example/")
         #expect(throws: Layout.Failure.lastWindow) { try layout.closeWindow(layout.windows[0].id) }
         #expect(throws: Layout.Failure.unknownPage(page)) { try layout.close(page) }
         try layout.validate()
@@ -171,11 +178,13 @@ struct LayoutTests {
     func options() throws {
         let options = try AppOptions.parse([
             "app", "--support-dir", "/tmp/a", "--do", "split-next", "--do", "switch-space=Work",
-            "--do", "move-to-window=1", "--fresh", "-NSDocumentRevisionsDebugMode", "YES",
+            "--do", "move-to-window=1", "--do", "close-page", "--fresh",
+            "-NSDocumentRevisionsDebugMode", "YES",
             "--quit-after-actions",
         ])
         #expect(options.supportDirectory?.path == "/tmp/a")
-        #expect(options.actions == [.splitNext, .switchSpace("Work"), .moveToWindow(1)])
+        #expect(
+            options.actions == [.splitNext, .switchSpace("Work"), .moveToWindow(1), .closePage])
         #expect(options.fresh && options.quitAfterActions)
         #expect(throws: AppOptions.Failure.unknownAction("fly")) {
             try AppOptions.parse(["app", "--do", "fly"])

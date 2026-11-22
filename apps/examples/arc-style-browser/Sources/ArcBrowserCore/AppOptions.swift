@@ -32,6 +32,8 @@ public struct AppOptions: Equatable, Sendable {
         case moveToWindow(Int)
         /// Pins the focused page.
         case pin
+        /// Closes the focused page (File > Close Page).
+        case closePage
         /// Opens the bundled settings page.
         case settings
         /// Runs the bundled automation script over the first page of each space.
@@ -55,7 +57,8 @@ public struct AppOptions: Equatable, Sendable {
         }
 
         private static let plain: [String: Action] = [
-            "split-next": .splitNext, "pin": .pin, "settings": .settings, "automation": .automation,
+            "split-next": .splitNext, "pin": .pin, "close-page": .closePage, "settings": .settings,
+            "automation": .automation,
         ]
 
         private static let withValue: [String: @Sendable (String) -> Action?] = [

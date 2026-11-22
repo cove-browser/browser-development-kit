@@ -64,6 +64,21 @@ struct E2ETests {
         }
     }
 
+    @Test("File > Close Page closes the shown page, and the window shows the space's next page")
+    func closePage() async throws {
+        try await withSupportDirectory { directory in
+            let app = try AppRun(supportDirectory: directory, arguments: ["--do", "close-page"])
+            defer { app.kill() }
+            let status = try await app.waitForStatus { $0.actionsDone }
+            #expect(status.errors.isEmpty)
+            #expect(status.pages.count == 3)
+            #expect(!status.pages.contains { $0.pinned && $0.space == "Personal" })
+            let shown = Self.onScreen(status)
+            #expect(shown.count == 1 && shown.first?.space == "Personal")
+            #expect(try await app.quitGracefully() == 0)
+        }
+    }
+
     @Test("a relaunch restores the layout and each page's history from the saved session")
     func relaunch() async throws {
         try await withSupportDirectory { directory in

@@ -109,6 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func splitNext(_ sender: Any?) { run { try $0.splitNext() } }
+    @objc func closePage(_ sender: Any?) { run { try await $0.perform(.closePage) } }
 
     @objc func installExtension(_ sender: Any?) {
         let panel = NSOpenPanel()

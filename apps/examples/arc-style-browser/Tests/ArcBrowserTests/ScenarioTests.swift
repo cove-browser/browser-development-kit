@@ -96,6 +96,22 @@ struct ScenarioTests {
         }
     }
 
+    @Test("closing a page closes its contents and shows the space's next page in its pane")
+    func closePage() async throws {
+        try await withBrowser { browser in
+            let controller = browser.controller
+            let id = try controller.focusedPage()
+            let page = try browser.page(id)
+            try await controller.perform(.closePage)
+            #expect(!page.isAlive && page.view.window == nil)
+            #expect(controller.registry.pages[id] == nil && controller.layout.pages[id] == nil)
+            // The window shows Personal's other page, on screen, rather than an empty pane.
+            let next = try controller.focusedPage()
+            #expect(next != id && controller.layout.spaceOf(next)?.name == "Personal")
+            #expect(try browser.page(next).isOnScreen)
+        }
+    }
+
     @Test("a page in a hidden space leaves the window, keeps running, and comes back")
     func hideAndRestore() async throws {
         try await withBrowser { browser in

@@ -53,6 +53,7 @@ extension BrowserController {
         case .settings: try await openSettings()
         case .automation: _ = try await AutomationRunner(controller: self).run()
         case .installExtension(let path): try await installExtension(URL(fileURLWithPath: path))
+        case .closePage: try await close(try focusedPage())
         case .newWindow, .moveToWindow, .focusWindow: try performWindowAction(action)
         default: try performLayoutAction(action)
         }

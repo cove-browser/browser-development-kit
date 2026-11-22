@@ -37,7 +37,7 @@ extension Layout {
         var panes = target.lastShown.filter {
             target.allPages.contains($0) && !elsewhere.contains($0)
         }
-        if panes.isEmpty, let first = target.allPages.first(where: { !elsewhere.contains($0) }) {
+        if panes.isEmpty, let first = firstUnshown(in: target, except: window) {
             panes = [first]
         }
         windows[index].space = space
@@ -76,7 +76,14 @@ extension Layout {
             spaces[index].lastShown.removeAll { $0 == page }
         }
         for index in windows.indices where windows[index].panes.contains(page) {
-            setPanes(windows[index].panes.filter { $0 != page }, of: index)
+            var panes = windows[index].panes.filter { $0 != page }
+            // A window whose last pane closed shows the space's next page no window shows.
+            if panes.isEmpty, let space = try? self.space(windows[index].space),
+                let next = firstUnshown(in: space, except: windows[index].id)
+            {
+                panes = [next]
+            }
+            setPanes(panes, of: index)
         }
     }
 
@@ -261,6 +268,12 @@ extension Layout {
             throw Failure.unknownPage(page)
         }
         return index
+    }
+
+    /// The space's first page that no window other than `window` shows.
+    private func firstUnshown(in space: Space, except window: WindowID) -> PageID? {
+        let elsewhere = Set(windows.filter { $0.id != window }.flatMap(\.panes))
+        return space.allPages.first { !elsewhere.contains($0) }
     }
 
     private mutating func setPanes(_ panes: [PageID], of window: Int) {

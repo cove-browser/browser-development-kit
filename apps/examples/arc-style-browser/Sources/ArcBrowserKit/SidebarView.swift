@@ -102,7 +102,14 @@ final class SidebarView: NSStackView, NSTextFieldDelegate {
             button.target = self
             button.action = #selector(rowClicked(_:))
             button.menu = menu(for: row, pinned: pinned)
-            list.addArrangedSubview(button)
+            button.setContentCompressionResistancePriority(.init(1), for: .horizontal)
+            let close = RowCloseButton(
+                page: row.id, target: self, action: #selector(closeClicked(_:)))
+            close.setAccessibilityLabel("Close \(button.title)")
+            let line = NSStackView(views: [button, close])
+            line.spacing = 2
+            list.addArrangedSubview(line)
+            line.widthAnchor.constraint(equalTo: list.widthAnchor).isActive = true
         }
     }
 
@@ -161,6 +168,10 @@ final class SidebarView: NSStackView, NSTextFieldDelegate {
         onRequest(split ? .split(sender.row.id) : .show(sender.row.id))
     }
 
+    @objc private func closeClicked(_ sender: RowCloseButton) {
+        onRequest(.close(sender.page))
+    }
+
     @objc private func menuChosen(_ sender: NSMenuItem) {
         if let box = sender.representedObject as? RequestBox { onRequest(box.request) }
     }
@@ -207,5 +218,29 @@ private final class RequestBox: NSObject {
 
     init(_ request: SidebarView.Request) {
         self.request = request
+    }
+}
+
+/// The × at the end of a sidebar row, which closes that page.
+@MainActor
+private final class RowCloseButton: NSButton {
+    let page: Layout.PageID
+
+    init(page: Layout.PageID, target: AnyObject, action: Selector) {
+        self.page = page
+        super.init(frame: .zero)
+        image = NSImage(systemSymbolName: "xmark", accessibilityDescription: nil)
+        imageScaling = .scaleProportionallyDown
+        bezelStyle = .recessed
+        showsBorderOnlyWhileMouseInside = true
+        toolTip = "Close Page"
+        self.target = target
+        self.action = action
+        setContentHuggingPriority(.required, for: .horizontal)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
     }
 }

@@ -15,11 +15,19 @@ enum MainMenu {
         item(in: file, "New Page", #selector(AppDelegate.newPage(_:)), "t", target)
         item(in: file, "New Window", #selector(AppDelegate.newWindow(_:)), "n", target)
         item(in: file, "Settings", #selector(AppDelegate.openSettings(_:)), ",", target)
+        file.addItem(.separator())
+        item(in: file, "Close Page", #selector(AppDelegate.closePage(_:)), "w", target)
+        let closeWindow = file.addItem(
+            withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)),
+            keyEquivalent: "w")
+        closeWindow.keyEquivalentModifierMask = [.command, .shift]
+        file.addItem(.separator())
         item(
             in: file, "Install Unpacked Extension…", #selector(AppDelegate.installExtension(_:)),
             "",
             target)
         bar.addItem(submenu: file, title: "File")
+        bar.addItem(submenu: edit(), title: "Edit")
 
         let view = NSMenu(title: "View")
         item(in: view, "Split with Next Page", #selector(AppDelegate.splitNext(_:)), "d", target)
@@ -31,7 +39,38 @@ enum MainMenu {
             in: tools, "Run Automation over Two Spaces", #selector(AppDelegate.runAutomation(_:)),
             "", target)
         bar.addItem(submenu: tools, title: "Tools")
+
+        let window = NSMenu(title: "Window")
+        window.addItem(
+            withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)),
+            keyEquivalent: "m")
+        window.addItem(
+            withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+        bar.addItem(submenu: window, title: "Window")
+        NSApp.windowsMenu = window
         return bar
+    }
+
+    /// The standard edit actions, sent to the first responder: the focused page's view (Chromium's
+    /// own, which handles them; swift-api.md section 9) or the sidebar's address field. Without
+    /// this menu, Command-C and Command-V reach neither.
+    private static func edit() -> NSMenu {
+        let edit = NSMenu(title: "Edit")
+        // An upper-case key equivalent adds Shift.
+        edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+        edit.addItem(.separator())
+        edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        let plain = edit.addItem(
+            withTitle: "Paste and Match Style",
+            action: #selector(NSTextView.pasteAsPlainText(_:)), keyEquivalent: "V")
+        plain.keyEquivalentModifierMask = [.command, .option, .shift]
+        edit.addItem(withTitle: "Delete", action: #selector(NSText.delete(_:)), keyEquivalent: "")
+        edit.addItem(
+            withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        return edit
     }
 
     private static func item(
