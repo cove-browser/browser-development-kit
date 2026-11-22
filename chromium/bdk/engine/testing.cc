@@ -46,6 +46,7 @@
 #include "mojo/public/cpp/system/data_pipe.h"
 #include "net/base/net_errors.h"
 #include "net/http/http_response_headers.h"
+#include "services/network/public/cpp/parsed_headers.h"
 #include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/cpp/url_loader_completion_status.h"
 #include "services/network/public/mojom/url_loader.mojom.h"
@@ -137,6 +138,11 @@ void Serve(Script script,
   head->headers = net::HttpResponseHeaders::TryToCreate(
       "HTTP/1.1 200 OK\nContent-Type: " + content_type + "; charset=utf-8\n" +
       script.headers);
+  // The network service parses the headers of what it serves; Chromium's
+  // throttles rely on it (google_url_loader_throttle.cc checks them on the
+  // store's pages).
+  head->parsed_headers =
+      network::PopulateParsedHeaders(head->headers.get(), request.url);
   head->mime_type = content_type;
   head->charset = "utf-8";
   head->content_length = static_cast<int64_t>(body.size());
