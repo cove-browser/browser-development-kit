@@ -124,6 +124,17 @@ BDK_EXPORT bdk_status_t bdk_stub_automation_host_crash(bdk_runtime_t h) {
     return BDK_OK;
 }
 
+BDK_EXPORT bdk_status_t bdk_stub_endpoint_limits(bdk_runtime_t h, size_t soft_bytes,
+                                                 size_t hard_bytes) {
+    if (check_thread() != BDK_OK)
+        return BDK_ERR_WRONG_THREAD;
+    auto rt = runtime_of(h);
+    if (!rt)
+        return BDK_ERR_STALE_HANDLE;
+    automation_set_endpoint_limits(rt, soft_bytes, hard_bytes);
+    return BDK_OK;
+}
+
 BDK_EXPORT uint32_t bdk_stub_automation_count(bdk_runtime_t, uint32_t which) {
     const bdkstub::HostState& h = bdkstub::H();
     switch (which) {

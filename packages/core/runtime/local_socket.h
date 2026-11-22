@@ -34,14 +34,21 @@ class LocalServer {
        directory, if it made one). */
     virtual ~LocalServer();
 
-    /* Queues one frame. False when the connection is gone or has more than kMaxQueuedBytes
-       waiting (a reader that does not keep up): the caller closes it. */
-    virtual bool Send(uint64_t connection, const std::string& frame) = 0;
+    /* Queues one frame. False when the connection is gone or would have more than the hard limit
+       waiting (a reader that does not keep up): the caller closes it. A frame with a coalescing
+       key replaces the frame still queued under the same key, and is queued after every frame
+       queued so far, once the connection has more than the soft limit waiting; frames the
+       transport has begun to write are never taken back. An empty key is never coalesced. */
+    virtual bool Send(uint64_t connection, const std::string& frame, const std::string& key) = 0;
+    /* Replaces the limits (zero keeps the default); for tests. */
+    virtual void SetLimits(size_t soft_bytes, size_t hard_bytes) = 0;
     /* Closes one connection after the frames already queued for it are written. */
     virtual void Disconnect(uint64_t connection) = 0;
 
     /* A connection that falls this far behind is closed. */
     static constexpr size_t kMaxQueuedBytes = size_t{64} * 1024 * 1024;
+    /* Past this much waiting, a connection's state events are coalesced. */
+    static constexpr size_t kSoftQueuedBytes = size_t{4} * 1024 * 1024;
     /* Connections that have not been answered: more are refused at once. */
     static constexpr size_t kMaxConnections = 64;
 };

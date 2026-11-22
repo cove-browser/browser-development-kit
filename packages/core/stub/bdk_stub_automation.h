@@ -23,6 +23,11 @@ BDK_EXPORT bdk_status_t bdk_stub_script_send(uint64_t task, bdk_string_t frame_j
 /* The host process dies: every running task ends with automation.hostGone. */
 BDK_EXPORT bdk_status_t bdk_stub_automation_host_crash(bdk_runtime_t);
 
+/* The external endpoint's per-connection backlog limits, in bytes (zero keeps the default): past
+   the soft limit a slow client's state events are coalesced, past the hard one it is closed. */
+BDK_EXPORT bdk_status_t bdk_stub_endpoint_limits(bdk_runtime_t, size_t soft_bytes,
+                                                 size_t hard_bytes);
+
 #define BDK_STUB_AUTOMATION_STARTED 0u         /* tasks the host started */
 #define BDK_STUB_AUTOMATION_ENDED 1u           /* tasks the host was told to tear down */
 #define BDK_STUB_AUTOMATION_SCRIPTS_CHANGED 2u /* user script updates the backend received */

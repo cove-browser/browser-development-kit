@@ -77,6 +77,7 @@ struct AutomationState {
     std::vector<std::shared_ptr<ContentsWaiter>> waiters;
     /* The endpoint. */
     std::unique_ptr<LocalServer> server;
+    size_t endpoint_soft_limit = 0, endpoint_hard_limit = 0; /* test hook; 0: the default */
     std::map<uint64_t, std::shared_ptr<Connection>> external;
     bdk_automation_hello_cb hello_cb = nullptr;
     void* hello_ctx = nullptr;

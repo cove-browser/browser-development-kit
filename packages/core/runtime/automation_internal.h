@@ -99,6 +99,11 @@ void automation_shutdown(const std::shared_ptr<Runtime>& rt);
 void automation_deliver_event(const std::shared_ptr<Runtime>& rt, const std::string& name,
                               uint32_t id, bdk_profile_t profile, bdk_contents_t contents,
                               const std::string& payload_json, const Caller* only = nullptr);
+/* Replaces the endpoint connections' backlog limits (state events are coalesced past the soft
+   one, a connection past the hard one is closed); zero keeps the default. A hook for tests, which
+   cannot wait for megabytes: applies to the open endpoint and to one opened later. */
+void automation_set_endpoint_limits(const std::shared_ptr<Runtime>& rt, size_t soft_bytes,
+                                    size_t hard_bytes);
 /* A page closed or was destroyed: forget it in every session's scope. */
 void automation_forget_contents(const std::shared_ptr<Runtime>& rt, bdk_contents_t contents);
 /* A contents event the core emitted: also emitted as the matching contents.* built-in event. */

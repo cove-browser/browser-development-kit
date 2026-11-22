@@ -24,6 +24,9 @@ bdk_status_t bdk_harness_script_send(uint64_t task, const char* frame_json);
 /* The host process dies. */
 bdk_status_t bdk_harness_automation_host_crash(bdk_runtime_t);
 
+/* Sets the external endpoint's per-connection backlog limits in bytes (zero: the default). */
+bdk_status_t bdk_harness_endpoint_limits(bdk_runtime_t, size_t soft_bytes, size_t hard_bytes);
+
 #define BDK_HARNESS_AUTOMATION_STARTED 0u
 #define BDK_HARNESS_AUTOMATION_ENDED 1u
 #define BDK_HARNESS_AUTOMATION_SCRIPTS_CHANGED 2u

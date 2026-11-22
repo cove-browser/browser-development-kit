@@ -26,6 +26,13 @@ bdk_status_t bdk_harness_automation_host_crash(bdk_runtime_t rt) {
     return BDK_ERR_INVALID_ARGUMENT;
 }
 
+bdk_status_t bdk_harness_endpoint_limits(bdk_runtime_t rt, size_t soft_bytes, size_t hard_bytes) {
+    (void)rt;
+    (void)soft_bytes;
+    (void)hard_bytes;
+    return BDK_ERR_INVALID_ARGUMENT;
+}
+
 unsigned bdk_harness_automation_count(bdk_runtime_t rt, unsigned which) {
     (void)rt;
     (void)which;
