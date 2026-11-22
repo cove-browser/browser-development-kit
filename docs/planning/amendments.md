@@ -1,6 +1,6 @@
 # Amendments to the BDK plan
 
-Dated 2026-11-15; section 2.10 was added on 2026-11-16, 2.12 and 2.13 on 2026-11-19, 2.14 to 2.17 on 2026-11-20. This lists everything that changed in the planning documents after the 2026-11-14 version, following the product owner's review. If you read the 2026-11-14 documents, reading this is enough. The other documents already contain these changes; nothing here still needs to be applied.
+Dated 2026-11-15; section 2.10 was added on 2026-11-16, 2.12 and 2.13 on 2026-11-19, 2.14 to 2.17 on 2026-11-20, 2.18 on 2026-11-21. This lists everything that changed in the planning documents after the 2026-11-14 version, following the product owner's review. If you read the 2026-11-14 documents, reading this is enough. The other documents already contain these changes; nothing here still needs to be applied.
 
 ## 1. Summary
 
@@ -304,7 +304,7 @@ against the pinned source and wait for a build (T-AUT-06). Where it departs from
 | A session's profiles | Open profile ids resolved to handles when the session is created: a profile closed and reopened leaves the scope | Scope stays a set of handles in the broker; reopening is a new grant |
 | Undocked DevTools as a new-window request of kind `devTools` (2.12) | A `devtools` request carrying the front end as a page (ui-requests.md 5.15), with an undocked window of BDK's own as the default presenter | The surface the spec defines; `[ui.surfaces] devtools` now governs it |
 | A replaced front end "served in place of the default" | Chromium's `--custom-devtools-frontend` switch, set at each start on the bundle's `BDK/DevTools/Frontend/`, entry `index.html`; packaged by `bdk build devtools` | Chromium's data source reads the switch per request: no patch |
-| A slow subscriber's events coalesced (services.md 7) | A connection 64 MiB behind is closed with `automation.overloaded` | Simple and safe for v0; coalescing is T-AUT-07 |
+| A slow subscriber's events coalesced (services.md 7) | A connection 64 MiB behind is closed with `automation.overloaded` | Simple and safe for v0; coalescing came in M8 (T-AUT-07, section 2.18) |
 
 New in the ABI: `bdk_session_run`, `bdk_task_cancel`, `bdk_task_subscribe`, `bdk_automation_endpoint_open` and
 `_close`, `bdk_automation_hello_accept` and `_refuse` (the export patch lists them). New patch: "bdk: register the
@@ -335,6 +335,40 @@ Three patches were added, each with its reason in its message: extension install
 `Browser` out of the extension window list, and opening an extension's options page. With M4's and M7's patches, the series is 20.
 `developer_mode`, `blocklist` and `[extensions.bundled]` (S6) are still Added and not read (T-EXT-14).
 
+### 2.18 The Arc-style reference application in M8 (2026-11-21)
+
+M8 built `apps/examples/arc-style-browser` (T-ARC-02, T-ARC-03) on the public SDK only, settled T-ADP-06, and
+finished the M7 leftovers T-AUT-07 and T-JS-06. BDK gained no space, split or tab API; the one new public
+identifier is the error code `automation.budgetExceeded`. Where the build departs from roadmap M8, risks R2,
+feasibility 10, tasks T-ARC-02, T-ARC-03, T-ADP-06 and T-AUT-07, and the SDK documents:
+
+| Planned | Built | Why |
+|---|---|---|
+| T-ARC-03's scenario suite in `tests/arc/` | In the application's package: `Tests/ArcBrowserTests` (every M8 scenario as the application performs it, on the stub, in process, run by CI) and `Tests/ArcBrowserE2ETests` (the built bundle driven with `--do` actions); and on the engine, `packages/core/tests/tests_engine_arc.c` (the same view moves in windows the harness registers) | A SwiftPM target cannot reach outside its package, and Chromium's half needs the engine harness's registered windows and test hooks |
+| Exit criterion: "every scenario passes in CI" | Every scenario passes in CI on the stub, as the application's behaviour; what Chromium makes of it passes on a developer's Mac | CI builds no Chromium (section 2.7) |
+| Two visible pages represented as an upstream split, so both are foreground (swift-api.md 8.2); three or more patched through a "presented" predicate (risk R2) | No upstream split. Every page on screen is foreground for BDK's prompts whatever the number of panes, and extensions see the focused pane as the window's active tab and the others as its background tabs | BDK's find (`FindTabHelper`), JavaScript dialogs (its own `JavaScriptDialogManager`) and translation offers (its own request) never ask for the active tab. Of the sites feasibility 10 lists, `ChromeTranslateClient::ShowBubble`, `FindBarController` and `JavaScriptTabModalDialogManagerDelegateDesktop::IsWebContentsForemost` are not reached; `PermissionRequestManager` is, and a new patch lets an embedder have its prompts follow page visibility. An upstream split holds two tabs and would make two panes behave unlike three |
+| T-ADP-06's output: "patch; list of sites" | The list above and one patch ("let an embedder have permission prompts follow page visibility"); `tabs.query({active: true})` is unchanged and documented | The rest need no patch |
+| Session restoration "needs BDK to keep Chrome's session service from restoring windows" (feasibility 10) | Nothing further: after a relaunch no window and no tab exist until the application makes them (`engine_arc_after_a_relaunch_chromium_restores_nothing_and_the_application_does`) | Host contexts are left out of session restore since M3 (section 2.13) |
+| "CPU and memory budgets for the host are open" (javascript-api.md 5.4) | `[automation] cpu_budget_ms` (default 60000): the CPU time one task's script may use. The host measures each entry into the script and a watchdog thread terminates a run at the budget left; the task ends with the new code `automation.budgetExceeded`, which a script's own `failed` frame cannot claim | A key in `bdk.toml` lets an application and a test choose it; `BDK_CODE_BUDGET_EXCEEDED` changes `bdk_ids.h`, so the ABI hash is regenerated (no runtime is published, so the pin record has nothing to compare) |
+| A slow client's state events coalesced instead of closing it | Past 4 MiB waiting, a queued `contents.loadingChanged` or `contents.titleChanged` of the same subscription and page is replaced by the newer one, which goes behind everything sent since; past 64 MiB of other frames the connection still closes with `automation.overloaded` | Only these two carry their page's whole state with the page as their scope (packages/core/docs/conventions.md, Automation rule 7) |
+| `webContentsCreated(_, by: .automation(session))` | `.automation(session: String)`, the session's name; `.application` and `.extension(id)` exist and are never emitted | A session from the external endpoint has no Swift object; the runtime reports only pages Swift or a session created (an extension's: T-EXT-12) |
+| `bdk build … --watch` for pages and automation (cli.md) | `bdk build automation --watch` only | Pages' watch with a reloading debug runtime is T-CLI-06 |
+| `@bdk/automation` service calls with `@bdk/internal`'s result shapes | The same commands and argument types, typed from the generated declarations; results as the broker sends them (a one-field result is an object, a paginated command returns a page) | Unwrapping would change the runtime library; javascript-api.md 5.3 says so |
+
+Found and fixed while building it, recorded because the M5 status lists them: a host context whose last page
+moved out or closed had its `Browser` deleted by Chromium (`UnloadController::TabStripEmpty` starts a window
+close and a posted task finishes it), so the next page to enter it hit `CHECK(browser_)` in
+`HostContext::Add`; `HostContext` now cancels that close. Two M5 panel scenarios crashed in the test, not the
+engine: they used a side panel's secure view after its request ended, when the engine has released it.
+
+Found and not fixed: a page whose view has never been in a window, and the focused pane after its view leaves
+the window, report visible (Chromium starts a `WebContents` visible). Creating pages hidden
+(`initially_hidden`) fixed the first and broke pages in the engine harness's background windows, which then
+never became visible, so it was reverted; T-ADP-10 (M9) has the host view report it instead.
+
+The patch series is 21. No other C ABI function changed. New tasks: T-ARC-04 and T-ADP-10 (M9). The task
+list is 138.
+
 ## 3. Tasks and workflows
 
 | Task | Change |
@@ -354,6 +388,9 @@ Three patches were added, each with its reason in its message: extension install
 | T-REP-01 | From 2026-11-16: also writes `.node-version`. |
 | T-CLI-06, T-JS-05, T-SWF-09, T-SVC-11 | New, M5 (2026-11-20): left over from M4 (roadmap M4 status). |
 | T-WUI-07, T-PRV-10 | New, M6 (2026-11-20): left over from M4. |
+| T-ARC-04 | New, M9 (2026-11-21): left over from M8; the reference application checked by hand and its extension scenarios on the engine through its own windows. |
+| T-ADP-10 | New, M9 (2026-11-21): left over from M8; a never-shown page and a window's focused pane after its view leaves report visible. |
+| T-EXT-12 | Widened (2026-11-21): a page an extension opens is also announced as `webContentsCreated(_, by: .extension(id))`. |
 
 The task list goes from 103 to 106 tasks. The README said 100 before, which was already wrong; it now says 106. With T-CLI-05 on 2026-11-16 it is 107.
 

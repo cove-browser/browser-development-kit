@@ -575,7 +575,7 @@ Still not verified: a second machine resolving the published runtime, the integr
 
 ## 10. Arc-style reference scenario
 
-**Status: partially verified. Scoped, not prototyped.**
+**Status: partially verified. Scoped, not prototyped.** M8 (2026-11-21) built the scenario as `apps/examples/arc-style-browser` and checked it on the engine (`packages/core/tests/tests_engine_arc.c`); what it found is in [amendments.md](amendments.md) section 2.18 and risk R2. Every pane on screen is foreground for BDK's prompts (one patch, for permission prompts); no upstream split is used; Chromium restores nothing on a relaunch. The text below is the 2026-11-14 analysis.
 
 The scenario: an application-owned sidebar, two spaces, a split view, and moving a WebContents between spaces and windows, with services and extensions behaving correctly.
 

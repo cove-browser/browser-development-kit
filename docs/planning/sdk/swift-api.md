@@ -150,7 +150,7 @@ public enum RuntimeEvent: Sendable {
     case utilityProcessGone(name: String, ProcessGoneReason)
     case automationHostGone(ProcessGoneReason)     // sessions have ended with an error
     case memoryPressure(MemoryPressureLevel)
-    case webContentsCreated(BDKWebContents, by: Creator)   // .application, .automation(session), .extension(id)
+    case webContentsCreated(BDKWebContents, by: Creator)   // .application, .automation(session), .extension(id); built in M8 for sessions only (.extension: T-EXT-12)
     case webContentsDestroyed(BDKWebContents.ID)
 }
 
@@ -533,8 +533,7 @@ public enum WindowRequest {
 |---|---|
 | A page view becomes first responder | That page becomes the active page of its window |
 | A window becomes key | Its context becomes the most recently active one |
-| Two page views are visible in one window | BDK represents them as an upstream split, so both are foreground for translate, find and dialogs |
-| Three or more are visible | The focused one is active. The others follow the behaviour recorded for risk R2 until task T-ADP-06 lands. |
+| Two or more page views are visible in one window | The focused one is the window's active tab. Every one on screen is foreground for find, JavaScript dialogs, permission prompts and translation offers (M8, T-ADP-06; no upstream split, amendments 2.18). Extensions see the focused one as the active tab and the others as background tabs (risk R2) |
 
 No API call is involved. BDK reads focus and visibility from the views.
 
