@@ -550,7 +550,8 @@ static void test_ext_side_panel_open_reaches_an_application_container(void) {
     REQUIRE(bdk_ui_complete(g_plog.request, S("accept"), S("{\"action\":\"close\"}"), no_gesture(),
                             &err) == BDK_OK);
     CHECK(panel_is(w, "\"open\":false"));
-    bdk_ext_remove_view(g_plog.view);
+    /* The secure view is the engine's while the request is open: closing the panel took it out of
+       the container and released it, so the handle must not be used again. */
     unregister_window(w);
     bdk_ext_window_close(window);
 }
@@ -571,7 +572,7 @@ static void test_ext_an_extension_closing_its_panel_withdraws_the_request(void) 
     CHECK(panel_is(w, "\"open\":false"));
     ext_pumps(5);
     CHECK(g_plog.withdrawn == 1);
-    bdk_ext_remove_view(g_plog.view);
+    /* Withdrawn: the engine took its secure view out of the container and released it. */
     unregister_window(w);
     bdk_ext_window_close(window);
 }
