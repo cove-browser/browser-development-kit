@@ -238,6 +238,8 @@ source_set("bdk") {
       "engine/testing.h",
       "engine/testing_commands.cc",
       "engine/presenters_mac.mm",
+      "engine/providers/geolocation_mac.mm",
+      "engine/providers/geolocation_platform.h",
       "engine/providers/geolocation_provider.cc",
       "engine/providers/geolocation_provider.h",
       "engine/providers/provider_settings.cc",

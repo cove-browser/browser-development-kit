@@ -17,6 +17,8 @@
 #include "bdk/engine/providers/provider_settings.h"
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_auth.h"
+#include "chrome/browser/chrome_browser_main.h"
+#include "chrome/browser/chrome_browser_main_extra_parts.h"
 #include "content/public/browser/browser_url_handler.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/navigation_throttle.h"
@@ -64,10 +66,28 @@ class DevToolsExtensionThrottle : public content::NavigationThrottle {
   }
 };
 
+// What BDK does at the stages of Chrome's browser start.
+class BdkBrowserMainExtraParts : public ChromeBrowserMainExtraParts {
+ public:
+  // After the threads exist and before Chrome's own platform setup, which
+  // installs the operating system's location permission unless one is.
+  void PostCreateThreads() override { InstallGeolocationPermission(); }
+};
+
 }  // namespace
 
 BdkContentBrowserClient::BdkContentBrowserClient() = default;
 BdkContentBrowserClient::~BdkContentBrowserClient() = default;
+
+std::unique_ptr<content::BrowserMainParts>
+BdkContentBrowserClient::CreateBrowserMainParts(bool is_integration_test) {
+  std::unique_ptr<content::BrowserMainParts> parts =
+      ChromeContentBrowserClient::CreateBrowserMainParts(is_integration_test);
+  // Chrome's client makes ChromeBrowserMainParts (its platform subclass).
+  static_cast<ChromeBrowserMainParts*>(parts.get())
+      ->AddParts(std::make_unique<BdkBrowserMainExtraParts>());
+  return parts;
+}
 
 std::vector<std::unique_ptr<content::URLLoaderRequestInterceptor>>
 BdkContentBrowserClient::WillCreateURLLoaderRequestInterceptors(

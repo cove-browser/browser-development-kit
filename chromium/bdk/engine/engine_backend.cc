@@ -51,6 +51,7 @@
 #include "bdk/engine/pages/bundled_page_ui.h"
 #include "bdk/engine/pages/page_commands.h"
 #include "bdk/engine/pages/page_routes.h"
+#include "bdk/engine/providers/geolocation_provider.h"
 #include "bdk/engine/providers/provider_settings.h"
 #include "bdk/engine/providers/reputation_service.h"
 #include "bdk/engine/services/authentication.h"
@@ -188,6 +189,7 @@ class EngineBackend final : public bdkcore::Backend {
     // Providers (T-PRV-09): Chromium's threads read the choice, and the
     // Google key must reach Chromium before anything reads it.
     SetProviderSettings(rt);
+    GeolocationProviderChanged();
     {
       std::string key_error;
       if (!ApplyGoogleKey(bdkcore::provider_google_key(rt), &key_error)) {
