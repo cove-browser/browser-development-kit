@@ -115,6 +115,7 @@ Notes:
 | `pnpm chromium:publish` | `nx run chromium:publish` | Uploads the packaged runtime as a release asset and records its source key, URL, ABI hash and manifest digest in `chromium/pin.json`. Run by a person, from a clean tree. |
 | `pnpm test:release` | `nx run-many -t test test-integration test-extensions test-e2e` | The pre-release pass, run locally against the source-built runtime (section 10.2). |
 | `pnpm dev:example` | `nx run minimal-browser:dev` | Builds and launches the minimal example. |
+| `pnpm dev:arc` | `nx run arc-style-browser:dev` | Builds and launches the Arc-style reference application (M8). |
 | `pnpm docs:build` | `nx run docs-site:build` | Builds the documentation site. |
 | `pnpm exec nx affected -t lint test build` | Nx | The PR check. |
 

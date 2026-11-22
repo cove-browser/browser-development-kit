@@ -11,8 +11,8 @@ sections 2.1 and 2.18). To BDK, each of these is page views entering and leaving
 ## Run it
 
 ```sh
+pnpm dev:arc                                  # build, then launch (nx run arc-style-browser:dev)
 pnpm exec nx run arc-style-browser:build      # resolve bdk.toml, swift build, assemble .build/ArcStyleBrowser.app
-pnpm exec nx run arc-style-browser:dev        # build, then launch
 pnpm exec nx run arc-style-browser:test       # the layout model and the M8 scenarios, on the stub, in process
 pnpm exec nx run arc-style-browser:test-e2e   # launches the built bundle with --do actions
 pnpm exec nx run arc-style-browser:lint
