@@ -353,6 +353,23 @@ void bdk_harness_engine_window_attach(int window, bdk_contents_t contents) {
     bdk_harness_pump();
 }
 
+/* Puts the page's view in column `slot` of `slots` equal columns of the registered window, as an
+   application lays out a split. Like attach, adding a view from another window moves it. */
+void bdk_harness_engine_window_place(int window, bdk_contents_t contents, int slot, int slots) {
+    bdk_native_handle_t view;
+    bdk_error_t error = 0;
+    if (slots < 1 || bdk_contents_native_view(contents, &view, &error) != BDK_OK || !view.pointer)
+        return;
+    NSWindow* w = RegisteredWindows()[window];
+    NSView* page = (__bridge NSView*)view.pointer;
+    NSRect bounds = w.contentView.bounds;
+    CGFloat width = bounds.size.width / slots;
+    page.frame = NSMakeRect(width * slot, 0, width, bounds.size.height);
+    page.autoresizingMask = NSViewNotSizable;
+    [w.contentView addSubview:page];
+    bdk_harness_pump();
+}
+
 void bdk_harness_engine_window_detach(bdk_contents_t contents) {
     bdk_native_handle_t view;
     bdk_error_t error = 0;
