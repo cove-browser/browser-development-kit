@@ -571,6 +571,12 @@ void OnUpdatePackage(UpdateStatePtr state,
                                     /*fail_install_if_unexpected=*/true);
   }
   installer->set_delete_source(true);
+  // checkForUpdates is asked for, as the Update button of chrome://extensions
+  // is (ExtensionUpdater::CheckNow with install_immediately): without this,
+  // Chromium's UpdateInstallGate holds the new version until the old one is
+  // idle (a running service worker is not), and the update is neither loaded
+  // nor reported, although the installer succeeds.
+  installer->set_install_immediately(true);
   installer->AddInstallerCallback(
       base::BindOnce(&OnUpdateInstalled, state, id, installer));
   extensions::CRXFileInfo info(file, crx_file::VerifierFormat::CRX3);
