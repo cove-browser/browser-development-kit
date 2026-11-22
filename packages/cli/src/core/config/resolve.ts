@@ -140,6 +140,7 @@ export function checkBundleFacts(
       });
     }
   }
+  if (infoPlist) checkPasskeyFacts(infoPlist, entitlements, reporter);
   if (entitlements?.["com.apple.security.app-sandbox"] === true) {
     reporter.errorAt(
       "plist.app_sandbox",
@@ -147,6 +148,38 @@ export function checkBundleFacts(
       "entitlements",
       "Remove it. The browser process is not expected to run under the App Sandbox.",
     );
+  }
+}
+
+/**
+ * Passkeys on a phone (hybrid, ui-requests.md 5.18): Chromium offers them only to an application
+ * that may use Bluetooth. A note, not a warning: an application may not want them, and security
+ * keys work either way.
+ */
+function checkPasskeyFacts(
+  infoPlist: Record<string, unknown>,
+  entitlements: Record<string, unknown> | undefined,
+  reporter: Reporter,
+): void {
+  const usage = infoPlist.NSBluetoothAlwaysUsageDescription;
+  if (typeof usage !== "string" || usage === "") {
+    reporter.diagnostics.push({
+      code: "plist.passkeys_phone",
+      severity: "note",
+      message:
+        "Info.plist has no NSBluetoothAlwaysUsageDescription, so passkeys on a phone are not offered. Security keys still work.",
+      file: "Info.plist",
+      fix: "To offer them, add NSBluetoothAlwaysUsageDescription and, for a hardened-runtime build, the com.apple.security.device.bluetooth entitlement.",
+    });
+  } else if (entitlements && entitlements["com.apple.security.device.bluetooth"] !== true) {
+    reporter.diagnostics.push({
+      code: "plist.passkeys_phone",
+      severity: "note",
+      message:
+        "The entitlements have no com.apple.security.device.bluetooth, so a hardened-runtime build cannot use Bluetooth for Web Bluetooth or passkeys on a phone.",
+      file: "entitlements",
+      fix: "Add com.apple.security.device.bluetooth to the entitlements.",
+    });
   }
 }
 

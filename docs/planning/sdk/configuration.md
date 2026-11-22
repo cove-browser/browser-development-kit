@@ -490,7 +490,7 @@ BDK does not edit the application's `Info.plist`. `bdk doctor` and `bdk build` c
 | `LSMinimumSystemVersion` | Yes | Must be at least the `min_os` in the runtime manifest. |
 | `NSCameraUsageDescription`, `NSMicrophoneUsageDescription` | For camera and microphone | macOS refuses capture without them, whatever the site permission says. |
 | `NSLocationUsageDescription` | For geolocation with the system provider | As above. |
-| `NSBluetoothAlwaysUsageDescription` | For Web Bluetooth | As above. |
+| `NSBluetoothAlwaysUsageDescription` | For Web Bluetooth and passkeys on a phone | As above. Without it Chromium offers no phone in a WebAuthn request (`plist.passkeys_phone`, a note); security keys need nothing. |
 | `NSLocalNetworkUsageDescription` | For pages that reach local-network hosts | macOS prompts for local-network access. |
 | `CFBundleURLTypes` with `http` and `https` | To be a default-browser candidate | Launch Services lists only applications that declare them. |
 | `CFBundleDocumentTypes` for HTML | To be a default-browser candidate | As above. |
@@ -503,7 +503,7 @@ Entitlements for the main application, under the hardened runtime. The list is e
 | `com.apple.security.device.camera` | Camera |
 | `com.apple.security.device.audio-input` | Microphone |
 | `com.apple.security.personal-information.location` | Geolocation |
-| `com.apple.security.device.bluetooth` | Web Bluetooth |
+| `com.apple.security.device.bluetooth` | Web Bluetooth, passkeys on a phone |
 | `com.apple.security.device.usb` | WebUSB |
 | `com.apple.security.device.print` | Printing |
 
@@ -629,6 +629,7 @@ Each has a stable code, used by fixtures in `tests/config/`. Messages name the f
 | `plist.conflict` | `bdk.toml` and the Xcode project disagree |
 | `plist.min_os` | The deployment target is below the runtime's minimum |
 | `plist.app_sandbox` | The App Sandbox entitlement is set |
+| `plist.passkeys_phone` | A note: Info.plist has no `NSBluetoothAlwaysUsageDescription`, or the entitlements lack `com.apple.security.device.bluetooth`, so passkeys on a phone are not offered (T-UIR-09) |
 
 ### Decisions made in T-CFG-01/02
 
