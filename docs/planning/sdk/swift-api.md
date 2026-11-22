@@ -355,7 +355,7 @@ A renderer crash is an event, not an error and not a UI request. The application
 
 ### 6.5 Scripting
 
-Plan, M7, task T-AUT-03; written in M7; passes on the stub, engine build and test pending (T-AUT-06). The same operations are available to automation sessions as `contents.*` commands. As built (`packages/swift/README.md`): `.isolated("")` and `.isolated("page")` are refused; `.all` sends no frame except to `insertCSS`; synthesised input and `waitFor` have no Swift wrapper yet (T-AUT-07, M8) and are reachable through `runtime.commands.invoke`.
+Plan, M7, task T-AUT-03; written in M7; passes on the stub, engine build and test pending (T-AUT-06). The same operations are available to automation sessions as `contents.*` commands. As built (`packages/swift/README.md`): `.isolated("")` and `.isolated("page")` are refused; `.all` sends no frame except to `insertCSS`; `click`, `hover`, `type`, `press`, `scroll` and `waitFor` are built (T-AUT-07): input takes an `InputTarget` (`.selector`, `.point`) and `waitFor` a `WaitCondition` (`.load`, `.url`) and a `Duration`, as listed in `packages/swift/README.md`.
 
 ```swift
 public final class Scripting {
@@ -852,7 +852,7 @@ Settled in T-SVC-08 (2026-11-20):
 
 ## 13. Automation
 
-Plan, M7, tasks T-AUT-01 to T-AUT-04; written in M7; passes on the stub, engine build and test pending (T-AUT-06). As built: `session.run` throws instead of being `async`; `external.open(directory:authenticate:)` takes an async authenticator; pages a session creates arrive as `runtime.automation.events` `.contentsCreated(page, bySession:)`, not yet through `webContentsCreated(_, by:)` (T-AUT-07, M8). The host and its trust model are in `architecture.md` 9.3; the JavaScript side is in [javascript-api.md](javascript-api.md) section 5.
+Plan, M7, tasks T-AUT-01 to T-AUT-04; written in M7; passes on the stub, engine build and test pending (T-AUT-06). As built: `session.run` throws instead of being `async`; `external.open(directory:authenticate:)` takes an async authenticator; pages a session creates arrive as `runtime.automation.events` `.contentsCreated(page, bySession:)` and as `runtime.events` `.webContentsCreated(page, by: .automation(session: name))` (T-AUT-07); `.application` and `.extension` are not emitted yet. The host and its trust model are in `architecture.md` 9.3; the JavaScript side is in [javascript-api.md](javascript-api.md) section 5.
 
 ```swift
 let session = try runtime.automation.makeSession(.init(

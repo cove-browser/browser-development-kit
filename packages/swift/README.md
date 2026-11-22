@@ -55,7 +55,7 @@ session (a logged-in Mac or the hosted macOS runner).
 | Providers | `config.services` (`BDKServiceRegistry`), the provider protocols, `page.translation`, `TranslationRequest` (see below) | T-PRV-01, T-PRV-03, T-PRV-09 |
 | Page routes | `config.pages` (`PageRegistrations.register(_:_:)`), `PageMode` (`.chromium`, `.bundled`, `.native`, `.disabled`), `NativePageRequest`, `NativePageResult` | T-SWF-06 |
 | Commands | `BDKCommand`, `BDKEvent`, `BDKCommandRegistry` (`config.commands`), `BDKCommands` (`runtime.commands`: `register`, `declare`, `emit`, `events`, `invoke`), `BDKCommandContext`, `BDKDeclarations` | T-SVC-05 |
-| Scripting | `page.scripting` (`Scripting`): `evaluate`, `call`, `insertCSS`, `remove`, `frames`, `query`, `snapshot`, over `contents.*` | T-AUT-03 |
+| Scripting | `page.scripting` (`Scripting`): `evaluate`, `call`, `insertCSS`, `remove`, `frames`, `query`, `snapshot`, `click`, `hover`, `type`, `press`, `scroll`, `waitFor`, over `contents.*` | T-AUT-03, T-AUT-07 |
 | Capture | `page.capture` (`PageCapture`): `screenshot`, `pdf`, `save`, over `contents.screenshot`, `pdf` and `save`. `BDKCommands.invokeBinary` returns the bytes of a command marked binary next to its JSON | T-SVC-09 |
 | DevTools | `page.devTools` (`DevTools`): `present`, `close`, `state`, `isOpen`, `attachProtocol` returning a `BDKDevToolsProtocol` (`send`, `events`, `detach`); errors in the `devtools` domain | T-AUT-05 |
 | Automation | `runtime.automation` (`BDKAutomation`): `makeSession`, `events`, `external.open`; `BDKAutomationSession` (`run`, `grant(contents:)`, `revoke`), `BDKAutomationTask` (`events`, `value`, `cancel`), `BDKAutomationEndpoint` (`socketPath`, `close`) | T-AUT-02, T-AUT-04 |
@@ -110,6 +110,16 @@ Mapping rules this package chose (swift-api.md is silent):
   `events` is filtered by the session id and ends at `detach()` or `debug.detached`. `detach()` is synchronous and
   idempotent (the command is sent in a task). `send` after a detach throws `devtools.detached`. A session object
   stays alive until it ends: keep it or call `detach()`.
+* Input takes `Scripting.InputTarget` (`.selector(_)` or `.point(x:y:)`, never both, which the optional pairs of
+  `contents.click` would allow) and the usual `FrameSelector` (`.all` sends no frame). `click(_:frame:button:clickCount:)`
+  takes the generated `BDKMouseButton`; `type(_:into:frame:)`, `press(_:modifiers:)` (names as `KeyboardEvent.key`)
+  and `scroll(_:dx:dy:frame:)` take the rest as the command does. The stub answers them `broker.notImplemented`;
+  the tests check the arguments through `Scripting.Input`, which builds the command and its arguments.
+* `waitFor(_:timeout:)` takes `Scripting.WaitCondition`, `.load(BDKLoadCondition)` (`committed`, `finished`) or
+  `.url(pattern)` (`*` is a glob), the two conditions the core answers (conventions.md, "Automation", rule 8), and a
+  `Duration` (default 30 s, sent as whole milliseconds rounded up). A deadline is `broker.timeout`. `selector`,
+  `script` and `networkIdle` are not exposed: the engine answers them in T-AUT-06, and `query` and `evaluate`
+  poll in the meantime.
 * `BDKAutomation.Scope.profiles` is `[BDKProfile]?` (nil is every profile); `ContentsScope` is `.all`, `.created`,
   `.explicit([BDKWebContents])` (the pages are granted right after creation). `SessionOptions.capabilities` defaults to
   none.
@@ -294,7 +304,13 @@ so a test can start a load and act on it (supersede it, stop it) before the stub
 * `BDKWebContents.close()` waits for the `closed` event and then destroys the page; `CloseMode` and `CloseResult`
   need the unload-handler flow, which the ABI does not have.
 * `BDKRuntime.shutdown()` returns nothing: `ShutdownResult.cancelled(by:)` needs unload handlers.
-* The events are the ABI's kinds (swift-api.md 6.4 lists more). `RuntimeEvent` has `registrationsFrozen`,
+* `RuntimeEvent` is `BDKRuntime.Event` and has `.webContentsCreated(page, by: Creator)` for pages an automation
+  session creates (the same page as `runtime.automation.events` `.contentsCreated`). `Creator` is `.application`,
+  `.automation(session: String)` and `.extension(String)`. `.automation` carries the session's name, not a
+  `BDKAutomationSession`: a session from the external endpoint has no object in the application, and names are what
+  the audit events use. `.application` and `.extension` are never emitted, because the runtime gives no signal for
+  a page the application or an extension creates (`contents.created` has `createdBy` kinds `swift` and `session`
+  only). The events are the ABI's kinds (swift-api.md 6.4 lists more). `RuntimeEvent` has `registrationsFrozen`,
   `profileOpened`, `profileClosed`, `shutdownStarted` and `unknown`.
 * `BDKKeyboardDelegate` is on the page (`keyboardDelegate`), with a forwarding property on the view. An unhandled key
   the delegate declines is offered to the main menu.
@@ -335,7 +351,6 @@ so a test can start a load and act on it (supersede it, stop it) before the stub
 | `BDKProfiles.events` for the `profiles.*` events | `profiles` is a native namespace | T-ABI-03 |
 | Host contexts (`runtime.hostContexts`) | Conditional on decision D1; no ABI | T-ADP-06 |
 | Real popups, side panels, install prompts, anchors and window requests | Only the stub implements them so far: a popup or panel `secureView` and the engine's behaviour arrive with the engine tasks. The stub records outcomes and updates only for requests raised through `bdk_stub_raise_ui_request`, not for the popup an activation raises | T-EXT-02 to T-EXT-06 (engine) |
-| `click`, `hover`, `type`, `press`, `scroll`, `waitFor` on `page.scripting`; `webContentsCreated(_, by: .automation)` | The spec's `Scripting` has no input methods; the commands exist (`contents.click` and the rest) and run through `runtime.commands.invoke` | T-AUT-03 |
 | `BDKRuntime.contents` lookup by id, `BDKProfiles.events`, `ProfileDescriptor.lastUsed`, profile rename by id | Not in the ABI (a rename needs an open profile handle) | T-ABI-03 |
 | `displayURL`, favicon, `capture`, `isCrashed`, `isDiscarded`, `isAutoDiscardable` getter, `isFullscreen`, opener, `extensionTabID`, `hoveredLinkChanged`, discard events (renderer loss is `.rendererGone`) | `bdk_contents_state_t` and the event kinds do not carry them | T-ABI-03 |
 | Navigation `LoadOptions`, `prune`, `deferInitialLoad`, `userAgent` and `isInitiallyMuted` creation options | Not in `bdk_contents_options_t` or `bdk_contents_load` | T-ABI-03 |
