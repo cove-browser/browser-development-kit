@@ -83,7 +83,8 @@ public final class BDKUIHandlers {
     public var devTools: Surface<DevToolsRequest> { surface(.devTools) }
     public var deviceChoosers: Surface<BDKRawUIRequest> { surface(.deviceChoosers) }
     public var screenCapture: Surface<BDKRawUIRequest> { surface(.screenCapture) }
-    public var webAuthn: Surface<BDKRawUIRequest> { surface(.webAuthn) }
+    /// One request per step of a passkey or security-key ceremony (`WebAuthnRequest`).
+    public var webAuthn: Surface<WebAuthnRequest> { surface(.webAuthn) }
     public var externalProtocols: Surface<ExternalProtocolRequest> { surface(.externalProtocols) }
     public var extensionPopups: Surface<ExtensionPopupRequest> { surface(.extensionPopups) }
     public var extensionSidePanels: Surface<ExtensionSidePanelRequest> {
@@ -240,6 +241,7 @@ extension BDKUIRequest {
         .certificateErrors: { CertificateErrorRequest($0, runtime: $1) },
         .reputationWarnings: { ReputationWarningRequest($0, runtime: $1) },
         .devTools: { DevToolsRequest($0, runtime: $1) },
+        .webAuthn: { WebAuthnRequest($0, runtime: $1) },
         .externalProtocols: { ExternalProtocolRequest($0, runtime: $1) },
         .extensionPopups: { ExtensionPopupRequest($0, runtime: $1) },
         .extensionSidePanels: { ExtensionSidePanelRequest($0, runtime: $1) },
@@ -248,7 +250,7 @@ extension BDKUIRequest {
     ]
 
     /// The typed request for a delivery. Surfaces without a typed request (device
-    /// choosers, screen capture, WebAuthn) deliver a `BDKRawUIRequest`.
+    /// choosers, screen capture) deliver a `BDKRawUIRequest`.
     static func make(_ delivery: BDKUIDelivery, runtime: BDKRuntime) -> BDKUIRequest {
         let factory = BDKUISurface(rawValue: delivery.surface).flatMap { factories[$0] }
         return factory?(delivery, runtime) ?? BDKRawUIRequest(delivery, runtime: runtime)
