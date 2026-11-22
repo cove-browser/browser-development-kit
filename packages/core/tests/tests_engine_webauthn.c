@@ -12,6 +12,7 @@
 
 void bdk_harness_engine_show(bdk_contents_t contents, int visible);
 bdk_native_handle_t bdk_harness_engine_gesture(bdk_contents_t contents, int kind);
+int bdk_harness_engine_answer_sheet(bdk_contents_t contents, int index);
 extern const char* bdk_harness_engine_surfaces;
 
 /* http://localhost is a secure context and a valid relying party, and the engine's interceptor
@@ -207,6 +208,21 @@ static void test_a_request_with_no_handler_is_shown_by_the_default_presenter(voi
     finish(c);
 }
 
+/* The same with the real sheet: it is attached to the page's window, and closing it (an answer
+   past its last button, as Escape gives) rejects the promise. */
+static void test_the_default_sheet_is_on_the_pages_window(void) {
+    bdk_contents_t c = start_page(0, NULL);
+    run(c, kGet);
+    int answered = 0;
+    for (int i = 0; i < 200 && !answered; ++i) {
+        t_pump();
+        answered = bdk_harness_engine_answer_sheet(c, 99);
+    }
+    CHECK(answered);
+    CHECK(wait_for_title(c, "NotAllowedError"));
+    finish(c);
+}
+
 static void test_a_handler_gets_the_step_and_cancels_it(void) {
     bdk_contents_t c = start_page(1, NULL);
     g_log.deny = 1;
@@ -325,6 +341,8 @@ static void test_navigating_away_withdraws_the_open_step(void) {
 const t_test_t t_engine_webauthn_tests[] = {
     {"engine_webauthn_a_request_with_no_handler_is_shown_by_the_default_presenter",
      test_a_request_with_no_handler_is_shown_by_the_default_presenter},
+    {"engine_webauthn_the_default_sheet_is_on_the_pages_window",
+     test_the_default_sheet_is_on_the_pages_window},
     {"engine_webauthn_a_handler_gets_the_step_and_cancels_it",
      test_a_handler_gets_the_step_and_cancels_it},
     {"engine_webauthn_a_disabled_surface_rejects_without_asking",
