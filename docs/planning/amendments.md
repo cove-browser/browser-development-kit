@@ -1,6 +1,6 @@
 # Amendments to the BDK plan
 
-Dated 2026-11-15; section 2.10 was added on 2026-11-16, 2.12 and 2.13 on 2026-11-19, 2.14 to 2.17 on 2026-11-20. This lists everything that changed in the planning documents after the 2026-11-14 version, following the product owner's review. If you read the 2026-11-14 documents, reading this is enough. The other documents already contain these changes; nothing here still needs to be applied.
+Dated 2026-11-15; section 2.10 was added on 2026-11-16, 2.12 and 2.13 on 2026-11-19, 2.14 to 2.17 on 2026-11-20, 2.18 on 2026-11-21, 2.19 on 2026-11-22. This lists everything that changed in the planning documents after the 2026-11-14 version, following the product owner's review. If you read the 2026-11-14 documents, reading this is enough. The other documents already contain these changes; nothing here still needs to be applied.
 
 ## 1. Summary
 
@@ -354,6 +354,28 @@ The window-filter patch also gates `IsVisibleToTabsAPIForExtension`, so the seri
 `BDK_ENGINE_HOST_RESOLVER_RULES` (chromium/bdk/README.md); new test verbs: `network.passthrough`, `startup.post`,
 `startup.state` (`bdk_testing.h`).
 
+### 2.19 WebAuthn requests built ahead of S3 (2026-11-22)
+
+`navigator.credentials` ended the embedding application whenever Chromium's authenticator dialog had to appear (a
+tab-modal views widget with no parent, `native_widget_mac.mm`), so the `webauthn` surface was built before the
+product owner has decided S3 (T-UIR-09, M4). Where the build departs from [sdk/ui-requests.md](sdk/ui-requests.md) 5.18
+as proposed:
+
+| Planned | Built | Why |
+|---|---|---|
+| One `WebAuthnRequest` whose `step` changes | One request per step, with a `ceremonyID`; the next step withdraws the last | Chromium moves on by itself (a key touched, a wrong PIN); a request per step keeps the router's rules (one at a time, withdrawal, release) and needs no new ABI |
+| Steps `.chooseMechanism`, `.touchSecurityKey`, `.enterPIN`, `.chooseAccount`, `.error` | Also `.connectPhone`, `.confirm` and `.other`, with `detail` (Chromium's step name) and Chromium's own text and button labels | These are the steps Chromium's dialog model reports; its sheet models supply the wording a custom presenter must show |
+| `chooseAccount(_:)` | `chooseAccount(_:confirmedBy:)`, a `grant` | It releases a credential to the site: architecture section 7 says a credential prompt is not granted without a gesture |
+| Default presenter: Chromium's WebAuthn dialog | A sheet of BDK's own, from the same payload; Chromium's dialog is never shown on a BDK page | Chromium's needs a views widget (feasibility section 11, T-MAC-04). A new patch lets an embedder supply the dialog's controller |
+| `disabled` in `bdk.toml` | The runtime honours `disabled`; the `[ui.surfaces] webauthn` key still waits for S3 with the other seven | Accepting one S3 key is the product owner's call; meanwhile `WebAuthnRequest.cancelAll` turns passkeys off |
+| Platform passkeys "unverified" | Security keys built (tested with a virtual key); phones and the system provider are Chromium's paths, unverified (T-UIR-12, M9); Touch ID not offered (T-UIR-11, M9) | Chromium's Touch ID keychain group is compiled in; phones need Bluetooth keys in `Info.plist`; the system provider needs Apple's browser entitlement |
+
+New: `BDKWebAuthnSupport` (what each mechanism needs, read from `Info.plist` and the signature), the CLI note
+`plist.passkeys_phone`, the test verbs `webauthn.*` (a virtual CTAP2 key through content's
+`ScopedAuthenticatorEnvironmentForTesting`, no switch) and `present.script` answers for `webauthn`
+(`bdk_testing.h`). The series is 21 patches; the task list is 143. HTTPS-First's "ask before HTTP" dialog fails the same way (`tab_dialog_manager.cc`,
+`Check failed: host`) and is T-UIR-10, M4.
+
 ## 3. Tasks and workflows
 
 | Task | Change |
@@ -373,6 +395,8 @@ The window-filter patch also gates `IsVisibleToTabsAPIForExtension`, so the seri
 | T-REP-01 | From 2026-11-16: also writes `.node-version`. |
 | T-CLI-06, T-JS-05, T-SWF-09, T-SVC-11 | New, M5 (2026-11-20): left over from M4 (roadmap M4 status). |
 | T-WUI-07, T-PRV-10 | New, M6 (2026-11-20): left over from M4. |
+| T-UIR-09, T-UIR-10 | New, M4 (2026-11-22): WebAuthn (built, 2.19) and the other tab-modal views dialogs, found after M3. |
+| T-UIR-11, T-UIR-12 | New, M9 (2026-11-22): Touch ID passkeys, phones and system passkeys, which need a signed, entitled application. |
 
 The task list goes from 103 to 106 tasks. The README said 100 before, which was already wrong; it now says 106. With T-CLI-05 on 2026-11-16 it is 107.
 
@@ -409,4 +433,5 @@ The task list goes from 103 to 106 tasks. The README said 100 before, which was 
 | [feasibility.md](feasibility.md) | Section 10, two sentences |
 | [sdk/](sdk/README.md) | New. The index and all nine documents. |
 | [README.md](README.md) | One row for `sdk/` |
+| For 2.19 | [sdk/ui-requests.md](sdk/ui-requests.md) 4, 5.18, 8, 8.1; [sdk/README.md](sdk/README.md) S3; [sdk/production-browser.md](sdk/production-browser.md) 2.4; [sdk/configuration.md](sdk/configuration.md) 6, 9; [tasks.md](tasks.md) T-UIR-09 to T-UIR-12; [roadmap.md](roadmap.md) M4, M9; `packages/core/docs/conventions.md` (the router); `chromium/bdk/README.md` |
 | For 2.10 | [sdk/cli.md](sdk/cli.md) section 2; [repository-and-tooling.md](repository-and-tooling.md) 1, 2, 3, 4, 10, 10.1, 10.2, 12; [tasks.md](tasks.md) T-CLI-05; [risks.md](risks.md) R31; [roadmap.md](roadmap.md) M2 |

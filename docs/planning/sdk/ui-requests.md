@@ -1,6 +1,6 @@
 # BDK browser-owned UI requests
 
-Status: proposal, 2026-11-15. The pattern is from [../architecture.md](../architecture.md) section 7. This document lists every surface, what a request carries, how it is completed, what the default presenter does and which rule cannot be overridden. Names are placeholders. Status labels are in [README.md](README.md) section 2. Tasks: T-UIR-01 to T-UIR-06, T-SWF-04, T-MAC-04, T-MAC-05.
+Status: proposal, 2026-11-15. The pattern is from [../architecture.md](../architecture.md) section 7. This document lists every surface, what a request carries, how it is completed, what the default presenter does and which rule cannot be overridden. Names are placeholders. Status labels are in [README.md](README.md) section 2. Tasks: T-UIR-01 to T-UIR-06, T-UIR-09 to T-UIR-12, T-SWF-04, T-MAC-04, T-MAC-05.
 
 A browser-owned surface is UI that Chromium needs shown on behalf of a page, an extension or itself. The application did not ask for it and cannot predict it.
 
@@ -93,7 +93,7 @@ The key is what goes in `[ui.surfaces]`. "Modes" lists what the surface allows: 
 | `devtools` | The DevTools front end | D C X | Plan; built in M7, engine pending (T-AUT-06) | M7, T-AUT-05 |
 | `device_choosers` | WebUSB, Web Bluetooth, WebHID, Web Serial | D C X | Added (S3) | — |
 | `screen_capture` | The `getDisplayMedia` source picker | D C X | Added (S3) | — |
-| `webauthn` | Passkey and security-key dialogs | D C X | Added (S3) | — |
+| `webauthn` | Passkey and security-key dialogs | D C X | Added (S3); built and tested on the engine 2026-11-22, the `bdk.toml` key still awaits S3 | M4, T-UIR-09 |
 | `external_protocols` | "Open this link in another application?" | D C X | Added (S3) | — |
 | `page_health` | Unresponsive page; blocked popups | D C | Added (S3) | — |
 | Extension surfaces | Actions, popups, side panels, menus, options, install prompts | See [extensions.md](extensions.md) | Plan | M5: surfaces 25 to 32 (`extension_actions` … `extension_uninstalls`), configured under `[extensions.ui]`; see `packages/core/docs/conventions.md`, "Extensions (M5)" |
@@ -520,22 +520,63 @@ public final class ExternalProtocolRequest: BDKUIRequest {
 
 Default presenter: Chromium's confirmation dialog. `disabled`: external schemes are blocked.
 
-### 5.18 WebAuthn (Added)
+### 5.18 WebAuthn (Added; built, T-UIR-09)
 
 ```swift
-public final class WebAuthnRequest: BDKUIRequest {
+public final class WebAuthnRequest: BDKUIRequest {      // one request per step of a ceremony
+    public let ceremonyID: String                        // the same for every step of one ceremony
     public let relyingParty: String
-    public let operation: Operation              // .create, .get
-    public let step: Step                        // .chooseMechanism, .touchSecurityKey, .enterPIN, .chooseAccount, .error
-    public let mechanisms: [Mechanism]
-    public func choose(_ mechanism: Mechanism)
-    public func providePIN(_ pin: String)
-    public func chooseAccount(_ account: Account)
+    public let origin: URL?
+    public let operation: Operation                      // .create, .get
+    public let step: Step                                // .chooseMechanism, .touchSecurityKey, .enterPIN,
+                                                         // .chooseAccount, .connectPhone, .confirm, .error, .other
+    public let detail: String                            // Chromium's step name, e.g. "clientPinTapAgain"
+    public let error: ErrorKind?                         // .timedOut, .noPasskeys, .keyNotRegistered, .pinBlocked, ...
+    public let text: BDKUIText                           // Chromium's wording; also errorMessage, hint
+    public let acceptLabel, cancelLabel, otherMechanismsLabel: String?
+    public let isBusy: Bool
+    public let mechanisms: [Mechanism]                   // .securityKey, .phone, .platform, .iCloudKeychain, .passkey, ...
+    public let accounts: [Account]
+    public let pin: PINEntry?                            // mode .enter, .setup, .change; minimumLength; attemptsRemaining
+    public let qrCode: String?
+    public func choose(_ mechanism: Mechanism) throws
+    public func providePIN(_ pin: String) throws
+    public func chooseAccount(_ account: Account, confirmedBy event: NSEvent) throws
+    public func accept() throws                          // the step's own button
+    public func useOtherMechanism() throws
     public func cancel()
+    public var presentation: Presentation                // what to show, whatever draws it; perform(_:) answers
+    public func qrCodeImage(scale: CGFloat) -> NSImage?
+    public static func cancelAll(_ request: WebAuthnRequest) -> BDKUIResponse
 }
+public struct BDKWebAuthnSupport { static var current; securityKeys, phones, systemPasskeys, touchID }
 ```
 
-Default presenter: Chromium's WebAuthn dialog. Platform passkeys on macOS need entitlements and an associated domain that belong to the application's Apple developer account; whether a BDK application can use the system passkey provider is unverified. Security keys do not depend on that. `disabled`: `navigator.credentials` rejects for public-key credentials.
+A ceremony is Chromium's own (`ChromeAuthenticatorRequestDelegate` and its dialog model): BDK does not choose the
+steps, the mechanisms or the accounts. Each step Chromium's dialog would show is one request. When Chromium moves on
+(the key was touched, a PIN was wrong, the request finished) the step's request is withdrawn and the next one, with the
+same `ceremonyID`, is delivered, so a presenter can keep one sheet up for the ceremony; the ceremony is over when a
+step is withdrawn and none follows. A step whose facts change while it is up (a PIN error, the busy indicator, the list
+of mechanisms) is withdrawn and raised again.
+
+| | |
+|---|---|
+| Payload | `ceremony`, `relyingParty`, `origin` (the top-level page), `operation`, `step`, `detail`, `error` (error steps), `text` `{title, message, error?, hint?}` from Chromium's sheet for the step, `acceptLabel`, `cancelLabel`, `otherMechanismsLabel` (each when the step has the button), `busy`, `mechanisms` `[{id, kind, name, description?}]` (chooseMechanism), `accounts` `[{id, name, displayName}]` (chooseAccount), `pin` `{mode, minLength, attemptsRemaining?}` (enterPIN), `qrCode` (connectPhone) |
+| Completions | `accept` `{mechanism}`, `{pin}` (and `pinConfirmation` from a presenter that asked twice), `{action:"otherMechanisms"}`, or `{}` for the step's own button; `grant` `{account}`, with the gesture: choosing an account releases a credential to the site; `deny` cancels. The core refuses anything the step did not offer (`ui.widensRequest`), an account chosen with `accept` (`ui.completionNotAllowed`) and every other completion name |
+| Default presenter | A sheet on the page's window, built from the same payload: a button per mechanism or account, a PIN field (two for a new PIN), the step's own buttons, then cancel. Chromium's tab-modal views dialog is never shown: it needs a views widget, and on a BDK page it ended the process (a patch lets the engine supply the dialog) |
+| Rule | A rejected, dropped or disabled request, an answer that does not fit the step, a grant whose event is not a recent click or key of the application's window, and a page that is not a BDK page all cancel the ceremony: the page's promise rejects with `NotAllowedError` |
+| `disabled` | Every ceremony that needs UI is cancelled before anything is shown. The resolved configuration takes `disabled`; `bdk.toml` cannot say it until S3 is accepted, so an application that offers no passkeys sets `WebAuthnRequest.cancelAll` as the handler |
+| Not routed | Conditional mediation (passkeys in the autofill list) and passkey upgrades show no dialog step, so they raise no request (T-UIR-12) |
+
+What each mechanism needs of the application, as Chromium decides it (`BDKWebAuthnSupport.current` reads the same
+facts; `bdk build config` adds the note `plist.passkeys_phone`):
+
+| Mechanism | Needs | Status |
+|---|---|---|
+| Security keys (USB; NFC and Bluetooth keys as Chromium supports them) | Nothing | Built; tested on the engine with a virtual CTAP2 key, not with hardware |
+| Passkeys on a phone (hybrid: QR code, Bluetooth, the phone's tunnel service) | `NSBluetoothAlwaysUsageDescription`; under the hardened runtime `com.apple.security.device.bluetooth`. Without them Chromium offers no phone (it logs that the application has no Bluetooth metadata) | Routed (`connectPhone`, `qrCode`); not verified with a phone, and the tunnel service the phone picks (Google's for Android, Apple's for an iPhone) is contacted once the person chooses the phone (T-UIR-12) |
+| System passkeys (iCloud Keychain and other credential providers) | macOS 13.5 and Apple's `com.apple.developer.web-browser.public-key-credential` entitlement, which Apple grants to browsers | Chromium's own path, which shows the system's sheet; not verified (T-UIR-12) |
+| Touch ID passkeys kept by the browser | A `keychain-access-groups` entitlement for `<team>.<bundle id>.webauthn` with a provisioning profile; Chromium compiles its own group in, which no BDK application can hold | Not offered to BDK applications yet (T-UIR-11) |
 
 ### 5.19 Page health (Added)
 
@@ -581,7 +622,7 @@ Written against the stub; the real runtime's payloads are the engine tasks' (T-U
 | Topic | Decision |
 |---|---|
 | Completions | The ABI names three: `"grant"` (needs the confirming `NSEvent`; permission grants, a kept dangerous download, a saved password or card, an accepted suggestion, a proceed past an interstitial, opening an external protocol), `"accept"` (every other positive answer) and `"deny"` (every negative one, including dismiss and go back). The arguments JSON distinguishes the rest. |
-| Arguments | `permissions`: grant `{"kinds":[…],"duration":"persistent"\|"thisVisit"}`, deny `{"persist":bool}` or `{"dismissed":true,"persist":false}`. `javascript_dialogs`: accept `{"text"?,"suppressFurther"}`, deny `{"suppressFurther"}`. `http_auth`: accept `{"username","password"}`. `client_certificates`: accept `{"certificate":id}`. `file_pickers`: accept `{"paths":[…]}`. `context_menus`: accept `{"action":"show","items":[…],"at"?}` or `{"action":"perform","item":id}`. `downloads`: accept `{"destination"?}`. `printing`: accept `{"action":"systemDialog"}` or `{"action":"savePDF","path"}`. `find`: accept `{"action":"close"}`. `passwords`, `autofill`: deny `{"never":true}` or `{"dismissed":true}`. `autofill_suggestions`: grant `{"suggestion":id}`. `notifications`: accept `{"event":"clicked","action"?}`, deny `{"event":"closed","byUser"}`. `external_protocols`: grant `{"remember"}`. |
+| Arguments | `permissions`: grant `{"kinds":[…],"duration":"persistent"\|"thisVisit"}`, deny `{"persist":bool}` or `{"dismissed":true,"persist":false}`. `javascript_dialogs`: accept `{"text"?,"suppressFurther"}`, deny `{"suppressFurther"}`. `http_auth`: accept `{"username","password"}`. `client_certificates`: accept `{"certificate":id}`. `file_pickers`: accept `{"paths":[…]}`. `context_menus`: accept `{"action":"show","items":[…],"at"?}` or `{"action":"perform","item":id}`. `downloads`: accept `{"destination"?}`. `printing`: accept `{"action":"systemDialog"}` or `{"action":"savePDF","path"}`. `find`: accept `{"action":"close"}`. `passwords`, `autofill`: deny `{"never":true}` or `{"dismissed":true}`. `autofill_suggestions`: grant `{"suggestion":id}`. `notifications`: accept `{"event":"clicked","action"?}`, deny `{"event":"closed","byUser"}`. `external_protocols`: grant `{"remember"}`. `webauthn`: accept `{"mechanism"}`, `{"pin"}`, `{"action":"otherMechanisms"}` or `{}`, grant `{"account"}` (5.18). |
 | Payload | The field names of section 5 in camelCase. Handles (`opener`, `newContents`, `previewContents`, `inspected`, `frontend`) are decimal strings. Two kinds on one surface are told apart by the payload: `downloads` with a `danger` field is a dangerous download, `passwords` with `"kind":"leaked"` is the leaked-password warning. |
 | Narrowing | Checked in Swift before the ABI call: a grant for kinds the request did not ask for (`ui.kindsNotRequested`), a certificate, menu item or suggestion it did not offer, more than one file for a single-file picker, `proceed` on a non-overridable interstitial (`ui.notOverridable`). |
 | Gaps | The ABI cannot report a notification as shown without completing it, preview an autofill suggestion, or complete an `NSEvent`-less `grant`. `shown()` is local, `preview` is absent. |
@@ -602,5 +643,6 @@ Settled against the Chromium engine (`chromium/bdk/engine/ui_*.cc`). Where this 
 | `autofill_suggestions` | `fieldRect` (page view coordinates), `suggestions` `[{id, label, sublabel?, kind}]` | `grant` (or `accept`) `{suggestion:id}` needs the gesture and is held back until Chromium accepts a choice (half a second after the popup appeared); `deny` closes. A new list is a new request. The surface has no `disabled` mode; a disabled `autofill` surface turns it off too. |
 | `fullscreen` | `origin`, `isEntering` | `accept` (Swift `allow()`) and `deny`. `disabled` makes the Fullscreen API reject without a request. |
 | `notifications` | `notification` `{title, body, origin, tag, actions, requireInteraction}` | `accept` `{event:"clicked", action?}` fires the page's `onclick` (action by its title), `deny` `{event:"closed", byUser}` fires `onclose`; a rejected, dropped or disabled one closes without being shown. `disabled` also makes the permission prompt answer denied, so `Notification.requestPermission()` resolves `denied` without asking. Web, persistent and extension notifications are routed; Chrome's own notification types are not shown. A notification belongs to no page: the engine attaches it to a page of the profile (preferring one at the origin) and drops it if none is open. The default presenter is an in-window banner (the system notification centre needs the alert helper and entitlements). |
+| `webauthn` | As 5.18: one request per step of Chromium's dialog model, raised by BDK's dialog controller (`engine/ui_webauthn.cc`) through the patch that lets an embedder supply it | Mechanism, PIN, other mechanisms and the step's button go back through Chromium's sheet models; a grant selects the account only with a recent mouse-up or key-down of this application's window (anything less cancels); `deny`, reject, drop and `disabled` cancel the ceremony (`NotAllowedError`). Navigation or a finished request withdraws the step. Tested on the engine (`tests_engine_webauthn.c`) with a virtual security key |
 
 Neither `window` nor an operating-system permission step is filled in yet: `window` stays 0, and macOS camera, microphone and location access are not requested by the engine after a grant.
