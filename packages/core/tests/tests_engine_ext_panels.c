@@ -661,7 +661,7 @@ typedef struct {
     const char* complete_args;
 } ui_log_t;
 
-static ui_log_t g_menu, g_windows;
+static ui_log_t g_menu, g_devtools;
 
 static bdk_ui_response_t record(void* ctx, const bdk_ui_request_info_t* info) {
     ui_log_t* log = (ui_log_t*)ctx;
@@ -680,17 +680,18 @@ static bdk_ui_response_t record(void* ctx, const bdk_ui_request_info_t* info) {
 
 static void register_devtools_handlers(void) {
     bdk_error_t err = 0;
-    REQUIRE(bdk_ui_set_handler(t_runtime, BDK_SURFACE_NEW_WINDOWS, record, &g_windows, NULL,
-                               &err) == BDK_OK);
+    REQUIRE(bdk_ui_set_handler(t_runtime, BDK_SURFACE_DEVTOOLS, record, &g_devtools, NULL, &err) ==
+            BDK_OK);
     REQUIRE(bdk_ui_set_handler(t_runtime, BDK_SURFACE_CONTEXT_MENUS, record, &g_menu, NULL, &err) ==
             BDK_OK);
 }
 
-/* Opens undocked DevTools for c through the context menu's Inspect item; returns the front end. */
+/* Opens DevTools for c through the context menu's Inspect item; returns the front end, which the
+   application accepts (places) from the devtools request. */
 static bdk_contents_t open_devtools(bdk_contents_t c) {
     memset(&g_menu, 0, sizeof g_menu);
-    memset(&g_windows, 0, sizeof g_windows);
-    g_windows.complete = "accept";
+    memset(&g_devtools, 0, sizeof g_devtools);
+    g_devtools.complete = "accept";
     bdk_harness_engine_show(c, 1);
     REQUIRE(bdk_testing_click(c, 20, 20, 2) == BDK_OK);
     for (int i = 0; i < 40 && g_menu.calls == 0; ++i)
@@ -701,9 +702,9 @@ static bdk_contents_t open_devtools(bdk_contents_t c) {
                             S("{\"action\":\"perform\",\"item\":\"inspect\"}"), no_gesture(),
                             &err) == BDK_OK);
     ext_pumps(3);
-    REQUIRE(g_windows.calls == 1);
+    REQUIRE(g_devtools.calls == 1);
     char handle[32];
-    REQUIRE(t_json_string(g_windows.payload, "newContents", handle, sizeof handle));
+    REQUIRE(t_json_string(g_devtools.payload, "frontend", handle, sizeof handle));
     bdk_contents_t front = (bdk_contents_t)strtoull(handle, NULL, 10);
     bdk_harness_engine_show(front, 1);
     return front;
