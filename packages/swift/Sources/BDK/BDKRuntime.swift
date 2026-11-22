@@ -92,6 +92,7 @@ public final class BDKRuntime {
             configuration.bundleURL?.path ?? "",
             configuration.launch.userDataDirectory?.path ?? "",
             host.hash,
+            configuration.services.google.apiKey ?? "",
         ]
         let status = withBDKStrings(strings) { lent in
             var config = bdk_start_config_t()
@@ -100,6 +101,7 @@ public final class BDKRuntime {
             config.bundle_path = lent[1]
             config.user_data_path_override = lent[2]
             config.host_abi_hash = lent[3]
+            config.google_api_key = lent[4]
             config.host_abi_version = host.version
             if let application: NSApplication = NSApp {
                 config.native_app = bdk_native_handle_t(
@@ -160,12 +162,14 @@ public final class BDKRuntime {
 
     // MARK: Registrations
 
-    /// Hands the configuration's UI handlers, commands, events and settings to the runtime. Both are
-    /// registrations, so this runs before the freeze.
+    /// Hands the configuration's UI handlers, page routes, commands, events, settings and providers to
+    /// the runtime. All are registrations, so this runs before the freeze.
     private func register(_ configuration: BDKConfiguration) throws {
         try ui.attach(to: self, from: configuration)
+        try configuration.pages.adopt(into: self)
         try commands.adopt(configuration.commands)
         try configuration.settings.adopt(into: self)
+        try configuration.services.adopt(into: self)
     }
 
     /// Freezes the route and capability tables. Registrations after this fail with

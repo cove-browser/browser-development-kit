@@ -5,6 +5,8 @@ import type { Platform } from "../platform.js";
 export const genericPlatform: Platform = {
   name: "generic",
   isIdeBuild: () => false,
+  buildLocations: () => undefined,
+  writeFileLists: () => Promise.resolve([]),
   bundleFacts: () => Promise.resolve(undefined),
   sign: () =>
     Promise.reject(

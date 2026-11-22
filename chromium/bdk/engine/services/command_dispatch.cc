@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "base/no_destructor.h"
+#include "bdk/engine/providers/translation_service.h"
 #include "bdk/engine/services/services.h"
 
 namespace bdk {
@@ -26,6 +27,8 @@ const HandlerTable& Handlers() {
     AddContentsHandlers(t);
     AddDebugHandlers(t);
     AddDevToolsHandlers(t);
+    AddTranslationHandlers(t);
+    AddSearchHandlers(t);
     return t;
   }());
   return *table;

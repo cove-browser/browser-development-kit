@@ -4,5 +4,108 @@
   "private": true,
   "type": "module",
   "main": "dist/index.js",
-  "types": "dist/index.d.ts"
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./app-settings": {
+      "types": "./dist/app-settings.d.ts",
+      "default": "./dist/app-settings.js"
+    },
+    "./autofill": {
+      "types": "./dist/autofill.d.ts",
+      "default": "./dist/autofill.js"
+    },
+    "./bookmarks": {
+      "types": "./dist/bookmarks.d.ts",
+      "default": "./dist/bookmarks.js"
+    },
+    "./call": {
+      "types": "./dist/call.d.ts",
+      "default": "./dist/call.js"
+    },
+    "./capabilities": {
+      "types": "./dist/capabilities.d.ts",
+      "default": "./dist/capabilities.js"
+    },
+    "./commands": {
+      "types": "./dist/commands.d.ts",
+      "default": "./dist/commands.js"
+    },
+    "./create-page": {
+      "types": "./dist/create-page.d.ts",
+      "default": "./dist/create-page.js"
+    },
+    "./downloads": {
+      "types": "./dist/downloads.d.ts",
+      "default": "./dist/downloads.js"
+    },
+    "./errors": {
+      "types": "./dist/errors.d.ts",
+      "default": "./dist/errors.js"
+    },
+    "./events": {
+      "types": "./dist/events.d.ts",
+      "default": "./dist/events.js"
+    },
+    "./history": {
+      "types": "./dist/history.d.ts",
+      "default": "./dist/history.js"
+    },
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./metadata": {
+      "types": "./dist/metadata.d.ts",
+      "default": "./dist/metadata.js"
+    },
+    "./mojo-transport": {
+      "types": "./dist/mojo-transport.d.ts",
+      "default": "./dist/mojo-transport.js"
+    },
+    "./page": {
+      "types": "./dist/page.d.ts",
+      "default": "./dist/page.js"
+    },
+    "./passwords": {
+      "types": "./dist/passwords.d.ts",
+      "default": "./dist/passwords.js"
+    },
+    "./permissions": {
+      "types": "./dist/permissions.d.ts",
+      "default": "./dist/permissions.js"
+    },
+    "./privacy": {
+      "types": "./dist/privacy.d.ts",
+      "default": "./dist/privacy.js"
+    },
+    "./profiles": {
+      "types": "./dist/profiles.d.ts",
+      "default": "./dist/profiles.js"
+    },
+    "./search": {
+      "types": "./dist/search.d.ts",
+      "default": "./dist/search.js"
+    },
+    "./settings": {
+      "types": "./dist/settings.d.ts",
+      "default": "./dist/settings.js"
+    },
+    "./system": {
+      "types": "./dist/system.d.ts",
+      "default": "./dist/system.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
+    },
+    "./translation": {
+      "types": "./dist/translation.d.ts",
+      "default": "./dist/translation.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "default": "./dist/types.js"
+    }
+  },
+  "description": "The SDK internal pages import. Served to bundled pages unbundled at /@bdk/internal/<module>.js; nothing is published to npm."
 }

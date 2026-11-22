@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { tempDir } from "../src/test-support.js";
-import { artifactBundleInfo, listAssets, seaConfig } from "./package-lib.js";
+import { artifactBundleInfo, internalAssets, listAssets, seaConfig } from "./package-lib.js";
 
 describe("listAssets", () => {
   it("lists every file at any depth by relative name, except the README", async () => {
@@ -21,6 +21,15 @@ describe("listAssets", () => {
     const dir = await tempDir();
     await writeFile(join(dir, "README.md"), "docs");
     expect(listAssets(dir)).toEqual({});
+  });
+});
+
+describe("internalAssets", () => {
+  it("names each module under the prefix and points at its file", () => {
+    expect(internalAssets("/d", ["a.js", "b.js"], "js/internal/")).toEqual({
+      "js/internal/a.js": "/d/a.js",
+      "js/internal/b.js": "/d/b.js",
+    });
   });
 });
 

@@ -26,6 +26,29 @@ the placeholder `BDKWebView` draws, and the window says so at the top. The statu
 * Quitting goes through `applicationShouldTerminate` twice: `BDKRuntime.terminate(replyingTo:)` cancels the first
   attempt, shuts the runtime down, then quits again.
 
+## The Settings page
+
+`Pages/Settings/` is a bundled internal page: plain HTML, CSS and ES modules, with no build step. `bdk.toml` sets
+`internal_scheme = "minimal"` and grants the page `settings.read` and `settings.write`
+(`[pages.capabilities.settings]`). It imports `/@bdk/internal/page.js` and `/@bdk/internal/settings.js`, and keeps to
+the content security policy: no inline script or style.
+
+Open it by typing `minimal://settings` in a page's address field (a Chromium runtime is needed, and the runtime
+must serve bundled pages: the stub renders nothing). It should show:
+
+* "This is the route "settings", at minimal://settings."
+* The page's capabilities: `settings.read` and `settings.write`.
+* A "Do Not Track" checkbox that shows the current value of the `privacy.doNotTrack` setting. Ticking it saves the
+  value (a line says "Saved privacy.doNotTrack = true.") and the Swift side reads the same value
+  (`profile.settings`). A change made elsewhere updates the box through the `settings.changed` event.
+
+With no grant the checkbox would stay disabled and an error would show instead. `bdk build pages` (run by
+`scripts/bundle.sh`) refuses the page if it ever gains an inline script or style.
+
+The example does not declare commands, so `bdk build codegen` says so in a note and generates no `app.`
+declarations. To get editor types for the page, run `bdk build config codegen --project apps/examples/minimal-browser`:
+it writes the `@bdk` packages to `.bdk/js` and links them at `Pages/node_modules/@bdk`.
+
 ## Run it
 
 ```sh
@@ -39,7 +62,8 @@ pnpm exec nx run minimal-browser:lint
 `scripts/bundle.sh` resolves the configuration with `packages/cli/dist/bdk` when it exists and with the
 TypeScript sources otherwise, builds the executable, and assembles the bundle with `Info.plist`
 (`NSPrincipalClass` = `BDKApplication`, bundle identifier `dev.bdk.examples.minimal-browser`) and
-`bdk.resolved.json` in `Resources`. Built against the real runtime it also gets `Chromium Framework.framework` in
+`bdk.resolved.json` in `Resources`. `bdk build pages` then packages `Pages/` and the SDK into the bundle's
+`Resources` (`Pages/Settings`, `BDK/js/internal`). Built against the real runtime it also gets `Chromium Framework.framework` in
 `Contents/Frameworks` (an APFS clone of the packaged one), and `bdk build sign --identity -` re-signs the
 framework and its helpers as this application; against the stub the bundle is signed ad hoc as it is.
 

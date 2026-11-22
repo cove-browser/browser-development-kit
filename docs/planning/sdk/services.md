@@ -301,7 +301,11 @@ A settings page manages preferences and models. Translating a page is done from 
 
 Events: `translation.preferencesChanged`, `translation.modelsChanged`, `translation.stateChanged` (sessions and Swift).
 
+Built in M6 (2026-11-20): defined in `packages/core/interface/translation.json`, answered by the stub and built and tested on the engine. Every command takes a profile (the page's when a page is named); `translation.present` was added to raise the request from Swift or a session. Shapes: `translation.provider` answers the provider's descriptor (`id`, `name`, `privacy`, `host`, `policyUrl`, `protection`); `languages` answers `{pairs: [{from, to, installed}]}`; preferences are `{target, alwaysTranslate, neverTranslate, neverSites, offers}`, kept in Chromium's translate preferences. On the engine `neverTranslate` is never empty: Chromium starts it with the application's language and does not remove its last language, so that language can stay on both lists after it is put on the always list (the stub has no such floor); `state` and `translate` answer `{phase, detected, from, to, progress, error}`. `translation.stateChanged` is `{page, state}` with `page` the page's handle as a decimal string (provisional until M7's page identifiers). With the default provider the commands that need a provider answer `provider.unavailable` until the engine of T-PRV-02 exists. A disabled `translation` surface makes every command answer `provider.unavailable`.
+
 ### 5.13 `search`: address-bar services (Added, S1)
+
+Built in M4 (T-SVC-10) as `interface/search.json`, with `search.enginesChanged`: done in the stub; the engine service on `TemplateURLService` and the omnibox is written and waits for an engine build. Engine ids are Chromium's sync GUIDs. Changing the default engine's suggest or favicon URL is refused (Chromium changes only name, keyword and URL in place). Not built: the first-run engines from `[search]` (S1 is unconfirmed) and the suggest setting off by default; Chromium's prepopulated engines and its search-suggest preference apply (T-PRV-10, M6).
 
 | Command | Capability | Marks | Does |
 |---|---|---|---|
@@ -446,7 +450,7 @@ Rules:
 |---|---|
 | Subscribing | By event name, with an optional filter. Requires the read capability of the namespace: `history.read` for `history.visited`. `app.` events need the capability with the event's name. |
 | Delivery | In order per source. Not replayed: a subscriber sees events from the moment it subscribes, and reads current state with a command. |
-| Scope | A page receives events for its own profile. A session receives events for the profiles and pages in its scope. |
+| Scope | A page receives events for its own profile and application-wide events (such as `profiles.created` or an application-scope `settings.changed`), never another profile's. It does not receive `settings.changed` for an `app.` key declared with `exposedToPages: false`. A session receives events for the profiles and pages in its scope. |
 | Back-pressure | A subscriber that falls behind has events coalesced where the event type allows (progress, state) and is disconnected with an error where it does not (changes). The limit is set in T-SVC-01. |
 | End | A subscription ends with its page or session. |
 

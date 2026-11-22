@@ -52,6 +52,7 @@ void AddSystemHandlers(HandlerTable& table);
 void AddContentsHandlers(HandlerTable& table);
 void AddDebugHandlers(HandlerTable& table);
 void AddDevToolsHandlers(HandlerTable& table);
+void AddSearchHandlers(HandlerTable& table);
 
 // Backend::CallerRevoked: detaches the caller's DevTools protocol clients from
 // every page now, so a quiet client neither keeps a page paused nor holds one

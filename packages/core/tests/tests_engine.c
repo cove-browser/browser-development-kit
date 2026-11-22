@@ -830,6 +830,17 @@ static void value_of(const char* json, char* out, size_t n) {
     value_of_member(json, "value", out, n);
 }
 
+/* Chromium's heavy-ad intervention keeps an opt-out store per profile. BDK keeps it in memory, as
+   Chrome does for an off-the-record profile: on disk, its database is loaded by a best-effort task,
+   which BDK's Chromium runs only once start-up is complete (its failsafe, minutes later), and a
+   load for a profile deleted by then fails a fatal check in the SQL layer. */
+static void test_engine_the_heavy_ad_opt_out_store_stays_in_memory(void) {
+    t_start_frozen();
+    char json[64];
+    command("heavy_ad.store", "{}", json, sizeof json);
+    CHECK(strcmp(json, "{\"store\":\"memory\"}") == 0);
+}
+
 /* Reads a preference of the page's profile as Chromium holds it. */
 static void pref_of(bdk_contents_t page, const char* name, char* out, size_t n) {
     char args[256], json[512];
@@ -1293,6 +1304,8 @@ const t_test_t t_engine_tests[] = {
      test_engine_persistent_profiles_outlive_the_runtime},
     {"engine_a_closed_profile_releases_its_descriptors",
      test_engine_a_closed_profile_releases_its_descriptors},
+    {"engine_the_heavy_ad_opt_out_store_stays_in_memory",
+     test_engine_the_heavy_ad_opt_out_store_stays_in_memory},
     {"engine_history_is_searched_paginated_and_cleared",
      test_engine_history_is_searched_paginated_and_cleared},
     {"engine_bookmarks_nest_move_and_remove", test_engine_bookmarks_nest_move_and_remove},

@@ -19,15 +19,15 @@ build.
 
 Used by: the BDK engine (//bdk/engine) and the Swift SDK.
 ---
- chrome/app/framework.exports | 93 ++++++++++++++++++++++++++++++++++++
- chrome/app/framework.order   | 93 ++++++++++++++++++++++++++++++++++++
- 2 files changed, 186 insertions(+)
+ chrome/app/framework.exports | 104 ++++++++++++++++++++++++++++++++++++
+ chrome/app/framework.order   | 104 ++++++++++++++++++++++++++++++++++++
+ 2 files changed, 208 insertions(+)
 
 diff --git a/chrome/app/framework.exports b/chrome/app/framework.exports
 index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..762b1a6d69feb5ba285443ddca6ec590d2b0a82f 100644
 --- a/chrome/app/framework.exports
 +++ b/chrome/app/framework.exports
-@@ -20,3 +20,96 @@ _ChromeAppModeStart_v8
+@@ -20,3 +20,107 @@ _ChromeAppModeStart_v8
  _ChromeMain
  _ChromeWebAppShortcutCopierMain
  _bdk_overlay_marker
@@ -53,11 +53,13 @@ index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..762b1a6d69feb5ba285443ddca6ec590
 +_bdk_automation_hello_refuse
 +_bdk_buffer_bytes
 +_bdk_call_cancel
++_bdk_contents_can_perform_command
 +_bdk_contents_close
 +_bdk_contents_create
 +_bdk_contents_destroy
 +_bdk_contents_discard
 +_bdk_contents_entries
++_bdk_contents_exit_picture_in_picture
 +_bdk_contents_find_next
 +_bdk_contents_find_present
 +_bdk_contents_find_previous
@@ -68,6 +70,7 @@ index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..762b1a6d69feb5ba285443ddca6ec590
 +_bdk_contents_go_to_offset
 +_bdk_contents_load
 +_bdk_contents_native_view
++_bdk_contents_perform_command
 +_bdk_contents_print
 +_bdk_contents_reload
 +_bdk_contents_restore
@@ -77,6 +80,7 @@ index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..762b1a6d69feb5ba285443ddca6ec590
 +_bdk_contents_set_muted
 +_bdk_contents_set_user_agent
 +_bdk_contents_set_zoom
++_bdk_contents_set_zoom_scoped
 +_bdk_contents_state
 +_bdk_contents_stop
 +_bdk_contents_subscribe
@@ -88,6 +92,8 @@ index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..762b1a6d69feb5ba285443ddca6ec590
 +_bdk_invoke
 +_bdk_invoke_named
 +_bdk_log_set_handler
++_bdk_native_page_complete
++_bdk_native_page_source
 +_bdk_page_handler_register
 +_bdk_post_to_ui_thread
 +_bdk_profile_close
@@ -98,7 +104,12 @@ index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..762b1a6d69feb5ba285443ddca6ec590
 +_bdk_profile_open_private
 +_bdk_profile_rename
 +_bdk_profiles_list
++_bdk_provider_is_cancelled
++_bdk_provider_progress
 +_bdk_provider_register
++_bdk_provider_reject
++_bdk_provider_report
++_bdk_provider_resolve
 +_bdk_provider_set_key
 +_bdk_release
 +_bdk_runtime_freeze_registrations
@@ -128,7 +139,7 @@ diff --git a/chrome/app/framework.order b/chrome/app/framework.order
 index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..4b5300db8f65183aaee9c14e9259665765fc675f 100644
 --- a/chrome/app/framework.order
 +++ b/chrome/app/framework.order
-@@ -33,5 +33,98 @@ _ChromeWebAppShortcutCopierMain
+@@ -33,5 +33,109 @@ _ChromeWebAppShortcutCopierMain
  # repository.
  _bdk_overlay_marker
  
@@ -151,11 +162,13 @@ index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..4b5300db8f65183aaee9c14e92596657
 +_bdk_automation_hello_refuse
 +_bdk_buffer_bytes
 +_bdk_call_cancel
++_bdk_contents_can_perform_command
 +_bdk_contents_close
 +_bdk_contents_create
 +_bdk_contents_destroy
 +_bdk_contents_discard
 +_bdk_contents_entries
++_bdk_contents_exit_picture_in_picture
 +_bdk_contents_find_next
 +_bdk_contents_find_present
 +_bdk_contents_find_previous
@@ -166,6 +179,7 @@ index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..4b5300db8f65183aaee9c14e92596657
 +_bdk_contents_go_to_offset
 +_bdk_contents_load
 +_bdk_contents_native_view
++_bdk_contents_perform_command
 +_bdk_contents_print
 +_bdk_contents_reload
 +_bdk_contents_restore
@@ -175,6 +189,7 @@ index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..4b5300db8f65183aaee9c14e92596657
 +_bdk_contents_set_muted
 +_bdk_contents_set_user_agent
 +_bdk_contents_set_zoom
++_bdk_contents_set_zoom_scoped
 +_bdk_contents_state
 +_bdk_contents_stop
 +_bdk_contents_subscribe
@@ -186,6 +201,8 @@ index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..4b5300db8f65183aaee9c14e92596657
 +_bdk_invoke
 +_bdk_invoke_named
 +_bdk_log_set_handler
++_bdk_native_page_complete
++_bdk_native_page_source
 +_bdk_page_handler_register
 +_bdk_post_to_ui_thread
 +_bdk_profile_close
@@ -196,7 +213,12 @@ index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..4b5300db8f65183aaee9c14e92596657
 +_bdk_profile_open_private
 +_bdk_profile_rename
 +_bdk_profiles_list
++_bdk_provider_is_cancelled
++_bdk_provider_progress
 +_bdk_provider_register
++_bdk_provider_reject
++_bdk_provider_report
++_bdk_provider_resolve
 +_bdk_provider_set_key
 +_bdk_release
 +_bdk_runtime_freeze_registrations

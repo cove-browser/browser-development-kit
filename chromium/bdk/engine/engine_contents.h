@@ -116,6 +116,13 @@ class EngineContents : public bdkcore::BackendData,
   // Mutes the page, including the WebContents a discard or restore puts in its
   // place.
   void SetMuted(bool muted);
+  // Closes this page's DevTools when they are open, and opens them otherwise.
+  void ToggleDevTools();
+  // Whether DevTools may open: not when [ui.surfaces] devtools is disabled.
+  bool CanOpenDevTools();
+  // Opens view-source: of the page in a page of its own, through a
+  // new-window request of kind "newPage", as Chrome opens a tab.
+  void OpenViewSource();
   // Whether the page has focus, as the last focus event said.
   bool focused() const { return focused_; }
   // Between Close() and Chromium's CloseContents().

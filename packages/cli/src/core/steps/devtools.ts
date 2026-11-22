@@ -56,6 +56,8 @@ type Plan =
 export const devtoolsStep: Step = {
   name: "devtools",
   flags: ["bundle", "out"],
+  // Without a bundle there is nothing to write into: a plain `bdk build` leaves the step out.
+  applies: ({ ctx, args }) => (args.bundle ?? ctx.env.CODESIGNING_FOLDER_PATH) !== undefined,
   async run({ project, ctx, args }): Promise<StepResult> {
     const resolvedFile =
       args.out === undefined ? resolve(project.dir, RESOLVED_FILE) : resolve(ctx.cwd, args.out);

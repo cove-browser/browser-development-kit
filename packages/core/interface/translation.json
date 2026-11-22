@@ -1,0 +1,169 @@
+{
+  "namespace": "translation",
+  "since": 1,
+  "types": {
+    "ProviderPrivacy": {
+      "enum": ["onDevice", "remote"]
+    },
+    "ProviderDescriptor": {
+      "id": "string",
+      "name": "string",
+      "privacy": "ProviderPrivacy",
+      "host": "string?",
+      "policyUrl": "url?",
+      "protection": "string?"
+    },
+    "LanguagePair": {
+      "from": "string",
+      "to": "string",
+      "installed": "bool"
+    },
+    "TranslationPreferences": {
+      "target": "string",
+      "alwaysTranslate": "string[]",
+      "neverTranslate": "string[]",
+      "neverSites": "string[]",
+      "offers": "bool"
+    },
+    "TranslationPhase": {
+      "enum": ["unavailable", "available", "translating", "translated", "failed"]
+    },
+    "TranslationError": {
+      "domain": "string",
+      "code": "string",
+      "message": "string"
+    },
+    "TranslationState": {
+      "phase": "TranslationPhase",
+      "detected": "string?",
+      "from": "string?",
+      "to": "string?",
+      "progress": "double?",
+      "error": "TranslationError?"
+    }
+  },
+  "commands": [
+    {
+      "name": "translation.provider",
+      "capability": "translation.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {},
+      "result": "ProviderDescriptor"
+    },
+    {
+      "name": "translation.languages",
+      "capability": "translation.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {},
+      "result": {
+        "pairs": "LanguagePair[]"
+      }
+    },
+    {
+      "name": "translation.preferences",
+      "capability": "translation.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {},
+      "result": "TranslationPreferences"
+    },
+    {
+      "name": "translation.setPreferences",
+      "capability": "translation.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "target": "string?",
+        "alwaysTranslate": "string[]?",
+        "neverTranslate": "string[]?",
+        "neverSites": "string[]?",
+        "offers": "bool?"
+      },
+      "result": "TranslationPreferences"
+    },
+    {
+      "name": "translation.downloadModel",
+      "capability": "translation.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "from": "string",
+        "to": "string"
+      },
+      "result": "void",
+      "progress": true
+    },
+    {
+      "name": "translation.removeModel",
+      "capability": "translation.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "from": "string",
+        "to": "string"
+      },
+      "result": "void"
+    },
+    {
+      "name": "translation.state",
+      "capability": "contents.read",
+      "callers": ["swift", "session"],
+      "profile": "required",
+      "args": {},
+      "result": "TranslationState"
+    },
+    {
+      "name": "translation.translate",
+      "capability": "contents.control",
+      "callers": ["swift", "session"],
+      "profile": "required",
+      "args": {
+        "from": "string?",
+        "to": "string?"
+      },
+      "result": "TranslationState",
+      "progress": true
+    },
+    {
+      "name": "translation.revert",
+      "capability": "contents.control",
+      "callers": ["swift", "session"],
+      "profile": "required",
+      "args": {},
+      "result": "void"
+    },
+    {
+      "name": "translation.present",
+      "capability": "contents.control",
+      "callers": ["swift", "session"],
+      "profile": "required",
+      "raises": "translation",
+      "args": {},
+      "result": "void"
+    }
+  ],
+  "events": [
+    {
+      "name": "translation.preferencesChanged",
+      "capability": "translation.read",
+      "payload": "TranslationPreferences"
+    },
+    {
+      "name": "translation.modelsChanged",
+      "capability": "translation.read",
+      "payload": {
+        "pairs": "LanguagePair[]"
+      }
+    },
+    {
+      "name": "translation.stateChanged",
+      "capability": "contents.read",
+      "payload": {
+        "page": "string",
+        "state": "TranslationState"
+      }
+    }
+  ]
+}

@@ -46,28 +46,42 @@ function report(ctx: Context, args: ParsedArgs | undefined, json: boolean, r: Re
   return r.exitCode;
 }
 
-function selectSteps(args: ParsedArgs): Step[] {
+function selectSteps(ctx: Context, args: ParsedArgs): Step[] {
   const names = args.positionals.slice(1);
   const known = BUILD_STEPS.map((s) => s.name).join(", ");
-  if (names.length === 0) {
-    throw usageError(`\`bdk build\` needs a step. Steps: ${known}.`, "Run `bdk build config`.");
-  }
-  const chosen = names.map((name) => {
-    const step = BUILD_STEPS.find((s) => s.name === name);
-    if (step === undefined) throw usageError(`Unknown build step "${name}". Steps: ${known}.`);
-    return step;
-  });
+  const chosen =
+    names.length === 0
+      ? // With no step, the steps that apply, in order (sdk/cli.md section 5).
+        BUILD_STEPS.filter((step) => step.applies?.({ ctx, args }) ?? true)
+      : names.map((name) => {
+          const step = BUILD_STEPS.find((s) => s.name === name);
+          if (step === undefined)
+            throw usageError(`Unknown build step "${name}". Steps: ${known}.`);
+          return step;
+        });
   for (const flag of STEP_FLAGS) {
     if (args[flag] !== undefined && !chosen.some((s) => s.flags.includes(flag))) {
       const owners = BUILD_STEPS.filter((s) => s.flags.includes(flag)).map((s) => s.name);
       throw usageError(`--${flag} applies to \`bdk build ${owners.join("`, `bdk build ")}\` only.`);
     }
   }
+  // `--out` is the resolved file for `config`, `automation` and `devtools`, and a directory for
+  // `codegen`: one value cannot be both.
+  if (
+    args.out !== undefined &&
+    chosen.some((s) => s.name === "codegen") &&
+    chosen.filter((s) => s.flags.includes("out")).length > 1
+  ) {
+    throw usageError(
+      "--out names a file for `bdk build config`, `bdk build automation` and `bdk build devtools` and a directory for `bdk build codegen`, so it cannot be given to codegen and another of them in one run.",
+      "Run `bdk build codegen` separately, with its own --out.",
+    );
+  }
   return chosen;
 }
 
 async function runBuild(ctx: Context, args: ParsedArgs): Promise<Report> {
-  const steps = selectSteps(args);
+  const steps = selectSteps(ctx, args);
   const project = await findProject(ctx.cwd, args.project);
   const diagnostics: Diagnostic[] = [];
   const data: Record<string, unknown> = {};

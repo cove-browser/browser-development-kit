@@ -6,6 +6,7 @@
 #include "stub_services.h"
 
 #include <algorithm>
+#include <cctype>
 #include <charconv>
 #include <cstdio>
 #include <map>
@@ -36,6 +37,9 @@ struct Password {
 struct Address {
     std::string id, fields_json;
 };
+struct Engine {
+    std::string id, name, keyword, search_url, suggest_url, favicon_url; /* empty: not set */
+};
 
 /* One profile's data. */
 struct Store {
@@ -46,6 +50,8 @@ struct Store {
     std::map<std::string, std::string> permission_defaults;
     std::vector<Password> passwords;
     std::vector<Address> addresses;
+    std::vector<Engine> engines; /* none until the application or the user adds one */
+    std::string default_engine;  /* an id in engines, or empty */
 };
 
 struct State {
@@ -145,6 +151,356 @@ bool in_range(const JsonValue* range, int64_t t) {
 
 bool contains(const std::string& hay, const std::string& needle) {
     return hay.find(needle) != std::string::npos;
+}
+
+void erase_history_url(Store& s, const std::string& url) {
+    s.history.erase(std::remove_if(s.history.begin(), s.history.end(),
+                                   [&](const HistoryRow& h) { return h.url == url; }),
+                    s.history.end());
+}
+
+/* ---- Search ---- */
+
+std::string lower(std::string s) {
+    for (char& ch : s)
+        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    return s;
+}
+
+bool has_space(const std::string& s) {
+    return std::any_of(s.begin(), s.end(),
+                       [](char ch) { return std::isspace(static_cast<unsigned char>(ch)) != 0; });
+}
+
+std::string trim(const std::string& s) {
+    size_t b = 0, e = s.size();
+    while (b < e && std::isspace(static_cast<unsigned char>(s[b])))
+        ++b;
+    while (e > b && std::isspace(static_cast<unsigned char>(s[e - 1])))
+        --e;
+    return s.substr(b, e - b);
+}
+
+bool starts_with(const std::string& s, const std::string& prefix) {
+    return s.compare(0, prefix.size(), prefix) == 0;
+}
+
+bool is_http_url(const std::string& u) {
+    std::string l = lower(u.substr(0, 8));
+    return starts_with(l, "http:") || starts_with(l, "https:");
+}
+
+const Engine* find_engine(const Store& s, const std::string& id) {
+    for (auto& e : s.engines) {
+        if (e.id == id)
+            return &e;
+    }
+    return nullptr;
+}
+
+std::string engine_json(const Store& s, const Engine& e) {
+    return "{\"id\":" + q(e.id) + ",\"name\":" + q(e.name) + ",\"keyword\":" + q(e.keyword) +
+           ",\"searchUrl\":" + q(e.search_url) +
+           ",\"suggestUrl\":" + (e.suggest_url.empty() ? "null" : q(e.suggest_url)) +
+           ",\"faviconUrl\":" + (e.favicon_url.empty() ? "null" : q(e.favicon_url)) +
+           ",\"isDefault\":" + (s.default_engine == e.id ? "true" : "false") +
+           ",\"source\":\"user\"}";
+}
+
+std::string engines_json(const Store& s) {
+    std::string out = "[";
+    for (size_t i = 0; i < s.engines.size(); ++i)
+        out += (i ? "," : "") + engine_json(s, s.engines[i]);
+    return out + "]";
+}
+
+/* The terms as a URL query component: everything but unreserved characters is percent-encoded,
+   so a space is %20 (not +, which only form encoding reads as a space). */
+std::string encode_terms(const std::string& terms) {
+    static const char* hex = "0123456789ABCDEF";
+    std::string out;
+    for (unsigned char ch : terms) {
+        if (std::isalnum(ch) || ch == '-' || ch == '.' || ch == '_' || ch == '~') {
+            out += static_cast<char>(ch);
+        } else {
+            out += '%';
+            out += hex[ch / 16];
+            out += hex[ch % 16];
+        }
+    }
+    return out;
+}
+
+std::string search_url_for(const Engine& e, const std::string& terms) {
+    std::string url = e.search_url;
+    const std::string marker = "{searchTerms}";
+    std::string encoded = encode_terms(terms);
+    for (size_t at = url.find(marker); at != std::string::npos; at = url.find(marker, at)) {
+        url.replace(at, marker.size(), encoded);
+        at += encoded.size();
+    }
+    return url;
+}
+
+struct Classified {
+    bool is_url = false;
+    std::string url;       /* what to load; empty for a search with no default engine */
+    std::string engine_id; /* the engine a search uses */
+    bool keyword = false;  /* the engine was chosen by its keyword */
+};
+
+/* `text` is "scheme:" followed by something that is not a space (about:blank, conf://settings). */
+bool has_scheme(const std::string& t) {
+    size_t colon = t.find(':');
+    if (colon == std::string::npos || colon == 0 || colon + 1 >= t.size() || has_space(t) ||
+        !std::isalpha(static_cast<unsigned char>(t[0])))
+        return false;
+    for (size_t i = 0; i < colon; ++i) {
+        char ch = t[i];
+        if (!std::isalnum(static_cast<unsigned char>(ch)) && ch != '+' && ch != '-' && ch != '.')
+            return false;
+    }
+    return true;
+}
+
+/* A host, optionally with a port and a path: no spaces, and a dot or the name localhost. */
+bool looks_like_host(const std::string& t, bool* is_localhost) {
+    if (t.empty() || has_space(t))
+        return false;
+    std::string host = t.substr(0, t.find_first_of("/?#"));
+    size_t colon = host.find(':');
+    if (colon != std::string::npos) {
+        std::string port = host.substr(colon + 1);
+        if (port.empty() || !std::all_of(port.begin(), port.end(), [](char ch) {
+                return std::isdigit(static_cast<unsigned char>(ch)) != 0;
+            }))
+            return false;
+        host.resize(colon);
+    }
+    if (host.empty() || host.front() == '.' || host.back() == '.')
+        return false;
+    for (char ch : host) {
+        if (!std::isalnum(static_cast<unsigned char>(ch)) && ch != '-' && ch != '.' && ch != '_')
+            return false;
+    }
+    *is_localhost = lower(host) == "localhost";
+    return *is_localhost || host.find('.') != std::string::npos;
+}
+
+/* Tells a URL from a query. The stub's rules are a stand-in: the engine uses Chromium's own
+   classifier. In order: a keyword and terms; a scheme; a host (localhost gets http://, any other
+   host https://); anything else is a search with the default engine, if there is one. */
+Classified classify(const Store& s, const std::string& text) {
+    Classified r;
+    size_t space = text.find(' ');
+    if (space != std::string::npos) {
+        std::string rest = trim(text.substr(space + 1));
+        for (auto& e : s.engines) {
+            if (!rest.empty() && lower(e.keyword) == lower(text.substr(0, space))) {
+                r.url = search_url_for(e, rest);
+                r.engine_id = e.id;
+                r.keyword = true;
+                return r;
+            }
+        }
+    }
+    bool localhost = false;
+    /* host:port looks like a scheme, and is a host. */
+    if (looks_like_host(text, &localhost)) {
+        r.is_url = true;
+        r.url = (localhost ? "http://" : "https://") + text;
+        return r;
+    }
+    if (has_scheme(text)) {
+        r.is_url = true;
+        r.url = text;
+        return r;
+    }
+    if (const Engine* e = find_engine(s, s.default_engine)) {
+        r.url = search_url_for(*e, text);
+        r.engine_id = e->id;
+    }
+    return r;
+}
+
+/* The URL without its scheme and a leading www., lower case: what typed text is completed against.
+ */
+std::string completion_base(const std::string& url) {
+    std::string u = lower(url);
+    size_t scheme = u.find("://");
+    if (scheme != std::string::npos)
+        u.erase(0, scheme + 3);
+    if (starts_with(u, "www."))
+        u.erase(0, 4);
+    return u;
+}
+
+struct Suggestion {
+    const char* type;
+    std::string text, url, inline_completion;
+    int relevance;
+};
+
+std::string suggestion_json(const Suggestion& g) {
+    return std::string("{\"type\":\"") + g.type + "\",\"text\":" + q(g.text) +
+           ",\"url\":" + q(g.url) + ",\"relevance\":" + std::to_string(g.relevance) +
+           ",\"inlineCompletion\":" +
+           (g.inline_completion.empty() ? "null" : q(g.inline_completion)) + "}";
+}
+
+/* Suggestions come only from the profile's own data: nothing goes to the network. */
+std::vector<Suggestion> suggest(const Store& s, const std::string& text) {
+    std::vector<Suggestion> out;
+    if (text.empty())
+        return out;
+    std::string needle = lower(text);
+    std::string base = completion_base(text);
+    auto completion = [&](const std::string& url) {
+        std::string b = completion_base(url);
+        return starts_with(b, base) && b.size() > base.size() ? b.substr(base.size()) : "";
+    };
+    auto matches = [&](const std::string& a, const std::string& b) {
+        return contains(lower(a), needle) || contains(lower(b), needle);
+    };
+    Classified c = classify(s, text);
+    if (c.is_url)
+        out.push_back({"url", text, c.url, "", 1300});
+    else if (c.keyword)
+        out.push_back({"keyword", text, c.url, "", 1200});
+    for (auto& b : s.bookmarks) {
+        if (!b.folder && matches(b.title, b.url))
+            out.push_back({"bookmark", b.title, b.url, completion(b.url), 1100});
+    }
+    for (auto& h : s.history) {
+        if (matches(h.title, h.url))
+            out.push_back(
+                {"history", h.title, h.url, completion(h.url), 900 + std::min(h.visits, 99)});
+    }
+    if (const Engine* e = find_engine(s, s.default_engine); e && !c.keyword)
+        out.push_back({"search", text, search_url_for(*e, text), "", 800});
+    std::stable_sort(out.begin(), out.end(), [](const Suggestion& a, const Suggestion& b) {
+        return a.relevance > b.relevance;
+    });
+    return out;
+}
+
+/* The checks addEngine and updateEngine share, on the values the engine will have. */
+bool check_engine(Ctx& c, const Engine& e) {
+    if (trim(e.name).empty())
+        return c.fail(BDK_CODE_INVALID_ARGUMENTS, "'name' must not be empty");
+    if (trim(e.keyword).empty() || has_space(e.keyword))
+        return c.fail(BDK_CODE_INVALID_ARGUMENTS, "'keyword' must be one word and not empty");
+    for (auto& other : c.store.engines) {
+        if (other.id != e.id && lower(other.keyword) == lower(e.keyword))
+            return c.fail(BDK_CODE_INVALID_ARGUMENTS,
+                          "'keyword' is already used by engine '" + other.id + "'");
+    }
+    if (!is_http_url(e.search_url) || !contains(e.search_url, "{searchTerms}"))
+        return c.fail(BDK_CODE_INVALID_ARGUMENTS,
+                      "'searchUrl' must start with http: or https: and contain {searchTerms}");
+    if (!e.suggest_url.empty() && !is_http_url(e.suggest_url))
+        return c.fail(BDK_CODE_INVALID_ARGUMENTS, "'suggestUrl' must start with http: or https:");
+    return true;
+}
+
+bool run_search(Ctx& c) {
+    const std::string& name = c.call.name;
+    Store& s = c.store;
+    auto announce = [&] {
+        emit_builtin_event(current_runtime(), "search.enginesChanged", c.call.profile->handle,
+                           "{\"engines\":" + engines_json(s) + ",\"source\":\"application\"}");
+    };
+    auto find = [&](const std::string& id) -> Engine* {
+        for (auto& e : s.engines) {
+            if (e.id == id)
+                return &e;
+        }
+        c.fail(BDK_CODE_INVALID_ARGUMENTS, "no search engine '" + id + "'");
+        return nullptr;
+    };
+
+    if (name == "search.engines") {
+        c.out = "{\"engines\":" + engines_json(s) + "}";
+        return true;
+    }
+    if (name == "search.addEngine") {
+        Engine e{next_id("e"),        c.text("name"),       c.text("keyword"),
+                 c.text("searchUrl"), c.text("suggestUrl"), c.text("faviconUrl")};
+        if (!check_engine(c, e))
+            return false;
+        s.engines.push_back(e);
+        c.out = engine_json(s, e);
+        announce();
+        return true;
+    }
+    if (name == "search.updateEngine") {
+        Engine* e = find(c.text("id"));
+        if (!e)
+            return false;
+        Engine changed = *e;
+        if (c.arg("name"))
+            changed.name = c.text("name");
+        if (c.arg("keyword"))
+            changed.keyword = c.text("keyword");
+        if (c.arg("searchUrl"))
+            changed.search_url = c.text("searchUrl");
+        if (c.arg("suggestUrl"))
+            changed.suggest_url = c.text("suggestUrl");
+        if (c.arg("faviconUrl"))
+            changed.favicon_url = c.text("faviconUrl");
+        if (!check_engine(c, changed))
+            return false;
+        *e = std::move(changed);
+        c.out = engine_json(s, *e);
+        announce();
+        return true;
+    }
+    if (name == "search.removeEngine") {
+        Engine* e = find(c.text("id"));
+        if (!e)
+            return false;
+        if (s.default_engine == e->id)
+            return c.fail(BDK_CODE_INVALID_ARGUMENTS,
+                          "the default engine cannot be removed; make another the default first");
+        s.engines.erase(s.engines.begin() + (e - s.engines.data()));
+        c.out = "null";
+        announce();
+        return true;
+    }
+    if (name == "search.setDefault") {
+        Engine* e = find(c.text("id"));
+        if (!e)
+            return false;
+        s.default_engine = e->id;
+        c.out = "null";
+        announce();
+        return true;
+    }
+    if (name == "search.classify") {
+        std::string text = trim(c.text("text"));
+        if (text.empty())
+            return c.fail(BDK_CODE_INVALID_ARGUMENTS, "'text' must not be empty");
+        Classified r = classify(s, text);
+        c.out = std::string("{\"kind\":\"") + (r.is_url ? "url" : "search") +
+                "\",\"url\":" + (r.url.empty() ? "null" : q(r.url)) +
+                ",\"engineId\":" + (r.engine_id.empty() ? "null" : q(r.engine_id)) + "}";
+        return true;
+    }
+    if (name == "search.suggestions") {
+        int64_t limit = c.arg("limit") ? static_cast<int64_t>(c.arg("limit")->number) : 8;
+        if (limit < 1)
+            return c.fail(BDK_CODE_INVALID_ARGUMENTS, "'limit' must be at least 1");
+        std::vector<Suggestion> all = suggest(s, trim(c.text("text")));
+        c.out = "{\"suggestions\":[";
+        for (size_t i = 0; i < all.size() && static_cast<int64_t>(i) < limit; ++i)
+            c.out += (i ? "," : "") + suggestion_json(all[i]);
+        c.out += "]}";
+        return true;
+    }
+    /* search.deleteSuggestion */
+    erase_history_url(s, c.text("url"));
+    c.out = "null";
+    return true;
 }
 
 bool run(Ctx& c) {
@@ -273,11 +629,8 @@ bool run(Ctx& c) {
         return true;
     }
     if (name == "history.deleteUrls") {
-        for (auto& u : c.arg("urls")->items) {
-            s.history.erase(std::remove_if(s.history.begin(), s.history.end(),
-                                           [&](const HistoryRow& h) { return h.url == u.text; }),
-                            s.history.end());
-        }
+        for (auto& u : c.arg("urls")->items)
+            erase_history_url(s, u.text);
         c.out = "null";
         return true;
     }
@@ -535,6 +888,9 @@ bool run(Ctx& c) {
         c.out = "null";
         return true;
     }
+
+    if (name.compare(0, 7, "search.") == 0)
+        return run_search(c);
 
     if (name == "system.defaultBrowser.status") {
         c.out = "{\"isDefault\":false,\"canBeDefault\":true}";

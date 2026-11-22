@@ -1,5 +1,12 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -48,7 +55,7 @@ describe.skipIf(!packaged)("packaged executable (skipped when dist/bdk is absent
   it("prints help", () => {
     const result = bdk(["--help"]);
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("Steps: config");
+    expect(result.stdout).toContain("Steps: config, codegen, pages, automation, devtools, sign");
   });
 
   it("exits 2 for an unknown command", () => {
@@ -67,6 +74,89 @@ describe.skipIf(!packaged)("packaged executable (skipped when dist/bdk is absent
       expect(result.status).toBe(3);
       expect(result.stderr).toContain("[cli.asset_missing]");
     }
+  });
+
+  it("packages a plain page and the SDK with `build config pages`", async () => {
+    const project = await tempProject();
+    mkdirSync(join(project.dir, "Pages", "Settings"), { recursive: true });
+    writeFileSync(
+      join(project.dir, "Pages", "Settings", "index.html"),
+      '<!doctype html><title>Settings</title><script type="module" src="./main.js"></script>',
+    );
+    writeFileSync(join(project.dir, "Pages", "Settings", "main.js"), "export {};\n");
+    const app = join(await tempDir(), "Demo.app");
+    const result = bdk(["build", "config", "pages", "--bundle", app], project.dir);
+    if (!existsSync(join(cliRoot, "assets", "bdk.schema.json"))) {
+      expect(result.status).toBe(3);
+      return;
+    }
+    expect(result).toMatchObject({ status: 0, stderr: "" });
+    const resources = join(app, "Contents", "Resources");
+    expect(existsSync(join(resources, "Pages", "Settings", "index.html"))).toBe(true);
+    expect(existsSync(join(resources, "BDK", "js", "internal", "index.js"))).toBe(true);
+  });
+
+  it("writes the @bdk packages and links them into Pages with `build config codegen`", async () => {
+    const project = await tempProject();
+    writeFileSync(
+      join(project.dir, "bdk.toml"),
+      '[browser]\nname = "Demo"\ninternal_scheme = "demo"\n',
+    );
+    mkdirSync(join(project.dir, "Pages", "Settings"), { recursive: true });
+    const result = bdk(["build", "config", "codegen"], project.dir);
+    if (!existsSync(join(cliRoot, "assets", "bdk.schema.json"))) {
+      expect(result.status).toBe(3);
+      return;
+    }
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain("[codegen.no_declarations]");
+    const linked = join(project.dir, "Pages", "node_modules", "@bdk");
+    for (const file of [
+      "internal/settings.js",
+      "internal/settings.d.ts",
+      "internal/app.d.ts",
+      "internal/package.json",
+      "protocol/index.d.ts",
+      "vite/index.js",
+      "env.d.ts",
+    ]) {
+      expect(existsSync(join(linked, file)), file).toBe(true);
+    }
+  });
+
+  it("builds a Vite page with the project's own Vite and no node on PATH", async () => {
+    const vite = join(cliRoot, "..", "js", "vite");
+    const project = await tempProject();
+    const pages = join(project.dir, "Pages");
+    mkdirSync(join(pages, "Settings"), { recursive: true });
+    mkdirSync(join(pages, "node_modules", "@bdk"), { recursive: true });
+    symlinkSync(
+      realpathSync(join(vite, "node_modules", "vite")),
+      join(pages, "node_modules", "vite"),
+    );
+    symlinkSync(realpathSync(vite), join(pages, "node_modules", "@bdk", "vite"));
+    writeFileSync(join(pages, "package.json"), '{"type":"module"}');
+    writeFileSync(
+      join(pages, "vite.config.ts"),
+      'import { bdk } from "@bdk/vite";\nexport default { plugins: [bdk()] };\n',
+    );
+    writeFileSync(
+      join(pages, "Settings", "index.html"),
+      '<!doctype html><title>Settings</title><script type="module" src="./main.ts"></script>',
+    );
+    writeFileSync(join(pages, "Settings", "main.ts"), 'console.log("settings");\n');
+    const app = join(await tempDir(), "Demo.app");
+    const result = bdk(["build", "config", "pages", "--bundle", app], project.dir);
+    if (!existsSync(join(cliRoot, "assets", "bdk.schema.json"))) {
+      expect(result.status).toBe(3);
+      return;
+    }
+    expect(result).toMatchObject({ status: 0, stderr: "" });
+    const html = readFileSync(
+      join(app, "Contents", "Resources", "Pages", "Settings", "index.html"),
+      "utf8",
+    );
+    expect(html).toMatch(/src="\.\/assets\/Settings-[\w-]+\.js"/);
   });
 
   it("finds no project outside one, exit 1", async () => {

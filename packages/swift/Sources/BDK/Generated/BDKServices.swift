@@ -788,17 +788,20 @@ public struct BDKCallerInfo: Codable, Sendable, Equatable {
     public var name: String
     public var profile: String?
     public var capabilities: [String]
+    public var internalScheme: String?
 
     public init(
         kind: BDKCallerKind,
         name: String,
         profile: String? = nil,
-        capabilities: [String]
+        capabilities: [String],
+        internalScheme: String? = nil
     ) {
         self.kind = kind
         self.name = name
         self.profile = profile
         self.capabilities = capabilities
+        self.internalScheme = internalScheme
     }
 }
 
@@ -844,6 +847,93 @@ public struct BDKUserScript: Codable, Sendable, Equatable {
         self.allFrames = allFrames
         self.javascript = javascript
         self.css = css
+    }
+}
+
+public enum BDKSearchEngineSource: String, Codable, Sendable, Equatable, CaseIterable {
+    case product
+    case user
+}
+
+public struct BDKSearchEngine: Codable, Sendable, Equatable {
+    public var id: String
+    public var name: String
+    public var keyword: String
+    public var searchUrl: String
+    public var suggestUrl: String?
+    public var faviconUrl: URL?
+    public var isDefault: Bool
+    public var source: BDKSearchEngineSource
+
+    public init(
+        id: String,
+        name: String,
+        keyword: String,
+        searchUrl: String,
+        suggestUrl: String? = nil,
+        faviconUrl: URL? = nil,
+        isDefault: Bool,
+        source: BDKSearchEngineSource
+    ) {
+        self.id = id
+        self.name = name
+        self.keyword = keyword
+        self.searchUrl = searchUrl
+        self.suggestUrl = suggestUrl
+        self.faviconUrl = faviconUrl
+        self.isDefault = isDefault
+        self.source = source
+    }
+}
+
+public enum BDKInputKind: String, Codable, Sendable, Equatable, CaseIterable {
+    case url
+    case search
+}
+
+public struct BDKClassification: Codable, Sendable, Equatable {
+    public var kind: BDKInputKind
+    public var url: URL?
+    public var engineId: String?
+
+    public init(
+        kind: BDKInputKind,
+        url: URL? = nil,
+        engineId: String? = nil
+    ) {
+        self.kind = kind
+        self.url = url
+        self.engineId = engineId
+    }
+}
+
+public enum BDKSuggestionType: String, Codable, Sendable, Equatable, CaseIterable {
+    case url
+    case history
+    case bookmark
+    case keyword
+    case search
+}
+
+public struct BDKSuggestion: Codable, Sendable, Equatable {
+    public var type: BDKSuggestionType
+    public var text: String
+    public var url: URL
+    public var relevance: Int
+    public var inlineCompletion: String?
+
+    public init(
+        type: BDKSuggestionType,
+        text: String,
+        url: URL,
+        relevance: Int,
+        inlineCompletion: String? = nil
+    ) {
+        self.type = type
+        self.text = text
+        self.url = url
+        self.relevance = relevance
+        self.inlineCompletion = inlineCompletion
     }
 }
 
@@ -898,6 +988,123 @@ public struct BDKDefaultBrowserStatus: Codable, Sendable, Equatable {
     ) {
         self.isDefault = isDefault
         self.canBeDefault = canBeDefault
+    }
+}
+
+public enum BDKProviderPrivacy: String, Codable, Sendable, Equatable, CaseIterable {
+    case onDevice
+    case remote
+}
+
+public struct BDKProviderDescriptor: Codable, Sendable, Equatable {
+    public var id: String
+    public var name: String
+    public var privacy: BDKProviderPrivacy
+    public var host: String?
+    public var policyUrl: URL?
+    public var protection: String?
+
+    public init(
+        id: String,
+        name: String,
+        privacy: BDKProviderPrivacy,
+        host: String? = nil,
+        policyUrl: URL? = nil,
+        protection: String? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.privacy = privacy
+        self.host = host
+        self.policyUrl = policyUrl
+        self.protection = protection
+    }
+}
+
+public struct BDKLanguagePair: Codable, Sendable, Equatable {
+    public var from: String
+    public var to: String
+    public var installed: Bool
+
+    public init(
+        from: String,
+        to: String,
+        installed: Bool
+    ) {
+        self.from = from
+        self.to = to
+        self.installed = installed
+    }
+}
+
+public struct BDKTranslationPreferences: Codable, Sendable, Equatable {
+    public var target: String
+    public var alwaysTranslate: [String]
+    public var neverTranslate: [String]
+    public var neverSites: [String]
+    public var offers: Bool
+
+    public init(
+        target: String,
+        alwaysTranslate: [String],
+        neverTranslate: [String],
+        neverSites: [String],
+        offers: Bool
+    ) {
+        self.target = target
+        self.alwaysTranslate = alwaysTranslate
+        self.neverTranslate = neverTranslate
+        self.neverSites = neverSites
+        self.offers = offers
+    }
+}
+
+public enum BDKTranslationPhase: String, Codable, Sendable, Equatable, CaseIterable {
+    case unavailable
+    case available
+    case translating
+    case translated
+    case failed
+}
+
+public struct BDKTranslationError: Codable, Sendable, Equatable {
+    public var domain: String
+    public var code: String
+    public var message: String
+
+    public init(
+        domain: String,
+        code: String,
+        message: String
+    ) {
+        self.domain = domain
+        self.code = code
+        self.message = message
+    }
+}
+
+public struct BDKTranslationState: Codable, Sendable, Equatable {
+    public var phase: BDKTranslationPhase
+    public var detected: String?
+    public var from: String?
+    public var to: String?
+    public var progress: Double?
+    public var error: BDKTranslationError?
+
+    public init(
+        phase: BDKTranslationPhase,
+        detected: String? = nil,
+        from: String? = nil,
+        to: String? = nil,
+        progress: Double? = nil,
+        error: BDKTranslationError? = nil
+    ) {
+        self.phase = phase
+        self.detected = detected
+        self.from = from
+        self.to = to
+        self.progress = progress
+        self.error = error
     }
 }
 
@@ -2412,6 +2619,158 @@ public struct BDKScripts {
     }
 }
 
+/// The `search` commands.
+@MainActor
+public struct BDKSearch {
+    let scope: BDKServiceScope
+
+    /// `search.engines`. Needs the capability `search.read` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func engines() async throws -> [BDKSearchEngine] {
+        struct Output: Decodable {
+            var engines: [BDKSearchEngine]
+        }
+        return try await scope.call("search.engines", BDKVoid(), as: Output.self).engines
+    }
+
+    /// `search.addEngine`. Needs the capability `search.manage` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func addEngine(
+        name: String,
+        keyword: String,
+        searchUrl: String,
+        suggestUrl: String? = nil,
+        faviconUrl: URL? = nil
+    ) async throws -> BDKSearchEngine {
+        struct Arguments: Encodable {
+            var name: String
+            var keyword: String
+            var searchUrl: String
+            var suggestUrl: String?
+            var faviconUrl: URL?
+        }
+        return try await scope.call("search.addEngine", Arguments(name: name, keyword: keyword, searchUrl: searchUrl, suggestUrl: suggestUrl, faviconUrl: faviconUrl), as: BDKSearchEngine.self)
+    }
+
+    /// `search.updateEngine`. Needs the capability `search.manage` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func updateEngine(
+        _ id: String,
+        name: String? = nil,
+        keyword: String? = nil,
+        searchUrl: String? = nil,
+        suggestUrl: String? = nil,
+        faviconUrl: URL? = nil
+    ) async throws -> BDKSearchEngine {
+        struct Arguments: Encodable {
+            var id: String
+            var name: String?
+            var keyword: String?
+            var searchUrl: String?
+            var suggestUrl: String?
+            var faviconUrl: URL?
+        }
+        return try await scope.call("search.updateEngine", Arguments(id: id, name: name, keyword: keyword, searchUrl: searchUrl, suggestUrl: suggestUrl, faviconUrl: faviconUrl), as: BDKSearchEngine.self)
+    }
+
+    /// `search.removeEngine`. Needs the capability `search.manage` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func removeEngine(
+        _ id: String
+    ) async throws {
+        struct Arguments: Encodable {
+            var id: String
+        }
+        try await scope.run("search.removeEngine", Arguments(id: id))
+    }
+
+    /// `search.setDefault`. Needs the capability `search.manage` from a page or a session; a call from Swift is not checked.
+    /// A page must have been given a user gesture to call it; a call from Swift needs none.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func setDefault(
+        _ id: String
+    ) async throws {
+        struct Arguments: Encodable {
+            var id: String
+        }
+        try await scope.run("search.setDefault", Arguments(id: id))
+    }
+
+    /// `search.classify`. Needs the capability `search.read` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func classify(
+        text: String
+    ) async throws -> BDKClassification {
+        struct Arguments: Encodable {
+            var text: String
+        }
+        return try await scope.call("search.classify", Arguments(text: text), as: BDKClassification.self)
+    }
+
+    /// `search.suggestions`. Needs the capability `search.read` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func suggestions(
+        text: String,
+        limit: Int? = nil
+    ) async throws -> [BDKSuggestion] {
+        struct Arguments: Encodable {
+            var text: String
+            var limit: Int?
+        }
+        struct Output: Decodable {
+            var suggestions: [BDKSuggestion]
+        }
+        return try await scope.call("search.suggestions", Arguments(text: text, limit: limit), as: Output.self).suggestions
+    }
+
+    /// `search.deleteSuggestion`. Needs the capability `history.write` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func deleteSuggestion(
+        url: URL
+    ) async throws {
+        struct Arguments: Encodable {
+            var url: URL
+        }
+        try await scope.run("search.deleteSuggestion", Arguments(url: url))
+    }
+
+    /// `search.*` events. Each is delivered with the event's payload.
+    public enum Event: Sendable, Equatable {
+        case enginesChanged(EnginesChanged)
+
+        public struct EnginesChanged: Codable, Sendable, Equatable {
+            public var engines: [BDKSearchEngine]
+            public var source: BDKChangeSource
+
+            public init(
+                engines: [BDKSearchEngine],
+                source: BDKChangeSource
+            ) {
+                self.engines = engines
+                self.source = source
+            }
+        }
+
+        static let names = ["search.enginesChanged"]
+
+        /// Decodes one delivered event; nil for a name this version does not know.
+        static func decode(name: String, payload: String) throws -> Event? {
+            switch name {
+            case "search.enginesChanged":
+                return .enginesChanged(try BDKServiceCoding.decode(EnginesChanged.self, from: payload))
+            default:
+                return nil
+            }
+        }
+    }
+
+    /// The events of this namespace. Reading the property subscribes at once, so events that happen
+    /// after it are delivered. The stream ends when it is no longer iterated or the runtime shuts down.
+    public var events: AsyncStream<Event> {
+        scope.events(Event.names, decode: Event.decode)
+    }
+}
+
 /// The `settings` commands.
 @MainActor
 public struct BDKSettings {
@@ -2553,6 +2912,132 @@ public struct BDKSystemDefaultBrowser {
     }
 }
 
+/// The `translation` commands.
+@MainActor
+public struct BDKTranslation {
+    let scope: BDKServiceScope
+
+    /// `translation.provider`. Needs the capability `translation.read` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func provider() async throws -> BDKProviderDescriptor {
+        return try await scope.call("translation.provider", BDKVoid(), as: BDKProviderDescriptor.self)
+    }
+
+    /// `translation.languages`. Needs the capability `translation.read` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func languages() async throws -> [BDKLanguagePair] {
+        struct Output: Decodable {
+            var pairs: [BDKLanguagePair]
+        }
+        return try await scope.call("translation.languages", BDKVoid(), as: Output.self).pairs
+    }
+
+    /// `translation.preferences`. Needs the capability `translation.read` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func preferences() async throws -> BDKTranslationPreferences {
+        return try await scope.call("translation.preferences", BDKVoid(), as: BDKTranslationPreferences.self)
+    }
+
+    /// `translation.setPreferences`. Needs the capability `translation.manage` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func setPreferences(
+        target: String? = nil,
+        alwaysTranslate: [String]? = nil,
+        neverTranslate: [String]? = nil,
+        neverSites: [String]? = nil,
+        offers: Bool? = nil
+    ) async throws -> BDKTranslationPreferences {
+        struct Arguments: Encodable {
+            var target: String?
+            var alwaysTranslate: [String]?
+            var neverTranslate: [String]?
+            var neverSites: [String]?
+            var offers: Bool?
+        }
+        return try await scope.call("translation.setPreferences", Arguments(target: target, alwaysTranslate: alwaysTranslate, neverTranslate: neverTranslate, neverSites: neverSites, offers: offers), as: BDKTranslationPreferences.self)
+    }
+
+    /// `translation.downloadModel`. Needs the capability `translation.manage` from a page or a session; a call from Swift is not checked.
+    /// `onProgress` runs on the main actor for each progress report.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func downloadModel(
+        from: String,
+        to: String,
+        onProgress: (@MainActor (Double, String) -> Void)? = nil
+    ) async throws {
+        struct Arguments: Encodable {
+            var from: String
+            var to: String
+        }
+        try await scope.run("translation.downloadModel", Arguments(from: from, to: to), onProgress: onProgress)
+    }
+
+    /// `translation.removeModel`. Needs the capability `translation.manage` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func removeModel(
+        from: String,
+        to: String
+    ) async throws {
+        struct Arguments: Encodable {
+            var from: String
+            var to: String
+        }
+        try await scope.run("translation.removeModel", Arguments(from: from, to: to))
+    }
+
+    /// `translation.*` events. Each is delivered with the event's payload.
+    public enum Event: Sendable, Equatable {
+        case preferencesChanged(BDKTranslationPreferences)
+        case modelsChanged(ModelsChanged)
+        case stateChanged(StateChanged)
+
+        public struct ModelsChanged: Codable, Sendable, Equatable {
+            public var pairs: [BDKLanguagePair]
+
+            public init(
+                pairs: [BDKLanguagePair]
+            ) {
+                self.pairs = pairs
+            }
+        }
+
+        public struct StateChanged: Codable, Sendable, Equatable {
+            public var page: String
+            public var state: BDKTranslationState
+
+            public init(
+                page: String,
+                state: BDKTranslationState
+            ) {
+                self.page = page
+                self.state = state
+            }
+        }
+
+        static let names = ["translation.preferencesChanged", "translation.modelsChanged", "translation.stateChanged"]
+
+        /// Decodes one delivered event; nil for a name this version does not know.
+        static func decode(name: String, payload: String) throws -> Event? {
+            switch name {
+            case "translation.preferencesChanged":
+                return .preferencesChanged(try BDKServiceCoding.decode(BDKTranslationPreferences.self, from: payload))
+            case "translation.modelsChanged":
+                return .modelsChanged(try BDKServiceCoding.decode(ModelsChanged.self, from: payload))
+            case "translation.stateChanged":
+                return .stateChanged(try BDKServiceCoding.decode(StateChanged.self, from: payload))
+            default:
+                return nil
+            }
+        }
+    }
+
+    /// The events of this namespace. Reading the property subscribes at once, so events that happen
+    /// after it are delivered. The stream ends when it is no longer iterated or the runtime shuts down.
+    public var events: AsyncStream<Event> {
+        scope.events(Event.names, decode: Event.decode)
+    }
+}
+
 // MARK: - Entry points
 
 extension BDKProfile {
@@ -2601,9 +3086,19 @@ extension BDKProfile {
         BDKScripts(scope: BDKServiceScope(runtime: runtime, profile: self))
     }
 
+    /// The `search` commands in this profile.
+    public var search: BDKSearch {
+        BDKSearch(scope: BDKServiceScope(runtime: runtime, profile: self))
+    }
+
     /// The `settings` commands in this profile.
     public var settings: BDKSettings {
         BDKSettings(scope: BDKServiceScope(runtime: runtime, profile: self))
+    }
+
+    /// The `translation` commands in this profile.
+    public var translation: BDKTranslation {
+        BDKTranslation(scope: BDKServiceScope(runtime: runtime, profile: self))
     }
 }
 

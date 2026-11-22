@@ -52,9 +52,11 @@ struct Caller : std::enable_shared_from_this<Caller> {
     bdk_profile_t profile = 0; /* a page: the profile it is in */
     /* Capability names, and `app.<prefix>.*` patterns. There is no other wildcard. */
     std::vector<std::string> capabilities;
-    Scope scope; /* a session */
+    Scope scope;                 /* a session */
+    std::string internal_scheme; /* a page: the branded scheme, for runtime.caller */
     bool revoked = false;
     std::vector<std::weak_ptr<Call>> calls; /* outstanding calls, cancelled when revoked */
+    std::vector<std::weak_ptr<Sub>> subs;   /* its event subscriptions, ended when revoked */
 };
 
 /* The host's caller: full authority. */
@@ -140,9 +142,20 @@ bdk_call_t broker_submit(const std::shared_ptr<Runtime>& rt, const std::shared_p
                          bdk_progress_cb prog, void* ctx, bdk_release_cb rel);
 
 /* A caller ends (its page navigated or closed, its session was revoked): its outstanding calls are
-   cancelled with broker.cancelled and their services told to stop. Later calls fail with
-   capability.denied. */
+   cancelled with broker.cancelled and their services told to stop, and its subscriptions end. Later
+   calls fail with capability.denied. */
 void broker_revoke_caller(const std::shared_ptr<Caller>& caller);
+
+/* Subscribes an internal page to a built-in or application event (services.md section 7): the page
+   needs the event's capability (an application event's is its own name), and gets only the events
+   of its own profile. Returns the subscription, released with bdk_unsubscribe or when the caller is
+   revoked; or 0 with *domain, *code and *message set: capability.denied, broker.unknownEvent, or
+   broker.notImplemented for a caller that is not a page (sessions subscribe in M7). */
+bdk_subscription_t broker_subscribe_as(const std::shared_ptr<Runtime>& rt,
+                                       const std::shared_ptr<Caller>& caller,
+                                       const std::string& event, bdk_event_cb cb, void* ctx,
+                                       bdk_release_cb rel, std::string* domain, std::string* code,
+                                       std::string* message);
 
 /* Emits a built-in event (an event of the interface definitions) to the subscriptions for it, by
    name or by identifier. A subscription made for a profile gets only that profile's events;

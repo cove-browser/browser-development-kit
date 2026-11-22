@@ -6,9 +6,20 @@
 
 #include <utility>
 
+#include "base/command_line.h"
+#include "bdk/engine/pages/bundled_page_ui.h"
+#include "bdk/engine/pages/page_broker.mojom.h"
+#include "bdk/engine/pages/page_routes.h"
+#include "bdk/engine/pages/pages_navigation_throttle.h"
+#include "bdk/engine/providers/geolocation_provider.h"
+#include "bdk/engine/providers/provider_settings.h"
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_auth.h"
+#include "content/public/browser/browser_url_handler.h"
+#include "content/public/browser/navigation_throttle_registry.h"
 #include "content/public/browser/url_loader_request_interceptor.h"
+#include "content/public/browser/web_ui_browser_interface_broker_registry.h"
+#include "services/device/public/cpp/geolocation/location_provider.h"
 
 namespace bdk {
 
@@ -35,6 +46,37 @@ BdkContentBrowserClient::WillCreateURLLoaderRequestInterceptors(
   return interceptors;
 }
 
+void BdkContentBrowserClient::AppendExtraCommandLineSwitches(
+    base::CommandLine* command_line,
+    int child_process_id) {
+  ChromeContentBrowserClient::AppendExtraCommandLineSwitches(command_line,
+                                                             child_process_id);
+  // Every process registers the branded scheme the same way (the scheme
+  // patch in chrome/common/chrome_content_client.cc reads it).
+  CopyInternalSchemeSwitch(command_line);
+}
+
+void BdkContentBrowserClient::BrowserURLHandlerCreated(
+    content::BrowserURLHandler* handler) {
+  ChromeContentBrowserClient::BrowserURLHandlerCreated(handler);
+  AddPageUrlHandlers(handler);
+}
+
+void BdkContentBrowserClient::CreateThrottlesForNavigation(
+    content::NavigationThrottleRegistry& registry) {
+  // First, so a navigation the route table refuses runs no other throttle.
+  PagesNavigationThrottle::MaybeCreateAndAdd(registry);
+  ChromeContentBrowserClient::CreateThrottlesForNavigation(registry);
+}
+
+void BdkContentBrowserClient::RegisterTrustedWebUIInterfaceBrokers(
+    content::WebUIBrowserInterfaceBrokerRegistry& registry) {
+  ChromeContentBrowserClient::RegisterTrustedWebUIInterfaceBrokers(registry);
+  // Only BundledPageUI gets the page broker; every other WebUI that asks for
+  // it has its renderer terminated by the per-WebUI broker.
+  registry.ForWebUI<BundledPageUI>().Add<mojom::PageBroker>();
+}
+
 std::unique_ptr<content::LoginDelegate>
 BdkContentBrowserClient::CreateLoginDelegate(
     const net::AuthChallengeInfo& auth_info,
@@ -54,6 +96,21 @@ BdkContentBrowserClient::CreateLoginDelegate(
   return CreateBdkLoginDelegate(auth_info, web_contents,
                                 do_not_prompt_for_login,
                                 std::move(auth_required_callback));
+}
+
+std::unique_ptr<device::LocationProvider>
+BdkContentBrowserClient::OverrideSystemLocationProvider() {
+  return CreateApplicationLocationProvider();
+}
+
+std::string BdkContentBrowserClient::GetGeolocationApiKey() {
+  // The network provider gets a key only when the application chose Google:
+  // the key may be present for another Google provider (architecture.md 16,
+  // invariant 9).
+  if (CurrentProviderSettings().geolocation != "google") {
+    return std::string();
+  }
+  return ChromeContentBrowserClient::GetGeolocationApiKey();
 }
 
 }  // namespace bdk

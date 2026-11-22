@@ -102,18 +102,26 @@ public struct BDKUIText: Sendable, Equatable {
     }
 }
 
-/// A named provider behind a request, with its privacy model.
-public struct BDKProviderDescriptor: Sendable, Equatable {
-    public let name: String
-    public let isRemote: Bool
+/// The provider behind a request, as the request's payload names it: the descriptor of
+/// `translation.provider` (swift-api.md 11.2). A payload from an older runtime that names only the
+/// provider reads as an on-device provider of that name.
+extension BDKProviderDescriptor {
+    /// Whether page content or a URL leaves the device; default UI says so.
+    public var isRemote: Bool { privacy == .remote }
 
     init?(_ payload: BDKUIPayload, key: String = "provider") {
         if let object = payload.object(key) {
-            name = object.string("name") ?? ""
-            isRemote = object.bool("isRemote")
+            let name = object.string("name") ?? ""
+            let remote =
+                object.string("privacy") == BDKProviderPrivacy.remote.rawValue
+                || object.bool("isRemote")
+            self.init(
+                id: object.string("id") ?? name, name: name,
+                privacy: remote ? .remote : .onDevice, host: object.string("host"),
+                policyUrl: object.string("policyUrl").flatMap(URL.init(string:)),
+                protection: object.string("protection"))
         } else if let text = payload.string(key) {
-            name = text
-            isRemote = false
+            self.init(id: text, name: text, privacy: .onDevice)
         } else {
             return nil
         }

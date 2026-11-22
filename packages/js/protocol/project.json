@@ -2,26 +2,14 @@
   "name": "js-protocol",
   "root": "packages/js/protocol",
   "projectType": "library",
-  "implicitDependencies": ["core"],
   "targets": {
-    "codegen": {
-      "executor": "nx:run-commands",
-      "cache": true,
-      "options": {
-        "command": "echo 'js-protocol:codegen: no interface definitions in packages/core/interface yet; nothing to generate (T-ABI-01, T-JS-01)'"
-      },
-      "inputs": ["{workspaceRoot}/packages/core/interface/**/*"],
-      "outputs": ["{projectRoot}/src/generated"]
-    },
     "build": {
       "executor": "nx:run-commands",
-      "dependsOn": ["codegen"],
       "options": {
         "command": "pnpm exec tsc -p {projectRoot}/tsconfig.build.json"
       },
       "inputs": [
         "default",
-        "{workspaceRoot}/packages/core/interface/**/*",
         {
           "externalDependencies": ["typescript"]
         }

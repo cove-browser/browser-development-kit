@@ -216,9 +216,8 @@ public final class BDKWebContents: Identifiable {
     public var isMuted: Bool { current.isMuted }
     public var visibility: Visibility { current.visibility }
     public var isFocused: Bool { current.isFocused }
-    public var zoom: Double { current.zoom }
-
-    private var current: State {
+    /// The current state, or the last one read when the page is gone.
+    var current: State {
         (try? state()) ?? lastState
     }
 

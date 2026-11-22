@@ -8,5 +8,6 @@ module CBDKStub {
     header "../../../../core/stub/bdk_stub.h"
     header "../../../../core/stub/bdk_stub_broker.h"
     header "../../../../core/stub/bdk_stub_automation.h"
+    header "../../../../core/stub/bdk_stub_providers.h"
     export *
 }

@@ -5,6 +5,8 @@
   "type": "module",
   "main": "dist/main.js",
   "dependencies": {
+    "@bdk/codegen": "workspace:*",
+    "@bdk/vite": "workspace:*",
     "ajv": "8.20.0",
     "smol-toml": "1.9.1"
   },

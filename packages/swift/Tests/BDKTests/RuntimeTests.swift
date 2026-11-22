@@ -191,30 +191,56 @@ extension BDKStubTests {
             #expect(!BDKRuntime.isRunning)
         }
 
+        /// Starts a shutdown and returns once it is in progress. The stub answers the shutdown only
+        /// when it is pumped, so with pumping paused the runtime stays shutting down for `body`
+        /// however the tasks are scheduled.
+        private func duringShutdown(
+            of runtime: BDKRuntime, _ body: () async -> Void
+        ) async -> Task<Void, Never> {
+            await runtime.stub.withAutomaticPumpingPaused {
+                let first = Task { @MainActor in await runtime.shutdown() }
+                while runtime.state == .running { await Task.yield() }
+                await body()
+                return first
+            }
+        }
+
         @Test func shutdownDuringShutdownWaitsForIt() async throws {
             let runtime = try BDKRuntime.startStub()
-            let first = Task { @MainActor in await runtime.shutdown() }
-            while runtime.state == .running { await Task.yield() }
-            #expect(runtime.state == .shuttingDown)
-            await runtime.shutdown()
-            #expect(runtime.state == .stopped)
+            var second: Task<Bool, Never>?
+            var secondCalled = false
+            let first = await duringShutdown(of: runtime) {
+                #expect(runtime.state == .shuttingDown)
+                second = Task { @MainActor in
+                    secondCalled = true
+                    await runtime.shutdown()
+                    // An early return would see the runtime still shutting down.
+                    return runtime.state == .stopped
+                }
+                // From setting the flag to waiting inside `shutdown()` the task does not suspend, so
+                // once the flag is set the second call is waiting while pumping is still paused.
+                while !secondCalled { await Task.yield() }
+                #expect(runtime.state == .shuttingDown)
+            }
+            #expect(await second?.value == true)
             #expect(!BDKRuntime.isRunning)
             await first.value
         }
 
         @Test func quitDuringShutdownWaitsForIt() async throws {
             let runtime = try BDKRuntime.startStub()
-            let first = Task { @MainActor in await runtime.shutdown() }
-            while runtime.state == .running { await Task.yield() }
-            var stoppedWhenAskedAgain: Bool?
-            await withCheckedContinuation { continuation in
+            let (askedAgain, ask) = AsyncStream<Bool>.makeStream()
+            let first = await duringShutdown(of: runtime) {
                 let reply = runtime.terminateReply {
-                    stoppedWhenAskedAgain = runtime.state == .stopped
-                    continuation.resume()
+                    ask.yield(runtime.state == .stopped)
+                    ask.finish()
                 }
                 #expect(reply == .terminateCancel)
+                // Any other reply never asks again; end the stream rather than wait for ever.
+                if reply != .terminateCancel { ask.finish() }
             }
-            #expect(stoppedWhenAskedAgain == true)
+            var answers = askedAgain.makeAsyncIterator()
+            #expect(await answers.next() == true)
             #expect(runtime.terminateReply {} == .terminateNow)
             await first.value
         }

@@ -29,6 +29,11 @@
       "cache": false,
       "options": {
         "command": "bash packages/core/scripts/test-engine.sh"
+      },
+      "configurations": {
+        "silent": {
+          "env": { "BDK_ENGINE_SILENT": "1" }
+        }
       }
     },
     "lint": {

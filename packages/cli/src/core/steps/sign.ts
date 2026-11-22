@@ -11,6 +11,8 @@ import type { Step } from "./step.js";
 export const signStep: Step = {
   name: "sign",
   flags: ["bundle", "identity", "team", "entitlements"],
+  // Only in an Xcode build or with an explicit identity (sdk/cli.md section 5).
+  applies: ({ ctx, args }) => ctx.platform.isIdeBuild(ctx.env) || args.identity !== undefined,
   async run({ project, ctx, args }) {
     if (ctx.env.BDK_SKIP_SIGNING === "1") {
       return {

@@ -22,6 +22,18 @@ export const SWIFT_REPORT_PATH = "packages/swift/Sources/BDK/Generated/BDKServic
  */
 export const NATIVE_NAMESPACES: readonly string[] = ["profiles", "contents", "debug", "devtools"];
 
+/**
+ * Commands that act on one page. Swift reaches them through the page (`page.translation`), written by
+ * hand on `BDKWebContents` because the call names the page in its invoke options; no profile-scoped
+ * wrapper is generated for them. The commands stay reachable through `runtime.commands.invoke`.
+ */
+export const PAGE_COMMANDS: readonly string[] = [
+  "translation.state",
+  "translation.translate",
+  "translation.revert",
+  "translation.present",
+];
+
 /** Namespaces whose Swift name differs from the interface name, because `BDKRuntime` has the other. */
 const SERVICE_NAMES: Readonly<Record<string, { accessor: string; type: string }>> = {
   runtime: { accessor: "about", type: "BDKRuntimeInformation" },
@@ -452,7 +464,8 @@ export function renderSwiftServices(definitions: Definitions): string {
   const commands = definitions.commands.filter(
     (command) =>
       command.callers.includes("swift") &&
-      !NATIVE_NAMESPACES.includes(segments(command.name).namespace),
+      !NATIVE_NAMESPACES.includes(segments(command.name).namespace) &&
+      !PAGE_COMMANDS.includes(command.name),
   );
   const namespaces = [
     ...new Set(commands.map((command) => segments(command.name).namespace)),

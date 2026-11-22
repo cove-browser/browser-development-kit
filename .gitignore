@@ -3,6 +3,8 @@ node_modules/
 .bdk/
 dist/
 build/
+# the //bdk overlay's GN build scripts, not build output
+!chromium/bdk/build/
 .build/
 .swiftpm/
 *.tsbuildinfo
@@ -11,7 +13,20 @@ graph.json
 .DS_Store
 # resolved from bdk.toml by the build
 apps/**/bdk.resolved.json
-# generated bindings are produced by the codegen targets
-packages/js/protocol/src/generated/
+# generated bindings: the @bdk/internal modules js-codegen:codegen writes; keep in step with its outputs (js-codegen tests check)
+packages/js/internal/src/autofill.ts
+packages/js/internal/src/bookmarks.ts
+packages/js/internal/src/downloads.ts
+packages/js/internal/src/history.ts
+packages/js/internal/src/metadata.ts
+packages/js/internal/src/passwords.ts
+packages/js/internal/src/permissions.ts
+packages/js/internal/src/privacy.ts
+packages/js/internal/src/profiles.ts
+packages/js/internal/src/search.ts
+packages/js/internal/src/settings.ts
+packages/js/internal/src/system.ts
+packages/js/internal/src/translation.ts
+packages/js/internal/src/types.ts
 # CMake builds of packages/core next to build/ (engine conformance, sanitizers)
 packages/core/build-*/

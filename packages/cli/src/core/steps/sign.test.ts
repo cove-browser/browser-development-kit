@@ -6,6 +6,7 @@ import type { SignRequest } from "../signing/types.js";
 
 function signingPlatform(requests: SignRequest[], denied = false): Platform {
   return {
+    ...testContext().platform,
     name: "fake",
     isIdeBuild: () => false,
     bundleFacts: () => Promise.resolve(undefined),
@@ -145,7 +146,10 @@ describe("bdk build sign", () => {
     const ctx = testContext();
     expect(await run(["build", "config", "--bundle", "A.app"], ctx)).toBe(2);
     expect(ctx.err.join("")).toContain(
-      "applies to `bdk build automation`, `bdk build devtools`, `bdk build sign`",
+      "applies to `bdk build pages`, `bdk build automation`, `bdk build devtools`, `bdk build sign`",
     );
+    const identity = testContext();
+    expect(await run(["build", "config", "--identity", "-"], identity)).toBe(2);
+    expect(identity.err.join("")).toContain("applies to `bdk build sign`");
   });
 });

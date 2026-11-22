@@ -238,7 +238,7 @@ Asked in this order. A question is skipped when its flag was given or when an ea
 
 ## 5. `bdk build`
 
-Added (S8). Called by Xcode. Each step can also be run alone.
+Added (S8). Called by Xcode. Each step can also be run alone. Built so far: `config`, `codegen` and `pages` (M4, T-CLI-04), `automation` and `devtools` (M7) and `sign` (M2); `runtime` and `embed` are not built. With no step, `pages`, `automation` and `devtools` run only with a bundle (`--bundle`, or an Xcode build). `--out` is the resolved file for `config`, `automation` and `devtools` and a directory for `codegen`, so one run cannot give it to `codegen` and another of them. `--watch` is not built (T-CLI-06, M5). Run from the packaged executable with no Node on the path; not run from an Xcode build.
 
 `bdk build` is not a second way to build or run the application. The developer builds and runs in Xcode, and Xcode's build phases call `bdk build` for the BDK-specific steps (section 8). `bdk build runtime` is one of seven steps of this one command, not a separate command. A developer types `bdk build` by hand in two cases only: `bdk build pages --watch` while editing internal pages, and `bdk build runtime --allow-source-build` in source mode, because a Chromium build must never start as a side effect of pressing Run.
 
