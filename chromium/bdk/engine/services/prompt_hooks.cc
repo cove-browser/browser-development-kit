@@ -14,6 +14,7 @@
 #include "bdk/engine/services/print_prompts.h"
 #include "chrome/browser/printing/embedder_print_preview_hook.h"
 #include "chrome/browser/ui/views/embedder_tab_dialogs_factory.h"
+#include "components/permissions/embedder_prompt_visibility.h"
 
 namespace bdk {
 
@@ -27,6 +28,10 @@ void InstallPromptHooks() {
   InstallAutofillPopupHook();
   InstallExtensionPromptHooks();
   InstallExtensionOptionsPageHook();
+  // An application may show several pages of one window side by side; each
+  // one on screen gets its permission prompt, not only the window's active tab
+  // (T-ADP-06, risk R2).
+  permissions::embedder_prompt_visibility::SetFollowsVisibility(true);
 }
 
 }  // namespace bdk

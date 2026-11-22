@@ -1,0 +1,98 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BDK Patches <patches@bdk.invalid>
+Date: Sat, 21 Nov 2026 17:42:49 -0800
+Subject: [PATCH] bdk: let an embedder have permission prompts follow page
+ visibility
+
+BDK's pages are tabs of a Browser per window, and an application may show
+several of them side by side in one window (an Arc-style split of two, three
+or more panes, laid out by the application, not an upstream split). Since
+PermissionRequestManager adopted TabInterface, a tab's prompt is shown only
+while the tab is its window's active tab or in the active split: a request
+from any other pane on screen failed as a hidden tab
+(NotifyPromptCreationFailedHiddenTab) and waited until the person focused
+that pane. Find, JavaScript dialogs and translation offers in BDK do not go
+through the active tab, so this was the one service that ignored every pane
+but the focused one (BDK risk R2, task T-ADP-06).
+
+Add embedder_prompt_visibility.h, a small inline header with a flag an
+embedder sets once before any WebContents exists (no new target, as
+embedder_browser_window_factory.h), and check it in
+AdoptTabInterfaceIfNeeded: when set, the manager does not subscribe to tab
+activation and follows the WebContents' visibility, as it already does for a
+WebContents that is not a tab. A page on screen is prompted; a hidden one
+waits until it is shown. With the flag unset nothing changes. Only the one
+.cc and the new header are touched.
+
+Used by: the BDK engine (//bdk/engine/host_context.cc).
+---
+ .../permissions/embedder_prompt_visibility.h  | 36 +++++++++++++++++++
+ .../permissions/permission_request_manager.cc |  6 ++++
+ 2 files changed, 42 insertions(+)
+
+diff --git a/components/permissions/embedder_prompt_visibility.h b/components/permissions/embedder_prompt_visibility.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..39263ea84ab362d2b82b982c627e394bae1c76e0
+--- /dev/null
++++ b/components/permissions/embedder_prompt_visibility.h
+@@ -0,0 +1,36 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef COMPONENTS_PERMISSIONS_EMBEDDER_PROMPT_VISIBILITY_H_
++#define COMPONENTS_PERMISSIONS_EMBEDDER_PROMPT_VISIBILITY_H_
++
++// A hook for Chromium embedders that show several tabs of one window at once
++// (side by side, in a layout of their own rather than an upstream split). By
++// default a PermissionRequestManager whose WebContents is a tab shows its
++// prompt only while the tab is the active tab of its window (or a member of
++// the active split). When an embedder sets this, the manager follows the
++// WebContents' visibility instead, as it does for a WebContents that is not a
++// tab: a request from any page on screen is prompted, and one from a hidden
++// page waits until it is shown. Only embedders set it, once, before any
++// WebContents is created.
++namespace permissions::embedder_prompt_visibility {
++
++inline bool& FollowsVisibilityFlag() {
++  static bool follows = false;
++  return follows;
++}
++
++inline void SetFollowsVisibility(bool follows) {
++  FollowsVisibilityFlag() = follows;
++}
++
++// Whether prompts follow the WebContents' visibility rather than tab
++// activation.
++inline bool FollowsVisibility() {
++  return FollowsVisibilityFlag();
++}
++
++}  // namespace permissions::embedder_prompt_visibility
++
++#endif  // COMPONENTS_PERMISSIONS_EMBEDDER_PROMPT_VISIBILITY_H_
+diff --git a/components/permissions/permission_request_manager.cc b/components/permissions/permission_request_manager.cc
+index ddbb3fcf569d23599e2db680b44b019bfb23537c..e581dbd8618b1c98da46df32eabb8fa7e6f02111 100644
+--- a/components/permissions/permission_request_manager.cc
++++ b/components/permissions/permission_request_manager.cc
+@@ -36,6 +36,7 @@
+ #include "components/content_settings/core/common/content_settings_types.h"
+ #include "components/permissions/constants.h"
+ #include "components/permissions/embedded_permission_prompt_flow_model.h"
++#include "components/permissions/embedder_prompt_visibility.h"
+ #include "components/permissions/features.h"
+ #include "components/permissions/origin_keyed_permission_action_service.h"
+ #include "components/permissions/permission_actions_history.h"
+@@ -2089,6 +2090,11 @@ void PermissionRequestManager::AdoptTabInterfaceIfNeeded(
+   if (tab_insert_subscription_ || !tab_interface) {
+     return;
+   }
++  // An embedder that shows several tabs of a window at once has prompts follow
++  // visibility (OnVisibilityChanged) instead of tab activation.
++  if (embedder_prompt_visibility::FollowsVisibility()) {
++    return;
++  }
+   tab_is_active_ = tab_interface->IsActivated();
+   tab_insert_subscription_ = tab_interface->RegisterDidInsert(
+       base::BindRepeating(&PermissionRequestManager::OnTabAttached,
