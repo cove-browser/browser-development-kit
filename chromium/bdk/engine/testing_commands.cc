@@ -24,9 +24,11 @@
 #include "base/files/file_util.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
+#include "base/location.h"
 #include "base/metrics/field_trial_params.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/threading/thread_restrictions.h"
 #include "base/time/time.h"
 #include "base/values.h"
@@ -46,6 +48,7 @@
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_find.h"
 #include "bdk/engine/ui_presenters.h"
+#include "chrome/browser/after_startup_task_utils.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
@@ -65,6 +68,12 @@ namespace {
 
 // 0 nothing started or still running, 1 written, 2 failed.
 int g_capture_state = 0;
+
+// Whether the task startup.post posted has run.
+bool& AfterStartupTaskRan() {
+  static bool ran = false;
+  return ran;
+}
 
 EngineContents* PageOf(const base::DictValue& args) {
   const std::string* handle = args.FindString("contents");
@@ -205,6 +214,20 @@ bool Run(const std::string& name,
     result.Set("store", on_disk ? "disk" : "memory");
     return true;
   }
+  if (name == "startup.post") {
+    // Posts a task the way Chromium posts its after-start-up work
+    // (AfterStartupTaskUtils::PostTask, T-ADP-10); startup.state says whether
+    // it ran.
+    AfterStartupTaskUtils::PostTask(
+        FROM_HERE, base::SequencedTaskRunner::GetCurrentDefault(),
+        base::BindOnce([] { AfterStartupTaskRan() = true; }));
+    return true;
+  }
+  if (name == "startup.state") {
+    result.Set("complete", AfterStartupTaskUtils::IsBrowserStartupComplete());
+    result.Set("ran", AfterStartupTaskRan());
+    return true;
+  }
   if (name == "capture.start") {
     // {"contents", "path", "format": "png" | "pdf"}; poll capture.state.
     EngineContents* page = PageOf(args);
@@ -335,6 +358,16 @@ bool Run(const std::string& name,
         ->GetNetworkContext()
         ->AddHSTS(*host, base::Time::Now() + base::Days(1),
                   /*include_subdomains=*/false, base::DoNothing());
+    return true;
+  }
+  if (name == "network.passthrough") {
+    // {"host"}: loads from the host go to the network, not to the scripted
+    // pages (a test's own server on a name mapped to the loopback address).
+    const std::string* host = args.FindString("host");
+    if (!host) {
+      return false;
+    }
+    PassThroughHostForTesting(*host);
     return true;
   }
   if (name == "script_page") {

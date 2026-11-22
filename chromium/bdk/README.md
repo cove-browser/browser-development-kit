@@ -60,7 +60,8 @@ The overlay therefore reflects the worktree that is building.
 
 Test and diagnostic switches, read from the environment of the application: `BDK_ENGINE_MOCK_KEYCHAIN=1`
 (Chromium's mock Keychain, so tests never prompt), `BDK_ENGINE_SWITCHES` (more Chromium switches, space
-separated, no dashes), and `BDK_ENGINE_KEEP_CHROMIUM=1` (a runtime shutdown leaves Chromium running, so
+separated, no dashes), `BDK_ENGINE_HOST_RESOLVER_RULES` (Chromium's `--host-resolver-rules`, whose rules
+contain spaces), and `BDK_ENGINE_KEEP_CHROMIUM=1` (a runtime shutdown leaves Chromium running, so
 one process can start several runtimes; Chromium itself starts once per process).
 
 ## Host contexts

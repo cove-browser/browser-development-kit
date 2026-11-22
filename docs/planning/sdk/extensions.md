@@ -134,7 +134,7 @@ let outcome = extensions.activateAction(id, on: page, confirmedBy: event)
 
 Rules:
 
-- Activation targets one page, the one the user is looking at. `activeTab` is granted for that page and revoked when it navigates.
+- Activation targets one page, the one the user is looking at. `activeTab` is granted for that page and revoked when it navigates to another origin; as in Chrome, it is kept across navigations within the origin.
 - Activation needs a user gesture. An automation session cannot activate an action.
 - With several pages visible, the application passes the focused page. That is the same page `tabs.query({active: true, currentWindow: true})` returns.
 

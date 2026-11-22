@@ -157,7 +157,9 @@ where it was silent (2026-11-20):
    `{"side":"leading"|"trailing"}`), and `bdk_ui_set_update_handler` receives the runtime's
    (`{"preferredSize":{"width","height"}}` for a popup, `{"visible":bool}` for a page-scoped panel). Both are
    delivered later and in order; nothing is delivered after the request finishes, and the update handler is released
-   then. With no handler the default presenter shows the view (a transient panel at the extensions anchor; a panel at
+   then. The secure view is the runtime's and lives as long as the request: when the request finishes, the runtime
+   removes the view from the application's container and may destroy it, so the application does not touch it
+   afterwards. With no handler the default presenter shows the view (a transient panel at the extensions anchor; a panel at
    the trailing edge of the page's window).
 4. Payloads. `extension_popups`: `extensionId`, `extensionName`, `url`, `trigger` (`userClick`, `openPopupAPI`,
    `command`), `preferredSize`; `secure_view` is the popup's native view. `extension_side_panels`: `extensionId`,
@@ -188,7 +190,8 @@ where it was silent (2026-11-20):
 7. Gestures from the host. `bdk_extension_action_activate`, `bdk_extension_command_perform` and
    `bdk_extension_menu_present` (`bdk_extensions.h`) take the confirming event, like a granting completion: the core
    checks its kind (`ui.gestureRequired`), the engine that it is recent and went to one of the application's windows.
-   They are functions, not commands, because a command from the host has no gesture to give. Activation is
+   They are functions, not commands, because a command from the host has no gesture to give. An extension that is
+   not installed and enabled is `extension.notFound` before the engine judges the event. Activation is
    synchronous, as Chromium's `ExtensionActionRunner::RunAction` is; a popup or panel follows as a request.
 8. Windows (T-SWF-08). `bdk_window_register` takes `BDK_WINDOW_KIND_NORMAL` or `_POPUP` (anything else is
    `BDK_ERR_INVALID_ARGUMENT`); the engine creates that window's host contexts with the matching `Browser` type, so

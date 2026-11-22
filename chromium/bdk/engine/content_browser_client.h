@@ -24,6 +24,10 @@ class BdkContentBrowserClient : public ChromeContentBrowserClient {
   BdkContentBrowserClient();
   ~BdkContentBrowserClient() override;
 
+  // Chrome's main parts, with BDK's stages added (BdkBrowserMainExtraParts).
+  std::unique_ptr<content::BrowserMainParts> CreateBrowserMainParts(
+      bool is_integration_test) override;
+
   std::vector<std::unique_ptr<content::URLLoaderRequestInterceptor>>
   WillCreateURLLoaderRequestInterceptors(
       content::NavigationUIData* navigation_ui_data,

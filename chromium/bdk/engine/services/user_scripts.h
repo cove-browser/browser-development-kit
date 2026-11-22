@@ -19,8 +19,9 @@
 class Profile;
 
 namespace content {
+class NavigationThrottleRegistry;
 class WebContents;
-}
+}  // namespace content
 
 namespace bdk {
 
@@ -36,6 +37,11 @@ void ApplyUserScripts(Profile* profile,
 // it the scripts of its profile, if the profile has any. Does nothing, and
 // costs the page nothing, otherwise.
 void ApplyUserScriptsToPage(content::WebContents* web_contents);
+
+// Adds the throttle that holds a page's navigation before its document commits
+// until the page's script registrations and removals have been answered, so
+// the document runs the scripts as they are when it loads.
+void MaybeAddUserScriptsThrottle(content::NavigationThrottleRegistry& registry);
 
 }  // namespace bdk
 

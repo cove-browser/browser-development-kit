@@ -51,6 +51,7 @@
 #include "bdk/engine/pages/bundled_page_ui.h"
 #include "bdk/engine/pages/page_commands.h"
 #include "bdk/engine/pages/page_routes.h"
+#include "bdk/engine/providers/geolocation_provider.h"
 #include "bdk/engine/providers/provider_settings.h"
 #include "bdk/engine/providers/reputation_service.h"
 #include "bdk/engine/services/authentication.h"
@@ -62,6 +63,7 @@
 #include "bdk/engine/services/services.h"
 #include "bdk/engine/services/user_scripts.h"
 #include "bdk/engine/session_state.h"
+#include "bdk/engine/startup_completion.h"
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_find.h"
 #include "bdk/engine/ui_notifications.h"
@@ -188,6 +190,7 @@ class EngineBackend final : public bdkcore::Backend {
     // Providers (T-PRV-09): Chromium's threads read the choice, and the
     // Google key must reach Chromium before anything reads it.
     SetProviderSettings(rt);
+    GeolocationProviderChanged();
     {
       std::string key_error;
       if (!ApplyGoogleKey(bdkcore::provider_google_key(rt), &key_error)) {
@@ -274,6 +277,8 @@ class EngineBackend final : public bdkcore::Backend {
       p->name = name;
       rt.profiles.push_back(std::move(p));
     }
+    // Chromium's after-start-up work may run from the next idle on.
+    RuntimeStarted();
     return BDK_OK;
   }
 

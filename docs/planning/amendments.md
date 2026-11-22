@@ -335,6 +335,25 @@ Three patches were added, each with its reason in its message: extension install
 `Browser` out of the extension window list, and opening an extension's options page. With M4's and M7's patches, the series is 20.
 `developer_mode`, `blocklist` and `[extensions.bundled]` (S6) are still Added and not read (T-EXT-14).
 
+### 2.18 Engine scenarios fixed after the M4 to M7 merge (2026-11-21)
+
+The fix-up of roadmap section 6 took these decisions where the documents were silent or Chromium does otherwise:
+
+| Planned or assumed | Decided | Why |
+|---|---|---|
+| A secure view's lifetime (not written down) | The runtime's: valid until its request finishes, then taken out of the application's container and possibly destroyed (`bdk_ui.h`, conventions.md "Extensions (M5)" item 3) | The engine frees the panel's view with its host; an application holding it longer used freed memory |
+| "One extension panel is open per window; opening another closes the first" (extensions.md 4.3) | Kept, but a window panel opened while the active page shows its own panel leaves that panel, as Chromium does (`OpenGlobalExtensionSidePanel`) | BDK follows Chromium's choice of which panel a `Show()` means |
+| `activeTab` "revoked when it navigates" (extensions.md 4.1) | Revoked on a navigation to another origin; kept within the origin (extensions.md 4.1 now says so) | Chromium's `ActiveTabPermissionGranter` |
+| `checkForUpdates` applying an update | Installed at once, even while the old version is running | It is an explicit check, as Chromium's Update button in `chrome://extensions` is; otherwise the update waits for the extension to be idle |
+| `documentStart` for user scripts (services.md 5.16) | Runs once the document's root element exists, before the page's first script; a document loaded right after a change waits for it | Chrome's `document_start`; a DevTools new-document script runs before the root element exists |
+| Chromium's start-up completion (T-ADP-10) | Complete once `bdk_runtime_start` has returned and the main loop is idle (`StartupInProgressRef` plus `ImprovedStartupBestEffortDelay` with no wait for a visible tab) | Chromium waited for a visible tab of a window BDK never opens, then for its three-minute failsafe |
+| The macOS location permission for provider = "app" (T-PRV-04) | Granted, as Chromium sees it, while the runtime uses the application's provider; the operating system's otherwise | It guards the operating system's provider; a page still needs the page's permission |
+| A host context's `Browser` when its tab strip empties | Kept: BDK cancels the close Chromium starts, as Chromium cancels one the person declines | A host context outlives its tabs; the M8 branch fixes the same in `host_context.cc`, and the second to merge drops one |
+
+The window-filter patch also gates `IsVisibleToTabsAPIForExtension`, so the series is still 20 patches. New test switch:
+`BDK_ENGINE_HOST_RESOLVER_RULES` (chromium/bdk/README.md); new test verbs: `network.passthrough`, `startup.post`,
+`startup.state` (`bdk_testing.h`).
+
 ## 3. Tasks and workflows
 
 | Task | Change |

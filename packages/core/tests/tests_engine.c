@@ -3,6 +3,7 @@
    the engine conformance app (BDK_HARNESS_ENGINE_TESTS); pages are driven through the engine's test
    hooks (bdk_testing.h), and every http(s) load is served by the engine's test interceptor. */
 #include <stdlib.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "bdk_testing.h"
@@ -832,13 +833,27 @@ static void value_of(const char* json, char* out, size_t n) {
 
 /* Chromium's heavy-ad intervention keeps an opt-out store per profile. BDK keeps it in memory, as
    Chrome does for an off-the-record profile: on disk, its database is loaded by a best-effort task,
-   which BDK's Chromium runs only once start-up is complete (its failsafe, minutes later), and a
-   load for a profile deleted by then fails a fatal check in the SQL layer. */
+   and a load for a profile deleted before that task ran fails a fatal check in the SQL layer. */
 static void test_engine_the_heavy_ad_opt_out_store_stays_in_memory(void) {
     t_start_frozen();
     char json[64];
     command("heavy_ad.store", "{}", json, sizeof json);
     CHECK(strcmp(json, "{\"store\":\"memory\"}") == 0);
+}
+
+/* T-ADP-10: Chromium's after-start-up work (AfterStartupTaskUtils, best-effort tasks) runs once
+   the runtime has started, not after Chromium's three-minute failsafe: a BDK application opens no
+   Chromium window whose tab would end start-up. Run alone, this is the process's first start. */
+static void test_engine_after_startup_work_runs_once_the_runtime_has_started(void) {
+    t_start_frozen();
+    char json[64];
+    command("startup.post", "{}", NULL, 0);
+    const time_t until = time(NULL) + 10;
+    do {
+        t_pump();
+        command("startup.state", "{}", json, sizeof json);
+    } while (!strstr(json, "\"ran\":true") && time(NULL) < until);
+    CHECK(strcmp(json, "{\"complete\":true,\"ran\":true}") == 0);
 }
 
 /* Reads a preference of the page's profile as Chromium holds it. */
@@ -1029,6 +1044,54 @@ static void test_engine_bookmarks_are_imported_and_exported_as_html(void) {
     snprintf(args, sizeof args, "{\"path\":\"%s\"}", out);
     svc("bookmarks.import", args, other, &cap);
     CHECK(!cap.has_error && strstr(cap.json, "\"imported\":3") != NULL);
+    unlink(in);
+    unlink(out);
+    rmdir(dir);
+}
+
+/* T-SVC-12: closing a profile while its bookmarks are being exported. Chromium writes the file
+   from a best-effort task that answers later; the export keeps the profile loaded until then, so
+   nothing still points at a profile that is gone (Chromium's dangling-pointer check aborts the
+   engine otherwise). The call ends once, and the profile is unloaded after it. */
+static void test_engine_closing_a_profile_during_a_bookmarks_export(void) {
+    t_start_frozen();
+    char id[64];
+    t_create_profile("Export while closing", id, sizeof id);
+    bdk_profile_t p = t_open_profile(id);
+    char dir[] = "/tmp/bdk-engine-bookmarks-XXXXXX";
+    REQUIRE(mkdtemp(dir) != NULL);
+    char in[96], out[96], args[256];
+    snprintf(in, sizeof in, "%s/in.html", dir);
+    snprintf(out, sizeof out, "%s/out.html", dir);
+    write_text_file(in, BOOKMARKS_FIXTURE);
+    t_capture_t cap;
+    snprintf(args, sizeof args, "{\"path\":\"%s\"}", in);
+    svc("bookmarks.import", args, p, &cap);
+    CHECK(!cap.has_error);
+
+    bdk_invoke_options_t o;
+    memset(&o, 0, sizeof o);
+    o.struct_size = sizeof o;
+    o.profile = p;
+    t_cap_init(&cap);
+    snprintf(args, sizeof args, "{\"path\":\"%s\"}", out);
+    REQUIRE(bdk_invoke_named(t_runtime, S("bookmarks.export"), S(args), &o, t_on_result,
+                             t_on_progress, &cap, t_on_release) != 0);
+    REQUIRE(bdk_profile_close(p, NULL) == BDK_OK);
+    for (int i = 0; i < 1000 && cap.results == 0; ++i) {
+        t_pump();
+        bdk_testing_run_for(0.01);
+    }
+    CHECK(cap.results == 1);
+    /* The writer's answer and the profile's unload come after: still alive here. */
+    for (int i = 0; i < 300; ++i) {
+        t_pump();
+        bdk_testing_run_for(0.01);
+    }
+    CHECK(cap.results == 1);
+    /* The profile opens again, as one instance. */
+    bdk_profile_t again = t_open_profile(id);
+    REQUIRE(bdk_profile_close(again, NULL) == BDK_OK);
     unlink(in);
     unlink(out);
     rmdir(dir);
@@ -1306,9 +1369,13 @@ const t_test_t t_engine_tests[] = {
      test_engine_a_closed_profile_releases_its_descriptors},
     {"engine_the_heavy_ad_opt_out_store_stays_in_memory",
      test_engine_the_heavy_ad_opt_out_store_stays_in_memory},
+    {"engine_after_startup_work_runs_once_the_runtime_has_started",
+     test_engine_after_startup_work_runs_once_the_runtime_has_started},
     {"engine_history_is_searched_paginated_and_cleared",
      test_engine_history_is_searched_paginated_and_cleared},
     {"engine_bookmarks_nest_move_and_remove", test_engine_bookmarks_nest_move_and_remove},
+    {"engine_closing_a_profile_during_a_bookmarks_export",
+     test_engine_closing_a_profile_during_a_bookmarks_export},
     {"engine_bookmarks_are_imported_and_exported_as_html",
      test_engine_bookmarks_are_imported_and_exported_as_html},
     {"engine_a_download_completes_and_is_controllable",

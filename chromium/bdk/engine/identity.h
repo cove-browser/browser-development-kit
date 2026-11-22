@@ -33,7 +33,8 @@ void ApplyIdentityAfterStart(const Identity& identity);
 
 // Switches added to Chromium's command line beyond the ones start-up always
 // sets. Test and diagnostic runs add more through BDK_ENGINE_SWITCHES (space
-// separated, without dashes) and BDK_ENGINE_MOCK_KEYCHAIN=1.
+// separated, without dashes), BDK_ENGINE_MOCK_KEYCHAIN=1 and
+// BDK_ENGINE_HOST_RESOLVER_RULES (Chromium's --host-resolver-rules).
 std::vector<std::string> ExtraSwitches();
 
 // Whether the application allows DevTools (the context menu's Inspect item).

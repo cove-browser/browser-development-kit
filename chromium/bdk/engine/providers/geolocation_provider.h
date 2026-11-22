@@ -25,6 +25,15 @@ namespace bdk {
 // for Chromium's own. Any thread.
 std::unique_ptr<device::LocationProvider> CreateApplicationLocationProvider();
 
+// Chromium checks the operating system's location permission before any
+// provider starts, so BDK installs the permission Chromium reads: granted while
+// the runtime that started last uses the application's provider, the
+// operating system's otherwise (macOS; elsewhere Chromium's own is kept).
+// Called as Chromium's browser process starts, before Chromium would install
+// its own; GeolocationProviderChanged tells it the runtime's choice changed.
+void InstallGeolocationPermission();
+void GeolocationProviderChanged();
+
 }  // namespace bdk
 
 #endif  // BDK_ENGINE_PROVIDERS_GEOLOCATION_PROVIDER_H_

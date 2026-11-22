@@ -77,6 +77,12 @@ std::vector<std::string> ExtraSwitches() {
   if (env->GetVar("BDK_ENGINE_MOCK_KEYCHAIN").value_or("") == "1") {
     switches.push_back("use-mock-keychain");
   }
+  // Rules contain spaces, which BDK_ENGINE_SWITCHES separates switches by.
+  if (std::string rules =
+          env->GetVar("BDK_ENGINE_HOST_RESOLVER_RULES").value_or("");
+      !rules.empty()) {
+    switches.push_back("host-resolver-rules=" + rules);
+  }
   for (std::string& s :
        base::SplitString(env->GetVar("BDK_ENGINE_SWITCHES").value_or(""), " ",
                          base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY)) {

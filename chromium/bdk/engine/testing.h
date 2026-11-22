@@ -27,6 +27,10 @@ void ScriptPageForTesting(const std::string& url,
                           const std::string& content_type,
                           const std::string& headers);
 
+// Leaves loads from `host` to the network: a name a test's own server listens
+// on, mapped to the loopback address (BDK_ENGINE_HOST_RESOLVER_RULES).
+void PassThroughHostForTesting(const std::string& host);
+
 // Counts BDK tasks posted to the UI thread and not yet run, for
 // bdk_testing_pending_work().
 void NoteTaskPosted();

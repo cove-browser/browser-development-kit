@@ -22,6 +22,9 @@
 #include "bdk/engine/page_protocol.h"
 #include "bdk/engine/services/service_call.h"
 #include "chrome/browser/profiles/profile.h"
+#include "content/public/browser/navigation_handle.h"
+#include "content/public/browser/navigation_throttle.h"
+#include "content/public/browser/navigation_throttle_registry.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_user_data.h"
@@ -104,7 +107,14 @@ std::string WrapperSource(const bdkcore::UserScript& script,
                           const std::string& code) {
   std::string schedule;
   if (script.run_at == "documentStart") {
-    schedule = "run();";
+    // A new document's scripts run before the parser has made the root
+    // element; Chrome's document_start scripts run once it exists, and a
+    // mutation observer's callback runs before the page's first script.
+    schedule =
+        "if (document.documentElement) { run(); } else {"
+        "  new MutationObserver((records, observer) => {"
+        "    if (document.documentElement) { observer.disconnect(); run(); }"
+        "  }).observe(document, {childList: true}); }";
   } else if (script.run_at == "documentEnd") {
     schedule =
         "if (document.readyState === 'loading') {"
@@ -154,6 +164,20 @@ class PageScripts : public content::WebContentsUserData<PageScripts>,
     }
     if (!scripts.empty()) {
       protocol->KeepAttached();
+      if (!protocol->attached() && !attaching_) {
+        // Until the client is attached the scripts are not registered, so
+        // the page's next document waits for it (or for the answer that the
+        // page cannot be attached to).
+        attaching_ = true;
+        protocol->WhenReady(base::BindOnce(
+            [](base::WeakPtr<PageScripts> self, Availability) {
+              if (self) {
+                self->attaching_ = false;
+                self->MaybeSettle();
+              }
+            },
+            weak_factory_.GetWeakPtr()));
+      }
     }
     std::map<std::string, const bdkcore::UserScript*> next;
     for (const bdkcore::UserScript& script : scripts) {
@@ -194,6 +218,20 @@ class PageScripts : public content::WebContentsUserData<PageScripts>,
         RegisterEverywhere(scripts_.at(script.id));
       }
     }
+  }
+
+  // Whether the client is attached (or cannot be) and every registration and
+  // removal sent has been answered: a document that commits now runs the
+  // scripts as they are.
+  bool settled() const { return !attaching_ && in_flight_ == 0; }
+
+  // Runs `done` once settled: at once if it is.
+  void WhenSettled(base::OnceClosure done) {
+    if (settled()) {
+      std::move(done).Run();
+      return;
+    }
+    settle_waiters_.push_back(std::move(done));
   }
 
   // PageProtocol::SessionObserver:
@@ -245,7 +283,7 @@ class PageScripts : public content::WebContentsUserData<PageScripts>,
         params.Set("worldName",
                    script.world.empty() ? script.id : script.world);
       }
-      protocol->Send(
+      Send(
           session_id, "Page.addScriptToEvaluateOnNewDocument",
           std::move(params),
           base::BindOnce(
@@ -289,8 +327,45 @@ class PageScripts : public content::WebContentsUserData<PageScripts>,
     }
     base::DictValue params;
     params.Set("identifier", identifier);
-    protocol->Send(session_id, "Page.removeScriptToEvaluateOnNewDocument",
-                   std::move(params), ProtocolCallback());
+    Send(session_id, "Page.removeScriptToEvaluateOnNewDocument",
+         std::move(params), ProtocolCallback());
+  }
+
+  // Sends a registration or a removal, counted until it is answered (the
+  // protocol answers every command, with a failure if the session goes).
+  void Send(const std::string& session_id,
+            const std::string& method,
+            base::DictValue params,
+            ProtocolCallback callback) {
+    PageProtocol* protocol = protocol_.get();
+    if (!protocol) {
+      return;
+    }
+    ++in_flight_;
+    protocol->Send(session_id, method, std::move(params),
+                   base::BindOnce(
+                       [](base::WeakPtr<PageScripts> self,
+                          ProtocolCallback callback, ProtocolResult result) {
+                         if (callback) {
+                           std::move(callback).Run(std::move(result));
+                         }
+                         if (self) {
+                           --self->in_flight_;
+                           self->MaybeSettle();
+                         }
+                       },
+                       weak_factory_.GetWeakPtr(), std::move(callback)));
+  }
+
+  void MaybeSettle() {
+    if (!settled()) {
+      return;
+    }
+    std::vector<base::OnceClosure> waiters = std::move(settle_waiters_);
+    settle_waiters_.clear();
+    for (base::OnceClosure& waiter : waiters) {
+      std::move(waiter).Run();
+    }
   }
 
   // Registers the script's JavaScript in every session, as a new generation.
@@ -441,11 +516,47 @@ class PageScripts : public content::WebContentsUserData<PageScripts>,
   // given each script's CSS ("script|frame|loader").
   std::map<std::string, std::vector<std::string>> css_ids_;
   std::set<std::string> css_applied_;
+  // The client is being attached for the scripts; registrations and removals
+  // sent and not answered; what waits for both (navigations, see
+  // UserScriptsThrottle).
+  bool attaching_ = false;
+  int in_flight_ = 0;
+  std::vector<base::OnceClosure> settle_waiters_;
   base::WeakPtrFactory<PageScripts> weak_factory_{this};
   WEB_CONTENTS_USER_DATA_KEY_DECL();
 };
 
 WEB_CONTENTS_USER_DATA_KEY_IMPL(PageScripts);
+
+// Holds a navigation of a page with user scripts just before its document
+// commits, until the page's registrations and removals have been answered.
+// Page.addScriptToEvaluateOnNewDocument takes effect in the documents that
+// commit after the renderer has it; a page loaded right after its profile's
+// scripts changed (or right after it was created) would otherwise start its
+// document first and miss a documentStart script, or still run a removed one.
+class UserScriptsThrottle : public content::NavigationThrottle {
+ public:
+  explicit UserScriptsThrottle(content::NavigationThrottleRegistry& registry)
+      : content::NavigationThrottle(registry) {}
+
+  ThrottleCheckResult WillProcessResponse() override {
+    PageScripts* scripts =
+        PageScripts::FromWebContents(navigation_handle()->GetWebContents());
+    if (!scripts || scripts->settled()) {
+      return PROCEED;
+    }
+    scripts->WhenSettled(base::BindOnce(&UserScriptsThrottle::OnSettled,
+                                        weak_factory_.GetWeakPtr()));
+    return DEFER;
+  }
+
+  const char* GetNameForLogging() override { return "BdkUserScriptsThrottle"; }
+
+ private:
+  void OnSettled() { Resume(); }
+
+  base::WeakPtrFactory<UserScriptsThrottle> weak_factory_{this};
+};
 
 struct ProfileScripts {
   base::WeakPtr<Profile> profile;
@@ -486,6 +597,15 @@ void ApplyUserScripts(Profile* profile,
       existing->Update(scripts);
     }
   }
+}
+
+void MaybeAddUserScriptsThrottle(
+    content::NavigationThrottleRegistry& registry) {
+  if (!EngineContents::FromWebContents(
+          registry.GetNavigationHandle().GetWebContents())) {
+    return;
+  }
+  registry.AddThrottle(std::make_unique<UserScriptsThrottle>(registry));
 }
 
 void ApplyUserScriptsToPage(content::WebContents* web_contents) {

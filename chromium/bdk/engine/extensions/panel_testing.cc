@@ -113,6 +113,9 @@ std::optional<bool> RunExtensionPanelCommand(const std::string& name,
     LoadRecord() = LoadState();
     scoped_refptr<extensions::UnpackedInstaller> installer =
         extensions::UnpackedInstaller::Create(profile);
+    // A refusal is reported through the result, as in the install flow, not
+    // in Chromium's modal alert, which blocks the process.
+    installer->set_be_noisy_on_failure(false);
     installer->set_completion_callback(
         base::BindOnce([](const extensions::Extension* extension,
                           const base::FilePath&, const std::u16string& error) {
