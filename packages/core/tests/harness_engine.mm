@@ -28,6 +28,7 @@
 #include "bdk_mac/bdk_application.h"
 #include "bdk_testing.h"
 #include "harness.h"
+#include "harness_engine_windows.h"
 extern "C" {
 #include "test_support.h"
 }
@@ -61,6 +62,10 @@ void RemoveDataDir() {
     }
 }
 
+} // namespace
+
+namespace bdk_harness {
+
 /* BDK_ENGINE_SILENT=1 runs the suite without getting in the way of whoever is using the Mac: the
    harness never activates, has no Dock icon or menu bar, keeps its windows behind every other
    window and never takes them fullscreen. Chromium is told to keep drawing a hidden page, as
@@ -75,7 +80,6 @@ bool Silent() {
     return silent;
 }
 
-/* A harness window, which a silent run keeps out of fullscreen (its own Space). */
 NSWindow* NewWindow(NSRect frame, NSWindowStyleMask style) {
     NSWindow* window = [[NSWindow alloc] initWithContentRect:frame
                                                    styleMask:style
@@ -102,7 +106,11 @@ void ShowWindow(NSWindow* window, bool key) {
         [window orderFront:nil];
 }
 
-} // namespace
+} // namespace bdk_harness
+
+using bdk_harness::NewWindow;
+using bdk_harness::ShowWindow;
+using bdk_harness::Silent;
 
 extern "C" {
 

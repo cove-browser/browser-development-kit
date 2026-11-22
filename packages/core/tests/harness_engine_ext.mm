@@ -6,6 +6,7 @@
 #include <cstring>
 
 #include "bdk/bdk.h"
+#include "harness_engine_windows.h"
 
 namespace {
 
@@ -16,19 +17,22 @@ NSMutableArray<NSWindow*>* Windows() {
     return windows;
 }
 
+/* A weak reference to a secure view, which the runtime owns and destroys when its request ends:
+   whether the view is still in a window can be asked after that without touching it. */
+NSView* __weak g_watched_view;
+
 } // namespace
 
 extern "C" {
 
 /* Registers a new window of `kind` (BDK_WINDOW_KIND_*); returns its index, or -1. */
 int bdk_ext_window_open(bdk_runtime_t rt, uint32_t kind, bdk_window_t* handle) {
-    NSWindow* window =
-        [[NSWindow alloc] initWithContentRect:NSMakeRect(100, 100, 900, 600)
-                                    styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskResizable
-                                      backing:NSBackingStoreBuffered
-                                        defer:NO];
-    window.releasedWhenClosed = NO;
-    [window orderFront:nil];
+    /* Miniaturizable, as an application's window is: AppKit does not minimize one that is not
+       (windows.update with state "minimized"). */
+    NSWindow* window = bdk_harness::NewWindow(NSMakeRect(100, 100, 900, 600),
+                                              NSWindowStyleMaskTitled | NSWindowStyleMaskResizable |
+                                                  NSWindowStyleMaskMiniaturizable);
+    bdk_harness::ShowWindow(window, false);
     bdk_native_handle_t native;
     memset(&native, 0, sizeof native);
     native.kind = BDK_NATIVE_NSWINDOW;
@@ -102,6 +106,15 @@ int bdk_ext_view_in_window(bdk_native_handle_t view) {
 void bdk_ext_remove_view(bdk_native_handle_t view) {
     if (view.kind == BDK_NATIVE_NSVIEW && view.pointer)
         [(__bridge NSView*)view.pointer removeFromSuperview];
+}
+
+void bdk_ext_watch_view(bdk_native_handle_t view) {
+    g_watched_view =
+        view.kind == BDK_NATIVE_NSVIEW && view.pointer ? (__bridge NSView*)view.pointer : nil;
+}
+
+int bdk_ext_watched_view_in_window(void) {
+    return g_watched_view.window != nil ? 1 : 0;
 }
 
 } /* extern "C" */
