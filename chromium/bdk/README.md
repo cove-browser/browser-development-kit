@@ -78,6 +78,8 @@ T-ADP-03; the C ABI did not change).
 | Focuses a page (`bdk_contents_focus`, or the page taking focus) | Makes its tab the active tab of its context; a window's context becomes the most recently active one |
 | Destroys the page | Closes its tab (`DetachAndDeleteWebContentsAt`) |
 
+A context's tab strip empties whenever its last page moves out or is destroyed. Chromium treats that as the window closing (`UnloadController::TabStripEmpty`, then a posted task deletes the `Browser`), so `HostContext` cancels that close (`UnloadController::CancelWindowClose`): a context lives until BDK destroys it with its window, profile or runtime. Before this, the next page to enter an emptied context hit `CHECK(browser_)`.
+
 Restoring or discarding a page replaces its `WebContents` inside the same tab (`DiscardWebContents`), so the
 context is kept; the tab's session identifier changes then, as in Chrome.
 
