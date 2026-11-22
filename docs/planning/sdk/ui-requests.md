@@ -74,7 +74,7 @@ The key is what goes in `[ui.surfaces]`. "Modes" lists what the surface allows: 
 | `permissions` | Site permission prompts | D C | Plan | M3, T-UIR-02 |
 | `javascript_dialogs` | `alert`, `confirm`, `prompt`, `beforeunload` | D C | Plan | M3, T-UIR-02 |
 | `http_auth` | HTTP and proxy authentication | D C | Plan | M3, T-UIR-02 |
-| `client_certificates` | Client certificate selection | D C | Added (S3) | — |
+| `client_certificates` | Client certificate selection | D C | Added (S3); default is a sheet of BDK's own, not routed (8.2) | T-UIR-10, M4; routing T-UIR-13, M9 |
 | `file_pickers` | File and directory choosers | D C X | Plan | M3, T-UIR-02 |
 | `context_menus` | Page context menus | D C X | Plan | M3, T-UIR-03 |
 | `new_windows` | Popups, undocked DevTools, picture-in-picture, extension windows | D C | Plan | M2, T-ADP-05; M3, T-UIR-03 |
@@ -91,10 +91,10 @@ The key is what goes in `[ui.surfaces]`. "Modes" lists what the surface allows: 
 | `certificate_errors` | Certificate interstitials | D C | Plan | M3, T-UIR-05 |
 | `reputation_warnings` | Malware, phishing and download warnings | D C | Plan | M3, T-UIR-05 |
 | `devtools` | The DevTools front end | D C X | Plan; built in M7, engine pending (T-AUT-06) | M7, T-AUT-05 |
-| `device_choosers` | WebUSB, Web Bluetooth, WebHID, Web Serial | D C X | Added (S3) | — |
-| `screen_capture` | The `getDisplayMedia` source picker | D C X | Added (S3) | — |
+| `device_choosers` | WebUSB, Web Bluetooth, WebHID, Web Serial | D C X | Added (S3); refused until routed, Web Bluetooth off (8.2) | T-UIR-10, M4; routing T-UIR-13, M9 |
+| `screen_capture` | The `getDisplayMedia` source picker | D C X | Added (S3); refused until routed (8.2) | T-UIR-10, M4; routing T-UIR-13, M9 |
 | `webauthn` | Passkey and security-key dialogs | D C X | Added (S3); built and tested on the engine 2026-11-22, the `bdk.toml` key still awaits S3 | M4, T-UIR-09 |
-| `external_protocols` | "Open this link in another application?" | D C X | Added (S3) | — |
+| `external_protocols` | "Open this link in another application?" | D C X | Added (S3); default is a sheet of BDK's own, not routed (8.2) | T-UIR-10, M4; routing T-UIR-13, M9 |
 | `page_health` | Unresponsive page; blocked popups | D C | Added (S3) | — |
 | Extension surfaces | Actions, popups, side panels, menus, options, install prompts | See [extensions.md](extensions.md) | Plan | M5: surfaces 25 to 32 (`extension_actions` … `extension_uninstalls`), configured under `[extensions.ui]`; see `packages/core/docs/conventions.md`, "Extensions (M5)" |
 
@@ -171,6 +171,8 @@ public final class ClientCertificateRequest: BDKUIRequest {       // Added
 ```
 
 Default presenters: a sheet on the page view for credentials; Chromium's certificate selector for client certificates.
+
+Built for client certificates (T-UIR-10, written 2026-11-22, engine not yet run; 8.2): no request is raised yet (S3, T-UIR-13). Chrome's automatic selection (`AutoSelectCertificateForUrls`) runs first; otherwise a sheet of BDK's own lists the first eight certificates by subject and issuer, with Cancel, which goes on without one, as Chromium's selector does. Chromium's selector is a views dialog and is never shown on a BDK page.
 
 ### 5.4 File pickers
 
@@ -467,7 +469,7 @@ public final class ReputationWarningRequest: BDKUIRequest {
 | Custom | The application draws its own warning over the page view. The navigation stays blocked underneath until the request is completed. |
 | Rules | No `disabled` mode. `.reject` and a dropped request both mean "go back". Proceeding needs a user gesture and is refused where Chromium refuses it. |
 
-Built (M3, T-UIR-05; engine/services/interstitial_prompts.cc). When a certificate-error (`SSLBlockingPage`) or Safe Browsing blocking page commits, a request goes to the handler of its surface. Payload: `url`, `isOverridable` (read from the page's own load-time data, the value its Proceed button obeys), `text`; certificate errors add `error` (`dateInvalid`, `authorityInvalid`, `commonNameInvalid`, `revoked`, `pinningFailure`, else the net error name) and `certificate` (`id`, `subject`, `issuer`); reputation warnings add `verdict` and `provider`. `go_back` and `proceed` drive the page's own commands, so Chromium refuses a proceed for HSTS or pinning even if the request said otherwise. With no handler the page is the whole UI. The page stays blocked whatever the application does: a withdrawn request (the page moved on) does nothing. A request that is not a safe-browsing or certificate page (HTTPS-only, bad clock, captive portal) is not raised. The reputation provider comes in M6; whatever Chromium raises is routed. Since M6 (written, engine pending) the reputation provider is BDK's: `provider` in the payload is the configured provider's descriptor, and for the default lists the message says their protection is reduced.
+Built (M3, T-UIR-05; engine/services/interstitial_prompts.cc). When a certificate-error (`SSLBlockingPage`) or Safe Browsing blocking page commits, a request goes to the handler of its surface. Payload: `url`, `isOverridable` (read from the page's own load-time data, the value its Proceed button obeys), `text`; certificate errors add `error` (`dateInvalid`, `authorityInvalid`, `commonNameInvalid`, `revoked`, `pinningFailure`, else the net error name) and `certificate` (`id`, `subject`, `issuer`); reputation warnings add `verdict` and `provider`. `go_back` and `proceed` drive the page's own commands, so Chromium refuses a proceed for HSTS or pinning even if the request said otherwise. With no handler the page is the whole UI. The page stays blocked whatever the application does: a withdrawn request (the page moved on) does nothing. A request that is not a safe-browsing or certificate page (HTTPS-only, bad clock, captive portal) is not raised. HTTPS-First asks with its interstitial page in the page, not with its newer "ask before HTTP" dialog, which is off at start (T-UIR-10, 8.2). The reputation provider comes in M6; whatever Chromium raises is routed. Since M6 (written, engine pending) the reputation provider is BDK's: `provider` in the payload is the configured provider's descriptor, and for the default lists the message says their protection is reduced.
 
 ### 5.15 DevTools
 
@@ -505,6 +507,8 @@ public final class ScreenCaptureRequest: BDKUIRequest {
 
 Default presenters: Chromium's chooser dialogs and media picker. `disabled`: the API rejects. While a page is capturing, `page.capture` reports it, and the application must show an indicator; the default presenter for that is a small "sharing" bar in the page's window.
 
+Built so far (T-UIR-10, written 2026-11-22, engine not yet run; 8.2): neither surface is routed (S3, T-UIR-13), and Chromium's chooser bubbles and picker cannot be shown on a BDK page, so both behave as `disabled` does. `navigator.usb.requestDevice()` and `navigator.serial.requestPort()` reject with NotFoundError, `navigator.hid.requestDevice()` resolves with no device, and `getDisplayMedia` rejects with NotAllowedError. Web Bluetooth is off at start (`navigator.bluetooth` is absent): nothing could choose a device, and its adapter would need the application's Bluetooth usage string.
+
 ### 5.17 External protocols (Added)
 
 ```swift
@@ -519,6 +523,8 @@ public final class ExternalProtocolRequest: BDKUIRequest {
 ```
 
 Default presenter: Chromium's confirmation dialog. `disabled`: external schemes are blocked.
+
+Built so far (T-UIR-10, written 2026-11-22, engine not yet run; 8.2): no request is raised yet (S3, T-UIR-13). Chrome decides whether to ask: blocked schemes stay blocked, `mailto:` and schemes the person allowed open without asking, and policy applies. When it asks, a patch gives the question to the engine, which shows a sheet of BDK's own with Chromium's wording ("Open <application>?") and Cancel as the default button, and opens the application only on "Open". The "always allow" checkbox is not offered.
 
 ### 5.18 WebAuthn (Added; built, T-UIR-09)
 
@@ -577,6 +583,11 @@ facts; `bdk build config` adds the note `plist.passkeys_phone`):
 | Passkeys on a phone (hybrid: QR code, Bluetooth, the phone's tunnel service) | `NSBluetoothAlwaysUsageDescription`; under the hardened runtime `com.apple.security.device.bluetooth`. Without them Chromium offers no phone (it logs that the application has no Bluetooth metadata) | Routed (`connectPhone`, `qrCode`); not verified with a phone, and the tunnel service the phone picks (Google's for Android, Apple's for an iPhone) is contacted once the person chooses the phone (T-UIR-12) |
 | System passkeys (iCloud Keychain and other credential providers) | macOS 13.5 and Apple's `com.apple.developer.web-browser.public-key-credential` entitlement, which Apple grants to browsers | Chromium's own path, which shows the system's sheet; not verified (T-UIR-12) |
 | Touch ID passkeys kept by the browser | A `keychain-access-groups` entitlement for `<team>.<bundle id>.webauthn` with a provisioning profile; Chromium compiles its own group in, which no BDK application can hold | Not offered to BDK applications yet (T-UIR-11) |
+
+A custom presenter: `apps/examples/minimal-browser` sets one before start (`PasskeyPresenter` and `PasskeySheet`). It
+keeps one sheet per `ceremonyID` on the page's window, redraws it for each step from `presentation`, answers with
+`perform(_:)`, and closes it when the step is withdrawn with no next one, or a short while after an answer that no
+step follows. Its logic is unit-tested on the stub; on a real page it is a hand check (T-UIR-09).
 
 ### 5.19 Page health (Added)
 
@@ -646,3 +657,39 @@ Settled against the Chromium engine (`chromium/bdk/engine/ui_*.cc`). Where this 
 | `webauthn` | As 5.18: one request per step of Chromium's dialog model, raised by BDK's dialog controller (`engine/ui_webauthn.cc`) through the patch that lets an embedder supply it | Mechanism, PIN, other mechanisms and the step's button go back through Chromium's sheet models; a grant selects the account only with a recent mouse-up or key-down of this application's window (anything less cancels); `deny`, reject, drop and `disabled` cancel the ceremony (`NotAllowedError`). Navigation or a finished request withdraws the step. Tested on the engine (`tests_engine_webauthn.c`) with a virtual security key |
 
 Neither `window` nor an operating-system permission step is filled in yet: `window` stays 0, and macOS camera, microphone and location access are not requested by the engine after a grant.
+
+### 8.2 Chromium's other browser dialogs (T-UIR-10, 2026-11-22)
+
+Chromium shows many browser dialogs as tab-modal views dialogs or bubbles (`TabDialogManager`,
+`constrained_window::ShowWebModalDialogViews`, `chrome::ShowTabModal`). A BDK page's window is not a views widget, so
+each one a page reached failed a check (`native_widget_mac.mm`, `tab_dialog_manager.cc`) or dereferenced a null
+`BrowserView`, and ended the application. Every caller at the pin was listed and sorted by whether a BDK page can
+reach it. The engine side is `chromium/bdk/engine/ui_browser_dialogs.cc`; the scenarios are
+`packages/core/tests/tests_engine_dialogs.c`. **Written against the source at the pin and checked by
+`chromium:patch-check`; not yet built or run on Chromium (T-UIR-10 stays open until the scenarios pass).** "Not
+reachable" below is from reading the source, not from a test.
+
+| Chromium's dialog | Reached from a BDK page by | Now |
+|---|---|---|
+| External protocol (`ExternalProtocolDialog`) | A link to a scheme another application handles that Chrome asks about | A sheet (5.17); patch `bdk-let-an-embedder-present-the-external-protocol-dialog` |
+| Tab-modal dialog models: File System Access ("view files?", restricted directory, dangerous file), DevTools' folder permission, extension "install blocked" and "ask a parent" | `showDirectoryPicker()` and the save picker; DevTools workspaces; installing a blocked extension | A sheet: the model's title and paragraphs, OK and Cancel with the model's default first, and the model's own callbacks; a checkbox keeps its initial state; a model with a text field or combobox is closed as dismissed. Patch `bdk-let-an-embedder-present-tab-modal-dialog-models` |
+| Credential Management account chooser and auto sign-in notice | `navigator.credentials.get({password: true})` on a site with saved passwords | Sheets of the `passwords` surface: one button per account (the first eight); OK or Turn off. Patch `bdk-let-an-embedder-present-the-credential-manager-prompts` |
+| Client certificate selector | A server that asks for a certificate the Keychain has | A sheet (5.3); no patch |
+| Device chooser bubbles (WebUSB, WebHID, Web Serial) | `requestDevice()`, `requestPort()` | Refused as a cancel (5.16); no patch |
+| Web Bluetooth chooser, scanning prompt, pairing dialogs | `navigator.bluetooth` | Off at start (`WebBluetooth`), and refused if reached |
+| Screen-capture picker, "share this tab", capture-policy confirmation | `getDisplayMedia()` | Refused: NotAllowedError (5.16) |
+| HTTPS-First's "ask before HTTP" dialog | An HTTP navigation with HTTPS-First on | Off (`HttpsFirstDialogUi`): the interstitial page asks instead (5.14) |
+| Payment Request sheet, Secure Payment Confirmation | `new PaymentRequest(...).show()` | Off (`WebPayments`, `SecurePaymentConfirmation`): `PaymentRequest` is absent |
+| FedCM account chooser | `navigator.credentials.get({identity})` | Off (`FedCm`): `IdentityCredential` is absent |
+| Digital Credentials dialogs | `navigator.credentials.get({digital})` | Off (`WebIdentityDigitalCredentials`, `...Creation`) |
+| Web application install dialogs | `beforeinstallprompt`'s `prompt()` | Off: `profile.web_app.install_by_user_enabled` defaults to false, so no page offers itself for installation |
+| JavaScript dialogs, HTTP authentication, permission prompts, file pickers and folder upload, password and autofill save bubbles, printing, WebAuthn, extension install and uninstall prompts, Chrome's `TabModalConfirmDialog` from the `Browser`'s delegate | Pages | Already BDK's (5.1 to 5.18, extensions.md): no views dialog is reached |
+| Bookmarks editor, application info, shortcuts, web application uninstall, update review and launch, tab groups, the window name prompt, site data, certificate viewer, caret browsing, "downloads in progress", relaunch and update notices, search engine choice, profiles, sync and sign-in | Chrome's own windows, menus and accelerators | Not reachable: a BDK application has none of them, and sign-in is off |
+| Autofill payments (server cards, OTP, BNPL, save and fill, payments WebAuthn), password change, the leaked-password dialog, tailored security, password reuse, Lens, Glic, the actor, skills, Save to Drive, dictation onboarding, feature first run | Google services | Not reachable: off at start or with no Google key (providers/README.md); the leaked-password warning is S16 |
+| Content analysis, data controls, device signals, idle and enterprise start-up dialogs, cloud management | Enterprise policy | Not reachable: they need policies BDK applications do not set |
+| Platform-app choosers, media galleries, kiosk file system, `chrome.desktopCapture.chooseDesktopMedia` | Extension and platform-app APIs | Platform apps cannot run. An installed extension can still open the desktop-capture picker: T-UIR-13, M9 |
+
+Default presenters scripted in tests (`present.script`, `bdk_testing.h`): `external_protocols` (`cancel`, `open`),
+`client_certificates` (`certificate<N>`, `cancel`), `browser_dialogs` (`accept`, `cancel`) and `passwords`
+(`account<N>`, `cancel`; `ok`, `turnOff`). `dialogs.tab_modal` puts a model through `chrome::ShowTabModal` as File
+System Access does, and `pref.set` sets a Chromium preference (HTTPS-First's `https_only_mode_enabled`).
