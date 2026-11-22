@@ -10,6 +10,7 @@
 #include "base/functional/bind.h"
 #include "base/notimplemented.h"
 #include "base/observer_list.h"
+#include "base/task/sequenced_task_runner.h"
 #include "bdk/engine/extensions/extensions_container.h"
 #include "bdk/engine/extensions/side_panel_host.h"
 #include "bdk/engine/host_window.h"
@@ -25,6 +26,7 @@
 #include "chrome/browser/ui/find_bar/find_bar.h"
 #include "chrome/browser/ui/location_bar/location_bar.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/browser/ui/unload_controller.h"
 #include "chrome/browser/ui/views/bubble_anchor_util_views.h"
 #include "components/tabs/public/tab_interface.h"
 #include "components/web_modal/web_contents_modal_dialog_host.h"
@@ -261,6 +263,21 @@ BdkBrowserWindow::ScopedTabOperation::ScopedTabOperation(
 BdkBrowserWindow::ScopedTabOperation::~ScopedTabOperation() {
   if (window_) {
     --window_->tab_operations_;
+    window_->KeepOpenWhenEmpty();
+  }
+}
+
+// Chromium takes a tab strip that empties as the start of its window's close
+// (UnloadController::TabStripEmpty): the next tab to leave the Browser posts
+// the rest of the close, which deletes it. A host context outlives its tabs
+// and is closed only by the engine, so that close is cancelled, as Chromium
+// cancels one the person declines.
+void BdkBrowserWindow::KeepOpenWhenEmpty() {
+  UnloadController* unload = UnloadController::From(browser_);
+  if (unload && browser_->GetTabStripModel()->empty() &&
+      unload->is_attempting_to_close_browser() &&
+      !unload->is_delete_scheduled()) {
+    unload->CancelWindowClose();
   }
 }
 
@@ -641,6 +658,11 @@ void BdkBrowserWindow::Close() {
   if (tab_operations_ > 0) {
     return;
   }
+  // A strip that Chromium emptied (a page closed itself, tabs.remove) starts
+  // the same close; it is cancelled once the strip's observers have run.
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce(&BdkBrowserWindow::KeepOpenWhenEmpty,
+                                weak_factory_.GetWeakPtr()));
   RaiseRequest(WindowRequest("close"),
                base::BindOnce([](HostWindow& window) { window.Close(); }));
 }

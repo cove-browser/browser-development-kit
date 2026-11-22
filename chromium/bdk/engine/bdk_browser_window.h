@@ -238,6 +238,9 @@ class BdkBrowserWindow : public BrowserWindow {
   // parking context has no window to ask for.
   void RaiseRequest(base::DictValue request,
                     base::OnceCallback<void(HostWindow&)> apply);
+  // Cancels the close Chromium starts when the tab strip empties, so the
+  // Browser stays usable while its host context lives.
+  void KeepOpenWhenEmpty();
 
   const raw_ptr<BrowserWindowInterface> browser_;
   std::unique_ptr<HostWindow> host_window_;
