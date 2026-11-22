@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cctype>
 #include <charconv>
+#include <cstdio>
 #include <map>
 #include <system_error>
 #include <vector>
@@ -920,6 +921,73 @@ Controls& controls() {
     return st().controls;
 }
 
+namespace {
+
+/* The smallest valid PNG (one transparent pixel) and PDF: the stub renders nothing, so its
+   captures are fixed bytes with the result shape of interface/contents.json. */
+const unsigned char kPng[] = {
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48,
+    0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
+    0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78,
+    0x9c, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00,
+    0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82};
+const char kPdf[] = "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+                    "2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\n"
+                    "trailer<</Root 1 0 R>>\n%%EOF\n";
+
+/* Answers a capture: bytes outside the JSON, or written to the file the caller named. */
+void capture(BuiltinCall& call, const std::string& bytes, const char* mime) {
+    JsonValue args;
+    json_parse(call.arguments, &args);
+    const JsonValue* path = args.find("path");
+    std::string json = std::string("{\"mimeType\":\"") + mime +
+                       "\",\"byteLength\":" + std::to_string(bytes.size());
+    if (path && path->type == JsonValue::Type::kString) {
+        FILE* f = fopen(path->text.c_str(), "wb");
+        bool written = f && fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
+        if (f)
+            fclose(f);
+        if (!written) {
+            call.control->Reject(BDK_DOMAIN_PLATFORM, "failed",
+                                 "could not write '" + path->text + "'");
+            return;
+        }
+        call.control->Resolve(json + ",\"path\":\"" + json_escape(path->text) + "\"}");
+        return;
+    }
+    call.control->ResolveBinary(json + "}", bytes);
+}
+
+/* The contents.* commands the stub can answer without a renderer. */
+bool page_command(Runtime&, BuiltinCall& call) {
+    const std::string& name = call.name;
+    if (name.compare(0, 9, "contents.") != 0 || !call.contents)
+        return false;
+    ContentsState state;
+    backend().State(*call.contents, &state);
+    if (name == "contents.frames") {
+        call.control->Resolve("{\"frames\":[{\"id\":\"main\",\"parent\":null,\"url\":\"" +
+                              json_escape(state.url) + "\",\"origin\":\"\",\"name\":\"\"}]}");
+        return true;
+    }
+    if (name == "contents.text") {
+        call.control->Resolve("{\"text\":\"\"}");
+        return true;
+    }
+    if (name == "contents.screenshot") {
+        capture(call, std::string(reinterpret_cast<const char*>(kPng), sizeof kPng), "image/png");
+        return true;
+    }
+    if (name == "contents.pdf") {
+        call.control->Progress(1.0, "done");
+        capture(call, std::string(kPdf, sizeof kPdf - 1), "application/pdf");
+        return true;
+    }
+    return false;
+}
+
+} // namespace
+
 void services_execute(Runtime& rt, const std::shared_ptr<BuiltinCall>& call) {
     State& s = st();
     ++s.controls.executed;
@@ -931,6 +999,8 @@ void services_execute(Runtime& rt, const std::shared_ptr<BuiltinCall>& call) {
     }
     /* Every command reports progress; the core drops it unless the command is marked P. */
     call->control->Progress(0.1, "starting");
+    if (page_command(rt, *call))
+        return;
     JsonValue args;
     json_parse(call->arguments, &args);
     Ctx c{rt, *call, std::move(args), s.stores[call->profile ? call->profile->id : std::string()],

@@ -80,8 +80,9 @@ add_custom_target(bdk_abi_hash_check ALL
 
 # The runtime core (runtime/) is shared with the Chromium engine; the stub supplies its in-memory backend.
 add_library(bdk_stub STATIC runtime/core.cc runtime/core_host.cc runtime/ui_router.cc runtime/app_settings.cc runtime/broker.cc runtime/routes.cc
-  runtime/broker_args.cc runtime/providers.cc runtime/translation.cc runtime/reputation_lists.cc
-  stub/stub_backend.cc stub/stub_services.cc stub/stub_broker.cc stub/stub_providers.cc)
+  runtime/broker_args.cc runtime/automation.cc runtime/contents_commands.cc runtime/local_socket_posix.cc
+  runtime/providers.cc runtime/translation.cc runtime/reputation_lists.cc
+  stub/stub_backend.cc stub/stub_services.cc stub/stub_broker.cc stub/stub_automation.cc stub/stub_providers.cc)
 target_include_directories(bdk_stub
   PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/stub"
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/runtime" "${CMAKE_CURRENT_SOURCE_DIR}/generated")
@@ -105,15 +106,18 @@ set(BDK_HARNESS_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/tests/harness_stub.cc"
 # tests/harness_broker.h: the stub has its own; any other runtime lists its implementation in
 # BDK_HARNESS_SOURCES, or gets the one that skips the tests needing it.
 set(BDK_BROKER_HARNESS_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/tests/harness_broker_unsupported.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/harness_automation_unsupported.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/harness_providers_unsupported.c")
 if(BDK_RUNTIME_LIBRARY STREQUAL "bdk_stub")
   set(BDK_BROKER_HARNESS_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/tests/harness_stub_broker.cc"
+      "${CMAKE_CURRENT_SOURCE_DIR}/tests/harness_stub_automation.cc"
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/harness_stub_providers.cc")
 endif()
 
 add_executable(bdk_conformance
   tests/test_support.c tests/tests_base.c tests/tests_runtime.c tests/tests_broker.c
-  tests/tests_profile.c tests/tests_contents.c tests/tests_ui.c tests/tests_providers.c tests/tests_pages.c
+  tests/tests_profile.c tests/tests_contents.c tests/tests_ui.c tests/tests_automation.c
+  tests/tests_endpoint.c tests/tests_providers.c tests/tests_pages.c
   ${BDK_HARNESS_SOURCES} ${BDK_BROKER_HARNESS_SOURCES})
 target_include_directories(bdk_conformance PRIVATE tests)
 target_link_libraries(bdk_conformance PRIVATE bdk_headers ${BDK_RUNTIME_LIBRARY})
@@ -122,6 +126,13 @@ if(BDK_RUNTIME_LIBRARY STREQUAL "bdk_stub")
 endif()
 add_dependencies(bdk_conformance bdk_header_check)
 add_test(NAME conformance COMMAND bdk_conformance)
+
+# The stub with its automation endpoint open, for tests of external tools in other languages
+# (packages/js/automation). Stub only, POSIX.
+if(BDK_RUNTIME_LIBRARY STREQUAL "bdk_stub")
+  add_executable(bdk_stub_automation_server tests/automation_server.c)
+  target_link_libraries(bdk_stub_automation_server PRIVATE bdk_headers bdk_stub)
+endif()
 
 # --- The conformance suite against the Chromium engine ------------------------------------------------------
 #
@@ -137,11 +148,30 @@ if(BDK_ENGINE_FRAMEWORK AND APPLE)
   set(BDK_ENGINE_HOOKS "${CMAKE_CURRENT_SOURCE_DIR}/../../chromium/bdk/engine")
   add_executable(bdk_engine_conformance MACOSX_BUNDLE
     tests/test_support.c tests/tests_base.c tests/tests_runtime.c tests/tests_broker.c
-    tests/tests_profile.c tests/tests_contents.c tests/tests_ui.c tests/tests_providers.c tests/tests_pages.c tests/tests_engine.c
-    tests/tests_engine_ui.c tests/tests_engine_prompts.c tests/tests_engine_providers.c tests/tests_engine_privacy.c
-    tests/tests_engine_pages.c
-    tests/harness_engine.mm tests/harness_broker_unsupported.c tests/harness_providers_unsupported.c)
+    tests/tests_profile.c tests/tests_contents.c tests/tests_ui.c tests/tests_automation.c
+    tests/tests_endpoint.c tests/tests_providers.c tests/tests_pages.c tests/tests_engine.c
+    tests/tests_engine_ui.c tests/tests_engine_prompts.c tests/tests_engine_automation.c
+    tests/tests_engine_providers.c tests/tests_engine_privacy.c tests/tests_engine_pages.c
+    tests/harness_engine.mm tests/harness_broker_unsupported.c tests/harness_automation_unsupported.c
+    tests/harness_providers_unsupported.c)
   target_compile_definitions(bdk_engine_conformance PRIVATE BDK_HARNESS_OWNS_MAIN BDK_HARNESS_ENGINE_TESTS)
+  # The automation scripts and DevTools front ends of tests_engine_automation.c, where `bdk build` puts
+  # them in an application, with the digests the resolved configuration records.
+  set(BDK_FIXTURES "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+  foreach(script acceptance wait fail debug)
+    set(file "${BDK_FIXTURES}/automation/${script}.js")
+    file(SHA256 "${file}" digest)
+    string(TOUPPER "${script}" upper)
+    target_compile_definitions(bdk_engine_conformance PRIVATE
+      "BDK_TEST_${upper}_DIGEST=\"sha256:${digest}\"")
+    target_sources(bdk_engine_conformance PRIVATE "${file}")
+    set_source_files_properties("${file}" PROPERTIES MACOSX_PACKAGE_LOCATION Resources/BDK/Automation)
+  endforeach()
+  set(BDK_OVERLAY "${BDK_FIXTURES}/devtools/Overlay/overlay.css" "${BDK_FIXTURES}/devtools/Overlay/overlay.js")
+  target_sources(bdk_engine_conformance PRIVATE ${BDK_OVERLAY} "${BDK_FIXTURES}/devtools/Frontend/index.html")
+  set_source_files_properties(${BDK_OVERLAY} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/BDK/DevTools/Overlay)
+  set_source_files_properties("${BDK_FIXTURES}/devtools/Frontend/index.html"
+    PROPERTIES MACOSX_PACKAGE_LOCATION Resources/BDK/DevTools/Frontend)
   target_include_directories(bdk_engine_conformance PRIVATE tests "${BDK_ENGINE_HOOKS}")
   target_link_libraries(bdk_engine_conformance PRIVATE bdk_headers)
   target_compile_options(bdk_engine_conformance PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)

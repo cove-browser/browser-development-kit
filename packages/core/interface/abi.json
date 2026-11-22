@@ -19,7 +19,8 @@
         "UI": "ui",
         "PROVIDER": "provider",
         "AUTOMATION": "automation",
-        "PLATFORM": "platform"
+        "PLATFORM": "platform",
+        "DEVTOOLS": "devtools"
       }
     },
     {
@@ -47,7 +48,20 @@
         "OUT_OF_SCOPE": "outOfScope",
         "REAUTHENTICATION_FAILED": "reauthenticationFailed",
         "PAYLOAD_TOO_LARGE": "payloadTooLarge",
-        "NOT_IMPLEMENTED": "notImplemented"
+        "NOT_IMPLEMENTED": "notImplemented",
+        "TIMEOUT": "timeout",
+        "INTERNAL_PAGE": "internalPage",
+        "DISABLED": "disabled",
+        "HOST_GONE": "hostGone",
+        "SESSION_REVOKED": "sessionRevoked",
+        "SCRIPT_NOT_FOUND": "scriptNotFound",
+        "SCRIPT_FAILED": "scriptFailed",
+        "OVERLOADED": "overloaded",
+        "PROTOCOL_DISABLED": "protocolDisabled",
+        "ALREADY_ATTACHED": "alreadyAttached",
+        "SCRIPT_ERROR": "scriptError",
+        "NOT_SERIALIZABLE": "notSerializable",
+        "NO_ELEMENT": "noElement"
       }
     },
     {

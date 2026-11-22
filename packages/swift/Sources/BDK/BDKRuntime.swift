@@ -46,6 +46,8 @@ public final class BDKRuntime {
     public private(set) lazy var ui = BDKUIHandlers()
     /// Application commands and events, and invocation of any command by name.
     public private(set) lazy var commands = BDKCommands(runtime: self)
+    /// Automation sessions, tasks and the external endpoint (swift-api.md section 13).
+    public private(set) lazy var automation = BDKAutomation(runtime: self)
     public private(set) var areRegistrationsFrozen = false
 
     package private(set) var handle: bdk_runtime_t
@@ -276,6 +278,7 @@ public final class BDKRuntime {
     }
 
     private func invalidateChildren() {
+        automation.invalidate()
         commands.invalidate()
         for contents in webContents { contents.invalidate() }
         for profile in profiles.loaded { profile.invalidate() }

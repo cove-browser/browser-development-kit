@@ -42,7 +42,11 @@ struct Scope {
     std::set<bdk_contents_t> contents;
 };
 
-struct Caller {
+struct Caller : std::enable_shared_from_this<Caller> {
+    /* Out of line, as for CommandControl: Chromium's style plugin refuses implicit ones here. */
+    Caller();
+    ~Caller();
+
     CallerKind kind = CallerKind::kHost;
     std::string name;
     bdk_profile_t profile = 0; /* a page: the profile it is in */
@@ -78,6 +82,10 @@ class CommandControl {
     void Progress(double fraction, const std::string& message);
     /* Answers with a JSON value (at most kMaxPayloadBytes). */
     void Resolve(const std::string& result_json);
+    /* Answers a command marked binary with a JSON value and bytes outside it (not counted against
+       kMaxPayloadBytes): the host's result callback gets them as its buffer, a session base64 in
+       the result frame. */
+    void ResolveBinary(const std::string& result_json, std::string bytes);
     void Reject(const char* domain, const char* code, const std::string& message);
     /* True once the caller cancelled, the caller was revoked or the runtime shut down. */
     bool cancelled() const;

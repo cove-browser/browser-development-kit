@@ -1,0 +1,2 @@
+/* The engine test checks that this style sheet reached the default front end. */
+:root { --bdk-overlay: 1; }

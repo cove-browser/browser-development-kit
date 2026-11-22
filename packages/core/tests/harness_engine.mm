@@ -151,6 +151,12 @@ static const std::string& fixture_bundle(void) {
                        "<script type=module src=./main.js></script>");
             write_file(dir + "/main.js", kFixtureScript);
         }
+        /* Scripts and DevTools front ends are read from the bundle's Resources/BDK: this app's,
+           where CMakeLists.txt packages the fixtures. */
+        std::error_code ignored;
+        std::filesystem::create_symlink(std::string(NSBundle.mainBundle.resourcePath.UTF8String) +
+                                            "/BDK",
+                                        resources + "/BDK", ignored);
     }
     return bundle;
 }
@@ -175,6 +181,8 @@ void bdk_harness_prepare_start_config(bdk_start_config_t* config) {
     resolved = "{\"browser\":{\"name\":\"BDK Conformance\"}";
     if (bdk_harness_engine_surfaces)
         resolved += std::string(",\"surfaces\":") + bdk_harness_engine_surfaces;
+    if (t_config_extra) /* the suite's own members, such as [automation] */
+        resolved += std::string(",") + t_config_extra;
     resolved += "}";
     bdk_harness_engine_surfaces = NULL;
     config->resolved_config_json = View(resolved.c_str());

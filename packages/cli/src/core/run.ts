@@ -65,11 +65,16 @@ function selectSteps(ctx: Context, args: ParsedArgs): Step[] {
       throw usageError(`--${flag} applies to \`bdk build ${owners.join("`, `bdk build ")}\` only.`);
     }
   }
-  // `--out` is a file for `config` and a directory for `codegen`: one value cannot be both.
-  if (args.out !== undefined && chosen.filter((s) => s.flags.includes("out")).length > 1) {
+  // `--out` is the resolved file for `config`, `automation` and `devtools`, and a directory for
+  // `codegen`: one value cannot be both.
+  if (
+    args.out !== undefined &&
+    chosen.some((s) => s.name === "codegen") &&
+    chosen.filter((s) => s.flags.includes("out")).length > 1
+  ) {
     throw usageError(
-      "--out names a file for `bdk build config` and a directory for `bdk build codegen`, so it cannot be given to both in one run.",
-      "Run the two steps separately, each with its own --out.",
+      "--out names a file for `bdk build config`, `bdk build automation` and `bdk build devtools` and a directory for `bdk build codegen`, so it cannot be given to codegen and another of them in one run.",
+      "Run `bdk build codegen` separately, with its own --out.",
     );
   }
   return chosen;

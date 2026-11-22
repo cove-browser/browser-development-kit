@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstring>
 
+#include "automation_internal.h"
 #include "core_internal.h"
 
 namespace bdkcore {
@@ -83,6 +84,11 @@ bool word_in(const char* words, const std::string& word) {
 }
 
 } // namespace
+
+const char* ui_surface_name(uint32_t surface) {
+    const SurfaceInfo* s = surface_by_id(surface);
+    return s ? s->name : "unknown";
+}
 
 bool completion_grants(uint32_t surface, const std::string& completion) {
     if (completion == "grant")
@@ -447,6 +453,8 @@ std::shared_ptr<Request> raise_ui_request(const std::shared_ptr<Runtime>& rt,
                                       }),
                        rt->requests.end());
     rt->requests.push_back(r);
+    if (r->on_finish && r->contents)
+        automation_request_raised(rt, *r); /* a page a script drives is waiting on its user */
 
     /* A surface that is disabled, or that no table row describes, denies without a handler. */
     const bool known = surface_by_id(r->surface) != nullptr;

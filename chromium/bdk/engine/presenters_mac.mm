@@ -718,6 +718,51 @@ class PresentersMac : public UiPresenters {
         });
   }
 
+  Dismisser ShowPageWindow(HostView* view,
+                           const std::string& title,
+                           base::OnceClosure closed) override {
+    NSView* page = AnchorOf(view);
+    if (!page) {
+      return base::DoNothing();
+    }
+    NSWindow* window =
+        [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 960, 640)
+                                    styleMask:NSWindowStyleMaskTitled |
+                                              NSWindowStyleMaskClosable |
+                                              NSWindowStyleMaskMiniaturizable |
+                                              NSWindowStyleMaskResizable
+                                      backing:NSBackingStoreBuffered
+                                        defer:NO];
+    window.releasedWhenClosed = NO;
+    window.title = base::SysUTF8ToNSString(title);
+    [page removeFromSuperview];
+    page.frame = window.contentView.bounds;
+    page.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    [window.contentView addSubview:page];
+    [window center];
+    [window makeKeyAndOrderFront:nil];
+    // The person closing the window closes the front end; the dismisser
+    // closes the window without asking again.
+    auto pending = std::make_shared<base::OnceClosure>(std::move(closed));
+    id observer = [NSNotificationCenter.defaultCenter
+        addObserverForName:NSWindowWillCloseNotification
+                    object:window
+                     queue:nil
+                usingBlock:^(NSNotification*) {
+                  if (*pending) {
+                    std::move(*pending).Run();
+                  }
+                }];
+    return base::BindOnce(
+        [](NSWindow* w, id o, std::shared_ptr<base::OnceClosure> p) {
+          [NSNotificationCenter.defaultCenter removeObserver:o];
+          p->Reset();
+          [w orderOut:nil];
+          [w close];
+        },
+        window, observer, pending);
+  }
+
   std::unique_ptr<FindBar> ShowFindBar(HostView* view,
                                        const base::DictValue& payload,
                                        FindBarClient* client) override {

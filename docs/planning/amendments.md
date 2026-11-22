@@ -1,6 +1,6 @@
 # Amendments to the BDK plan
 
-Dated 2026-11-15; section 2.10 was added on 2026-11-16, 2.12 and 2.13 on 2026-11-19, 2.14 on 2026-11-20. This lists everything that changed in the planning documents after the 2026-11-14 version, following the product owner's review. If you read the 2026-11-14 documents, reading this is enough. The other documents already contain these changes; nothing here still needs to be applied.
+Dated 2026-11-15; section 2.10 was added on 2026-11-16, 2.12 and 2.13 on 2026-11-19, 2.14 to 2.16 on 2026-11-20. This lists everything that changed in the planning documents after the 2026-11-14 version, following the product owner's review. If you read the 2026-11-14 documents, reading this is enough. The other documents already contain these changes; nothing here still needs to be applied.
 
 ## 1. Summary
 
@@ -287,6 +287,29 @@ M6 departs from architecture 11, 11.1 and 12, feasibility 6 and tasks T-PRV-02 t
 | A translation request that moves through its phases (ui-requests.md 5.10) | The request is the offer; later phases are events | A request is completed once |
 
 New tasks: T-PRV-11, T-PRV-12 and T-PRV-13 (M6), and T-PRV-14 (after v1). The task list is 128.
+
+### 2.16 Automation and DevTools built in M7 (2026-11-20)
+
+M7 was written with the engine unbuilt: the parts that need no Chromium pass their tests, the engine's are written
+against the pinned source and wait for a build (T-AUT-06). Where it departs from architecture 9.3, javascript-api.md
+5 to 8, c-abi.md 9, services.md 5.15 to 5.17 and ui-requests.md 5.15:
+
+| Planned | Built | Why |
+|---|---|---|
+| A runtime for scripts chosen by a spike | V8 in a `kService` utility process for bundled scripts, an external runtime on the local socket for external tools, one JSON protocol for both ([feasibility.md](feasibility.md) section 12) | Both were needed anyway (T-AUT-04 is the external one); one protocol keeps one set of checks |
+| Automation in the engine (architecture 2, "automation host endpoint") | Sessions, tasks, the protocol, the endpoint, the user-script registry and the `contents.*` commands that need no renderer are in the runtime core; the engine only runs scripts and renderer work | Logic that needs no Chromium lives where CI tests it (2.7); the stub and the engine cannot disagree |
+| `@bdk/*` left external, provided by the host (javascript-api.md 8) | `bdk build automation` inlines `@bdk/automation`, `@bdk/commands` and `@bdk/events` into each script: one ES module with no imports | The host then provides only a transport; the runtime carries no copy of the JavaScript library, and the protocol is versioned in `start` and `welcome` |
+| `bdk_automation_subscribe_audit` (c-abi.md 9) | The built-in events `automation.sessionCreated`, `sessionRevoked` and `commandInvoked` (capability `automation.audit`) | One subscription mechanism; an auditing session can be granted them |
+| `bdk_automation_endpoint_open(authenticator_cb)` returning a session | The hello reaches a callback with a `bdk_context_t`; the application answers later with `bdk_automation_hello_accept(session)` or `_refuse` | Authentication may be asynchronous (an application asking its own server) |
+| A session's profiles | Open profile ids resolved to handles when the session is created: a profile closed and reopened leaves the scope | Scope stays a set of handles in the broker; reopening is a new grant |
+| Undocked DevTools as a new-window request of kind `devTools` (2.12) | A `devtools` request carrying the front end as a page (ui-requests.md 5.15), with an undocked window of BDK's own as the default presenter | The surface the spec defines; `[ui.surfaces] devtools` now governs it |
+| A replaced front end "served in place of the default" | Chromium's `--custom-devtools-frontend` switch, set at each start on the bundle's `BDK/DevTools/Frontend/`, entry `index.html`; packaged by `bdk build devtools` | Chromium's data source reads the switch per request: no patch |
+| A slow subscriber's events coalesced (services.md 7) | A connection 64 MiB behind is closed with `automation.overloaded` | Simple and safe for v0; coalescing is T-AUT-07 |
+
+New in the ABI: `bdk_session_run`, `bdk_task_cancel`, `bdk_task_subscribe`, `bdk_automation_endpoint_open` and
+`_close`, `bdk_automation_hello_accept` and `_refuse` (the export patch lists them). New patch: "bdk: register the
+automation host in the utility process" (Chromium has no embedder hook for utility services). With M4's two patches, the series is 17.
+A saved page (`contents.save`) appears in the profile's downloads, because Chromium saves pages as downloads.
 
 ## 3. Tasks and workflows
 

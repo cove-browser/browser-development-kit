@@ -1,0 +1,48 @@
+// Copyright 2026 The BDK Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module bdk.mojom;
+
+import "sandbox/policy/mojom/sandbox.mojom";
+
+// The automation host (architecture.md section 9.3, T-AUT-01): V8 in a
+// sandboxed utility process, running the bundled scripts of automation tasks.
+// The browser process launches it with content::ServiceProcessHost and drives
+// it with these three interfaces; every message is one frame of the wire
+// protocol (docs/planning/sdk/javascript-api.md section 5), a JSON text.
+//
+// kService: the host needs no operating system resource. V8 runs with
+// --jitless, so it needs no dynamic code either (see
+// automation_host_service.cc).
+[ServiceSandbox=sandbox.mojom.Sandbox.kService]
+interface AutomationHost {
+  // Starts the task `task_id`: evaluates `script_source` (one ES module with
+  // no imports) in a context of its own, delivers `start_frame` (the `start`
+  // frame, which carries the task's arguments) and calls the module's default
+  // export. Closing `task` ends the task and disposes its context. A script
+  // that cannot be compiled or evaluated is reported through `client.Failed`.
+  StartTask(string task_id,
+            string script_source,
+            string start_frame,
+            pending_receiver<AutomationTask> task,
+            pending_remote<AutomationTaskClient> client);
+};
+
+// BDK to the script of one task.
+interface AutomationTask {
+  // One frame for the script's `__bdkHost.onmessage`, in order.
+  Deliver(string frame);
+};
+
+// The script of one task to BDK.
+interface AutomationTaskClient {
+  // One frame the script passed to `__bdkHost.send`, or a `log`, `done` or
+  // `failed` frame the host wrote on the script's behalf.
+  Send(string frame);
+
+  // The script could not be compiled or evaluated, or has no default export
+  // function. The task is over; a script that merely throws is reported with a
+  // `failed` frame instead.
+  Failed(string message);
+};

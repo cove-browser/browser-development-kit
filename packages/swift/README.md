@@ -1,7 +1,7 @@
 # swift
 
 The macOS SDK: a Swift layer over the C ABI in `packages/core`. Spec: `docs/planning/sdk/swift-api.md`. Tasks
-T-SWF-01 to T-SWF-04, T-SWF-06, T-SVC-05 and the Swift wrappers of T-SVC-02, T-SVC-03, T-SVC-04 and T-SVC-06 are implemented and tested against the in-memory stub runtime. Nothing here has run against
+T-SWF-01 to T-SWF-04, T-SWF-06, T-SVC-05, the M7 page and automation APIs (T-AUT-02 to T-AUT-05, T-SVC-09) and the Swift wrappers of T-SVC-02, T-SVC-03, T-SVC-04 and T-SVC-06 are implemented and tested against the in-memory stub runtime. Nothing here has run against
 Chromium, and nothing in this package claims engine behaviour works: the real runtime arrives with T-PKG-04 and
 the engine tasks.
 
@@ -53,6 +53,10 @@ session (a logged-in Mac or the hosted macOS runner).
 | Providers | `config.services` (`BDKServiceRegistry`), the provider protocols, `page.translation`, `TranslationRequest` (see below) | T-PRV-01, T-PRV-03, T-PRV-09 |
 | Page routes | `config.pages` (`PageRegistrations.register(_:_:)`), `PageMode` (`.chromium`, `.bundled`, `.native`, `.disabled`), `NativePageRequest`, `NativePageResult` | T-SWF-06 |
 | Commands | `BDKCommand`, `BDKEvent`, `BDKCommandRegistry` (`config.commands`), `BDKCommands` (`runtime.commands`: `register`, `declare`, `emit`, `events`, `invoke`), `BDKCommandContext`, `BDKDeclarations` | T-SVC-05 |
+| Scripting | `page.scripting` (`Scripting`): `evaluate`, `call`, `insertCSS`, `remove`, `frames`, `query`, `snapshot`, over `contents.*` | T-AUT-03 |
+| Capture | `page.capture` (`PageCapture`): `screenshot`, `pdf`, `save`, over `contents.screenshot`, `pdf` and `save`. `BDKCommands.invokeBinary` returns the bytes of a command marked binary next to its JSON | T-SVC-09 |
+| DevTools | `page.devTools` (`DevTools`): `present`, `close`, `state`, `isOpen`, `attachProtocol` returning a `BDKDevToolsProtocol` (`send`, `events`, `detach`); errors in the `devtools` domain | T-AUT-05 |
+| Automation | `runtime.automation` (`BDKAutomation`): `makeSession`, `events`, `external.open`; `BDKAutomationSession` (`run`, `grant(contents:)`, `revoke`), `BDKAutomationTask` (`events`, `value`, `cancel`), `BDKAutomationEndpoint` (`socketPath`, `close`) | T-AUT-02, T-AUT-04 |
 
 Pages and profiles dropped without `close()` are closed on deinit with a warning in the log.
 
@@ -77,6 +81,49 @@ page controls. `page.zoom` is a `ZoomControl`; the factor is `page.zoom.factor`.
 tests do not call them. Native routes and page commands are tested in `PageTests.swift` against the stub's route
 table (the resolved JSON of `packages/core/tests/tests_pages.c`); a native route commits nothing, so those tests
 start the load through the ABI instead of awaiting `navigation.load`.
+
+### Page automation, sessions and the endpoint (M7)
+
+`page.scripting`, `page.capture` and `page.devTools` are thin wrappers: each call is a `contents.*`, `debug.*` or
+`devtools.*` command with the page as the invoke options' `contents`, so a closed page throws `contents.stale`. The
+stub has no renderer: captures return fixed bytes, `frames` one frame, and the other scripting commands answer
+`broker.notImplemented`; real answers are engine scenarios.
+
+Mapping rules this package chose (swift-api.md is silent):
+
+* Types are nested where the spec names them bare: `Scripting.World`, `Scripting.FrameSelector`, `Scripting.Snapshot`,
+  `Scripting.InjectedStyle`, `PageCapture.ScreenshotArea`, `PageCapture.PDFOptions`. Frames, elements, snapshot
+  kinds and save formats are the generated `BDKFrameInfo` (`ID` is `String`), `BDKElementInfo`, `BDKSnapshotKind` and
+  `BDKSaveFormat`.
+* `World.page` sends `world: "page"`; `.isolated(name)` sends the name, and `""` or `"page"` throw
+  `broker.invalidArguments` (the engine reads "page" as the page's own world). `FrameSelector.main` and `.all` send no
+  `frame`, which the engine reads as the main frame; `.frame(id)` sends the id. `call` builds
+  `(<function>)(<JSON arguments>)` and evaluates it. `query` also takes `limit`.
+* `screenshot` always asks for PNG. `PDFOptions` paper and margins are in inches; a nil field takes the engine's
+  default; `pdf` takes an `onProgress` closure. `Paper.a4` is 8.27 x 11.69, `.letter` 8.5 x 11.
+* `DevTools.present()` and `close()` are `async throws` (they are commands, unlike `find.present()`). `isOpen` starts
+  false, follows `devtools.stateChanged` (subscribed when `page.devTools` is first read) and is refreshed from
+  `devtools.state` after `present()`, `close()` and `state()`.
+* `attachProtocol()` subscribes to `debug.event` and `debug.detached` before it attaches, so no event is lost.
+  `events` is filtered by the session id and ends at `detach()` or `debug.detached`. `detach()` is synchronous and
+  idempotent (the command is sent in a task). `send` after a detach throws `devtools.detached`. A session object
+  stays alive until it ends: keep it or call `detach()`.
+* `BDKAutomation.Scope.profiles` is `[BDKProfile]?` (nil is every profile); `ContentsScope` is `.all`, `.created`,
+  `.explicit([BDKWebContents])` (the pages are granted right after creation). `SessionOptions.capabilities` defaults to
+  none.
+* `BDKAutomationSession.run` is `throws`, not `async`: `bdk_session_run` is synchronous. `grant(contents:)` throws;
+  `revoke()` does not and may be repeated. The runtime keeps a session until it is revoked and a running task until
+  it finishes. `BDKAutomationTask.value` follows the FINISHED event (`broker.cancelled`, `automation.sessionRevoked`,
+  `automation.hostGone`, `automation.scriptFailed`); the task's `events` end at FINISHED. A task's
+  `.commandInvoked(command, error:)` error carries the domain and code only.
+* `runtime.automation.events` reports `.sessionCreated`, `.sessionRevoked`, `.commandInvoked` and
+  `.contentsCreated(page, bySession:)`. A page a session created is wrapped with `BDKWebContents.adopt`, kept by the
+  runtime and destroyed once it reports `closed`; pages the application made are not announced.
+* `external.open(directory:authenticate:)`: the closure is `async throws`, runs on the main actor per hello and
+  returns `.accept(session:)` or `.refuse(message:)` (the message has a default, so `.refuse()` works); a throw
+  refuses with the error's description. At most one endpoint is open; `socketPath` is a `String`.
+* `BDKStub.defineScript(_:)` plays a script in the stub's host: `StubScript.frames` holds what BDK sent and
+  `send(_:)` answers in the wire protocol; `crashAutomationHost()` and `automationCount(_:)` expose the other hooks.
 
 ### UI requests
 
@@ -262,11 +309,11 @@ so a test can start a load and act on it (supersede it, stop it) before the stub
 
 | Left out | Why | Task |
 |---|---|---|
-| Wrappers for services with no definition yet (extensions, favicons, top sites; page-scoped capture) | The wrappers are generated, so each arrives with its definition | T-ABI-03, T-SWF-04, T-SVC-06 |
+| Wrappers for services with no definition yet (extensions, favicons, top sites) | The wrappers are generated, so each arrives with its definition | T-ABI-03, T-SWF-04, T-SVC-06 |
 | `config.services.<service>.setKey(_:)`, and the credentials and leak-check providers | `bdk_provider_set_key` always fails `config.keyUnused`: no provider in this runtime takes a key that way (the Google key is `google.apiKey`). The credential and leak-check providers (S14, S16) are proposals | — |
 | `BDKProfiles.events` for the `profiles.*` events | `profiles` is a native namespace | T-ABI-03 |
 | `BDKWindow`, anchors, window delegate, host contexts | `bdk_window_register` takes a window and a kind and nothing more yet; the other `bdk_window_*` functions are not declared | T-UIR-01, T-ADP-06 |
-| Capture, scripting, user scripts | Not declared in the ABI | T-SVC-06, T-AUT-03 |
+| `click`, `hover`, `type`, `press`, `scroll`, `waitFor` on `page.scripting`; `webContentsCreated(_, by: .automation)` | The spec's `Scripting` has no input methods; the commands exist (`contents.click` and the rest) and run through `runtime.commands.invoke` | T-AUT-03 |
 | `BDKRuntime.contents` lookup by id, `BDKProfiles.events`, `ProfileDescriptor.lastUsed`, profile rename by id | Not in the ABI (a rename needs an open profile handle) | T-ABI-03 |
 | `displayURL`, favicon, `capture`, `isCrashed`, `isDiscarded`, `isAutoDiscardable` getter, `isFullscreen`, opener, `extensionTabID`, `hoveredLinkChanged`, discard events (renderer loss is `.rendererGone`) | `bdk_contents_state_t` and the event kinds do not carry them | T-ABI-03 |
 | Navigation `LoadOptions`, `prune`, `deferInitialLoad`, `userAgent` and `isInitiallyMuted` creation options | Not in `bdk_contents_options_t` or `bdk_contents_load` | T-ABI-03 |

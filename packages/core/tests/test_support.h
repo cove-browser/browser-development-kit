@@ -21,12 +21,15 @@ extern const t_test_t t_broker_tests[];
 extern const t_test_t t_profile_tests[];
 extern const t_test_t t_contents_tests[];
 extern const t_test_t t_ui_tests[];
+extern const t_test_t t_automation_tests[];
+extern const t_test_t t_endpoint_tests[];
 extern const t_test_t t_provider_tests[];
 extern const t_test_t t_pages_tests[];
 #ifdef BDK_HARNESS_ENGINE_TESTS
 extern const t_test_t t_engine_tests[];
 extern const t_test_t t_engine_ui_tests[];
 extern const t_test_t t_engine_prompt_tests[];
+extern const t_test_t t_engine_automation_tests[];
 extern const t_test_t t_engine_provider_tests[];
 extern const t_test_t t_engine_privacy_tests[];
 extern const t_test_t t_engine_pages_tests[];
@@ -65,6 +68,10 @@ bdk_runtime_t t_start_frozen(void); /* start and freeze */
 void t_freeze(void);
 void t_stop(void); /* shut down and pump; REQUIREs success */
 void t_fill_start_config(bdk_start_config_t* c);
+/* Members added to the resolved configuration of the next starts (such as
+   "\"automation\":{...}"); NULL for none. A harness that writes its own configuration keeps them.
+   The runner resets it after each test. */
+extern const char* t_config_extra;
 void t_pump(void);
 
 /* Records the callbacks of an asynchronous call. */

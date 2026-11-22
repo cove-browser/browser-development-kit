@@ -141,6 +141,14 @@ class UiPresenters {
       HostView* view,
       const std::string& suggested_name,
       base::OnceCallback<void(std::optional<std::string>)> answer) = 0;
+  // The devtools surface's default (ui-requests.md 5.15): an undocked window
+  // of BDK's own that shows `view`, the DevTools front end's page, titled
+  // `title`. `closed` runs when the person closes the window; running the
+  // dismisser closes it without calling `closed`. A script answers
+  // {"answer":"close"} to close it as the person would.
+  virtual Dismisser ShowPageWindow(HostView* view,
+                                   const std::string& title,
+                                   base::OnceClosure closed) = 0;
   // payload: the find request payload (initialText).
   virtual std::unique_ptr<FindBar> ShowFindBar(HostView* view,
                                                const base::DictValue& payload,

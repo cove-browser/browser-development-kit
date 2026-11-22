@@ -49,7 +49,10 @@ describe("usage errors (exit 2)", () => {
   it.each([
     [[], "No command given"],
     [["frobnicate"], 'Unknown command "frobnicate". Commands: build'],
-    [["build", "embed"], 'Unknown build step "embed". Steps: config, codegen, pages, sign'],
+    [
+      ["build", "embed"],
+      'Unknown build step "embed". Steps: config, codegen, pages, automation, devtools, sign',
+    ],
     [["build", "config", "embed"], 'Unknown build step "embed"'],
     [["--bogus"], "Unknown option"],
   ])("%j", async (argv, text) => {
@@ -87,14 +90,16 @@ describe("bdk build with no step", () => {
     expect(
       await run(["build", "--bundle", join(dir, "A.app"), "--identity", "-", "--json"], ctx),
     ).toBe(0);
-    expect(JSON.parse(ctx.out.join("")).command).toMatch(/^build config codegen pages sign/);
+    expect(JSON.parse(ctx.out.join("")).command).toMatch(
+      /^build config codegen pages automation devtools sign/,
+    );
   });
 
   it("refuses one --out for both config and codegen", async () => {
     const { dir } = await tempProject();
     const ctx = testContext({ cwd: dir });
     expect(await run(["build", "config", "codegen", "--out", "x"], ctx)).toBe(2);
-    expect(ctx.err.join("")).toContain("cannot be given to both");
+    expect(ctx.err.join("")).toContain("cannot be given to codegen and another of them");
   });
 });
 

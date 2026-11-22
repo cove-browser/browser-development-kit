@@ -5,6 +5,7 @@
 #include <cstring>
 #include <unordered_map>
 
+#include "automation_internal.h"
 #include "bdk_command_table.inc"
 #include "broker_internal.h"
 
@@ -169,6 +170,16 @@ bool check_scope(const std::shared_ptr<Pending>& p) {
                    "the page is outside the session's scope");
             return false;
         }
+        /* A page is in scope only in a profile that is: "all pages" means all pages of those. */
+        if (o.contents && !caller.scope.all_profiles) {
+            auto page = contents_of(o.contents);
+            if (page &&
+                (!page->profile || !is_member(caller.scope.profiles, page->profile->handle))) {
+                refuse(p, BDK_DOMAIN_CAPABILITY, BDK_CODE_OUT_OF_SCOPE,
+                       "the page is in a profile outside the session's scope");
+                return false;
+            }
+        }
         break;
     }
 
@@ -269,6 +280,8 @@ void validate_and_run(const std::shared_ptr<Pending>& p) {
             c->Stop();
     };
     if (settings_call && app_settings_execute(*p->rt, call, parsed))
+        return;
+    if (core_execute_command(*p->rt, call, parsed))
         return;
     backend().ExecuteCommand(*p->rt, call);
 }
@@ -472,38 +485,77 @@ bdk_call_t broker_invoke_abi(bdk_runtime_t h, const std::string* name, uint32_t 
     return broker_submit(rt, host_caller(), ref, str(args), opts, false, cb, prog, ctx, rel);
 }
 
-bool emit_builtin_event(const std::shared_ptr<Runtime>& rt, const std::string& name,
-                        bdk_profile_t profile, const std::string& payload_json) {
-    uint32_t id = 0;
+namespace {
+
+uint32_t builtin_event_id(const std::string& name) {
     for (size_t i = 0; i < table::kEventCount; ++i) {
         if (name == table::kEvents[i].name)
-            id = table::kEvents[i].id;
+            return table::kEvents[i].id;
     }
+    return 0;
+}
+
+/* to: nullptr delivers to the host and to every session in scope; the host's caller delivers to
+   the host only; a session's caller to that session only. */
+bool emit_event(const std::shared_ptr<Runtime>& rt, const Caller* to, const std::string& name,
+                bdk_profile_t profile, bdk_contents_t contents, const std::string& payload_json) {
+    uint32_t id = builtin_event_id(name);
     if (id == 0)
         return false;
-    post([rt, name, id, profile, payload_json] {
-        bool hidden_from_pages = false;
-        if (name == "settings.changed") {
-            JsonValue parsed;
-            std::string not_exposed;
-            hidden_from_pages = !json_parse(payload_json, &parsed) ||
-                                !app_settings_exposed(*rt, parsed, &not_exposed);
+    std::shared_ptr<Caller> only;
+    if (to && to->kind != CallerKind::kHost)
+        only = std::const_pointer_cast<Caller>(to->shared_from_this());
+    const bool host = !to || to->kind == CallerKind::kHost;
+    const bool sessions = !to || only;
+    post([rt, name, id, profile, contents, payload_json, host, sessions, only] {
+        if (host) {
+            bool hidden_from_pages = false;
+            if (name == "settings.changed") {
+                JsonValue parsed;
+                std::string not_exposed;
+                hidden_from_pages = !json_parse(payload_json, &parsed) ||
+                                    !app_settings_exposed(*rt, parsed, &not_exposed);
+            }
+            auto subs = rt->subs;
+            for (auto& s : subs) {
+                if (!s->active || !s->ecb)
+                    continue;
+                if (s->page && hidden_from_pages)
+                    continue;
+                const bool everywhere = profile == 0 && s->page; /* application-wide, to pages */
+                if ((s->profile != 0 && s->profile != profile && !everywhere) ||
+                    (s->contents != 0 && s->contents != contents))
+                    continue;
+                if ((!s->event_name.empty() && s->event_name == name) ||
+                    (s->event_id != 0 && s->event_id == id))
+                    s->ecb(s->ctx, id, view(name), view(payload_json));
+            }
         }
-        auto subs = rt->subs;
-        for (auto& s : subs) {
-            if (!s->active || !s->ecb)
-                continue;
-            if (s->page && hidden_from_pages)
-                continue;
-            const bool everywhere = profile == 0 && s->page; /* application-wide, to pages */
-            if (s->profile != 0 && s->profile != profile && !everywhere)
-                continue;
-            if ((!s->event_name.empty() && s->event_name == name) ||
-                (s->event_id != 0 && s->event_id == id))
-                s->ecb(s->ctx, id, view(name), view(payload_json));
-        }
+        if (sessions)
+            automation_deliver_event(rt, name, id, profile, contents, payload_json, only.get());
     });
     return true;
+}
+
+} // namespace
+
+bool emit_builtin_event(const std::shared_ptr<Runtime>& rt, const std::string& name,
+                        bdk_profile_t profile, const std::string& payload_json) {
+    return emit_event(rt, nullptr, name, profile, 0, payload_json);
+}
+
+bool emit_builtin_event_for(const std::shared_ptr<Runtime>& rt, const std::string& name,
+                            bdk_profile_t profile, bdk_contents_t contents,
+                            const std::string& payload_json) {
+    return emit_event(rt, nullptr, name, profile, contents, payload_json);
+}
+
+bool emit_builtin_event_to(const std::shared_ptr<Runtime>& rt,
+                           const std::shared_ptr<Caller>& caller, const std::string& name,
+                           bdk_profile_t profile, bdk_contents_t contents,
+                           const std::string& payload_json) {
+    return emit_event(rt, caller ? caller.get() : host_caller().get(), name, profile, contents,
+                      payload_json);
 }
 
 void broker_revoke_caller(const std::shared_ptr<Caller>& caller) {
@@ -589,6 +641,9 @@ void resolve_call(const std::shared_ptr<Call>& call, const std::string& result_j
 
 /* ---- CommandControl ---- */
 
+Caller::Caller() = default;
+Caller::~Caller() = default;
+
 CommandControl::CommandControl(std::shared_ptr<Call> call, bool progress)
     : call_(std::move(call)), progress_(progress) {}
 
@@ -607,6 +662,16 @@ void CommandControl::Progress(double fraction, const std::string& message) {
 
 void CommandControl::Resolve(const std::string& result_json) {
     resolve_call(call_, result_json);
+}
+
+void CommandControl::ResolveBinary(const std::string& result_json, std::string bytes) {
+    if (call_->done)
+        return;
+    if (result_json.size() > kMaxPayloadBytes || !valid_json(result_json)) {
+        resolve_call(call_, result_json); /* answers payloadTooLarge or the invalid JSON */
+        return;
+    }
+    finish_call_binary(call_, result_json, std::move(bytes));
 }
 
 void CommandControl::Reject(const char* domain, const char* code, const std::string& message) {

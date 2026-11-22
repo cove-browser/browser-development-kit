@@ -116,6 +116,32 @@ public struct BDKCardUpdate: Codable, Sendable, Equatable {
     }
 }
 
+public struct BDKSessionInfo: Codable, Sendable, Equatable {
+    public var name: String
+    public var capabilities: [String]
+
+    public init(
+        name: String,
+        capabilities: [String]
+    ) {
+        self.name = name
+        self.capabilities = capabilities
+    }
+}
+
+public struct BDKCallError: Codable, Sendable, Equatable {
+    public var domain: String
+    public var code: String
+
+    public init(
+        domain: String,
+        code: String
+    ) {
+        self.domain = domain
+        self.code = code
+    }
+}
+
 public struct BDKBookmarkNode: Codable, Sendable, Equatable {
     public var id: String
     public var parentId: String?
@@ -154,6 +180,234 @@ public struct BDKBookmarkTree: Codable, Sendable, Equatable {
     ) {
         self.node = node
         self.children = children
+    }
+}
+
+public enum BDKSecurityLevel: String, Codable, Sendable, Equatable, CaseIterable {
+    case unknown
+    case none
+    case secure
+    case broken
+}
+
+public enum BDKCreatorKind: String, Codable, Sendable, Equatable, CaseIterable {
+    case swift
+    case session
+}
+
+public struct BDKContentsInfo: Codable, Sendable, Equatable {
+    public var id: String
+    public var url: String
+    public var title: String
+    public var profile: String
+    public var visible: Bool
+    public var loading: Bool
+    public var crashed: Bool
+
+    public init(
+        id: String,
+        url: String,
+        title: String,
+        profile: String,
+        visible: Bool,
+        loading: Bool,
+        crashed: Bool
+    ) {
+        self.id = id
+        self.url = url
+        self.title = title
+        self.profile = profile
+        self.visible = visible
+        self.loading = loading
+        self.crashed = crashed
+    }
+}
+
+public struct BDKContentsDetail: Codable, Sendable, Equatable {
+    public var id: String
+    public var url: String
+    public var title: String
+    public var profile: String
+    public var visible: Bool
+    public var loading: Bool
+    public var crashed: Bool
+    public var progress: Double
+    public var security: BDKSecurityLevel
+    public var audible: Bool
+    public var muted: Bool
+    public var focused: Bool
+    public var zoom: Double
+    public var canGoBack: Bool
+    public var canGoForward: Bool
+
+    public init(
+        id: String,
+        url: String,
+        title: String,
+        profile: String,
+        visible: Bool,
+        loading: Bool,
+        crashed: Bool,
+        progress: Double,
+        security: BDKSecurityLevel,
+        audible: Bool,
+        muted: Bool,
+        focused: Bool,
+        zoom: Double,
+        canGoBack: Bool,
+        canGoForward: Bool
+    ) {
+        self.id = id
+        self.url = url
+        self.title = title
+        self.profile = profile
+        self.visible = visible
+        self.loading = loading
+        self.crashed = crashed
+        self.progress = progress
+        self.security = security
+        self.audible = audible
+        self.muted = muted
+        self.focused = focused
+        self.zoom = zoom
+        self.canGoBack = canGoBack
+        self.canGoForward = canGoForward
+    }
+}
+
+public struct BDKCreator: Codable, Sendable, Equatable {
+    public var kind: BDKCreatorKind
+    public var session: String?
+
+    public init(
+        kind: BDKCreatorKind,
+        session: String? = nil
+    ) {
+        self.kind = kind
+        self.session = session
+    }
+}
+
+public enum BDKLoadCondition: String, Codable, Sendable, Equatable, CaseIterable {
+    case committed
+    case finished
+}
+
+public struct BDKNavigationResult: Codable, Sendable, Equatable {
+    public var url: String
+    public var errorPage: Bool
+
+    public init(
+        url: String,
+        errorPage: Bool
+    ) {
+        self.url = url
+        self.errorPage = errorPage
+    }
+}
+
+public struct BDKFrameInfo: Codable, Sendable, Equatable {
+    public var id: String
+    public var parent: String?
+    public var url: String
+    public var origin: String
+    public var name: String
+
+    public init(
+        id: String,
+        parent: String? = nil,
+        url: String,
+        origin: String,
+        name: String
+    ) {
+        self.id = id
+        self.parent = parent
+        self.url = url
+        self.origin = origin
+        self.name = name
+    }
+}
+
+public struct BDKRect: Codable, Sendable, Equatable {
+    public var x: Double
+    public var y: Double
+    public var width: Double
+    public var height: Double
+
+    public init(
+        x: Double,
+        y: Double,
+        width: Double,
+        height: Double
+    ) {
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+    }
+}
+
+public struct BDKElementInfo: Codable, Sendable, Equatable {
+    public var tag: String
+    public var attributes: BDKJSValue
+    public var text: String
+    public var box: BDKRect?
+
+    public init(
+        tag: String,
+        attributes: BDKJSValue,
+        text: String,
+        box: BDKRect? = nil
+    ) {
+        self.tag = tag
+        self.attributes = attributes
+        self.text = text
+        self.box = box
+    }
+}
+
+public enum BDKSnapshotKind: String, Codable, Sendable, Equatable, CaseIterable {
+    case dom
+    case accessibility
+    case text
+}
+
+public enum BDKMouseButton: String, Codable, Sendable, Equatable, CaseIterable {
+    case left
+    case middle
+    case right
+}
+
+public enum BDKScreenshotArea: String, Codable, Sendable, Equatable, CaseIterable {
+    case visible
+    case fullPage
+    case rect
+}
+
+public enum BDKImageFormat: String, Codable, Sendable, Equatable, CaseIterable {
+    case png
+    case jpeg
+}
+
+public enum BDKSaveFormat: String, Codable, Sendable, Equatable, CaseIterable {
+    case htmlOnly
+    case completePage
+    case singleFile
+}
+
+public struct BDKCapture: Codable, Sendable, Equatable {
+    public var mimeType: String
+    public var byteLength: Int
+    public var path: String?
+
+    public init(
+        mimeType: String,
+        byteLength: Int,
+        path: String? = nil
+    ) {
+        self.mimeType = mimeType
+        self.byteLength = byteLength
+        self.path = path
     }
 }
 
@@ -229,6 +483,19 @@ public struct BDKCookieValue: Codable, Sendable, Equatable {
         self.secure = secure
         self.httpOnly = httpOnly
         self.sameSite = sameSite
+    }
+}
+
+public struct BDKDevToolsState: Codable, Sendable, Equatable {
+    public var `open`: Bool
+    public var frontend: String?
+
+    public init(
+        `open`: Bool,
+        frontend: String? = nil
+    ) {
+        self.`open` = `open`
+        self.frontend = frontend
     }
 }
 
@@ -544,6 +811,43 @@ public enum BDKChangeSource: String, Codable, Sendable, Equatable, CaseIterable 
     case page
     case session
     case `extension`
+}
+
+public enum BDKRunAt: String, Codable, Sendable, Equatable, CaseIterable {
+    case documentStart
+    case documentEnd
+    case documentIdle
+}
+
+public struct BDKUserScript: Codable, Sendable, Equatable {
+    public var id: String
+    public var matches: [String]
+    public var excludes: [String]?
+    public var runAt: BDKRunAt?
+    public var world: String?
+    public var allFrames: Bool?
+    public var javascript: [String]?
+    public var css: [String]?
+
+    public init(
+        id: String,
+        matches: [String],
+        excludes: [String]? = nil,
+        runAt: BDKRunAt? = nil,
+        world: String? = nil,
+        allFrames: Bool? = nil,
+        javascript: [String]? = nil,
+        css: [String]? = nil
+    ) {
+        self.id = id
+        self.matches = matches
+        self.excludes = excludes
+        self.runAt = runAt
+        self.world = world
+        self.allFrames = allFrames
+        self.javascript = javascript
+        self.css = css
+    }
 }
 
 public enum BDKSearchEngineSource: String, Codable, Sendable, Equatable, CaseIterable {
@@ -2278,6 +2582,43 @@ public struct BDKRuntimeInformation {
     }
 }
 
+/// The `scripts` commands.
+@MainActor
+public struct BDKScripts {
+    let scope: BDKServiceScope
+
+    /// `scripts.register`. Needs the capability `contents.script` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func register(
+        script: BDKUserScript
+    ) async throws {
+        struct Arguments: Encodable {
+            var script: BDKUserScript
+        }
+        try await scope.run("scripts.register", Arguments(script: script))
+    }
+
+    /// `scripts.unregister`. Needs the capability `contents.script` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func unregister(
+        _ id: String
+    ) async throws {
+        struct Arguments: Encodable {
+            var id: String
+        }
+        try await scope.run("scripts.unregister", Arguments(id: id))
+    }
+
+    /// `scripts.list`. Needs the capability `contents.read` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func list() async throws -> [BDKUserScript] {
+        struct Output: Decodable {
+            var scripts: [BDKUserScript]
+        }
+        return try await scope.call("scripts.list", BDKVoid(), as: Output.self).scripts
+    }
+}
+
 /// The `search` commands.
 @MainActor
 public struct BDKSearch {
@@ -2738,6 +3079,11 @@ extension BDKProfile {
     /// The `privacy` commands in this profile.
     public var privacy: BDKPrivacy {
         BDKPrivacy(scope: BDKServiceScope(runtime: runtime, profile: self))
+    }
+
+    /// The `scripts` commands in this profile.
+    public var scripts: BDKScripts {
+        BDKScripts(scope: BDKServiceScope(runtime: runtime, profile: self))
     }
 
     /// The `search` commands in this profile.

@@ -6,6 +6,7 @@
 #include <mutex>
 #include <thread>
 
+#include "automation_internal.h"
 #include "bdk_abi_hash.h"
 #include "broker_internal.h"
 #include "core_internal.h"
@@ -402,6 +403,22 @@ void finish_call(const std::shared_ptr<Call>& c, const char* domain, const char*
     });
 }
 
+void finish_call_binary(const std::shared_ptr<Call>& c, const std::string& result_json,
+                        std::string bytes) {
+    if (c->done)
+        return;
+    c->done = true;
+    post([c, result_json, bytes = std::move(bytes)] {
+        c->delivered = true;
+        table_free(c->handle);
+        bdk_buffer_t b = make_buffer(bytes);
+        c->cb(c->ctx, 0, view(result_json), b);
+        table_free(b);
+        if (c->rel)
+            c->rel(c->ctx);
+    });
+}
+
 void emit_runtime_event(const std::shared_ptr<Runtime>& rt, uint32_t kind,
                         const std::string& detail, bool to_closing) {
     auto subs = rt->subs; /* the subscribers at the time of the event */
@@ -467,6 +484,8 @@ BDK_EXPORT bdk_status_t bdk_release(bdk_handle_t h) {
         return BDK_OK;
     case T_SESSION:
         return bdk_session_revoke(h, nullptr);
+    case T_TASK:
+        return task_release(h);
     case T_WINDOW:
         return bdk_window_unregister(h, nullptr);
     case T_REQUEST:
@@ -584,6 +603,8 @@ BDK_EXPORT bdk_status_t bdk_runtime_start(const bdk_start_config_t* config, bdk_
     auto rt = std::make_shared<Runtime>();
     if (bdk_status_t s = ui_configure(*rt, resolved, out_error))
         return s;
+    if (bdk_status_t s = automation_configure(*rt, resolved, out_error))
+        return s;
     if (bdk_status_t s = providers_configure(*rt, resolved, c, out_error))
         return s;
     if (bdk_status_t s = routes_configure(*rt, resolved, out_error))
@@ -613,6 +634,7 @@ BDK_EXPORT bdk_call_t bdk_runtime_shutdown(bdk_runtime_t h, bdk_result_cb cb, vo
         return 0;
     emit_runtime_event(rt, BDK_RUNTIME_EVENT_SHUTDOWN_STARTED, "{}", true);
     rt->shutting = true;
+    automation_shutdown(rt);
     routes_shutdown(*rt);
     auto call = new_call(rt, cb, nullptr, ctx, rel);
     call->done = true; /* completed by the task below; a cancel has no effect */
@@ -665,7 +687,7 @@ BDK_EXPORT bdk_call_t bdk_runtime_shutdown(bdk_runtime_t h, bdk_result_cb cb, vo
     for (uint32_t i = 0; i < g.slots.size(); ++i) {
         Type t = g.slots[i].type;
         if (t == T_WINDOW || t == T_SESSION || t == T_CONTEXT || t == T_PROFILE || t == T_SUB ||
-            t == T_PROVIDER_CALL) {
+            t == T_TASK || t == T_HELLO || t == T_PROVIDER_CALL) {
             bdk_handle_t handle = (static_cast<uint64_t>(t) << 56u) |
                                   ((static_cast<uint64_t>(g.slots[i].gen) & kGenMask) << 32u) | i;
             table_free(handle);
@@ -778,7 +800,10 @@ static bdk_subscription_t subscribe_impl(bdk_runtime_t h, uint32_t id, const std
     s->rel = rel;
     s->event_id = id;
     s->event_name = name;
-    s->profile = read_invoke_options(o).profile; /* o may declare fewer bytes than profile needs */
+    /* o may declare fewer bytes than profile and contents need */
+    const bdk_invoke_options_t options = read_invoke_options(o);
+    s->profile = options.profile;
+    s->contents = options.contents;
     s->handle = table_make(T_SUB, s);
     rt->subs.push_back(s);
     return s->handle;
@@ -950,6 +975,7 @@ BDK_EXPORT bdk_status_t bdk_app_event_emit(bdk_runtime_t h, bdk_string_t name, b
                 s->ecb(s->ctx, id, view(n), view(p));
             }
         }
+        automation_deliver_event(rt, n, id, 0, 0, p);
     });
     return BDK_OK;
 }
@@ -1035,45 +1061,6 @@ BDK_EXPORT bdk_status_t bdk_provider_set_key(bdk_runtime_t h, bdk_string_t servi
                 "no provider of '" + str(service) +
                     "' in this runtime takes a key; the Google key is google_api_key in the start "
                     "configuration");
-}
-
-BDK_EXPORT bdk_status_t bdk_session_create(bdk_runtime_t h, bdk_string_t options,
-                                           bdk_session_t* out, bdk_error_t* out_error) {
-    clear_out(out_error);
-    if (bdk_status_t s = check_thread())
-        return s;
-    auto rt = runtime_of(h);
-    if (!rt)
-        return BDK_ERR_STALE_HANDLE;
-    bool is_object = false;
-    if (!out || !string_ok(options) || !valid_json(str(options), &is_object) || !is_object)
-        return BDK_ERR_INVALID_ARGUMENT;
-    *out = table_make(T_SESSION, std::make_shared<Session>());
-    return BDK_OK;
-}
-
-BDK_EXPORT bdk_status_t bdk_session_revoke(bdk_session_t h, bdk_error_t* out_error) {
-    clear_out(out_error);
-    if (bdk_status_t s = check_thread())
-        return s;
-    auto s = get<Session>(h, T_SESSION);
-    if (!s)
-        return BDK_ERR_STALE_HANDLE;
-    s->revoked = true;
-    table_free(h);
-    return BDK_OK;
-}
-
-BDK_EXPORT bdk_status_t bdk_session_grant_contents(bdk_session_t h, bdk_contents_t contents,
-                                                   bdk_error_t* out_error) {
-    clear_out(out_error);
-    if (bdk_status_t s = check_thread())
-        return s;
-    auto s = get<Session>(h, T_SESSION);
-    if (!s || !get<Contents>(contents, T_CONTENTS))
-        return BDK_ERR_STALE_HANDLE;
-    s->contents.insert(contents);
-    return BDK_OK;
 }
 
 BDK_EXPORT bdk_status_t bdk_log_set_handler(bdk_runtime_t h, bdk_log_cb cb, void* ctx,

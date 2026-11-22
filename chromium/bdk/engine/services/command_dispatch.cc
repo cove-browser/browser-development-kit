@@ -24,6 +24,9 @@ const HandlerTable& Handlers() {
     AddPrivacyHandlers(t);
     AddProfilesHandlers(t);
     AddSystemHandlers(t);
+    AddContentsHandlers(t);
+    AddDebugHandlers(t);
+    AddDevToolsHandlers(t);
     AddTranslationHandlers(t);
     AddSearchHandlers(t);
     return t;

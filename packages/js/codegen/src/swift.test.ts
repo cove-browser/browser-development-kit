@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { build, type Inputs } from "./generate.js";
 import { NATIVE_NAMESPACES, PAGE_COMMANDS } from "./swift.js";
@@ -267,10 +269,19 @@ describe("the Swift wrappers", () => {
   });
 
   it("generates nothing for the namespaces the Swift layer implements itself", () => {
-    expect(NATIVE_NAMESPACES).toEqual(["profiles"]);
+    expect(NATIVE_NAMESPACES).toEqual(["profiles", "contents", "debug", "devtools"]);
     const out = swift();
     expect(out).not.toContain("BDKProfiles");
     expect(out).not.toContain("profiles.list");
+    const committed = readFileSync(
+      fileURLToPath(
+        new URL("../../../swift/Sources/BDK/Generated/BDKServices.swift", import.meta.url),
+      ),
+      "utf8",
+    );
+    for (const namespace of ["contents", "debug", "devtools"]) {
+      expect(committed).not.toContain(`"${namespace}.`);
+    }
   });
 
   it("leaves the page commands to the hand-written page wrappers", () => {

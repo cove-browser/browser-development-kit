@@ -301,7 +301,7 @@ Keys that would weaken a security invariant cannot be defaulted off. The schema 
 
 | Key | Type | Default | Status | Meaning |
 |---|---|---|---|---|
-| `enabled` | boolean | `false` | Plan, M7 | Whether the automation host exists in this application. |
+| `enabled` | boolean | `false` | Plan, M7; built, engine pending (T-AUT-06) | Whether the automation host exists in this application. `bdk_session_run` fails with `automation.disabled` when false; sessions and the external endpoint do not depend on it. |
 | `directory` | string | `"Automation"` | Plan | Where application-authored scripts live. Each top-level `.ts` or `.js` file is one script, bundled with Rolldown. |
 
 #### `[automation.external]`
@@ -316,7 +316,7 @@ There is no key for a network port. The endpoint is a user-restricted local sock
 
 | Key | Type | Default | Status | Meaning |
 |---|---|---|---|---|
-| `frontend` | `"default"`, `"disabled"`, or a path | `"default"` | Plan, M7, T-AUT-05 | Chromium's DevTools front end, none, or a complete replacement packaged from the path. |
+| `frontend` | `"default"`, `"disabled"`, or a path | `"default"` | Plan, M7, T-AUT-05; built, engine pending (T-AUT-06) | Chromium's DevTools front end, none, or a complete replacement packaged from the path. |
 | `overlay` | path | none | Plan | A directory of CSS and JavaScript loaded into the default front end. The "modified" mode. |
 | `protocol` | boolean | `true` | Plan | Whether the DevTools protocol is available to Swift and to automation sessions that hold `contents.debug`. Independent of the front end. |
 

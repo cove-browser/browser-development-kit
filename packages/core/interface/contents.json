@@ -1,0 +1,481 @@
+{
+  "namespace": "contents",
+  "since": 1,
+  "types": {
+    "SecurityLevel": {
+      "enum": ["unknown", "none", "secure", "broken"]
+    },
+    "CreatorKind": {
+      "enum": ["swift", "session"]
+    },
+    "ContentsInfo": {
+      "id": "string",
+      "url": "string",
+      "title": "string",
+      "profile": "string",
+      "visible": "bool",
+      "loading": "bool",
+      "crashed": "bool"
+    },
+    "ContentsDetail": {
+      "id": "string",
+      "url": "string",
+      "title": "string",
+      "profile": "string",
+      "visible": "bool",
+      "loading": "bool",
+      "crashed": "bool",
+      "progress": "double",
+      "security": "SecurityLevel",
+      "audible": "bool",
+      "muted": "bool",
+      "focused": "bool",
+      "zoom": "double",
+      "canGoBack": "bool",
+      "canGoForward": "bool"
+    },
+    "Creator": {
+      "kind": "CreatorKind",
+      "session": "string?"
+    },
+    "LoadCondition": {
+      "enum": ["committed", "finished"]
+    },
+    "NavigationResult": {
+      "url": "string",
+      "errorPage": "bool"
+    },
+    "FrameInfo": {
+      "id": "string",
+      "parent": "string?",
+      "url": "string",
+      "origin": "string",
+      "name": "string"
+    },
+    "Rect": {
+      "x": "double",
+      "y": "double",
+      "width": "double",
+      "height": "double"
+    },
+    "ElementInfo": {
+      "tag": "string",
+      "attributes": "json",
+      "text": "string",
+      "box": "Rect?"
+    },
+    "SnapshotKind": {
+      "enum": ["dom", "accessibility", "text"]
+    },
+    "MouseButton": {
+      "enum": ["left", "middle", "right"]
+    },
+    "ScreenshotArea": {
+      "enum": ["visible", "fullPage", "rect"]
+    },
+    "ImageFormat": {
+      "enum": ["png", "jpeg"]
+    },
+    "SaveFormat": {
+      "enum": ["htmlOnly", "completePage", "singleFile"]
+    },
+    "Capture": {
+      "mimeType": "string",
+      "byteLength": "int",
+      "path": "string?"
+    }
+  },
+  "commands": [
+    {
+      "name": "contents.list",
+      "capability": "contents.read",
+      "callers": ["swift", "session"],
+      "profile": "optional",
+      "args": {},
+      "result": {
+        "items": "ContentsInfo[]"
+      }
+    },
+    {
+      "name": "contents.get",
+      "capability": "contents.read",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {},
+      "result": "ContentsDetail"
+    },
+    {
+      "name": "contents.create",
+      "capability": "contents.control",
+      "callers": ["swift", "session"],
+      "profile": "required",
+      "args": {
+        "url": "url?"
+      },
+      "result": "ContentsInfo"
+    },
+    {
+      "name": "contents.close",
+      "capability": "contents.control",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {},
+      "result": "void"
+    },
+    {
+      "name": "contents.navigate",
+      "capability": "contents.control",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {
+        "url": "url",
+        "waitUntil": "LoadCondition?"
+      },
+      "result": "NavigationResult"
+    },
+    {
+      "name": "contents.reload",
+      "capability": "contents.control",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {
+        "bypassCache": "bool?"
+      },
+      "result": "void"
+    },
+    {
+      "name": "contents.stop",
+      "capability": "contents.control",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {},
+      "result": "void"
+    },
+    {
+      "name": "contents.goBack",
+      "capability": "contents.control",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {},
+      "result": "void"
+    },
+    {
+      "name": "contents.goForward",
+      "capability": "contents.control",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {},
+      "result": "void"
+    },
+    {
+      "name": "contents.waitFor",
+      "capability": "contents.read",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {
+        "load": "LoadCondition?",
+        "url": "string?",
+        "selector": "string?",
+        "script": "string?",
+        "networkIdle": "bool?",
+        "frame": "string?",
+        "timeoutMs": "int?"
+      },
+      "result": "void"
+    },
+    {
+      "name": "contents.frames",
+      "capability": "contents.read",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {},
+      "result": {
+        "frames": "FrameInfo[]"
+      }
+    },
+    {
+      "name": "contents.text",
+      "capability": "contents.read",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {
+        "frame": "string?"
+      },
+      "result": {
+        "text": "string"
+      }
+    },
+    {
+      "name": "contents.snapshot",
+      "capability": "contents.read",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {
+        "kind": "SnapshotKind",
+        "frame": "string?"
+      },
+      "result": {
+        "kind": "SnapshotKind",
+        "root": "json"
+      }
+    },
+    {
+      "name": "contents.evaluate",
+      "capability": "contents.script",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {
+        "expression": "string",
+        "world": "string?",
+        "frame": "string?",
+        "userGesture": "bool?"
+      },
+      "result": {
+        "value": "json"
+      }
+    },
+    {
+      "name": "contents.query",
+      "capability": "contents.script",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {
+        "selector": "string",
+        "frame": "string?",
+        "limit": "int?"
+      },
+      "result": {
+        "elements": "ElementInfo[]"
+      }
+    },
+    {
+      "name": "contents.insertCSS",
+      "capability": "contents.script",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {
+        "css": "string",
+        "frame": "string?"
+      },
+      "result": {
+        "id": "string"
+      }
+    },
+    {
+      "name": "contents.removeCSS",
+      "capability": "contents.script",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {
+        "id": "string"
+      },
+      "result": "void"
+    },
+    {
+      "name": "contents.click",
+      "capability": "contents.script",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {
+        "selector": "string?",
+        "x": "double?",
+        "y": "double?",
+        "frame": "string?",
+        "button": "MouseButton?",
+        "clickCount": "int?"
+      },
+      "result": "void"
+    },
+    {
+      "name": "contents.hover",
+      "capability": "contents.script",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {
+        "selector": "string?",
+        "x": "double?",
+        "y": "double?",
+        "frame": "string?"
+      },
+      "result": "void"
+    },
+    {
+      "name": "contents.type",
+      "capability": "contents.script",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {
+        "text": "string",
+        "selector": "string?",
+        "frame": "string?"
+      },
+      "result": "void"
+    },
+    {
+      "name": "contents.press",
+      "capability": "contents.script",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {
+        "key": "string",
+        "modifiers": "string[]?"
+      },
+      "result": "void"
+    },
+    {
+      "name": "contents.scroll",
+      "capability": "contents.script",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {
+        "selector": "string?",
+        "dx": "double?",
+        "dy": "double?",
+        "frame": "string?"
+      },
+      "result": "void"
+    },
+    {
+      "name": "contents.screenshot",
+      "capability": "contents.capture",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "binary": true,
+      "args": {
+        "area": "ScreenshotArea?",
+        "rect": "Rect?",
+        "format": "ImageFormat?",
+        "quality": "int?",
+        "path": "string?"
+      },
+      "result": "Capture"
+    },
+    {
+      "name": "contents.pdf",
+      "capability": "contents.capture",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "binary": true,
+      "progress": true,
+      "args": {
+        "landscape": "bool?",
+        "printBackground": "bool?",
+        "scale": "double?",
+        "paperWidth": "double?",
+        "paperHeight": "double?",
+        "marginTop": "double?",
+        "marginBottom": "double?",
+        "marginLeft": "double?",
+        "marginRight": "double?",
+        "pageRanges": "string?",
+        "path": "string?"
+      },
+      "result": "Capture"
+    },
+    {
+      "name": "contents.save",
+      "capability": "contents.capture",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {
+        "path": "string",
+        "format": "SaveFormat?"
+      },
+      "result": "void"
+    },
+    {
+      "name": "contents.setMuted",
+      "capability": "contents.control",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {
+        "muted": "bool"
+      },
+      "result": "void"
+    },
+    {
+      "name": "contents.setZoom",
+      "capability": "contents.control",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {
+        "zoom": "double"
+      },
+      "result": "void"
+    },
+    {
+      "name": "contents.requestAttention",
+      "capability": "contents.control",
+      "callers": ["swift", "session"],
+      "profile": "none",
+      "args": {},
+      "result": "void"
+    }
+  ],
+  "events": [
+    {
+      "name": "contents.created",
+      "capability": "contents.read",
+      "payload": {
+        "contents": "ContentsInfo",
+        "createdBy": "Creator"
+      }
+    },
+    {
+      "name": "contents.closed",
+      "capability": "contents.read",
+      "payload": {
+        "contents": "string"
+      }
+    },
+    {
+      "name": "contents.navigated",
+      "capability": "contents.read",
+      "payload": {
+        "contents": "string",
+        "url": "string",
+        "sameDocument": "bool",
+        "errorPage": "bool"
+      }
+    },
+    {
+      "name": "contents.loadingChanged",
+      "capability": "contents.read",
+      "payload": {
+        "contents": "string",
+        "loading": "bool"
+      }
+    },
+    {
+      "name": "contents.titleChanged",
+      "capability": "contents.read",
+      "payload": {
+        "contents": "string",
+        "title": "string"
+      }
+    },
+    {
+      "name": "contents.crashed",
+      "capability": "contents.read",
+      "payload": {
+        "contents": "string"
+      }
+    },
+    {
+      "name": "contents.dialogOpened",
+      "capability": "contents.read",
+      "payload": {
+        "contents": "string",
+        "surface": "string"
+      }
+    },
+    {
+      "name": "contents.attentionRequested",
+      "capability": "contents.read",
+      "payload": {
+        "contents": "string",
+        "session": "string?"
+      }
+    }
+  ]
+}

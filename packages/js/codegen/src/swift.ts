@@ -16,9 +16,11 @@ export const SWIFT_REPORT_PATH = "packages/swift/Sources/BDK/Generated/BDKServic
 /**
  * Namespaces the Swift layer implements by hand, on the ABI's own functions (`bdk_profiles_*`), so no
  * wrapper is generated for them. A namespace is native only because the ABI offers a richer, typed
- * entry point; the commands stay reachable through `runtime.commands.invoke`.
+ * entry point; the commands stay reachable through `runtime.commands.invoke`. `contents`, `debug` and
+ * `devtools` address one page (the invoke options' `contents`), so they are methods of `BDKWebContents`
+ * (`page.scripting`, `page.capture`, `page.devTools`, swift-api.md sections 6 and 14).
  */
-export const NATIVE_NAMESPACES: readonly string[] = ["profiles"];
+export const NATIVE_NAMESPACES: readonly string[] = ["profiles", "contents", "debug", "devtools"];
 
 /**
  * Commands that act on one page. Swift reaches them through the page (`page.translation`), written by

@@ -33,14 +33,18 @@
 #include "base/time/time.h"
 #include "base/values.h"
 #include "bdk/core/generated/bdk_abi_hash.h"
+#include "bdk/core/runtime/automation_internal.h"
 #include "bdk/core/runtime/core_internal.h"
 #include "bdk/core/runtime/providers_internal.h"
+#include "bdk/engine/automation/automation_host_launcher.h"
 #include "bdk/engine/chromium_main.h"
+#include "bdk/engine/devtools_frontend.h"
 #include "bdk/engine/engine_contents.h"
 #include "bdk/engine/host_context.h"
 #include "bdk/engine/host_view.h"
 #include "bdk/engine/identity.h"
 #include "bdk/engine/json_util.h"
+#include "bdk/engine/page_protocol.h"
 #include "bdk/engine/pages/bundled_page_ui.h"
 #include "bdk/engine/pages/page_commands.h"
 #include "bdk/engine/pages/page_routes.h"
@@ -53,6 +57,7 @@
 #include "bdk/engine/services/print_prompts.h"
 #include "bdk/engine/services/prompt_hooks.h"
 #include "bdk/engine/services/services.h"
+#include "bdk/engine/services/user_scripts.h"
 #include "bdk/engine/session_state.h"
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_find.h"
@@ -128,6 +133,25 @@ class EngineBackend final : public bdkcore::Backend {
     } else {
       PostToMainThread(std::move(run));
     }
+  }
+
+  // Deadlines of commands (contents.waitFor). Before Chromium runs there is
+  // no page to wait for, so the task runs once the queue reaches it.
+  void PostDelayed(std::function<void()> task, int64_t delay_ms) override {
+    if (!chromium_tasks_.load()) {
+      Post(std::move(task));
+      return;
+    }
+    NoteTaskPosted();
+    content::GetUIThreadTaskRunner({})->PostDelayedTask(
+        FROM_HERE,
+        base::BindOnce(
+            [](std::function<void()> t) {
+              NoteTaskRun();
+              t();
+            },
+            std::move(task)),
+        base::Milliseconds(delay_ms));
   }
 
   bdk_status_t Start(Runtime& rt,
@@ -216,6 +240,12 @@ class EngineBackend final : public bdkcore::Backend {
           {base::MayBlock(), base::TaskShutdownBehavior::BLOCK_SHUTDOWN});
     }
     SetRuntimeInfo(resolved);
+    SetPageProtocolRuntimeInfo(resolved);
+    ConfigureDevTools(resolved,
+                      base::FilePath(bdkcore::str(config.bundle_path)));
+    // Each runtime reads scripts from its own application's bundle.
+    automation_host_ = std::make_unique<AutomationHostLauncher>(
+        base::FilePath(bdkcore::str(config.bundle_path)));
     SetPagesBundlePath(base::FilePath(bdkcore::str(config.bundle_path)));
     RegisterBundledPageUIs(rt);
     // The profile Chromium started with. A runtime started in a Chromium that
@@ -240,6 +270,8 @@ class EngineBackend final : public bdkcore::Backend {
   }
 
   void Shutdown(Runtime& rt, std::function<void()> done) override {
+    // The core ended every task (automation_shutdown); this drops the host.
+    automation_host_.reset();
     // The core has made every handle stale; what is left goes now.
     for (auto& c : rt.contents) {
       c->data.reset();
@@ -494,6 +526,36 @@ class EngineBackend final : public bdkcore::Backend {
 
   void CloseContents(const std::shared_ptr<Contents>& c) override {
     Page(*c).Close();
+  }
+
+  void StartTask(Runtime& rt,
+                 const std::shared_ptr<bdkcore::TaskPort>& task) override {
+    if (!automation_host_) {
+      bdkcore::Backend::StartTask(rt, task);  // finishes it: no host
+      return;
+    }
+    automation_host_->StartTask(rt, task);
+  }
+
+  void EndTask(Runtime& rt, bdkcore::TaskPort& task) override {
+    if (automation_host_) {
+      automation_host_->EndTask(task);
+    }
+  }
+
+  void UserScriptsChanged(
+      Runtime& rt,
+      bdkcore::Profile& profile,
+      const std::vector<bdkcore::UserScript>& scripts) override {
+    // Scripts are registered on an open profile; a closed one has no pages.
+    auto* data = static_cast<EngineProfile*>(profile.data.get());
+    if (data && data->profile) {
+      ApplyUserScripts(data->profile, scripts);
+    }
+  }
+
+  void CallerRevoked(Runtime& rt, const bdkcore::Caller& caller) override {
+    DetachDebugClientsOf(caller);
   }
 
   void Authenticate(Runtime& rt,
@@ -877,6 +939,8 @@ class EngineBackend final : public bdkcore::Backend {
   base::FilePath requested_user_data_dir_;
   raw_ptr<Profile> base_profile_ = nullptr;
   scoped_refptr<base::SequencedTaskRunner> registry_writer_;
+  // The automation host: V8 in a utility process, started with the first task.
+  std::unique_ptr<AutomationHostLauncher> automation_host_;
   // The text of each scope's application settings file, by profile id ("" for
   // the application's).
   std::map<std::string, std::string> app_settings_text_;
