@@ -347,7 +347,15 @@ taken where the specification was silent (2026-11-20):
    subscription after the end gets FINISHED alone. `bdk_task_cancel` and releasing a running task's handle send
    `abort` and finish it with `broker.cancelled`; a `failed` frame or a host that could not load the script is
    `automation.scriptFailed`; a host crash `automation.hostGone`. `Backend::EndTask` tears the script down after any
-   end. A `done` result is capped at 4 MiB like any result.
+   end. A `done` result is capped at 4 MiB like any result. Each task carries `[automation] cpu_budget_ms` (resolved
+   `automation.cpu_budget_ms`, default 60000, a whole number from 1 to 3600000, else `config.resolvedInvalid`) in
+   `TaskPort::cpu_budget_ms`; a host that stops the script at it calls `TaskPort::BudgetExceeded` and the task
+   finishes with `automation.budgetExceeded` (M8, T-AUT-07). A `failed` frame is always `scriptFailed`, so a script
+   cannot claim the code. The engine's host counts the CPU time of each entry into the script (its start, a frame,
+   a timer) with `base::ThreadTicks` and arms a watchdog thread with the budget left, which terminates a run still
+   going when it is due; the wait is wall-clock time, never shorter than the CPU time used meanwhile. The stub's
+   host reports the budget (`bdk_stub_script_budget`) and can be told the script used it
+   (`bdk_stub_script_exhaust_budget`).
 5. Audit: every call a session makes emits `automation.commandInvoked {session, task?, command, profile?, contents?,
    error?}` when it ends, refused calls included (also those the connection refuses before the broker: arguments
    that are not an object, an unknown profile, a stale page); `automation.sessionCreated` and `automation.sessionRevoked` frame a

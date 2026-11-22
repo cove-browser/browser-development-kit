@@ -68,7 +68,8 @@
         "SURFACE_DISABLED": "surfaceDisabled",
         "MANIFEST_INVALID": "manifestInvalid",
         "NOT_UNPACKED": "notUnpacked",
-        "PRIVATE_NOT_ALLOWED": "privateNotAllowed"
+        "PRIVATE_NOT_ALLOWED": "privateNotAllowed",
+        "BUDGET_EXCEEDED": "budgetExceeded"
       }
     },
     {

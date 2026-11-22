@@ -110,6 +110,31 @@ BDK_EXPORT bdk_status_t bdk_stub_script_send(uint64_t task, bdk_string_t frame) 
     return BDK_OK;
 }
 
+BDK_EXPORT uint32_t bdk_stub_script_budget(uint64_t task) {
+    if (check_thread() != BDK_OK)
+        return 0;
+    auto& running = bdkstub::H().running;
+    auto it = running.find(task);
+    auto p = it == running.end() ? nullptr : it->second.lock();
+    return p ? p->cpu_budget_ms() : 0;
+}
+
+BDK_EXPORT bdk_status_t bdk_stub_script_exhaust_budget(uint64_t task) {
+    if (check_thread() != BDK_OK)
+        return BDK_ERR_WRONG_THREAD;
+    auto& running = bdkstub::H().running;
+    auto it = running.find(task);
+    if (it == running.end())
+        return BDK_ERR_STALE_HANDLE;
+    std::weak_ptr<TaskPort> weak = it->second;
+    post([weak] {
+        if (auto p = weak.lock())
+            p->BudgetExceeded("the script used its CPU budget of " +
+                              std::to_string(p->cpu_budget_ms()) + " ms");
+    });
+    return BDK_OK;
+}
+
 BDK_EXPORT bdk_status_t bdk_stub_automation_host_crash(bdk_runtime_t h) {
     if (check_thread() != BDK_OK)
         return BDK_ERR_WRONG_THREAD;

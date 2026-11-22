@@ -20,6 +20,11 @@ BDK_EXPORT bdk_status_t bdk_stub_script_define(bdk_runtime_t, bdk_string_t name,
                                                void* ctx);
 /* A frame from the script. Delivered later. BDK_ERR_STALE_HANDLE once the task ended. */
 BDK_EXPORT bdk_status_t bdk_stub_script_send(uint64_t task, bdk_string_t frame_json);
+/* The CPU budget, in milliseconds, the host was given for the task; 0 once it ended. */
+BDK_EXPORT uint32_t bdk_stub_script_budget(uint64_t task);
+/* The host stops the script as one that used its CPU budget: the task ends with
+   automation.budgetExceeded. Delivered later. BDK_ERR_STALE_HANDLE once the task ended. */
+BDK_EXPORT bdk_status_t bdk_stub_script_exhaust_budget(uint64_t task);
 /* The host process dies: every running task ends with automation.hostGone. */
 BDK_EXPORT bdk_status_t bdk_stub_automation_host_crash(bdk_runtime_t);
 

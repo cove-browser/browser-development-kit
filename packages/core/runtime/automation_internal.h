@@ -52,6 +52,9 @@ class TaskPort {
     const std::string& entry_json() const;
     /* The arguments the application passed, as JSON. */
     const std::string& arguments_json() const;
+    /* The CPU time, in milliseconds, the script may use before the host stops it
+       ([automation] cpu_budget_ms). */
+    uint32_t cpu_budget_ms() const;
 
     /* Frames from BDK to the script, in order. Set by the backend. */
     std::function<void(const std::string& frame)> to_script;
@@ -63,6 +66,9 @@ class TaskPort {
     /* The script could not be loaded (missing bundle, digest mismatch, a syntax error): the task
        finishes with automation.scriptFailed and this message. */
     void ScriptFailed(const std::string& message);
+    /* The host stopped the script because it used its CPU budget: the task finishes with
+       automation.budgetExceeded and this message. */
+    void BudgetExceeded(const std::string& message);
 
   private:
     std::weak_ptr<AutomationTask> task_;

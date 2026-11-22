@@ -647,6 +647,10 @@ const std::string& TaskPort::arguments_json() const {
     auto t = task_.lock();
     return t ? t->arguments_json : empty_;
 }
+uint32_t TaskPort::cpu_budget_ms() const {
+    auto t = task_.lock();
+    return t ? t->cpu_budget_ms : 0;
+}
 
 void TaskPort::FromScript(const std::string& frame) {
     auto t = task_.lock();
@@ -662,6 +666,11 @@ void TaskPort::HostGone(const std::string& message) {
 void TaskPort::ScriptFailed(const std::string& message) {
     if (auto t = task_.lock())
         task_fail(t, BDK_DOMAIN_AUTOMATION, BDK_CODE_SCRIPT_FAILED, message);
+}
+
+void TaskPort::BudgetExceeded(const std::string& message) {
+    if (auto t = task_.lock())
+        task_fail(t, BDK_DOMAIN_AUTOMATION, BDK_CODE_BUDGET_EXCEEDED, message);
 }
 
 /* ---- Backend defaults ---- */
@@ -795,6 +804,14 @@ bdk_status_t automation_configure(Runtime& rt, const std::string& resolved,
                                 "automation.scripts." + m.first + " must be an object");
                 st.scripts[m.first] = json_serialize(m.second);
             }
+        }
+        if (const JsonValue* budget = a->find("cpu_budget_ms")) {
+            /* The CLI keeps it between 100 ms and an hour. */
+            if (budget->type != JsonValue::Type::kNumber || !budget->integral ||
+                budget->number < 1 || budget->number > 3600000)
+                return fail(out_error, BDK_DOMAIN_CONFIG, BDK_CODE_RESOLVED_INVALID,
+                            "automation.cpu_budget_ms must be a whole number of milliseconds");
+            st.cpu_budget_ms = static_cast<uint32_t>(budget->number);
         }
         if (const JsonValue* ext = field(*a, "external", JsonValue::Type::kObject)) {
             const JsonValue* on = ext->find("enabled");
@@ -1180,6 +1197,7 @@ BDK_EXPORT bdk_status_t bdk_session_run(bdk_session_t h, bdk_string_t script,
     task->script = name;
     task->entry_json = entry->second;
     task->arguments_json = args;
+    task->cpu_budget_ms = st.cpu_budget_ms;
     task->rt = rt;
     task->session = s;
     task->port = std::make_shared<TaskPort>(task);

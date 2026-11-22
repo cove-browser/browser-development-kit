@@ -316,7 +316,7 @@ interface Page {
 | Lifetime | A task ends when its function returns, when Swift cancels it, or when its session is revoked. Whether tasks survive all windows closing is the application's choice: the host lives as long as the runtime. |
 | Crash | If the host process dies, every session ends with `automation.hostGone`. The application may create new sessions; BDK restarts the host on demand. |
 | Audit | Every command a session invokes is reported to Swift as an event, with the session name, command and target |
-| Resource limits | CPU and memory budgets for the host are open in the spec and set in task T-AUT-02 |
+| Resource limits | Memory: a 512 MiB V8 heap for the host (M7); a host that reaches it dies and its tasks end with `automation.hostGone`. CPU: each task's script may use `[automation] cpu_budget_ms` of CPU time (default 60 s; M8, T-AUT-07); a script that uses it is stopped and its task ends with `automation.budgetExceeded`. Waiting on a command or a timer costs nothing |
 
 ### 5.5 External tools
 

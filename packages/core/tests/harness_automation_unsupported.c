@@ -21,6 +21,16 @@ bdk_status_t bdk_harness_script_send(uint64_t task, const char* frame_json) {
     return BDK_ERR_INVALID_ARGUMENT;
 }
 
+unsigned bdk_harness_script_budget(uint64_t task) {
+    (void)task;
+    return 0;
+}
+
+bdk_status_t bdk_harness_script_exhaust_budget(uint64_t task) {
+    (void)task;
+    return BDK_ERR_INVALID_ARGUMENT;
+}
+
 bdk_status_t bdk_harness_automation_host_crash(bdk_runtime_t rt) {
     (void)rt;
     return BDK_ERR_INVALID_ARGUMENT;
