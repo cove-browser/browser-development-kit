@@ -155,7 +155,8 @@ if(BDK_ENGINE_FRAMEWORK AND APPLE)
     tests/tests_engine_ui.c tests/tests_engine_prompts.c tests/tests_engine_automation.c
     tests/tests_engine_providers.c tests/tests_engine_privacy.c tests/tests_engine_pages.c
     tests/tests_engine_extensions.c tests/tests_engine_ext_ui.c tests/tests_engine_ext_panels.c
-    tests/tests_engine_ext_probe.c tests/engine_ext_support.c tests/harness_engine.mm tests/harness_engine_ext.mm
+    tests/tests_engine_ext_probe.c tests/tests_engine_webauthn.c tests/engine_ext_support.c
+    tests/harness_engine.mm tests/harness_engine_ext.mm
     tests/harness_broker_unsupported.c tests/harness_automation_unsupported.c tests/harness_providers_unsupported.c)
   target_compile_definitions(bdk_engine_conformance PRIVATE BDK_HARNESS_OWNS_MAIN BDK_HARNESS_ENGINE_TESTS)
   # The automation scripts and DevTools front ends of tests_engine_automation.c, where `bdk build` puts

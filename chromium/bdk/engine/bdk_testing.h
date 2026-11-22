@@ -157,7 +157,17 @@ BDK_EXPORT bdk_status_t bdk_testing_tab_info(bdk_contents_t,
    update manifest, a package) is answered by the engine, not the network;
    neither removes the entry. present.script on "extension_installs" and
    "extension_uninstalls" answers the default sheets with the key of a button
-   ("install" or "remove", "cancel")
+   ("install" or "remove", "cancel"). present.script on "webauthn" answers
+   the default sheet with a completion, {"completion": "accept" | "grant" |
+   "deny", "mechanism" | "account" | "pin" | "action"}, or with one such
+   answer per step name ({"enterPIN": {...}, "touchSecurityKey": {"none":
+   true}})
+   webauthn.virtual {"pin"?, "residentKeys"?, "uv"?}  every WebAuthn request
+   from now on sees one virtual USB security key (CTAP2, touched at once; a PIN
+   makes it ask for one, "uv" verifies its user itself) and no other
+   authenticator; webauthn.inject {"rpId", "userId",
+   "name", "displayName"} -> {"injected"}  a passkey on it; webauthn.state ->
+   {"installed", "credentials"}; webauthn.clear  the real authenticators again
 
    Extensions, windows and side panels (extensions/panel_testing.cc; "window"
    is a decimal bdk_window_t string):

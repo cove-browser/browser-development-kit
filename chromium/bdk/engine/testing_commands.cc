@@ -48,6 +48,7 @@
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_find.h"
 #include "bdk/engine/ui_presenters.h"
+#include "bdk/engine/webauthn_testing.h"
 #include "chrome/browser/after_startup_task_utils.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/profiles/profile.h"
@@ -280,6 +281,9 @@ bool Run(const std::string& name,
   }
   if (name.starts_with("extui.")) {
     return RunExtensionUiTestCommand(name, args, result);
+  }
+  if (name.starts_with("webauthn.")) {
+    return RunWebAuthnTestingCommand(name, args, result);
   }
   if (name == "reputation.list") {
     // {"json"}: the default provider's list, as a checked download would load
