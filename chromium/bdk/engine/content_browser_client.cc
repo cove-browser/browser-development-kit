@@ -19,14 +19,20 @@
 #include "bdk/engine/startup_completion.h"
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_auth.h"
+#include "bdk/engine/ui_browser_dialogs.h"
 #include "chrome/browser/chrome_browser_main.h"
 #include "chrome/browser/chrome_browser_main_extra_parts.h"
+#include "content/public/browser/bluetooth_delegate.h"
 #include "content/public/browser/browser_url_handler.h"
+#include "content/public/browser/client_certificate_delegate.h"
+#include "content/public/browser/hid_delegate.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/navigation_throttle.h"
 #include "content/public/browser/navigation_throttle_registry.h"
 #include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/serial_delegate.h"
 #include "content/public/browser/url_loader_request_interceptor.h"
+#include "content/public/browser/usb_delegate.h"
 #include "content/public/browser/web_ui_browser_interface_broker_registry.h"
 #include "extensions/common/constants.h"
 #include "services/device/public/cpp/geolocation/location_provider.h"
@@ -77,6 +83,9 @@ class BdkBrowserMainExtraParts : public ChromeBrowserMainExtraParts {
     InstallGeolocationPermission();
     HoldStartupUntilRuntimeStarts();
   }
+
+  // Before the first profile, whose preferences take the defaults.
+  void PreProfileInit() override { InstallBrowserDialogPrefDefaults(); }
 };
 
 }  // namespace
@@ -181,6 +190,46 @@ std::string BdkContentBrowserClient::GetGeolocationApiKey() {
     return std::string();
   }
   return ChromeContentBrowserClient::GetGeolocationApiKey();
+}
+
+content::BluetoothDelegate* BdkContentBrowserClient::GetBluetoothDelegate() {
+  if (!bluetooth_delegate_) {
+    bluetooth_delegate_ = CreateBluetoothDelegate();
+  }
+  return bluetooth_delegate_.get();
+}
+
+content::UsbDelegate* BdkContentBrowserClient::GetUsbDelegate() {
+  if (!usb_delegate_) {
+    usb_delegate_ = CreateUsbDelegate();
+  }
+  return usb_delegate_.get();
+}
+
+content::SerialDelegate* BdkContentBrowserClient::GetSerialDelegate() {
+  if (!serial_delegate_) {
+    serial_delegate_ = CreateSerialDelegate();
+  }
+  return serial_delegate_.get();
+}
+
+content::HidDelegate* BdkContentBrowserClient::GetHidDelegate() {
+  if (!hid_delegate_) {
+    hid_delegate_ = CreateHidDelegate();
+  }
+  return hid_delegate_.get();
+}
+
+base::OnceClosure BdkContentBrowserClient::SelectClientCertificate(
+    content::BrowserContext* browser_context,
+    content::ChildProcessId process_id,
+    content::WebContents* web_contents,
+    net::SSLCertRequestInfo* cert_request_info,
+    net::ClientCertIdentityList client_certs,
+    std::unique_ptr<content::ClientCertificateDelegate> delegate) {
+  return bdk::SelectClientCertificate(
+      browser_context, web_contents, cert_request_info, std::move(client_certs),
+      std::move(delegate));
 }
 
 }  // namespace bdk

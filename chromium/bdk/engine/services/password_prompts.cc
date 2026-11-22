@@ -4,19 +4,33 @@
 
 #include "bdk/engine/services/password_prompts.h"
 
+#include <algorithm>
+#include <memory>
 #include <utility>
 
 #include "base/functional/bind.h"
+#include "base/memory/raw_ptr.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/values.h"
 #include "bdk/core/include/bdk/bdk_ids.h"
 #include "bdk/engine/engine_contents.h"
+#include "bdk/engine/host_view.h"
 #include "bdk/engine/ui_presenters.h"
 #include "bdk/engine/ui_request.h"
+#include "chrome/browser/ui/passwords/credential_manager_dialog_controller.h"
+#include "chrome/browser/ui/passwords/embedder_credential_manager_prompts.h"
 #include "chrome/browser/ui/passwords/manage_passwords_ui_controller.h"
+#include "chrome/browser/ui/passwords/password_dialog_prompts.h"
+#include "chrome/grit/generated_resources.h"
 #include "components/password_manager/core/browser/password_form.h"
+#include "components/password_manager/core/common/credential_manager_types.h"
 #include "components/password_manager/core/common/password_manager_ui.h"
+#include "components/strings/grit/components_strings.h"
+#include "components/url_formatter/elide_url.h"
+#include "ui/base/l10n/l10n_util.h"
+#include "ui/strings/grit/ui_strings.h"
 #include "url/gurl.h"
 
 namespace bdk {
@@ -206,6 +220,144 @@ void OnPageNavigatedForPasswords(content::WebContents* contents) {
           static_cast<BdkTabDialogs*>(TabDialogs::FromWebContents(contents))) {
     dialogs->OnPageNavigated();
   }
+}
+
+namespace {
+
+HostView* ViewOfPage(content::WebContents* contents) {
+  EngineContents* page = EngineContents::FromWebContents(contents);
+  return page ? &page->host_view() : nullptr;
+}
+
+// The account chooser: one button per saved account of the site (the first
+// eight; a sheet holds buttons, not a list), then Cancel.
+class AccountChooserSheet : public AccountChooserPrompt {
+ public:
+  AccountChooserSheet(CredentialManagerDialogController* controller,
+                      content::WebContents* contents)
+      : controller_(controller), contents_(contents->GetWeakPtr()) {}
+
+  void ShowAccountChooser() override {
+    constexpr size_t kMaxShown = 8;
+    Alert alert;
+    alert.title = base::UTF16ToUTF8(controller_->GetAccountChooserTitle());
+    alert.message =
+        base::UTF16ToUTF8(url_formatter::FormatOriginForSecurityDisplay(
+            controller_->GetOrigin()));
+    const auto& forms = controller_->GetLocalForms();
+    for (size_t i = 0; i < forms.size() && i < kMaxShown; ++i) {
+      const std::u16string& name = forms[i]->username_value;
+      alert.buttons.push_back(
+          {"account" + base::NumberToString(i),
+           base::UTF16ToUTF8(name.empty() ? forms[i]->display_name : name)});
+    }
+    shown_ = std::min(forms.size(), kMaxShown);
+    alert.buttons.push_back(
+        {"cancel",
+         base::UTF16ToUTF8(l10n_util::GetStringUTF16(IDS_APP_CANCEL))});
+    dismiss_ = UiPresenters::Get().ShowAlert(
+        "passwords", contents_ ? ViewOfPage(contents_.get()) : nullptr,
+        std::move(alert),
+        base::BindOnce(&AccountChooserSheet::OnAnswer,
+                       weak_factory_.GetWeakPtr()));
+  }
+
+  void ControllerGone() override {
+    controller_ = nullptr;
+    if (dismiss_) {
+      std::move(dismiss_).Run();
+    }
+  }
+
+ private:
+  void OnAnswer(int index) {
+    dismiss_.Reset();
+    if (!controller_) {
+      return;
+    }
+    // Either call may destroy this prompt.
+    CredentialManagerDialogController* controller = controller_;
+    if (index >= 0 && static_cast<size_t>(index) < shown_) {
+      controller->OnChooseCredentials(
+          *controller->GetLocalForms()[index],
+          password_manager::CredentialType::CREDENTIAL_TYPE_PASSWORD);
+    } else {
+      controller->OnCloseDialog();
+    }
+  }
+
+  raw_ptr<CredentialManagerDialogController> controller_;
+  base::WeakPtr<content::WebContents> contents_;
+  size_t shown_ = 0;
+  Dismisser dismiss_;
+  base::WeakPtrFactory<AccountChooserSheet> weak_factory_{this};
+};
+
+// The notice after the first automatic sign-in: keep it (OK) or turn it off.
+class AutoSigninSheet : public AutoSigninFirstRunPrompt {
+ public:
+  AutoSigninSheet(CredentialManagerDialogController* controller,
+                  content::WebContents* contents)
+      : controller_(controller), contents_(contents->GetWeakPtr()) {}
+
+  void ShowAutoSigninPrompt() override {
+    Alert alert;
+    alert.title = base::UTF16ToUTF8(controller_->GetAutoSigninPromoTitle());
+    alert.message = base::UTF16ToUTF8(controller_->GetAutoSigninText());
+    alert.buttons.push_back({"ok", base::UTF16ToUTF8(l10n_util::GetStringUTF16(
+                                       IDS_AUTO_SIGNIN_FIRST_RUN_OK))});
+    alert.buttons.push_back(
+        {"turnOff",
+         base::UTF16ToUTF8(l10n_util::GetStringUTF16(IDS_TURN_OFF))});
+    dismiss_ = UiPresenters::Get().ShowAlert(
+        "passwords", contents_ ? ViewOfPage(contents_.get()) : nullptr,
+        std::move(alert),
+        base::BindOnce(&AutoSigninSheet::OnAnswer, weak_factory_.GetWeakPtr()));
+  }
+
+  void ControllerGone() override {
+    controller_ = nullptr;
+    if (dismiss_) {
+      std::move(dismiss_).Run();
+    }
+  }
+
+ private:
+  void OnAnswer(int index) {
+    dismiss_.Reset();
+    if (!controller_) {
+      return;
+    }
+    CredentialManagerDialogController* controller = controller_;
+    if (index == 0) {
+      controller->OnAutoSigninOK();
+    } else if (index == 1) {
+      controller->OnAutoSigninTurnOff();
+    } else {
+      controller->OnCloseDialog();
+    }
+  }
+
+  raw_ptr<CredentialManagerDialogController> controller_;
+  base::WeakPtr<content::WebContents> contents_;
+  Dismisser dismiss_;
+  base::WeakPtrFactory<AutoSigninSheet> weak_factory_{this};
+};
+
+}  // namespace
+
+void InstallCredentialManagerPrompts() {
+  embedder_credential_manager_prompts::SetFactories(
+      base::BindRepeating([](CredentialManagerDialogController* controller,
+                             content::WebContents* contents)
+                              -> std::unique_ptr<AccountChooserPrompt> {
+        return std::make_unique<AccountChooserSheet>(controller, contents);
+      }),
+      base::BindRepeating([](CredentialManagerDialogController* controller,
+                             content::WebContents* contents)
+                              -> std::unique_ptr<AutoSigninFirstRunPrompt> {
+        return std::make_unique<AutoSigninSheet>(controller, contents);
+      }));
 }
 
 }  // namespace bdk

@@ -26,8 +26,10 @@
 #include "base/functional/callback_helpers.h"
 #include "base/location.h"
 #include "base/metrics/field_trial_params.h"
+#include "base/no_destructor.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
+#include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/threading/thread_restrictions.h"
 #include "base/time/time.h"
@@ -52,6 +54,7 @@
 #include "chrome/browser/after_startup_task_utils.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/dialogs/browser_dialogs.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/heavy_ad_intervention/heavy_ad_features.h"
 #include "components/prefs/pref_service.h"
@@ -61,6 +64,8 @@
 #include "services/device/public/cpp/device_features.h"
 #include "services/device/public/mojom/geolocation_internals.mojom.h"
 #include "services/network/public/mojom/network_context.mojom.h"
+#include "ui/base/models/dialog_model.h"
+#include "ui/base/mojom/dialog_button.mojom.h"
 #include "url/gurl.h"
 
 namespace bdk {
@@ -74,6 +79,43 @@ int g_capture_state = 0;
 bool& AfterStartupTaskRan() {
   static bool ran = false;
   return ran;
+}
+
+// What happened to the last dialog dialogs.tab_modal showed: "accepted",
+// "cancelled" or "closed" (empty while open), and whether the model is gone.
+struct TabModalOutcome {
+  std::string result;
+  bool destroyed = false;
+};
+
+TabModalOutcome& LastTabModal() {
+  static base::NoDestructor<TabModalOutcome> outcome;
+  return *outcome;
+}
+
+// A dialog model as File System Access and DevTools build theirs: a title, a
+// paragraph, OK and Cancel, given to chrome::ShowTabModal.
+void ShowTestTabModal(content::WebContents* contents,
+                      const std::string& title,
+                      const std::string& text,
+                      bool default_cancel) {
+  LastTabModal() = TabModalOutcome();
+  auto set = [](const char* result) {
+    return base::BindOnce(
+        [](const char* value) { LastTabModal().result = value; }, result);
+  };
+  ui::DialogModel::Builder builder;
+  builder.SetTitle(base::UTF8ToUTF16(title))
+      .AddParagraph(ui::DialogModelLabel(base::UTF8ToUTF16(text)))
+      .AddOkButton(set("accepted"))
+      .AddCancelButton(set("cancelled"))
+      .SetCloseActionCallback(set("closed"))
+      .SetDialogDestroyingCallback(
+          base::BindOnce([] { LastTabModal().destroyed = true; }));
+  if (default_cancel) {
+    builder.OverrideDefaultButton(ui::mojom::DialogButton::kCancel);
+  }
+  chrome::ShowTabModal(builder.Build(), contents);
 }
 
 EngineContents* PageOf(const base::DictValue& args) {
@@ -347,6 +389,41 @@ bool Run(const std::string& name,
       list.Append(host);
     }
     result.Set("hosts", std::move(list));
+    return true;
+  }
+  if (name == "pref.set") {
+    // {"contents", "name", "value"}: sets the Chromium preference `name` of
+    // the page's profile to the JSON value.
+    EngineContents* page = PageOf(args);
+    const std::string* pref_name = args.FindString("name");
+    const base::Value* value = args.Find("value");
+    if (!page || !pref_name || !value) {
+      return false;
+    }
+    PrefService* prefs = ProfileOf(*page->Core())->GetPrefs();
+    const PrefService::Preference* pref = prefs->FindPreference(*pref_name);
+    if (!pref || pref->GetType() != value->type()) {
+      return false;
+    }
+    prefs->Set(*pref_name, value->Clone());
+    return true;
+  }
+  if (name == "dialogs.tab_modal") {
+    // {"contents", "title", "text", "defaultCancel"}: a dialog model through
+    // chrome::ShowTabModal; poll dialogs.tab_modal.result.
+    EngineContents* page = PageOf(args);
+    const std::string* title = args.FindString("title");
+    const std::string* text = args.FindString("text");
+    if (!page || !title || !text) {
+      return false;
+    }
+    ShowTestTabModal(page->web_contents(), *title, *text,
+                     args.FindBool("defaultCancel").value_or(false));
+    return true;
+  }
+  if (name == "dialogs.tab_modal.result") {
+    result.Set("result", LastTabModal().result);
+    result.Set("destroyed", LastTabModal().destroyed);
     return true;
   }
   if (name == "hsts.add") {
