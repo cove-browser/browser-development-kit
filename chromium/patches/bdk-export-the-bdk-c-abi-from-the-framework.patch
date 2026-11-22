@@ -19,12 +19,12 @@ build.
 
 Used by: the BDK engine (//bdk/engine) and the Swift SDK.
 ---
- chrome/app/framework.exports | 104 ++++++++++++++++++++++++++++++++++++
- chrome/app/framework.order   | 104 ++++++++++++++++++++++++++++++++++++
+ chrome/app/framework.exports | 104 +++++++++++++++++++++++++++++++++++
+ chrome/app/framework.order   | 104 +++++++++++++++++++++++++++++++++++
  2 files changed, 208 insertions(+)
 
 diff --git a/chrome/app/framework.exports b/chrome/app/framework.exports
-index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..762b1a6d69feb5ba285443ddca6ec590d2b0a82f 100644
+index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..d8c47875fedad2758b1bdeb561543ad2d6f93914 100644
 --- a/chrome/app/framework.exports
 +++ b/chrome/app/framework.exports
 @@ -20,3 +20,107 @@ _ChromeAppModeStart_v8
@@ -136,7 +136,7 @@ index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..762b1a6d69feb5ba285443ddca6ec590
 +_OBJC_METACLASS_$_BDKApplicationBase
 +_OBJC_CLASS_$_BDKApplicationBase
 diff --git a/chrome/app/framework.order b/chrome/app/framework.order
-index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..4b5300db8f65183aaee9c14e9259665765fc675f 100644
+index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..6231e15dfc2bc56d18da91e3a13eb07e2ccad890 100644
 --- a/chrome/app/framework.order
 +++ b/chrome/app/framework.order
 @@ -33,5 +33,109 @@ _ChromeWebAppShortcutCopierMain
