@@ -69,7 +69,7 @@ async function main(): Promise<void> {
   for (const { name } of SDK_PACKAGES) {
     if (!Object.keys(sdk).some((asset) => asset.includes(`/${name}/`))) {
       throw new Error(
-        `${sdkDirs()[name]} holds no built files, which \`bdk build codegen\` writes for editors. Run \`pnpm exec nx run-many -t build -p js-protocol,js-internal,js-vite\` first.`,
+        `${sdkDirs()[name]} holds no built files, which \`bdk build codegen\` writes for editors. Run \`pnpm exec nx run-many -t build -p js-protocol,js-internal,js-automation,js-vite\` first.`,
       );
     }
   }
