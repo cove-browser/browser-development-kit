@@ -15,6 +15,7 @@
 #include "bdk/engine/pages/pages_navigation_throttle.h"
 #include "bdk/engine/providers/geolocation_provider.h"
 #include "bdk/engine/providers/provider_settings.h"
+#include "bdk/engine/services/user_scripts.h"
 #include "bdk/engine/startup_completion.h"
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_auth.h"
@@ -135,6 +136,7 @@ void BdkContentBrowserClient::CreateThrottlesForNavigation(
   PagesNavigationThrottle::MaybeCreateAndAdd(registry);
   ChromeContentBrowserClient::CreateThrottlesForNavigation(registry);
   registry.AddThrottle(std::make_unique<DevToolsExtensionThrottle>(registry));
+  MaybeAddUserScriptsThrottle(registry);
 }
 
 void BdkContentBrowserClient::RegisterTrustedWebUIInterfaceBrokers(
