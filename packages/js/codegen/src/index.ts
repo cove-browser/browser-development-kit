@@ -1,4 +1,5 @@
 export {
+  APP_AUTOMATION_PATH,
   APP_DECLARATIONS_PATH,
   APP_ENVIRONMENT_PATH,
   type ApplicationInputs,
@@ -9,6 +10,7 @@ export {
   RESOLVED_FILE,
   readDigest,
 } from "./application.js";
+export { AUTOMATION_DIR, AUTOMATION_REPORT_DIR, renderAutomationModules } from "./automation.js";
 export {
   build,
   check,

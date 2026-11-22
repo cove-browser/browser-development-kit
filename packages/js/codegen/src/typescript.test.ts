@@ -344,3 +344,43 @@ describe("a changed definition", () => {
     expect(modules()["types.ts"]).not.toContain("visitCount");
   });
 });
+
+describe("the @bdk/automation modules", () => {
+  const automation = (): Record<string, string> => build(inputs()).automation;
+
+  it("are types.ts and services.ts, byte-stable", () => {
+    expect(Object.keys(automation()).sort()).toEqual(["services.ts", "types.ts"]);
+    expect(automation()).toEqual(automation());
+  });
+
+  it("name every command a session may call in CommandMap, and no other", () => {
+    const services = automation()["services.ts"] as string;
+    expect(services).toContain(
+      '"settings.get": { input: { key: string; }; output: { value: JsonValue; } };',
+    );
+    expect(services).toContain('"history.search": { input: {');
+    expect(services).toContain('"cookies.getValues": {');
+    expect(services).not.toContain("swiftonly");
+  });
+
+  it("name every event, cookies.changed included, with its payload", () => {
+    const services = automation()["services.ts"] as string;
+    expect(services).toContain('"cookies.changed": { cookie: CookieValue; removed: boolean; };');
+    expect(services).toContain('"privacy.refreshed": Record<string, never>;');
+  });
+
+  it("make an interface per service namespace, a group nested, and none for runtime", () => {
+    const services = automation()["services.ts"] as string;
+    expect(services).toContain("export interface SettingsService {");
+    expect(services).toContain(
+      'get(args: CommandInput<"settings.get">, options?: CallOptions): Promise<CommandOutput<"settings.get">>;',
+    );
+    expect(services).toContain("export interface AutofillService {\n  cards: {");
+    expect(services).not.toContain("RuntimeService");
+    expect(services).toContain("  settings: SettingsService;");
+  });
+
+  it("take the argument types from the definitions, not narrowed to setting keys", () => {
+    expect(automation()["services.ts"]).not.toContain("SettingKey");
+  });
+});

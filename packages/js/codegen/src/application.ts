@@ -13,6 +13,8 @@ export const RESOLVED_FILE = "bdk.resolved.json";
 /** Where the per-application declarations are written, relative to the generated JavaScript root. */
 export const APP_DECLARATIONS_PATH = "@bdk/internal/app.d.ts";
 export const APP_ENVIRONMENT_PATH = "@bdk/env.d.ts";
+/** The same declarations for scripts, merged into `@bdk/automation`. */
+export const APP_AUTOMATION_PATH = "@bdk/automation/app.d.ts";
 
 /** The text of the two files the per-application declarations come from. */
 export interface ApplicationInputs {
@@ -336,7 +338,10 @@ function shapeType(usage: Usage, shape: Shape, nullable: boolean, empty: string)
   return `{ ${value.map((field) => fieldLine(usage, field, nullable)).join(" ")} }`;
 }
 
-function renderDeclarations(declarations: Declarations, input: string): string {
+/** The package whose modules a set of declarations is merged into. */
+type Target = "@bdk/internal" | "@bdk/automation";
+
+function renderDeclarations(declarations: Declarations, input: string, target: Target): string {
   const usage = new Usage();
   const types = declarations.types.flatMap((type) => renderType(type, usage));
 
@@ -361,13 +366,16 @@ function renderDeclarations(declarations: Declarations, input: string): string {
 
   return `${[
     ...header(COMMANDS_FILE, input),
-    ...(usesJson ? ['import type { JsonValue } from "@bdk/internal/types";', ""] : []),
+    ...(usesJson ? [`import type { JsonValue } from "${target}/types";`, ""] : []),
     "export {};",
     "",
     ...types,
-    ...augment("@bdk/internal/commands", "AppCommands", commands),
-    ...augment("@bdk/internal/events", "AppEvents", events),
-    ...augment("@bdk/internal/app-settings", "AppSettings", settings),
+    ...augment(`${target}/commands`, "AppCommands", commands),
+    ...augment(`${target}/events`, "AppEvents", events),
+    // Scripts reach settings through the `settings` service namespace, whose keys are strings.
+    ...(target === "@bdk/internal"
+      ? augment("@bdk/internal/app-settings", "AppSettings", settings)
+      : []),
   ]
     .join("\n")
     .replace(/\n+$/, "")}\n`;
@@ -390,8 +398,9 @@ function renderEnvironment(environment: Environment, input: string): string {
 
 /**
  * Renders the per-application declarations as relative path to file text: `@bdk/internal/app.d.ts` (the
- * application's commands, events and settings, merged into `@bdk/internal`) and `@bdk/env.d.ts` (route names
- * and the internal scheme). Each file records the digest of its input; see `readDigest`. Throws an
+ * application's commands, events and settings, merged into `@bdk/internal`), `@bdk/automation/app.d.ts` (its
+ * commands and events, merged into `@bdk/automation`) and `@bdk/env.d.ts` (route names and the internal
+ * scheme). Each file records the digest of its input; see `readDigest`. Throws an
  * `InterfaceError` with every problem found in either input. Same input in, same bytes out.
  */
 export function generateApplication(inputs: ApplicationInputs): Record<string, string> {
@@ -400,7 +409,16 @@ export function generateApplication(inputs: ApplicationInputs): Record<string, s
   const issues = [...declared.issues, ...environment.issues];
   if (issues.length > 0) throw new InterfaceError(issues);
   return {
-    [APP_DECLARATIONS_PATH]: renderDeclarations(declared.declarations, inputs.commands),
+    [APP_DECLARATIONS_PATH]: renderDeclarations(
+      declared.declarations,
+      inputs.commands,
+      "@bdk/internal",
+    ),
+    [APP_AUTOMATION_PATH]: renderDeclarations(
+      declared.declarations,
+      inputs.commands,
+      "@bdk/automation",
+    ),
     [APP_ENVIRONMENT_PATH]: renderEnvironment(environment.environment, inputs.resolved),
   };
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  APP_AUTOMATION_PATH,
   APP_DECLARATIONS_PATH,
   APP_ENVIRONMENT_PATH,
   type ApplicationInputs,
@@ -99,9 +100,14 @@ function issues(commands?: Json, config?: Json): string[] {
 }
 
 describe("generateApplication", () => {
-  it("writes app.d.ts and env.d.ts", () => {
-    expect(Object.keys(generate()).sort()).toEqual([APP_ENVIRONMENT_PATH, APP_DECLARATIONS_PATH]);
+  it("writes app.d.ts for pages, app.d.ts for scripts and env.d.ts", () => {
+    expect(Object.keys(generate()).sort()).toEqual([
+      APP_AUTOMATION_PATH,
+      APP_ENVIRONMENT_PATH,
+      APP_DECLARATIONS_PATH,
+    ]);
     expect(APP_DECLARATIONS_PATH).toBe("@bdk/internal/app.d.ts");
+    expect(APP_AUTOMATION_PATH).toBe("@bdk/automation/app.d.ts");
     expect(APP_ENVIRONMENT_PATH).toBe("@bdk/env.d.ts");
   });
 
@@ -154,6 +160,17 @@ describe("generateApplication", () => {
       }
       "
     `);
+  });
+
+  it("writes the same commands and events for scripts, merged into @bdk/automation, without settings", () => {
+    const scripts = generate()[APP_AUTOMATION_PATH] as string;
+    expect(scripts).toContain('import type { JsonValue } from "@bdk/automation/types";');
+    expect(scripts).toContain('declare module "@bdk/automation/commands" {');
+    expect(scripts).toContain('declare module "@bdk/automation/events" {');
+    expect(scripts).toContain('"app.notes.create": { input: { title: string; body?: string;');
+    expect(scripts).toContain('"app.notes.changed": { id: string; note?: Note | null; };');
+    expect(scripts).not.toContain("@bdk/internal");
+    expect(scripts).not.toContain("AppSettings");
   });
 
   it("writes the route names, aliases included, and the internal scheme", () => {

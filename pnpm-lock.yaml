@@ -247,6 +247,9 @@ importers:
 
   packages/js/automation:
     devDependencies:
+      '@bdk/codegen':
+        specifier: workspace:*
+        version: link:../codegen
       rolldown:
         specifier: 1.2.18
         version: 1.2.18
