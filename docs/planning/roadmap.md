@@ -356,3 +356,44 @@ Applied from M1 onward:
 | Remote build cache | Not planned | See [repository-and-tooling.md](repository-and-tooling.md) section 5.4. |
 | Windows and Linux SDKs | After v1 | The shared core and ABI are designed for them now. |
 | Optional Google-backed providers | After the defaults work | They need each application's own key. |
+
+## 6. Open work after the M4 to M7 merge (2026-11-21)
+
+M4 to M7 were merged into `main` with their engine scenarios not all passing. After the merge, on Chromium 158 and an
+unlocked screen, the engine suite outside the extension scenarios is 451 of 456, and 38 of the 59 extension scenarios
+pass when each runs alone. This section says which open work is being done now and which waits, and for what.
+
+### Being fixed now
+
+A fix-up session (branch `fix-engine-scenarios`) takes these, in this order. Each item names its task; the cause is
+what the merge runs showed.
+
+| Task | Failing | Cause, as far as known |
+|---|---|---|
+| T-EXT-02, T-EXT-03 | Two side-panel scenarios crash on a freed `BDKSidePanelContainerView`; `Check failed: browser_` at `host_context.cc:110` after the page-panel scenario fails; the disabled popup, context-menu and side-panel surface scenarios hang | A use after free in the default side-panel presenter; a host context outliving its `Browser`; requests for a disabled surface that never finish |
+| T-AUT-06 | `engine_user_scripts_follow_their_match_patterns`, `engine_user_scripts_run_in_registration_order` | The script's marker is not seen on the matching page; the registration probably reaches the page after its document has started |
+| T-PRV-04 | `engine_a_page_gets_its_position_from_the_app_provider` | Chromium gates geolocation on macOS's location permission before any provider starts; an application provider needs that gate lifted for it |
+| T-UIR-07 | `engine.non_overridable_certificate_error` | The scenario's setup: Chromium ignores HSTS for `*.localhost`, so it needs another host name mapped to loopback |
+| T-EXT-01, T-EXT-02, T-EXT-05, T-EXT-09, T-SWF-08 | The rest of the extension scenarios listed in the M5 status, and `ext_activation_needs_a_gesture_and_an_extension` | One cause each, in the M5 status above |
+| T-SVC-12 | A dangling-pointer abort in long suite runs | A bookmarks export that outlives its profile |
+| T-ADP-10 | No test fails; all best-effort work waits 3 minutes | Start-up completion is never signalled |
+| T-REP-08 | No test fails; extension test windows come to the front in silent mode | The extension harness does not use the silent helpers |
+
+The hand check of the M3 exit criterion in the minimal browser (part of T-UIR-07) is the product owner's.
+
+### Waiting
+
+| Task | Milestone | Waits for |
+|---|---|---|
+| T-AUT-07, T-JS-06 | M8 | The M8 session, in progress |
+| T-EXT-10 | M5 | The extension scenarios above passing first; then the remaining matrix scenarios and the three real extensions |
+| T-CLI-06, T-JS-05, T-SWF-09, T-EXT-11, T-EXT-12 | M5 | Nothing; features not yet built, after the fix-up |
+| T-SVC-11 | M5 | The product owner confirming S12 |
+| T-EXT-13, T-WUI-07, T-PRV-12 | M6 | Nothing; Google-contact work proved by the network audit, after the fix-up |
+| T-PRV-10 | M6 | The product owner confirming S1 |
+| T-PRV-02 | M6 | The Bergamot engine and its model source |
+| T-PRV-11 | M6 | Feed licences, a signing key and where BDK publishes the lists |
+| T-PRV-13 | M6 | The product owner accepting S16 |
+| T-EXT-14 | M9 | The product owner accepting the S6 keys |
+| T-ADP-09 | M9 | A `browser_tests` build |
+| T-PRV-14 | After v1 | Patches to Chromium's Google protocol hosts |

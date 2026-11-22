@@ -57,6 +57,7 @@ G0 → T-CHR-03, T-CHR-04 → T-CHR-08 → T-CHR-09 → T-ABI-04 → T-SWF-* →
 | T-ADP-07 | Sessions: stop automatic window restore; expose page navigation state for the application | M2 | M | Source | `session_service.h` | State export and import functions | After relaunch Chromium restores nothing; a page restored from saved state has its history | T-ADP-03 |
 | T-ADP-08 | Host-context mapping experiment for decision D1: off-screen pages as background tabs of one window versus in a separate context | M0 | M | Source | MV3 probe | Recorded probe output for both mappings | Not applicable; this produces evidence | T-EXT-01 |
 | T-ADP-09 | Run the `browser_tests` filters T-ADP-02 named against the BDK `BrowserWindow`, and fix or record each failure (left over from M3) | M9 | L | Source | T-ADP-02 filters; a `browser_tests` build | Results in `feasibility.md`; fixes | The named filters pass, or each failure is recorded with its cause | T-ADP-03 |
+| T-ADP-10 | Signal that browser start-up is complete when the runtime is ready. Today Chromium's best-effort and after-start-up work waits for its 3-minute failsafe (`kStartupDelayFailsafeTimeout`) in every BDK application (found fixing the heavy-ad store, 2026-11-21) | M9 | M | Source | `AfterStartupTaskUtils`; `startup_metric_utils` | The signal, at the point BDK's start is complete | An engine scenario sees a task posted with `PostAfterStartupTask` run within seconds of start | T-ADP-03 |
 
 ## macOS host
 
@@ -120,6 +121,7 @@ G0 → T-CHR-03, T-CHR-04 → T-CHR-08 → T-CHR-09 → T-ABI-04 → T-SWF-* →
 | T-SVC-09 | `contents.screenshot`, `contents.pdf` and save-page commands, and `page.capture` in Swift (left over from T-SVC-06: the engine can capture but no command exposes it) | M7 | M | Source | services.md `contents.*` | Commands; Swift | Visible, full-page and rectangle screenshots; a PDF; each format of save | T-AUT-03 |
 | T-SVC-10 | Address-bar services (S1): `search.classify`, `search.suggestions` and search-engine management; `profile.search` in Swift | M4 | L | Source | services.md 5.13; S1 confirmed | Commands; Swift | Input classified as a URL or a search with the configured engine; suggestions from history and bookmarks with no Google endpoint | T-SVC-02 |
 | T-SVC-11 | `favicons.get` and `topSites.*` (S12) with their `@bdk/internal` modules; waits for S12 to be confirmed (left over from M4) | M5 | M | Source | services.md 5.14 | Definitions; engine; generated modules | A favicon from the favicon service, never fetched; the most-visited list; exclude and restore | T-SVC-10 |
+| T-SVC-12 | A bookmarks export still running when its profile closes: `bookmark_html_writer`'s favicon fetcher keeps a raw pointer to the profile, so the profile's destruction leaves it dangling and the engine aborts (found merging M5, 2026-11-21) | M9 | S | Source | `bookmarks_service.cc`; `chrome/browser/bookmarks/bookmark_html_writer.cc` | The export holds the profile until it finishes, or is cancelled when the profile closes | An engine scenario closes the profile during an export: no dangling pointer, the call ends with an error | T-SVC-01 |
 
 ## Internal pages and configuration
 
@@ -244,6 +246,7 @@ Load the probe unpacked with two pages A and B visible, B focused.
 | T-REP-05 | Local runtime publishing and the pre-release pass. No Chromium build in CI. | M1 | M | Source | Tooling document 10.1 and 10.2 | `chromium:publish`, which records source key, URL, ABI hash and manifest digest in `chromium/pin.json`; `pnpm test:release` | A published runtime resolves on a second machine and in the integration workflow; a tampered archive is refused | T-CHR-08 |
 | T-REP-06 | Documentation site on Fumadocs (Next.js, MDX, static export) | M9 | M | Prebuilt | Published API | `apps/docs` | `pnpm docs:build` succeeds; links checked | None |
 | T-REP-07 | Conventional Commits check on pull-request titles and in Lefthook. release-please is deferred. | M1 | S | Prebuilt | Tooling document 8.1 | commitlint configuration; pull-request title check | A badly titled pull request fails its check | T-REP-03 |
+| T-REP-08 | The extension test harness (`packages/core/tests/harness_engine_ext.mm`) opens its windows through `harness_engine.mm`'s silent-mode helpers, so `BDK_ENGINE_SILENT=1` keeps every window of the engine suite behind the user's | M9 | S | Prebuilt | `harness_engine.mm` `NewWindow`, `ShowWindow` | Shared helpers | A silent run of the extension scenarios never orders a window to the front | None |
 
 ## Arc-style reference application
 
