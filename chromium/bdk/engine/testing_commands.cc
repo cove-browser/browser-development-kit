@@ -337,6 +337,16 @@ bool Run(const std::string& name,
                   /*include_subdomains=*/false, base::DoNothing());
     return true;
   }
+  if (name == "network.passthrough") {
+    // {"host"}: loads from the host go to the network, not to the scripted
+    // pages (a test's own server on a name mapped to the loopback address).
+    const std::string* host = args.FindString("host");
+    if (!host) {
+      return false;
+    }
+    PassThroughHostForTesting(*host);
+    return true;
+  }
   if (name == "script_page") {
     // A page with content: {"url", "body", "contentType", "headers"}.
     const std::string* url = args.FindString("url");

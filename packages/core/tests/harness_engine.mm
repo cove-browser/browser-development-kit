@@ -757,6 +757,9 @@ int main(int argc, char** argv) {
         setvbuf(stdout, nullptr, _IOLBF, 0);
         setenv("BDK_ENGINE_KEEP_CHROMIUM", "1", 1);
         setenv("BDK_ENGINE_MOCK_KEYCHAIN", "1", 1);
+        /* A name that is not localhost for the loopback servers of the scenarios: Chromium
+           applies no HSTS to *.localhost. */
+        setenv("BDK_ENGINE_HOST_RESOLVER_RULES", "MAP hsts.bdk.test 127.0.0.1", 0);
         /* Chromium refuses fullscreen to a page whose window is not key, and offers autofill
            suggestions only to a view that has focus (which on macOS includes being in the key
            window). macOS does not let a process make itself frontmost while another application

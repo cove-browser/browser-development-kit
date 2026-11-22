@@ -10,8 +10,10 @@
 #include <CoreFoundation/CoreFoundation.h>
 
 #include <atomic>
+#include <functional>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 
@@ -73,6 +75,9 @@ struct Scripts {
   base::Lock lock;
   std::map<std::string, Script> by_url;
   bool intercept_all = false;
+  // Host names the test's own servers listen on (mapped to the loopback
+  // address), which the network serves.
+  std::set<std::string, std::less<>> passthrough_hosts;
 };
 
 Scripts& GetScripts() {
@@ -165,6 +170,10 @@ class ScriptedNavigationInterceptor
     {
       Scripts& scripts = GetScripts();
       base::AutoLock lock(scripts.lock);
+      if (scripts.passthrough_hosts.contains(request.url.host())) {
+        std::move(callback).Run({});
+        return;
+      }
       auto it = scripts.by_url.find(request.url.spec());
       if (it != scripts.by_url.end()) {
         script = it->second;
@@ -208,6 +217,12 @@ void ScriptPageForTesting(const std::string& url,
   script.content_type = content_type;
   script.headers = headers;
   scripts.by_url[GURL(url).spec()] = std::move(script);
+}
+
+void PassThroughHostForTesting(const std::string& host) {
+  Scripts& scripts = GetScripts();
+  base::AutoLock lock(scripts.lock);
+  scripts.passthrough_hosts.insert(host);
 }
 
 void NoteTaskPosted() {

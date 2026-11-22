@@ -145,6 +145,9 @@ BDK_EXPORT bdk_status_t bdk_testing_tab_info(bdk_contents_t,
    Chromium runs with network.hosts {"path"} -> {"hosts": [...]}  the hosts a
    net log written with --log-net-log has requests or resolutions for
    hsts.add {"contents", "host"}  the page's profile treats host as HSTS
+   network.passthrough {"host"}  loads from host go to the network, not to the
+   scripted pages (a test's server on a name BDK_ENGINE_HOST_RESOLVER_RULES
+   maps to the loopback address)
    extensions.pack {"dir", "crx", "key"} -> {"id"}  packs the directory into the
    CRX with Chromium's ExtensionCreator, signed with the key in the file `key`
    (made when missing), so a second package of the same key is an update of the
