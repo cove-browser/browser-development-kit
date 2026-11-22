@@ -341,9 +341,17 @@ void BdkExtensionsContainer::OnPinnedActionsChanged() {}
 void BdkExtensionsContainer::OnActiveWebContentsChanged(
     bool is_same_document,
     content::WebContents* web_contents) {
-  if (!is_same_document) {
-    HideActivePopup();
+  if (is_same_document || !popup_) {
+    return;
   }
+  // A navigation of the page the popup was opened for closes the popup from
+  // the popup itself, as "navigated" (extension_popup.cc); this is for another
+  // page becoming the active one.
+  if (EngineContents* opener = popup_->opener();
+      opener && opener->web_contents() == web_contents) {
+    return;
+  }
+  HideActivePopup();
 }
 
 void BdkExtensionsContainer::MaybeInstallTitlebarButton() {
