@@ -390,8 +390,11 @@ describe("bdk build automation --watch", () => {
 
     await write(dir, "Automation/hello.ts", "export default () => 'second';\n");
     fake.change();
-    await vi.waitFor(async () => expect(await readFile(bundleOf(app), "utf8")).toContain("second"));
-    expect(await recordedDigest(dir)).toBe(sha256(await readFile(bundleOf(app))));
+    // The bundle is written before the resolved file records its digest: wait for both.
+    await vi.waitFor(async () => {
+      expect(await readFile(bundleOf(app), "utf8")).toContain("second");
+      expect(await recordedDigest(dir)).toBe(sha256(await readFile(bundleOf(app))));
+    });
 
     await write(dir, "Automation/hello.ts", "export default function (( {\n");
     fake.change();
@@ -402,8 +405,11 @@ describe("bdk build automation --watch", () => {
 
     await write(dir, "Automation/hello.ts", "export default () => 'third';\n");
     fake.change();
-    await vi.waitFor(async () => expect(await readFile(bundleOf(app), "utf8")).toContain("third"));
-    expect(await recordedDigest(dir)).toBe(sha256(await readFile(bundleOf(app))));
+    // The bundle is written before the resolved file records its digest: wait for both.
+    await vi.waitFor(async () => {
+      expect(await readFile(bundleOf(app), "utf8")).toContain("third");
+      expect(await recordedDigest(dir)).toBe(sha256(await readFile(bundleOf(app))));
+    });
     const { config_digest, ...body } = await resolvedOf(dir);
     expect(config_digest).toBe(configDigest(body));
 
