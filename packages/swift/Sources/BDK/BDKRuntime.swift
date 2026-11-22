@@ -11,11 +11,26 @@ public final class BDKRuntime {
         public let abiHash: String
     }
 
+    /// Who created a page the application did not create itself.
+    public enum Creator: Sendable, Equatable {
+        /// The application. Not emitted: a page the application creates is already in its hands.
+        case application
+        /// An automation session, by its name (a session reached through the external endpoint has no
+        /// `BDKAutomationSession` object in the application).
+        case automation(session: String)
+        /// A browser extension, by id. Not emitted: the runtime gives no signal for it.
+        case `extension`(String)
+    }
+
     public enum Event: Sendable, Equatable {
         case registrationsFrozen
         case profileOpened(BDKProfile.ID)
         case profileClosed(BDKProfile.ID)
         case shutdownStarted
+        /// A page someone else created. Today only the pages an automation session creates, which also
+        /// arrive as `runtime.automation.events` `.contentsCreated`. The runtime keeps the page until it
+        /// closes; it is not on screen.
+        case webContentsCreated(BDKWebContents, by: Creator)
         /// A kind this version does not know, from a newer runtime.
         case unknown(kind: UInt32, detailJSON: String)
     }
@@ -61,6 +76,11 @@ public final class BDKRuntime {
 
     public var events: BDKEventSequence<Event> {
         BDKEventSequence(broadcaster)
+    }
+
+    /// Delivers an event the Swift layer raises itself (one with no ABI runtime event behind it).
+    func publish(_ event: Event) {
+        broadcaster.send(event)
     }
 
     private init(handle: bdk_runtime_t, info: Info) {
@@ -288,6 +308,23 @@ public final class BDKRuntime {
 }
 
 extension BDKRuntime.Event {
+    /// Pages compare by identity.
+    public static func == (lhs: Self, rhs: Self) -> Bool {
+        switch (lhs, rhs) {
+        case (.registrationsFrozen, .registrationsFrozen), (.shutdownStarted, .shutdownStarted):
+            true
+        case (.profileOpened(let left), .profileOpened(let right)),
+            (.profileClosed(let left), .profileClosed(let right)):
+            left == right
+        case (.webContentsCreated(let left, let by), .webContentsCreated(let right, let other)):
+            left === right && by == other
+        case (.unknown(let kind, let detail), .unknown(let otherKind, let otherDetail)):
+            kind == otherKind && detail == otherDetail
+        default:
+            false
+        }
+    }
+
     fileprivate init(kind: UInt32, detailJSON: String) {
         let identifier: BDKProfile.ID? = {
             guard case .object(let object) = BDKJSValue(jsonString: detailJSON),

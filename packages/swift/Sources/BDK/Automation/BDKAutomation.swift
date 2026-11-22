@@ -214,5 +214,6 @@ public final class BDKAutomation {
             self?.pages[handle] = nil
         }
         broadcaster.send(.contentsCreated(page, bySession: session))
+        runtime.publish(.webContentsCreated(page, by: .automation(session: session)))
     }
 }
