@@ -65,6 +65,37 @@ namespace bdk {
 
 namespace {
 
+// Adds `items` to `menu`; an item with children is a submenu.
+void AddMenuItems(NSMenu* menu,
+                  const std::vector<MenuItem>& items,
+                  BDKMenuTarget* target) {
+  for (const MenuItem& item : items) {
+    if (item.id.empty() && item.children.empty()) {
+      [menu addItem:[NSMenuItem separatorItem]];
+      continue;
+    }
+    NSMenuItem* menu_item =
+        [[NSMenuItem alloc] initWithTitle:base::SysUTF8ToNSString(item.title)
+                                   action:@selector(choose:)
+                            keyEquivalent:@""];
+    menu_item.target = target;
+    menu_item.enabled = item.enabled;
+    menu_item.state =
+        item.checked ? NSControlStateValueOn : NSControlStateValueOff;
+    if (!item.children.empty()) {
+      NSMenu* submenu =
+          [[NSMenu alloc] initWithTitle:base::SysUTF8ToNSString(item.title)];
+      submenu.autoenablesItems = NO;
+      AddMenuItems(submenu, item.children, target);
+      menu_item.submenu = submenu;
+      menu_item.action = nil;
+    } else {
+      menu_item.representedObject = base::SysUTF8ToNSString(item.id);
+    }
+    [menu addItem:menu_item];
+  }
+}
+
 class HostViewMac : public HostView {
  public:
   HostViewMac()
@@ -133,20 +164,7 @@ class HostViewMac : public HostView {
         std::move(callback).Run(base::SysNSStringToUTF8(item_id));
       }
     };
-    for (const MenuItem& item : items) {
-      if (item.id.empty()) {
-        [menu addItem:[NSMenuItem separatorItem]];
-        continue;
-      }
-      NSMenuItem* menu_item =
-          [[NSMenuItem alloc] initWithTitle:base::SysUTF8ToNSString(item.title)
-                                     action:@selector(choose:)
-                              keyEquivalent:@""];
-      menu_item.target = target;
-      menu_item.enabled = item.enabled;
-      menu_item.representedObject = base::SysUTF8ToNSString(item.id);
-      [menu addItem:menu_item];
-    }
+    AddMenuItems(menu, items, target);
     // The target is weak in NSMenuItem; the menu keeps it for its life.
     objc_target_ = target;
     [menu popUpMenuPositioningItem:nil

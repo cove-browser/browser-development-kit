@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "BDK Blocker Fixture",
+  "version": "0.1.0",
+  "description": "Test fixture: a content blocker. It blocks requests with declarativeNetRequest static rules and nothing else.",
+  "minimum_chrome_version": "127",
+  "permissions": ["declarativeNetRequest"],
+  "background": { "service_worker": "sw.js" },
+  "declarative_net_request": {
+    "rule_resources": [{ "id": "ads", "enabled": true, "path": "rules.json" }]
+  },
+  "externally_connectable": { "matches": ["http://127.0.0.1/*", "http://localhost/*"] }
+}

@@ -40,6 +40,9 @@
 #include "bdk/engine/chromium_main.h"
 #include "bdk/engine/devtools_frontend.h"
 #include "bdk/engine/engine_contents.h"
+#include "bdk/engine/extensions/action_service.h"
+#include "bdk/engine/extensions/extension_menu.h"
+#include "bdk/engine/extensions/extension_ui_util.h"
 #include "bdk/engine/host_context.h"
 #include "bdk/engine/host_view.h"
 #include "bdk/engine/identity.h"
@@ -62,7 +65,10 @@
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_find.h"
 #include "bdk/engine/ui_notifications.h"
+#include "bdk/engine/ui_presenters.h"
+#include "bdk/engine/window_registry.h"
 #include "chrome/browser/browser_process.h"
+#include "chrome/browser/extensions/extension_tab_util.h"
 #include "chrome/browser/profiles/delete_profile_helper.h"
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
 #include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"
@@ -72,6 +78,8 @@
 #include "chrome/browser/profiles/profile_destroyer.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/profiles/profile_metrics.h"
+#include "chrome/browser/ui/browser.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "components/version_info/version_info.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
@@ -815,6 +823,49 @@ class EngineBackend final : public bdkcore::Backend {
     return BDK_OK;
   }
 
+  // Extension actions and the default menu (extensions/action_service.h).
+  bdk_status_t ExtensionActivateAction(Runtime& rt,
+                                       const std::shared_ptr<Contents>& c,
+                                       const std::string& extension_id,
+                                       bdk_native_handle_t gesture,
+                                       std::string* result_json,
+                                       bdk_error_t* out_error) override {
+    return ActivateExtensionAction(c, extension_id, gesture, result_json,
+                                   out_error);
+  }
+
+  bdk_status_t ExtensionPerformCommand(Runtime& rt,
+                                       const std::shared_ptr<Contents>& c,
+                                       const std::string& extension_id,
+                                       const std::string& command,
+                                       bdk_native_handle_t gesture,
+                                       std::string* result_json,
+                                       bdk_error_t* out_error) override {
+    return PerformExtensionCommand(c, extension_id, command, gesture,
+                                   result_json, out_error);
+  }
+
+  bdk_status_t ExtensionPresentMenu(Runtime& rt,
+                                    const bdkcore::Window& window,
+                                    bdk_native_handle_t gesture,
+                                    bdk_error_t* out_error) override {
+    if (!UiPresenters::Get().IsRecentGesture(gesture)) {
+      return bdkcore::fail(out_error, BDK_DOMAIN_UI, BDK_CODE_GESTURE_REQUIRED,
+                           "the extensions menu opens for the event that asked "
+                           "for it, delivered recently to one of the "
+                           "application's windows");
+    }
+    std::shared_ptr<bdkcore::Window> shared =
+        RegisteredWindowOf(rt, window.native);
+    std::string error;
+    if (!shared ||
+        !PresentExtensionsMenu(rt, shared, bdk_native_handle_t{}, &error)) {
+      return bdkcore::fail(out_error, BDK_DOMAIN_EXTENSION, BDK_CODE_NOT_FOUND,
+                           shared ? error : "the window is not registered");
+    }
+    return BDK_OK;
+  }
+
   void UnregisterWindow(const bdkcore::Window& window) override {
     // The window's pages go to parking, then its contexts close.
     for (EngineContents* page : EngineContents::All()) {
@@ -823,6 +874,36 @@ class EngineBackend final : public bdkcore::Backend {
       }
     }
     HostContexts::Get().UnregisterWindow(&window);
+  }
+
+  // The attachments of bdk_window.h, which the window registry keeps.
+  bdk_window_t WindowForContents(const Contents& c) override {
+    return WindowRegistry::Get().WindowOfPage(c.handle);
+  }
+
+  void WindowContents(const bdkcore::Window& window,
+                      std::vector<bdk_contents_t>* contents,
+                      bdk_contents_t* active) override {
+    *contents = WindowRegistry::Get().PagesOf(&window);
+    *active = 0;
+    HostContext* context = WindowRegistry::Get().ActiveContext(&window);
+    Browser* browser = context ? context->browser() : nullptr;
+    if (!browser) {
+      return;
+    }
+    if (EngineContents* page = EngineContents::FromWebContents(
+            browser->GetTabStripModel()->GetActiveWebContents())) {
+      *active = page->handle();
+    }
+  }
+
+  // The window id extensions see (windows.get) is the session identifier of
+  // the context of the window's active page: a window is one extension window
+  // per profile.
+  int32_t WindowExtensionId(const bdkcore::Window& window) override {
+    HostContext* context = WindowRegistry::Get().ActiveContext(&window);
+    Browser* browser = context ? context->browser() : nullptr;
+    return browser ? extensions::ExtensionTabUtil::GetWindowId(browser) : -1;
   }
 
   // Keeps a persistent profile loaded for the life of the runtime, from its

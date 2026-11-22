@@ -1,0 +1,105 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BDK Patches <patches@bdk.invalid>
+Date: Fri, 20 Nov 2026 14:20:11 -0800
+Subject: [PATCH] bdk: let an embedder keep a Browser out of the extension
+ window list
+
+BDK keeps a parking Browser for each profile: where a page waits while no
+window shows it. It has no native window and the application never sees it,
+but BrowserExtensionWindowController adds every Browser to the
+WindowControllerList, so windows.getAll, tabs.query, tabs.get and
+windows.onCreated reported it as a window of the application (and
+windows.getCurrent could resolve to it when no window had focus). Removing
+the controller from the list afterwards is not enough: the list notifies
+WindowsEventRouter as the controller is added, so every extension listening
+for windows.onCreated, including a lazy listener that wakes a service worker,
+would see a window appear and disappear whenever a profile gets its first page.
+
+Add embedder_extension_window_filter.h, a small header with a settable
+predicate (no new target: it is inline, as embedder_browser_window_factory.h
+is), and ask it in BrowserExtensionWindowController's constructor before the
+controller is listed. With no filter, or a filter that says no, nothing
+changes. The controller itself still exists for the Browser, so extension
+views that find it through the Browser keep working. Only the one .cc and the
+new header are touched.
+
+Used by: the BDK engine (//bdk/engine/host_context.cc).
+---
+ .../browser_extension_window_controller.cc    |  8 +++-
+ .../embedder_extension_window_filter.h        | 42 +++++++++++++++++++
+ 2 files changed, 49 insertions(+), 1 deletion(-)
+
+diff --git a/chrome/browser/extensions/browser_extension_window_controller.cc b/chrome/browser/extensions/browser_extension_window_controller.cc
+index 497220fc726c4e37c1685d459b69369cba6ee21a..06d4b62c70dc082af3bf2798ecbec32dd8a74410 100644
+--- a/chrome/browser/extensions/browser_extension_window_controller.cc
++++ b/chrome/browser/extensions/browser_extension_window_controller.cc
+@@ -11,6 +11,7 @@
+ #include "base/feature_list.h"
+ #include "base/notimplemented.h"
+ #include "base/strings/stringprintf.h"
++#include "chrome/browser/extensions/embedder_extension_window_filter.h"
+ #include "chrome/browser/extensions/extension_tab_util.h"
+ #include "chrome/browser/extensions/window_controller_list.h"
+ #include "chrome/browser/profiles/profile.h"
+@@ -119,7 +120,12 @@ BrowserExtensionWindowController::BrowserExtensionWindowController(
+       session_id_(browser->GetSessionID()),
+       window_type_(GetTabsWindowType(browser)),
+       scoped_data_holder_(browser->GetUnownedUserDataHost(), *this) {
+-  WindowControllerList::GetInstance()->AddExtensionWindow(this);
++  // An embedder may keep a Browser that is not a window out of the extension
++  // APIs. The controller still exists for it (extension views find it through
++  // the Browser), it is only not listed.
++  if (!embedder_extension_window_filter::IsHidden(browser)) {
++    WindowControllerList::GetInstance()->AddExtensionWindow(this);
++  }
+ }
+ 
+ BrowserExtensionWindowController::~BrowserExtensionWindowController() {
+diff --git a/chrome/browser/extensions/embedder_extension_window_filter.h b/chrome/browser/extensions/embedder_extension_window_filter.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..74aff4bdfbdcbcb024c977a0e3a24afce0f06658
+--- /dev/null
++++ b/chrome/browser/extensions/embedder_extension_window_filter.h
+@@ -0,0 +1,42 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_EXTENSIONS_EMBEDDER_EXTENSION_WINDOW_FILTER_H_
++#define CHROME_BROWSER_EXTENSIONS_EMBEDDER_EXTENSION_WINDOW_FILTER_H_
++
++#include <utility>
++
++#include "base/functional/callback.h"
++#include "base/no_destructor.h"
++
++class BrowserWindowInterface;
++
++// A hook for Chromium embedders that own Browsers which are not windows a
++// person can see (a place where pages wait, say). When a filter is set,
++// BrowserExtensionWindowController does not add a Browser the filter returns
++// true for to the WindowControllerList, so the extension windows and tabs APIs
++// and their events never report it. The filter is asked once, as the Browser's
++// controller is made. Only embedders set one, once, before any Browser is
++// created.
++namespace extensions::embedder_extension_window_filter {
++
++using Filter = base::RepeatingCallback<bool(BrowserWindowInterface* browser)>;
++
++inline Filter& GetFilter() {
++  static base::NoDestructor<Filter> filter;
++  return *filter;
++}
++
++inline void SetFilter(Filter filter) {
++  GetFilter() = std::move(filter);
++}
++
++// Whether the embedder keeps `browser` out of the extension APIs.
++inline bool IsHidden(BrowserWindowInterface* browser) {
++  return GetFilter() && GetFilter().Run(browser);
++}
++
++}  // namespace extensions::embedder_extension_window_filter
++
++#endif  // CHROME_BROWSER_EXTENSIONS_EMBEDDER_EXTENSION_WINDOW_FILTER_H_

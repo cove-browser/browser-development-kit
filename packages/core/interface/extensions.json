@@ -1,0 +1,364 @@
+{
+  "namespace": "extensions",
+  "since": 1,
+  "types": {
+    "ExtensionSourceKind": {
+      "enum": ["unpacked", "crx", "updateUrl", "store", "bundled"]
+    },
+    "ExtensionSource": {
+      "kind": "ExtensionSourceKind",
+      "path": "string?",
+      "id": "string?",
+      "updateUrl": "url?",
+      "store": "string?"
+    },
+    "ExtensionDisableReason": {
+      "enum": ["user", "incompatible", "blocklisted", "permissionsIncreased", "corrupted", "other"]
+    },
+    "ExtensionSiteAccess": {
+      "enum": ["onClick", "onSpecificSites", "onAllSites"]
+    },
+    "ExtensionSurface": {
+      "enum": ["action", "popup", "sidePanel", "contextMenus", "optionsPage", "devTools", "omnibox"]
+    },
+    "ExtensionPermissions": {
+      "apiPermissions": "string[]",
+      "hostPatterns": "string[]",
+      "warnings": "string[]"
+    },
+    "CompatibilityVerdict": {
+      "enum": ["compatible", "degraded", "incompatible"]
+    },
+    "FindingSeverity": {
+      "enum": ["blocking", "degrading", "informational"]
+    },
+    "CompatibilityFinding": {
+      "severity": "FindingSeverity",
+      "code": "string",
+      "subject": "string",
+      "message": "string"
+    },
+    "CompatibilityReport": {
+      "verdict": "CompatibilityVerdict",
+      "findings": "CompatibilityFinding[]"
+    },
+    "ExtensionErrorKind": {
+      "enum": ["manifest", "runtime", "unavailableApi"]
+    },
+    "ExtensionError": {
+      "kind": "ExtensionErrorKind",
+      "message": "string",
+      "source": "string?",
+      "line": "int?",
+      "count": "int"
+    },
+    "ExtensionInfo": {
+      "id": "string",
+      "name": "string",
+      "version": "string",
+      "description": "string",
+      "icon": "string?",
+      "manifestVersion": "int",
+      "source": "ExtensionSourceKind",
+      "store": "string?",
+      "isEnabled": "bool",
+      "disableReasons": "ExtensionDisableReason[]",
+      "permissions": "ExtensionPermissions",
+      "siteAccess": "ExtensionSiteAccess",
+      "siteAccessPatterns": "string[]",
+      "allowedInPrivate": "bool",
+      "allowedFileAccess": "bool",
+      "isPinned": "bool",
+      "surfaces": "ExtensionSurface[]",
+      "optionsPage": "url?",
+      "errors": "ExtensionError[]?",
+      "compatibility": "CompatibilityReport"
+    },
+    "ExtensionActionState": {
+      "id": "string",
+      "title": "string",
+      "icon": "string?",
+      "badgeText": "string?",
+      "badgeColor": "string?",
+      "isEnabled": "bool",
+      "hasPopup": "bool",
+      "wantsAccess": "bool",
+      "isPinned": "bool"
+    },
+    "ExtensionCommand": {
+      "extensionId": "string",
+      "name": "string",
+      "description": "string",
+      "suggestedKey": "string?",
+      "shortcut": "string?",
+      "isAction": "bool"
+    },
+    "ExtensionView": {
+      "enum": ["serviceWorker", "popup", "sidePanel", "options", "background"]
+    },
+    "ExtensionUnloadReason": {
+      "enum": ["disabled", "uninstalled", "updated", "terminated", "blocklisted", "other"]
+    }
+  },
+  "commands": [
+    {
+      "name": "extensions.list",
+      "capability": "extensions.list",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {},
+      "result": "ExtensionInfo[]"
+    },
+    {
+      "name": "extensions.get",
+      "capability": "extensions.list",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string"
+      },
+      "result": "ExtensionInfo"
+    },
+    {
+      "name": "extensions.inspect",
+      "capability": "extensions.list",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "source": "ExtensionSource?",
+        "id": "string?"
+      },
+      "result": "CompatibilityReport"
+    },
+    {
+      "name": "extensions.install",
+      "capability": "extensions.manage",
+      "callers": ["swift", "page"],
+      "profile": "required",
+      "requires": ["gesture"],
+      "raises": "extension_installs",
+      "args": {
+        "source": "ExtensionSource"
+      },
+      "result": "ExtensionInfo"
+    },
+    {
+      "name": "extensions.uninstall",
+      "capability": "extensions.manage",
+      "callers": ["swift", "page"],
+      "profile": "required",
+      "requires": ["gesture"],
+      "raises": "extension_uninstalls",
+      "args": {
+        "id": "string"
+      },
+      "result": "void"
+    },
+    {
+      "name": "extensions.setEnabled",
+      "capability": "extensions.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "raises": "extension_installs",
+      "args": {
+        "id": "string",
+        "enabled": "bool"
+      },
+      "result": "void"
+    },
+    {
+      "name": "extensions.setSiteAccess",
+      "capability": "extensions.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string",
+        "access": "ExtensionSiteAccess",
+        "patterns": "string[]?"
+      },
+      "result": "void"
+    },
+    {
+      "name": "extensions.setAllowedInPrivate",
+      "capability": "extensions.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string",
+        "allowed": "bool"
+      },
+      "result": "void"
+    },
+    {
+      "name": "extensions.setAllowedFileAccess",
+      "capability": "extensions.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string",
+        "allowed": "bool"
+      },
+      "result": "void"
+    },
+    {
+      "name": "extensions.setPinned",
+      "capability": "extensions.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string",
+        "pinned": "bool"
+      },
+      "result": "void"
+    },
+    {
+      "name": "extensions.reload",
+      "capability": "extensions.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string"
+      },
+      "result": "void"
+    },
+    {
+      "name": "extensions.checkForUpdates",
+      "capability": "extensions.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "progress": true,
+      "args": {
+        "id": "string?"
+      },
+      "result": {
+        "updated": "string[]",
+        "refused": "CompatibilityFinding[]"
+      }
+    },
+    {
+      "name": "extensions.openOptions",
+      "capability": "extensions.list",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "raises": "new_windows",
+      "args": {
+        "id": "string"
+      },
+      "result": "void"
+    },
+    {
+      "name": "extensions.inspectView",
+      "capability": "extensions.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "raises": "new_windows",
+      "args": {
+        "id": "string",
+        "view": "ExtensionView"
+      },
+      "result": "void"
+    },
+    {
+      "name": "extensions.clearErrors",
+      "capability": "extensions.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string"
+      },
+      "result": "void"
+    },
+    {
+      "name": "extensions.commands",
+      "capability": "extensions.list",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {},
+      "result": "ExtensionCommand[]"
+    },
+    {
+      "name": "extensions.setCommandShortcut",
+      "capability": "extensions.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "extensionId": "string",
+        "name": "string",
+        "shortcut": "string?"
+      },
+      "result": "void"
+    },
+    {
+      "name": "extensions.actions",
+      "capability": "extensions.list",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {},
+      "result": "ExtensionActionState[]"
+    }
+  ],
+  "events": [
+    {
+      "name": "extensions.installed",
+      "capability": "extensions.list",
+      "payload": {
+        "extension": "ExtensionInfo"
+      }
+    },
+    {
+      "name": "extensions.updated",
+      "capability": "extensions.list",
+      "payload": {
+        "extension": "ExtensionInfo",
+        "previousVersion": "string"
+      }
+    },
+    {
+      "name": "extensions.uninstalled",
+      "capability": "extensions.list",
+      "payload": {
+        "id": "string"
+      }
+    },
+    {
+      "name": "extensions.enabledChanged",
+      "capability": "extensions.list",
+      "payload": {
+        "id": "string",
+        "isEnabled": "bool",
+        "disableReasons": "ExtensionDisableReason[]"
+      }
+    },
+    {
+      "name": "extensions.loaded",
+      "capability": "extensions.list",
+      "payload": {
+        "id": "string"
+      }
+    },
+    {
+      "name": "extensions.unloaded",
+      "capability": "extensions.list",
+      "payload": {
+        "id": "string",
+        "reason": "ExtensionUnloadReason"
+      }
+    },
+    {
+      "name": "extensions.errorAdded",
+      "capability": "extensions.list",
+      "payload": {
+        "id": "string",
+        "error": "ExtensionError"
+      }
+    },
+    {
+      "name": "extensions.actionChanged",
+      "capability": "extensions.list",
+      "payload": {
+        "id": "string",
+        "contents": "string?"
+      }
+    }
+  ]
+}

@@ -5,6 +5,8 @@
 #include <utility>
 
 #include "base/no_destructor.h"
+#include "bdk/engine/extensions/action_service.h"
+#include "bdk/engine/extensions/options_page.h"
 #include "bdk/engine/providers/translation_service.h"
 #include "bdk/engine/services/services.h"
 
@@ -24,6 +26,9 @@ const HandlerTable& Handlers() {
     AddPrivacyHandlers(t);
     AddProfilesHandlers(t);
     AddSystemHandlers(t);
+    AddExtensionsHandlers(t);
+    AddExtensionActionHandlers(t);
+    AddOptionsPageHandlers(t);
     AddContentsHandlers(t);
     AddDebugHandlers(t);
     AddDevToolsHandlers(t);

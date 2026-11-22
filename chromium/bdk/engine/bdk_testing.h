@@ -144,7 +144,56 @@ BDK_EXPORT bdk_status_t bdk_testing_tab_info(bdk_contents_t,
    "platformOnlyGeolocation", "googleKey", "geolocation", "reputation"}  what
    Chromium runs with network.hosts {"path"} -> {"hosts": [...]}  the hosts a
    net log written with --log-net-log has requests or resolutions for
-   hsts.add {"contents", "host"}  the page's profile treats host as HSTS */
+   hsts.add {"contents", "host"}  the page's profile treats host as HSTS
+   extensions.pack {"dir", "crx", "key"} -> {"id"}  packs the directory into the
+   CRX with Chromium's ExtensionCreator, signed with the key in the file `key`
+   (made when missing), so a second package of the same key is an update of the
+   first extensions.serve {"url", "body" | "file"}  a fetch of the url (an
+   update manifest, a package) is answered by the engine, not the network;
+   neither removes the entry. present.script on "extension_installs" and
+   "extension_uninstalls" answers the default sheets with the key of a button
+   ("install" or "remove", "cancel")
+
+   Extensions, windows and side panels (extensions/panel_testing.cc; "window"
+   is a decimal bdk_window_t string):
+   extensions.load {"contents", "path"}  loads the unpacked extension at path
+       in the page's profile without the install prompt; poll extensions.loaded
+       -> {"done", "id", "error"}
+   extensions.eval {"contents", "extension", "script"}  runs the script in the
+       extension's service worker (its value is the script's synchronous
+       result; a script that needs a promise stores the answer in a global and a
+       second call reads it); poll extensions.eval.result -> {"done", "value"
+       (JSON text), "error"}
+   window.extension_windows {"contents"} -> {"windows": [{"id", "type"}]}  the
+       windows the extension windows API lists for the page's profile
+   sidepanel.state {"window"} -> {"open", "extension", "url", "pageScoped",
+       "visible", "defaultPresenter", "frame": [x, y, w, h] (content view,
+       origin top left), "requestOpen", "opened"}  the extension side panel
+       open in the window
+   sidepanel.drag {"window", "delta"}  drags the default panel's divider by
+       delta points (negative: wider) and lets go
+   prompt.anchored -> {"attached", "frame"}  the prompt a default presenter
+       attached to a window anchor, in the content view; prompt.anchored.answer
+       {"index"}  presses its button
+
+   Extension UI (T-EXT-02, T-EXT-04). present.script also takes the surfaces
+   "extension_popups" ({"action": "blur" | "close"} answers as a blur or a
+   close; "none": true leaves the popup open) and "extension_menu" ({"choose":
+   "<extension id>" | "manage"} chooses a line; present.record's payload holds
+   {"items": [ExtensionActionState]}).
+   extui.load {"contents", "path"}  loads the unpacked extension at path in the
+   page's profile; poll extui.loaded -> {"done", "id", "error"}
+   extui.has_active_tab {"contents", "id"} -> {"granted"}  whether activeTab is
+   granted for the page
+   extui.context_items {"contents", "id"} -> {"count"}  the extension's
+   contextMenus items
+   extui.popup {"contents"?} -> {"opened", "shown", "closed", "lastCloseReason",
+   "lastSize", "open"}  what popups did, and whether the page's window has one
+   open
+   extui.blur {"contents"}  the popup of the page's window loses focus
+   extui.titlebar {"contents"} -> {"present", "visible", "x", "y", "width",
+   "height"}  the title-bar extensions button of the page's window (relative to
+   the window's frame, origin top-left) */
 BDK_EXPORT bdk_status_t bdk_testing_command(bdk_runtime_t,
                                             bdk_string_t command,
                                             bdk_string_t args_json,

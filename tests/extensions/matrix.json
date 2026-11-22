@@ -1,0 +1,934 @@
+{
+  "schema": 1,
+  "rows": [
+    {
+      "id": "assertion.01",
+      "group": "assertion",
+      "subject": "The worker starts and every content script acknowledges",
+      "expected": "supported",
+      "reason": "Chromium's own worker and content-script machinery, with every page a real tab.",
+      "evidence": ["engine_ext_probe_worker_and_content_ack"],
+      "source": "tasks.md T-EXT-01 1"
+    },
+    {
+      "id": "assertion.02",
+      "group": "assertion",
+      "subject": "tabs.query({active, currentWindow}) returns exactly the focused page",
+      "expected": "supported",
+      "reason": "Two visible pages are two tabs of one window and the focused one is active (extensions.md 8).",
+      "evidence": ["engine_ext_probe_active_tab_is_focused_page"],
+      "source": "tasks.md T-EXT-01 2"
+    },
+    {
+      "id": "assertion.03",
+      "group": "assertion",
+      "subject": "Focusing a page fires tabs.onActivated for it",
+      "expected": "supported",
+      "reason": "Pane focus is mapped to tab activation (feasibility 3).",
+      "evidence": ["engine_ext_probe_focus_fires_on_activated"],
+      "source": "tasks.md T-EXT-01 3"
+    },
+    {
+      "id": "assertion.04",
+      "group": "assertion",
+      "subject": "Moving a page to a second window keeps its tab id and fires detach then attach",
+      "expected": "supported",
+      "reason": "Tab identifiers survive a move between windows (feasibility 3).",
+      "evidence": ["engine_ext_probe_move_keeps_tab_id_and_events"],
+      "source": "tasks.md T-EXT-01 4"
+    },
+    {
+      "id": "assertion.05",
+      "group": "assertion",
+      "subject": "An action click grants activeTab to the focused page only, and navigating revokes it",
+      "expected": "supported",
+      "reason": "activeTab is attached per WebContents and revoked on navigation (feasibility 3).",
+      "evidence": ["engine_ext_probe_action_grants_active_tab_to_one_page"],
+      "source": "tasks.md T-EXT-01 5"
+    },
+    {
+      "id": "assertion.06",
+      "group": "assertion",
+      "subject": "The popup opens anchored to an arbitrary rectangle, reports the same active tab and closes on blur",
+      "expected": "supported",
+      "reason": "The popup is a native view in a BDK or application container (extensions.md 4.2).",
+      "evidence": [
+        "engine_ext_probe_popup_reports_active_tab",
+        "engine_ext_ui_popup_closes_on_blur_and_the_request_is_withdrawn",
+        "engine_ext_ui_the_application_closes_a_popup_and_navigation_closes_it"
+      ],
+      "source": "tasks.md T-EXT-01 6"
+    },
+    {
+      "id": "assertion.07",
+      "group": "assertion",
+      "subject": "tabs.sendMessage reaches the content script of both pages, and of the moved one",
+      "expected": "supported",
+      "reason": "Chromium messaging, unchanged.",
+      "evidence": ["engine_ext_probe_messages_reach_both_pages"],
+      "source": "tasks.md T-EXT-01 7"
+    },
+    {
+      "id": "assertion.08",
+      "group": "assertion",
+      "subject": "The context-menu item is in the menu model and its click names the right tab",
+      "expected": "supported",
+      "reason": "Items arrive in the context-menu request; performing one fires contextMenus.onClicked (extensions.md 4.4).",
+      "evidence": ["engine_ext_probe_context_menu_names_tab"],
+      "source": "tasks.md T-EXT-01 8"
+    },
+    {
+      "id": "assertion.09",
+      "group": "assertion",
+      "subject": "sidePanel.open works or fails with an explicit error",
+      "expected": "supported",
+      "reason": "Works where a side-panel host exists (T-EXT-03); otherwise the call rejects with a message naming the reason. Either is recorded.",
+      "evidence": ["engine_ext_probe_side_panel_open_result"],
+      "source": "tasks.md T-EXT-01 9"
+    },
+    {
+      "id": "assertion.10",
+      "group": "assertion",
+      "subject": "windows.getAll does not list the parking context",
+      "expected": "supported",
+      "reason": "The parking context is hidden from extensions (extensions.md 11); the test records what windows.getAll reports.",
+      "evidence": ["engine_ext_probe_parking_context_hidden"],
+      "source": "tasks.md T-EXT-01 10"
+    },
+    {
+      "id": "api.action",
+      "group": "api",
+      "subject": "action",
+      "expected": "supported",
+      "reason": "State and activation as in extensions.md 4.1; openPopup raises a popup request.",
+      "evidence": [
+        "engine_ext_ui_actions_report_state_and_badge_changes",
+        "engine_ext_ui_activation_targets_the_focused_page",
+        "engine_ext_ui_activation_without_a_gesture_fails",
+        "engine_ext_ui_action_open_popup_opens_a_popup"
+      ],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.sidePanel",
+      "group": "api",
+      "subject": "sidePanel",
+      "expected": "supported",
+      "reason": "Needs the BrowserWindowFeatures patch (T-EXT-03); the panel is a request with a native view.",
+      "evidence": [
+        "engine_ext_panel_side_panel_open_shows_the_default_panel_at_the_trailing_edge",
+        "engine_ext_panel_side_panel_open_reaches_an_application_container"
+      ],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.contextMenus",
+      "group": "api",
+      "subject": "contextMenus",
+      "expected": "supported",
+      "reason": "Items are part of the context-menu request; a click grants activeTab.",
+      "evidence": ["engine_ext_ui_a_context_menu_item_is_listed_performed_and_grants_active_tab"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.commands",
+      "group": "api",
+      "subject": "commands",
+      "expected": "degraded",
+      "reason": "The application owns shortcuts. Without application support the default menu lists the commands and nothing is bound.",
+      "evidence": [
+        "engine_ext_ui_a_declared_command_fires_oncommand_for_the_page",
+        "engine_ext_probe_api_presence"
+      ],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.tabs.create",
+      "group": "api",
+      "subject": "tabs.create",
+      "expected": "supported",
+      "reason": "A new-window request of kind newPage; if the application rejects, the call rejects.",
+      "evidence": ["engine_ext_probe_new_window_requests"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.windows.create",
+      "group": "api",
+      "subject": "windows.create",
+      "expected": "supported",
+      "reason": "A new-window request of kind extensionWindow; if the application rejects, the call rejects.",
+      "evidence": ["engine_ext_probe_new_window_requests"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.tabs.update",
+      "group": "api",
+      "subject": "tabs.update",
+      "expected": "degraded",
+      "reason": "Setting active raises an activation request to the window delegate. The application may ignore it and the call then resolves with no change.",
+      "evidence": ["engine_ext_probe_tabs_update_active_request"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.tabs.highlight",
+      "group": "api",
+      "subject": "tabs.highlight",
+      "expected": "degraded",
+      "reason": "Raises an activation request to the window delegate, which may ignore it.",
+      "evidence": ["engine_ext_probe_tabs_update_active_request"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.tabs.move",
+      "group": "api",
+      "subject": "tabs.move",
+      "expected": "degraded",
+      "reason": "BDK has no tab order. A move between windows moves the page's view only if the application's delegate does it.",
+      "evidence": ["engine_ext_probe_move_keeps_tab_id_and_events"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.tabs.group",
+      "group": "api",
+      "subject": "tabs.group",
+      "expected": "degraded",
+      "reason": "Groups are made in the engine's tab model of the page's host context, but BDK has no group concept and the application shows none.",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.tabGroups",
+      "group": "api",
+      "subject": "tabGroups",
+      "expected": "degraded",
+      "reason": "The namespace works on the engine's tab model, but the application shows no groups (inspection reports api.tabGroups.notShown).",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.tabs.query",
+      "group": "api",
+      "subject": "tabs.query",
+      "expected": "degraded",
+      "reason": "Pages attached to a window are that window's tabs. Off-screen pages follow decision D1 and the parking context is hidden.",
+      "evidence": [
+        "engine_ext_probe_active_tab_is_focused_page",
+        "engine_ext_probe_offscreen_pages_in_query"
+      ],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.tabs.discard",
+      "group": "api",
+      "subject": "tabs.discard",
+      "expected": "supported",
+      "reason": "Delivered to the window delegate with a default that discards the page.",
+      "evidence": ["engine_ext_probe_tab_requests_reach_delegate"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.tabs.duplicate",
+      "group": "api",
+      "subject": "tabs.duplicate",
+      "expected": "supported",
+      "reason": "Delivered to the window delegate with a default that duplicates the page.",
+      "evidence": ["engine_ext_probe_tab_requests_reach_delegate"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.tabs.remove",
+      "group": "api",
+      "subject": "tabs.remove",
+      "expected": "supported",
+      "reason": "Delivered to the window delegate with a default that closes the page.",
+      "evidence": ["engine_ext_probe_tab_requests_reach_delegate"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.windows.update",
+      "group": "api",
+      "subject": "windows.update",
+      "expected": "supported",
+      "reason": "A window request, with a default applied to the native window.",
+      "evidence": ["engine_ext_probe_window_update_request"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.sessions",
+      "group": "api",
+      "subject": "sessions",
+      "expected": "gap",
+      "reason": "BDK has no session history: getRecentlyClosed returns an empty list and restore rejects.",
+      "evidence": ["engine_ext_probe_sessions_empty"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.omnibox",
+      "group": "api",
+      "subject": "omnibox",
+      "expected": "gap",
+      "reason": "Needs the search.suggestions service (addition S1). Until then keywords reach no address bar.",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.notifications",
+      "group": "api",
+      "subject": "notifications",
+      "expected": "supported",
+      "reason": "Raises a notifications-surface request.",
+      "evidence": ["engine_ext_ui_notifications"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.downloads",
+      "group": "api",
+      "subject": "downloads",
+      "expected": "supported",
+      "reason": "The downloads service.",
+      "evidence": ["engine_ext_ui_downloads"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.downloads.setShelfEnabled",
+      "group": "api",
+      "subject": "downloads.setShelfEnabled",
+      "expected": "degraded",
+      "reason": "Accepted and passed to the presenter as a hint only.",
+      "evidence": ["engine_ext_ui_downloads", "engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.downloads.setUiOptions",
+      "group": "api",
+      "subject": "downloads.setUiOptions",
+      "expected": "degraded",
+      "reason": "Accepted and passed to the presenter as a hint only.",
+      "evidence": ["engine_ext_ui_downloads", "engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.identity.launchWebAuthFlow",
+      "group": "api",
+      "subject": "identity.launchWebAuthFlow",
+      "expected": "supported",
+      "reason": "A popup-kind new-window request.",
+      "evidence": ["engine_ext_ui_web_auth_flow_popup"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.identity.getAuthToken",
+      "group": "api",
+      "subject": "identity.getAuthToken",
+      "expected": "absent",
+      "reason": "No Google sign-in exists.",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.identity.getProfileUserInfo",
+      "group": "api",
+      "subject": "identity.getProfileUserInfo",
+      "expected": "absent",
+      "reason": "No Google sign-in exists.",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.debugger",
+      "group": "api",
+      "subject": "debugger",
+      "expected": "supported",
+      "reason": "Chrome shows a bar while an extension debugs a page; BDK raises a notice the application must show, with a default bar.",
+      "evidence": ["engine_ext_ui_debugger_notice"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.desktopCapture",
+      "group": "api",
+      "subject": "desktopCapture",
+      "expected": "supported",
+      "reason": "Raises a screen-capture request (ui-requests.md 5.16).",
+      "evidence": ["engine_ext_ui_screen_capture_request"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.tabCapture",
+      "group": "api",
+      "subject": "tabCapture",
+      "expected": "supported",
+      "reason": "Raises a screen-capture request (ui-requests.md 5.16).",
+      "evidence": ["engine_ext_ui_screen_capture_request"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.permissions.request",
+      "group": "api",
+      "subject": "permissions.request",
+      "expected": "supported",
+      "reason": "An install request of kind optionalPermissions; needs a gesture.",
+      "evidence": ["engine_ext_install_optional_permissions_prompt"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.management",
+      "group": "api",
+      "subject": "management",
+      "expected": "supported",
+      "reason": "Uninstalling through the API raises the uninstall prompt.",
+      "evidence": ["engine_ext_install_uninstall_raises_the_uninstall_request"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.bookmarks",
+      "group": "api",
+      "subject": "bookmarks",
+      "expected": "supported",
+      "reason": "Chromium's implementation, unchanged.",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.history",
+      "group": "api",
+      "subject": "history",
+      "expected": "supported",
+      "reason": "Chromium's implementation, unchanged.",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.topSites",
+      "group": "api",
+      "subject": "topSites",
+      "expected": "supported",
+      "reason": "Chromium's implementation, unchanged.",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.cookies",
+      "group": "api",
+      "subject": "cookies",
+      "expected": "supported",
+      "reason": "Chromium's implementation, unchanged.",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.browsingData",
+      "group": "api",
+      "subject": "browsingData",
+      "expected": "supported",
+      "reason": "Chromium's implementation, unchanged.",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.alarms",
+      "group": "api",
+      "subject": "alarms",
+      "expected": "supported",
+      "reason": "Chromium's implementation, unchanged.",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.i18n",
+      "group": "api",
+      "subject": "i18n",
+      "expected": "supported",
+      "reason": "Chromium's implementation, unchanged.",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.webNavigation",
+      "group": "api",
+      "subject": "webNavigation",
+      "expected": "supported",
+      "reason": "Chromium's implementation, unchanged.",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.offscreen",
+      "group": "api",
+      "subject": "offscreen",
+      "expected": "supported",
+      "reason": "Chromium's implementation, unchanged.",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.storage",
+      "group": "api",
+      "subject": "storage",
+      "expected": "supported",
+      "reason": "Chromium's implementation, unchanged.",
+      "evidence": ["engine_ext_probe_api_presence", "engine_ext_probe_passwords_fills_login_form"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.scripting",
+      "group": "api",
+      "subject": "scripting",
+      "expected": "supported",
+      "reason": "Chromium's implementation, unchanged.",
+      "evidence": [
+        "engine_ext_probe_api_presence",
+        "engine_ext_probe_action_grants_active_tab_to_one_page"
+      ],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.webRequest",
+      "group": "api",
+      "subject": "webRequest",
+      "expected": "supported",
+      "reason": "Chromium's implementation, unchanged.",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.declarativeNetRequest",
+      "group": "api",
+      "subject": "declarativeNetRequest",
+      "expected": "supported",
+      "reason": "Chromium's implementation, unchanged.",
+      "evidence": ["engine_ext_probe_api_presence", "engine_ext_probe_blocker_blocks_request"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.runtime",
+      "group": "api",
+      "subject": "runtime",
+      "expected": "supported",
+      "reason": "Chromium's implementation, unchanged.",
+      "evidence": ["engine_ext_probe_api_presence", "engine_ext_probe_worker_and_content_ack"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.search",
+      "group": "api",
+      "subject": "search",
+      "expected": "degraded",
+      "reason": "Uses the default engine from the search service and is absent without one.",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.tts",
+      "group": "api",
+      "subject": "tts",
+      "expected": "supported",
+      "reason": "Expected to work through Chromium's macOS implementation; confirmed by presence only.",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.ttsEngine",
+      "group": "api",
+      "subject": "ttsEngine",
+      "expected": "gap",
+      "reason": "Unverified: no fixture registers a speech engine, so only the absence of the namespace is observed.",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.privacy",
+      "group": "api",
+      "subject": "privacy",
+      "expected": "supported",
+      "reason": "Chromium's implementation; changes show as source extension in settings.describe.",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.proxy",
+      "group": "api",
+      "subject": "proxy",
+      "expected": "supported",
+      "reason": "Chromium's implementation; changes show as source extension in settings.describe.",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.contentSettings",
+      "group": "api",
+      "subject": "contentSettings",
+      "expected": "supported",
+      "reason": "Chromium's implementation; changes show as source extension in settings.describe.",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.fontSettings",
+      "group": "api",
+      "subject": "fontSettings",
+      "expected": "supported",
+      "reason": "Chromium's implementation; changes show as source extension in settings.describe.",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.webstore",
+      "group": "api",
+      "subject": "webstore",
+      "expected": "absent",
+      "reason": "Only with a store source (decision D4); not configured in the suite.",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.webstorePrivate",
+      "group": "api",
+      "subject": "webstorePrivate",
+      "expected": "absent",
+      "reason": "Reserved for the store's own pages; only with a store source (decision D4).",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.enterprise.*",
+      "group": "api",
+      "subject": "enterprise.*",
+      "expected": "absent",
+      "reason": "Enterprise and ChromeOS APIs are absent.",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.platformKeys",
+      "group": "api",
+      "subject": "platformKeys",
+      "expected": "absent",
+      "reason": "ChromeOS only.",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "api.loginState",
+      "group": "api",
+      "subject": "loginState",
+      "expected": "absent",
+      "reason": "ChromeOS only.",
+      "evidence": ["engine_ext_probe_api_presence"],
+      "source": "extensions.md 7"
+    },
+    {
+      "id": "surface.actions.default",
+      "group": "surface",
+      "subject": "Actions in the default extensions menu",
+      "expected": "supported",
+      "reason": "Listed in BDK's menu; a click activates the action.",
+      "evidence": [
+        "engine_ext_ui_popup_opens_from_the_default_menu_with_no_handler",
+        "engine_ext_ui_a_window_with_no_anchor_gets_a_title_bar_button",
+        "engine_ext_ui_a_registered_anchor_replaces_the_title_bar_button"
+      ],
+      "source": "extensions.md 4"
+    },
+    {
+      "id": "surface.actions.custom",
+      "group": "surface",
+      "subject": "Actions drawn by the application from ActionState",
+      "expected": "supported",
+      "reason": "State is data and activation is a function (4.1).",
+      "evidence": [
+        "engine_ext_ui_actions_report_state_and_badge_changes",
+        "engine_ext_ui_activation_targets_the_focused_page",
+        "engine_ext_ui_activation_without_a_gesture_fails"
+      ],
+      "source": "extensions.md 4"
+    },
+    {
+      "id": "surface.popups.default",
+      "group": "surface",
+      "subject": "Popup in the default transient window",
+      "expected": "supported",
+      "reason": "Anchored to the action's entry, closes on blur.",
+      "evidence": ["engine_ext_ui_popup_opens_from_the_default_menu_with_no_handler"],
+      "source": "extensions.md 4"
+    },
+    {
+      "id": "surface.popups.custom",
+      "group": "surface",
+      "subject": "Popup placed by the application",
+      "expected": "supported",
+      "reason": "The application receives a secure view and places it.",
+      "evidence": ["engine_ext_ui_popup_with_a_handler_gets_the_secure_view_and_sizes"],
+      "source": "extensions.md 4"
+    },
+    {
+      "id": "surface.side_panels.default",
+      "group": "surface",
+      "subject": "Side panel at the trailing edge of the page's window",
+      "expected": "supported",
+      "reason": "Needs the BrowserWindowFeatures patch (T-EXT-03).",
+      "evidence": ["engine_ext_panel_side_panel_open_shows_the_default_panel_at_the_trailing_edge"],
+      "source": "extensions.md 4"
+    },
+    {
+      "id": "surface.side_panels.custom",
+      "group": "surface",
+      "subject": "Side panel embedded by the application",
+      "expected": "supported",
+      "reason": "The application embeds the secure view at any size in its own container.",
+      "evidence": [
+        "engine_ext_panel_side_panel_open_reaches_an_application_container",
+        "engine_ext_panel_an_extension_closing_its_panel_withdraws_the_request"
+      ],
+      "source": "extensions.md 4"
+    },
+    {
+      "id": "surface.side_panels.scope",
+      "group": "surface",
+      "subject": "Page-scoped side panel while two pages are visible",
+      "expected": "gap",
+      "reason": "Unverified, recorded for risk R9: a page-scoped panel is meant to belong to the focused page.",
+      "evidence": [
+        "engine_ext_panel_a_page_panel_hides_and_shows_with_the_active_page_and_a_second_panel_replaces_it"
+      ],
+      "source": "extensions.md 4"
+    },
+    {
+      "id": "surface.context_menus",
+      "group": "surface",
+      "subject": "Extension items in the context-menu request",
+      "expected": "supported",
+      "reason": "One submenu per extension when it adds more than one.",
+      "evidence": ["engine_ext_ui_a_context_menu_item_is_listed_performed_and_grants_active_tab"],
+      "source": "extensions.md 4"
+    },
+    {
+      "id": "surface.options_pages",
+      "group": "surface",
+      "subject": "Options page as a new-window request",
+      "expected": "supported",
+      "reason": "A newPage request whose initiator is the extension.",
+      "evidence": [
+        "engine_ext_ui_openoptions_raises_a_new_page_request_with_the_extension",
+        "engine_ext_ui_chrome_runtime_openoptionspage_raises_the_same_request"
+      ],
+      "source": "extensions.md 4"
+    },
+    {
+      "id": "surface.devtools.default",
+      "group": "surface",
+      "subject": "DevTools extension panels in the default front end",
+      "expected": "supported",
+      "reason": "A devtools_page panel loads in undocked DevTools (T-EXT-08).",
+      "evidence": ["engine_ext_panel_a_devtools_page_adds_its_panel_to_undocked_devtools"],
+      "source": "extensions.md 4"
+    },
+    {
+      "id": "surface.devtools.replaced",
+      "group": "surface",
+      "subject": "DevTools extension panels with a replaced front end",
+      "expected": "gap",
+      "reason": "Panels are not loaded when [devtools] frontend is replaced (extensions.md 4.8).",
+      "evidence": ["engine_ext_panel_devtools_replaced_frontend_gap"],
+      "source": "extensions.md 4"
+    },
+    {
+      "id": "surface.disabled.refused",
+      "group": "surface",
+      "subject": "An extension that needs a disabled surface is refused",
+      "expected": "supported",
+      "reason": "Refused at install and at update with a reason naming the surface; the disabled API is absent from chrome.",
+      "evidence": [
+        "engine_ext_install_an_incompatible_manifest_is_refused_with_the_finding",
+        "engine_ext_install_allow_all_installs_it_and_the_disabled_apis_are_absent"
+      ],
+      "source": "extensions.md 4"
+    },
+    {
+      "id": "surface.prompts",
+      "group": "surface",
+      "subject": "Install, permission and uninstall prompts",
+      "expected": "supported",
+      "reason": "No disabled mode and no pre-approval: every install and permissions increase is shown and needs a gesture.",
+      "evidence": [
+        "engine_ext_install_a_grant_without_a_recent_gesture_installs_nothing",
+        "engine_ext_install_denying_the_install_cancels_it",
+        "engine_ext_install_with_no_handler_the_default_alert_lists_the_warnings",
+        "engine_ext_install_uninstall_raises_the_uninstall_request"
+      ],
+      "source": "extensions.md 4"
+    },
+    {
+      "id": "install.unpacked",
+      "group": "install",
+      "subject": "Install from an unpacked directory",
+      "expected": "supported",
+      "reason": "Subject to developer_mode; always raises the install prompt.",
+      "evidence": ["engine_ext_install_a_handler_grants_an_unpacked_install_with_a_gesture"],
+      "source": "extensions.md 5"
+    },
+    {
+      "id": "install.crx",
+      "group": "install",
+      "subject": "Install from a local CRX",
+      "expected": "supported",
+      "reason": "BDK replaces Chromium's off-store default-deny with its own setting and keeps the prompt.",
+      "evidence": ["engine_ext_install_a_crx_built_at_test_time_installs_with_the_prompt"],
+      "source": "extensions.md 5"
+    },
+    {
+      "id": "install.update_url",
+      "group": "install",
+      "subject": "Install from a self-hosted update URL",
+      "expected": "supported",
+      "reason": "Installs and then updates from an update manifest.",
+      "evidence": ["engine_ext_install_a_self_hosted_update_url_installs_and_then_updates"],
+      "source": "extensions.md 5"
+    },
+    {
+      "id": "install.store",
+      "group": "install",
+      "subject": "Install from a named store",
+      "expected": "supported",
+      "reason": "Available and off unless the application lists it (decision D4).",
+      "evidence": [
+        "engine_ext_install_a_store_that_is_not_configured_is_refused",
+        "engine_ext_install_the_store_button_says_add_to_the_browser_name",
+        "engine_ext_install_the_store_button_is_left_alone_when_the_store_is_off"
+      ],
+      "source": "extensions.md 5"
+    },
+    {
+      "id": "install.bundled",
+      "group": "install",
+      "subject": "Bundled extensions",
+      "expected": "gap",
+      "reason": "[extensions.bundled] is not in the schema yet, so nothing is read.",
+      "evidence": ["engine_ext_install_bundled_not_read"],
+      "source": "extensions.md 5"
+    },
+    {
+      "id": "install.refused",
+      "group": "install",
+      "subject": "A source that is switched off is refused with a reason",
+      "expected": "supported",
+      "reason": "extension.sourceNotAllowed names the bdk.toml key.",
+      "evidence": [
+        "engine_ext_install_unpacked_off_is_refused_naming_the_key",
+        "engine_ext_install_crx_off_is_refused_naming_the_key",
+        "engine_ext_install_an_update_url_outside_the_patterns_is_refused"
+      ],
+      "source": "extensions.md 5"
+    },
+    {
+      "id": "install.update",
+      "group": "install",
+      "subject": "An update applies; one that adds permissions disables until approved",
+      "expected": "supported",
+      "reason": "Chromium's update flow with BDK's inspection first; an incompatible update is refused.",
+      "evidence": [
+        "engine_ext_install_an_update_that_adds_permissions_is_disabled_until_approved",
+        "engine_ext_install_an_update_that_becomes_incompatible_is_refused"
+      ],
+      "source": "extensions.md 5"
+    },
+    {
+      "id": "install.inspect",
+      "group": "install",
+      "subject": "Pre-install compatibility report",
+      "expected": "supported",
+      "reason": "Blocking findings refuse the install unless install_policy is allow_all (extensions.md 6).",
+      "evidence": ["engine_ext_install_an_incompatible_manifest_is_refused_with_the_finding"],
+      "source": "extensions.md 6"
+    },
+    {
+      "id": "incognito.spanning",
+      "group": "incognito",
+      "subject": "Manifest incognito mode spanning",
+      "expected": "supported",
+      "reason": "One worker serves regular and private windows. Required by extensions.md 10 before the matrix claims support.",
+      "evidence": ["engine_ext_probe_incognito_spanning"],
+      "source": "extensions.md 10"
+    },
+    {
+      "id": "incognito.split",
+      "group": "incognito",
+      "subject": "Manifest incognito mode split",
+      "expected": "supported",
+      "reason": "A separate worker and storage serve private windows. Required by extensions.md 10 before the matrix claims support.",
+      "evidence": ["engine_ext_probe_incognito_split"],
+      "source": "extensions.md 10"
+    },
+    {
+      "id": "incognito.never",
+      "group": "incognito",
+      "subject": "allow_in_private = never",
+      "expected": "supported",
+      "reason": "No extension runs in a private profile and setAllowedInPrivate is refused.",
+      "evidence": ["engine_ext_install_allowed_in_private_is_refused_when_private_is_never"],
+      "source": "extensions.md 10"
+    },
+    {
+      "id": "layout.offscreen",
+      "group": "layout",
+      "subject": "Off-screen pages in tabs.query and windows.getAll",
+      "expected": "degraded",
+      "reason": "Follow decision D1; what extensions observe depends on the mapping (risk R9).",
+      "evidence": ["engine_ext_probe_offscreen_pages_in_query"],
+      "source": "extensions.md 8"
+    },
+    {
+      "id": "class.blocker",
+      "group": "class",
+      "subject": "Content blocker (declarativeNetRequest static rules)",
+      "expected": "supported",
+      "reason": "Fixture fixtures/blocker blocks a request whose URL matches its rule and allows others.",
+      "evidence": ["engine_ext_probe_blocker_blocks_request"],
+      "source": "roadmap.md M5"
+    },
+    {
+      "id": "class.passwords",
+      "group": "class",
+      "subject": "Password manager (popup, content scripts on all sites, storage, context menu)",
+      "expected": "supported",
+      "reason": "Fixture fixtures/passwords fills a login form from the popup and from the context-menu item.",
+      "evidence": ["engine_ext_probe_passwords_fills_login_form"],
+      "source": "roadmap.md M5"
+    },
+    {
+      "id": "class.devtool",
+      "group": "class",
+      "subject": "Developer tool (devtools_page, panel, inspectedWindow.eval)",
+      "expected": "supported",
+      "reason": "Fixture fixtures/devtool adds a panel that evaluates in the inspected page.",
+      "evidence": ["engine_ext_panel_devtool_inspected_window_eval"],
+      "source": "roadmap.md M5"
+    },
+    {
+      "id": "class.real.ublock-origin-lite",
+      "group": "class",
+      "subject": "uBlock Origin Lite",
+      "expected": "supported",
+      "reason": "Real extension of the content-blocker class (real/extensions.json). Unverified until its first run; skips when it is not in the cache.",
+      "evidence": ["engine_ext_install_real_ublock_origin_lite"],
+      "source": "roadmap.md M5"
+    },
+    {
+      "id": "class.real.bitwarden",
+      "group": "class",
+      "subject": "Bitwarden",
+      "expected": "supported",
+      "reason": "Real extension of the password-manager class (real/extensions.json). Unverified until its first run; skips when it is not in the cache.",
+      "evidence": ["engine_ext_install_real_bitwarden"],
+      "source": "roadmap.md M5"
+    },
+    {
+      "id": "class.real.react-developer-tools",
+      "group": "class",
+      "subject": "React Developer Tools",
+      "expected": "supported",
+      "reason": "Real extension of the developer-tool class (real/extensions.json). Unverified until its first run; skips when it is not in the cache.",
+      "evidence": ["engine_ext_install_real_react_developer_tools"],
+      "source": "roadmap.md M5"
+    }
+  ]
+}

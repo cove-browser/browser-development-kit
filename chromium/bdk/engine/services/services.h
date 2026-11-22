@@ -49,6 +49,7 @@ void AddCookiesHandlers(HandlerTable& table);
 void AddPrivacyHandlers(HandlerTable& table);
 void AddProfilesHandlers(HandlerTable& table);
 void AddSystemHandlers(HandlerTable& table);
+void AddExtensionsHandlers(HandlerTable& table);
 void AddContentsHandlers(HandlerTable& table);
 void AddDebugHandlers(HandlerTable& table);
 void AddDevToolsHandlers(HandlerTable& table);

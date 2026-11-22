@@ -1,6 +1,7 @@
 /* The broker part of the harness for a runtime without the test hooks (the engine, for now): the
    tests that need internal callers or the stub's services are skipped. See harness_broker.h. */
 #include "harness_broker.h"
+#include "harness_extensions.h"
 
 int bdk_harness_broker_hooks(void) {
     return 0;
@@ -58,6 +59,54 @@ bdk_status_t bdk_harness_release_held_commands(bdk_runtime_t rt) {
 unsigned bdk_harness_service_count(bdk_runtime_t rt, unsigned which) {
     (void)rt, (void)which;
     return 0;
+}
+
+/* ---- harness_extensions.h: none of the stub's extension hooks ---- */
+
+int bdk_harness_extension_hooks(void) {
+    return 0;
+}
+
+bdk_status_t bdk_harness_extension_package(bdk_runtime_t rt, const char* kind, const char* key,
+                                           const char* manifest) {
+    (void)rt, (void)kind, (void)key, (void)manifest;
+    return BDK_ERR_INVALID_ARGUMENT;
+}
+
+bdk_status_t bdk_harness_attach_to_window(bdk_contents_t c, bdk_window_t w) {
+    (void)c, (void)w;
+    return BDK_ERR_INVALID_ARGUMENT;
+}
+
+bdk_status_t bdk_harness_window_request(bdk_window_t w, const char* request) {
+    (void)w, (void)request;
+    return BDK_ERR_INVALID_ARGUMENT;
+}
+
+bdk_status_t bdk_harness_last_window_answer(uint32_t* out) {
+    (void)out;
+    return BDK_ERR_INVALID_ARGUMENT;
+}
+
+bdk_status_t bdk_harness_window_anchor(bdk_window_t w, uint32_t role, double out_rect[4],
+                                       uint8_t* out_found) {
+    (void)w, (void)role, (void)out_rect, (void)out_found;
+    return BDK_ERR_INVALID_ARGUMENT;
+}
+
+bdk_status_t bdk_harness_send_ui_update(bdk_runtime_t rt, const char* update) {
+    (void)rt, (void)update;
+    return BDK_ERR_INVALID_ARGUMENT;
+}
+
+bdk_status_t bdk_harness_last_ui_update(bdk_runtime_t rt, char* out, size_t cap) {
+    (void)rt, (void)out, (void)cap;
+    return BDK_ERR_INVALID_ARGUMENT;
+}
+
+bdk_status_t bdk_harness_menus_presented(uint32_t* out) {
+    (void)out;
+    return BDK_ERR_INVALID_ARGUMENT;
 }
 
 int bdk_harness_page_hooks(void) {

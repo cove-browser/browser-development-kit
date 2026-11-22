@@ -140,7 +140,25 @@
     { "name": "devtools.state", "id": 138 },
     { "name": "scripts.register", "id": 139 },
     { "name": "scripts.unregister", "id": 140 },
-    { "name": "scripts.list", "id": 141 }
+    { "name": "scripts.list", "id": 141 },
+    { "name": "extensions.list", "id": 142 },
+    { "name": "extensions.get", "id": 143 },
+    { "name": "extensions.inspect", "id": 144 },
+    { "name": "extensions.install", "id": 145 },
+    { "name": "extensions.uninstall", "id": 146 },
+    { "name": "extensions.setEnabled", "id": 147 },
+    { "name": "extensions.setSiteAccess", "id": 148 },
+    { "name": "extensions.setAllowedInPrivate", "id": 149 },
+    { "name": "extensions.setAllowedFileAccess", "id": 150 },
+    { "name": "extensions.setPinned", "id": 151 },
+    { "name": "extensions.reload", "id": 152 },
+    { "name": "extensions.checkForUpdates", "id": 153 },
+    { "name": "extensions.openOptions", "id": 154 },
+    { "name": "extensions.inspectView", "id": 155 },
+    { "name": "extensions.clearErrors", "id": 156 },
+    { "name": "extensions.commands", "id": 157 },
+    { "name": "extensions.setCommandShortcut", "id": 158 },
+    { "name": "extensions.actions", "id": 159 }
   ],
   "events": [
     { "name": "autofill.changed", "id": 1 },
@@ -182,7 +200,15 @@
     { "name": "contents.attentionRequested", "id": 37 },
     { "name": "debug.event", "id": 38 },
     { "name": "debug.detached", "id": 39 },
-    { "name": "devtools.stateChanged", "id": 40 }
+    { "name": "devtools.stateChanged", "id": 40 },
+    { "name": "extensions.installed", "id": 41 },
+    { "name": "extensions.updated", "id": 42 },
+    { "name": "extensions.uninstalled", "id": 43 },
+    { "name": "extensions.enabledChanged", "id": 44 },
+    { "name": "extensions.loaded", "id": 45 },
+    { "name": "extensions.unloaded", "id": 46 },
+    { "name": "extensions.errorAdded", "id": 47 },
+    { "name": "extensions.actionChanged", "id": 48 }
   ],
   "constants": {
     "domains": [
@@ -198,7 +224,8 @@
       { "name": "PROVIDER", "id": "provider" },
       { "name": "AUTOMATION", "id": "automation" },
       { "name": "PLATFORM", "id": "platform" },
-      { "name": "DEVTOOLS", "id": "devtools" }
+      { "name": "DEVTOOLS", "id": "devtools" },
+      { "name": "EXTENSION", "id": "extension" }
     ],
     "codes": [
       { "name": "VERSION_MISMATCH", "id": "versionMismatch" },
@@ -234,7 +261,13 @@
       { "name": "ALREADY_ATTACHED", "id": "alreadyAttached" },
       { "name": "SCRIPT_ERROR", "id": "scriptError" },
       { "name": "NOT_SERIALIZABLE", "id": "notSerializable" },
-      { "name": "NO_ELEMENT", "id": "noElement" }
+      { "name": "NO_ELEMENT", "id": "noElement" },
+      { "name": "SOURCE_NOT_ALLOWED", "id": "sourceNotAllowed" },
+      { "name": "INCOMPATIBLE", "id": "incompatible" },
+      { "name": "SURFACE_DISABLED", "id": "surfaceDisabled" },
+      { "name": "MANIFEST_INVALID", "id": "manifestInvalid" },
+      { "name": "NOT_UNPACKED", "id": "notUnpacked" },
+      { "name": "PRIVATE_NOT_ALLOWED", "id": "privateNotAllowed" }
     ],
     "runtimeEvents": [
       { "name": "REGISTRATIONS_FROZEN", "id": 1 },
@@ -293,7 +326,15 @@
       { "name": "DEVICE_CHOOSERS", "id": 21 },
       { "name": "SCREEN_CAPTURE", "id": 22 },
       { "name": "WEBAUTHN", "id": 23 },
-      { "name": "EXTERNAL_PROTOCOLS", "id": 24 }
+      { "name": "EXTERNAL_PROTOCOLS", "id": 24 },
+      { "name": "EXTENSION_ACTIONS", "id": 25 },
+      { "name": "EXTENSION_POPUPS", "id": 26 },
+      { "name": "EXTENSION_SIDE_PANELS", "id": 27 },
+      { "name": "EXTENSION_CONTEXT_MENUS", "id": 28 },
+      { "name": "EXTENSION_OPTIONS_PAGES", "id": 29 },
+      { "name": "EXTENSION_DEVTOOLS", "id": 30 },
+      { "name": "EXTENSION_INSTALLS", "id": 31 },
+      { "name": "EXTENSION_UNINSTALLS", "id": 32 }
     ],
     "pageModes": [
       { "name": "CHROMIUM", "id": 1 },
@@ -335,6 +376,12 @@
       { "name": "LOG", "id": 2 },
       { "name": "COMMAND", "id": 3 },
       { "name": "FINISHED", "id": 4 }
+    ],
+    "windowKinds": [{ "name": "NORMAL", "id": 0 }, { "name": "POPUP", "id": 1 }],
+    "anchorRoles": [
+      { "name": "ADDRESS_BAR", "id": 1 },
+      { "name": "EXTENSIONS", "id": 2 },
+      { "name": "DOWNLOADS", "id": 3 }
     ]
   }
 }

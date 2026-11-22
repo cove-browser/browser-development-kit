@@ -85,6 +85,14 @@ public final class BDKUIHandlers {
     public var screenCapture: Surface<BDKRawUIRequest> { surface(.screenCapture) }
     public var webAuthn: Surface<BDKRawUIRequest> { surface(.webAuthn) }
     public var externalProtocols: Surface<ExternalProtocolRequest> { surface(.externalProtocols) }
+    public var extensionPopups: Surface<ExtensionPopupRequest> { surface(.extensionPopups) }
+    public var extensionSidePanels: Surface<ExtensionSidePanelRequest> {
+        surface(.extensionSidePanels)
+    }
+    public var extensionInstalls: Surface<ExtensionInstallRequest> { surface(.extensionInstalls) }
+    public var extensionUninstalls: Surface<ExtensionUninstallRequest> {
+        surface(.extensionUninstalls)
+    }
 
     private func surface<Request: BDKUIRequest>(_ kind: BDKUISurface) -> Surface<Request> {
         Surface(owner: self, kind: kind)
@@ -157,11 +165,13 @@ public final class BDKUIHandlers {
     }
 
     private static func modes(inResolvedJSON json: String) -> [BDKUISurface: BDKUISurfaceMode] {
-        guard let surfaces = BDKJSValue(jsonString: json)?.objectValue?["surfaces"]?.objectValue
-        else { return [:] }
+        let root = BDKJSValue(jsonString: json)?.objectValue
+        let surfaces = root?["surfaces"]?.objectValue ?? [:]
+        let extensionSurfaces = root?["extensions"]?.objectValue?["ui"]?.objectValue ?? [:]
         var modes: [BDKUISurface: BDKUISurfaceMode] = [:]
         for kind in BDKUISurface.allCases {
-            if let name = surfaces[kind.configurationKey]?.stringValue,
+            let table = kind.isConfiguredWithExtensions ? extensionSurfaces : surfaces
+            if let name = table[kind.configurationKey]?.stringValue,
                 let mode = BDKUISurfaceMode(rawValue: name)
             {
                 modes[kind] = mode
@@ -231,6 +241,10 @@ extension BDKUIRequest {
         .reputationWarnings: { ReputationWarningRequest($0, runtime: $1) },
         .devTools: { DevToolsRequest($0, runtime: $1) },
         .externalProtocols: { ExternalProtocolRequest($0, runtime: $1) },
+        .extensionPopups: { ExtensionPopupRequest($0, runtime: $1) },
+        .extensionSidePanels: { ExtensionSidePanelRequest($0, runtime: $1) },
+        .extensionInstalls: { ExtensionInstallRequest($0, runtime: $1) },
+        .extensionUninstalls: { ExtensionUninstallRequest($0, runtime: $1) },
     ]
 
     /// The typed request for a delivery. Surfaces without a typed request (device

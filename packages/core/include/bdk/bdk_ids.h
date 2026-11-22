@@ -24,6 +24,7 @@ extern "C" {
 #define BDK_DOMAIN_PROVIDER "provider"
 #define BDK_DOMAIN_AUTOMATION "automation"
 #define BDK_DOMAIN_PLATFORM "platform"
+#define BDK_DOMAIN_EXTENSION "extension"
 #define BDK_DOMAIN_DEVTOOLS "devtools"
 
 #define BDK_CODE_VERSION_MISMATCH "versionMismatch"
@@ -60,6 +61,12 @@ extern "C" {
 #define BDK_CODE_SCRIPT_ERROR "scriptError"
 #define BDK_CODE_NOT_SERIALIZABLE "notSerializable"
 #define BDK_CODE_NO_ELEMENT "noElement"
+#define BDK_CODE_SOURCE_NOT_ALLOWED "sourceNotAllowed"
+#define BDK_CODE_INCOMPATIBLE "incompatible"
+#define BDK_CODE_SURFACE_DISABLED "surfaceDisabled"
+#define BDK_CODE_MANIFEST_INVALID "manifestInvalid"
+#define BDK_CODE_NOT_UNPACKED "notUnpacked"
+#define BDK_CODE_PRIVATE_NOT_ALLOWED "privateNotAllowed"
 
 /* Runtime event kinds (bdk_runtime_event_cb). Provisional: c-abi.md names the callback but not
  * its kinds. */
@@ -128,6 +135,14 @@ extern "C" {
 #define BDK_SURFACE_SCREEN_CAPTURE 22u
 #define BDK_SURFACE_WEBAUTHN 23u
 #define BDK_SURFACE_EXTERNAL_PROTOCOLS 24u
+#define BDK_SURFACE_EXTENSION_ACTIONS 25u
+#define BDK_SURFACE_EXTENSION_POPUPS 26u
+#define BDK_SURFACE_EXTENSION_SIDE_PANELS 27u
+#define BDK_SURFACE_EXTENSION_CONTEXT_MENUS 28u
+#define BDK_SURFACE_EXTENSION_OPTIONS_PAGES 29u
+#define BDK_SURFACE_EXTENSION_DEVTOOLS 30u
+#define BDK_SURFACE_EXTENSION_INSTALLS 31u
+#define BDK_SURFACE_EXTENSION_UNINSTALLS 32u
 
 /* bdk_page_handler_register's mode: how a logical route is served (architecture.md 8.1) */
 #define BDK_PAGE_MODE_CHROMIUM 1u
@@ -170,6 +185,16 @@ extern "C" {
 /* bdk_contents_set_zoom_scoped: this page only, or Chromium's per-site level */
 #define BDK_ZOOM_SCOPE_PAGE 1u
 #define BDK_ZOOM_SCOPE_SITE 2u
+
+/* bdk_window_register's kind: what extensions see in windows.get (swift-api.md 8.1). */
+#define BDK_WINDOW_KIND_NORMAL 0u
+#define BDK_WINDOW_KIND_POPUP 1u
+
+/* Roles a window's anchor provider is asked for (swift-api.md 8.1): where default presenters
+ * attach. */
+#define BDK_ANCHOR_ADDRESS_BAR 1u
+#define BDK_ANCHOR_EXTENSIONS 2u
+#define BDK_ANCHOR_DOWNLOADS 3u
 
 /* Task event kinds (bdk_task_event_cb). FINISHED is always the last. */
 #define BDK_TASK_EVENT_PROGRESS 1u
@@ -319,6 +344,24 @@ extern "C" {
 #define BDK_COMMAND_SCRIPTS_REGISTER 139u
 #define BDK_COMMAND_SCRIPTS_UNREGISTER 140u
 #define BDK_COMMAND_SCRIPTS_LIST 141u
+#define BDK_COMMAND_EXTENSIONS_LIST 142u
+#define BDK_COMMAND_EXTENSIONS_GET 143u
+#define BDK_COMMAND_EXTENSIONS_INSPECT 144u
+#define BDK_COMMAND_EXTENSIONS_INSTALL 145u
+#define BDK_COMMAND_EXTENSIONS_UNINSTALL 146u
+#define BDK_COMMAND_EXTENSIONS_SET_ENABLED 147u
+#define BDK_COMMAND_EXTENSIONS_SET_SITE_ACCESS 148u
+#define BDK_COMMAND_EXTENSIONS_SET_ALLOWED_IN_PRIVATE 149u
+#define BDK_COMMAND_EXTENSIONS_SET_ALLOWED_FILE_ACCESS 150u
+#define BDK_COMMAND_EXTENSIONS_SET_PINNED 151u
+#define BDK_COMMAND_EXTENSIONS_RELOAD 152u
+#define BDK_COMMAND_EXTENSIONS_CHECK_FOR_UPDATES 153u
+#define BDK_COMMAND_EXTENSIONS_OPEN_OPTIONS 154u
+#define BDK_COMMAND_EXTENSIONS_INSPECT_VIEW 155u
+#define BDK_COMMAND_EXTENSIONS_CLEAR_ERRORS 156u
+#define BDK_COMMAND_EXTENSIONS_COMMANDS 157u
+#define BDK_COMMAND_EXTENSIONS_SET_COMMAND_SHORTCUT 158u
+#define BDK_COMMAND_EXTENSIONS_ACTIONS 159u
 
 /* Event identifiers (bdk_subscribe). Assigned once from interface/ids.json, never reused. */
 #define BDK_EVENT_AUTOFILL_CHANGED 1u
@@ -361,6 +404,14 @@ extern "C" {
 #define BDK_EVENT_DEBUG_EVENT 38u
 #define BDK_EVENT_DEBUG_DETACHED 39u
 #define BDK_EVENT_DEVTOOLS_STATE_CHANGED 40u
+#define BDK_EVENT_EXTENSIONS_INSTALLED 41u
+#define BDK_EVENT_EXTENSIONS_UPDATED 42u
+#define BDK_EVENT_EXTENSIONS_UNINSTALLED 43u
+#define BDK_EVENT_EXTENSIONS_ENABLED_CHANGED 44u
+#define BDK_EVENT_EXTENSIONS_LOADED 45u
+#define BDK_EVENT_EXTENSIONS_UNLOADED 46u
+#define BDK_EVENT_EXTENSIONS_ERROR_ADDED 47u
+#define BDK_EVENT_EXTENSIONS_ACTION_CHANGED 48u
 
 #ifdef __cplusplus
 }

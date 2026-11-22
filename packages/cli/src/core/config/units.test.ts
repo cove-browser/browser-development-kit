@@ -190,6 +190,29 @@ describe("the surface modes", () => {
       expect(coreModes.get(name), `${name} is missing from the core's table`).toEqual(allowed);
     },
   );
+
+  // [extensions.ui] keys map to the core's extension_<key> surfaces (kExtensionKeys).
+  const extensionKeys = [
+    ...router.matchAll(/^\s*\{"([a-z_]+)", BDK_SURFACE_EXTENSION_\w+, (?:true|false)\},/gm),
+  ].map(([, key]) => key as string);
+  const extensionUi = (
+    schema as {
+      $defs: {
+        extensions: { properties: { ui: { properties: Record<string, { $ref: string }> } } };
+      };
+    }
+  ).$defs.extensions.properties.ui.properties;
+
+  it("has the same [extensions.ui] keys in the schema and the core", () =>
+    expect([...extensionKeys].sort()).toEqual(Object.keys(extensionUi).sort()));
+
+  it.each(Object.entries(extensionUi))(
+    "extensions.ui.%s allows the same modes in the schema and the core",
+    (key, ref) => {
+      const allowed = defs[ref.$ref.replace("#/$defs/", "")]?.enum;
+      expect(coreModes.get(`extension_${key}`)).toEqual(allowed);
+    },
+  );
 });
 
 describe("aliases and routes through the resolver", () => {

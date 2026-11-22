@@ -46,6 +46,10 @@
       "types": "./dist/events.d.ts",
       "default": "./dist/events.js"
     },
+    "./extensions": {
+      "types": "./dist/extensions.d.ts",
+      "default": "./dist/extensions.js"
+    },
     "./history": {
       "types": "./dist/history.d.ts",
       "default": "./dist/history.js"

@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "BDK Incognito Probe (split)",
+  "version": "0.1.0",
+  "description": "Test fixture: a separate worker serves private windows (manifest incognito mode split).",
+  "minimum_chrome_version": "127",
+  "incognito": "split",
+  "permissions": ["tabs", "storage"],
+  "background": { "service_worker": "sw.js" },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "externally_connectable": { "matches": ["http://127.0.0.1/*", "http://localhost/*"] }
+}

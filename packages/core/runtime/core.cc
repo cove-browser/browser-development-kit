@@ -603,6 +603,10 @@ BDK_EXPORT bdk_status_t bdk_runtime_start(const bdk_start_config_t* config, bdk_
     auto rt = std::make_shared<Runtime>();
     if (bdk_status_t s = ui_configure(*rt, resolved, out_error))
         return s;
+    if (bdk_status_t s = ui_configure_extensions(*rt, resolved, out_error))
+        return s;
+    if (bdk_status_t s = extension_configure(*rt, resolved, out_error))
+        return s;
     if (bdk_status_t s = automation_configure(*rt, resolved, out_error))
         return s;
     if (bdk_status_t s = providers_configure(*rt, resolved, c, out_error))
@@ -669,7 +673,16 @@ BDK_EXPORT bdk_call_t bdk_runtime_shutdown(bdk_runtime_t h, bdk_result_cb cb, vo
     for (auto& r : rt->requests) {
         r->finished = true;
         release_withdrawn(*r);
+        release_update(*r);
+        r->on_update = nullptr;
     }
+    /* As bdk_window_unregister does: the backend lets go of a window before it is freed (the
+       engine parks its pages and closes its contexts, which point at it). */
+    for (auto& w : rt->windows) {
+        release_window_handlers(*w);
+        backend().UnregisterWindow(*w);
+    }
+    rt->windows.clear();
     release_later(rt->log_ctx, rt->log_rel);
     rt->log_cb = nullptr;
 

@@ -9,7 +9,7 @@ Planning output for BDK, the Browser Development Kit, dated 2026-11-14. It is ba
 | [architecture.md](architecture.md) | Components, the Chromium adapters, the C ABI, internal pages, the broker, extensions, providers, security |
 | [repository-and-tooling.md](repository-and-tooling.md) | Nx project graph, root scripts, caching, Chromium storage and worktrees, quality gates, CI |
 | [roadmap.md](roadmap.md) | Milestones, dependencies, acceptance criteria and release gates |
-| [tasks.md](tasks.md) | 131 agent-sized tasks with inputs, outputs, tests and ordering |
+| [tasks.md](tasks.md) | 136 agent-sized tasks with inputs, outputs, tests and ordering |
 | [risks.md](risks.md) | Eight product-owner decisions and their status after the 2026-11-16 review, ranked risks and fallbacks |
 | [sdk/](sdk/README.md) | The proposed SDK surface: `bdk.toml` reference, Swift API, UI requests, service commands, extensions, JavaScript APIs, C ABI, CLI, and a production-browser checklist. Added 2026-11-15. Sixteen additions (S1 to S16) and five scope statements in it still need confirmation. |
 | [experiments/](experiments/) | The fixtures behind the executed and unexecuted tests |

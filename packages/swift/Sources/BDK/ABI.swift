@@ -1,3 +1,4 @@
+import AppKit
 import CBDK
 import Foundation
 
@@ -214,4 +215,13 @@ func decodeResult<Value: Decodable>(_ type: Value.Type, from json: String) throw
             domain: .runtime, code: "malformedResult",
             message: "the runtime returned a result this version cannot read: \(error)")
     }
+}
+
+// MARK: - Gestures
+
+/// The native handle of the event that confirms a user-gesture call. It borrows the event.
+func gestureHandle(_ event: NSEvent) -> bdk_native_handle_t {
+    bdk_native_handle_t(
+        kind: BDK_NATIVE_NSEVENT.rawValue, pointer: Unmanaged.passUnretained(event).toOpaque(),
+        id: UInt64(max(event.timestamp, 0)))
 }

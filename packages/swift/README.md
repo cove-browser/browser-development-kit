@@ -49,6 +49,8 @@ session (a logged-in Mac or the hosted macOS runner).
 | Calls | Asynchronous ABI calls bridge to `async throws` with a continuation resumed once; cancelling the task calls `bdk_call_cancel` and throws `broker.cancelled` | T-SWF-02 |
 | Views | `BDKWebView` (hosts `bdk_contents_native_view`, shows URL and title when the runtime reports `platform.unsupported`, registers each `NSWindow` once with `bdk_window_register` and unregisters it when it closes, forwards focus), `BDKWebContentsView` (SwiftUI), `BDKKeyboardDelegate` | T-SWF-03 |
 | UI requests | `BDKUIHandlers` (`config.ui`, `runtime.ui`): one `Surface<Request>` per surface with `setHandler(_:)` and `mode`; `BDKUIResponse` (`.handled`, `.useDefault`, `.reject`); `BDKUIRequest` and a typed subclass per surface (see below) | T-SWF-04 |
+| Windows | `runtime.windows.register(_:_:)` (public; a page view entering an unregistered window registers it as `.normal`), `BDKWindow` (`nsWindow`, `kind`, `pages`, `activePage`, `extensionWindowID`, `anchors`, `delegate`), `BDKWindowDelegate`, `WindowRequest`, `BDKWebContents.window` | T-SWF-08 |
+| Extensions | `profile.extensions` (the generated `BDKExtensions` plus `Sources/BDK/BDKExtensions+Host.swift`: install sources, `actions(for:)`, `actionChanges`, `activateAction`, `performCommand`, `presentDefaultMenu`), `ExtensionPopupRequest`, `ExtensionSidePanelRequest`, `ExtensionInstallRequest`, `ExtensionUninstallRequest` | T-EXT-02 to T-EXT-06 |
 | Settings | `BDKSettingKey`, `BDKSettingRegistry` (`config.settings`), typed `settings.get`, `set`, `reset`, `describe` on `BDKSettings`, `config.declarations` | T-SVC-08 |
 | Providers | `config.services` (`BDKServiceRegistry`), the provider protocols, `page.translation`, `TranslationRequest` (see below) | T-PRV-01, T-PRV-03, T-PRV-09 |
 | Page routes | `config.pages` (`PageRegistrations.register(_:_:)`), `PageMode` (`.chromium`, `.bundled`, `.native`, `.disabled`), `NativePageRequest`, `NativePageResult` | T-SWF-06 |
@@ -157,6 +159,8 @@ throws `ui.requestCompleted`; completing a withdrawn request does nothing.
 | `notifications` | `NotificationRequest` | `shown()` (local), `clicked(action:)`, `closed(byUser:)` |
 | `certificateErrors`, `reputationWarnings` | `CertificateErrorRequest`, `ReputationWarningRequest` | `goBack()`, `proceed(confirmedBy:)` (grant; `ui.notOverridable` when Chromium refuses) |
 | `devTools`, `externalProtocols` | `DevToolsRequest`, `ExternalProtocolRequest` | `accept()`, `reject()`; `open(remember:confirmedBy:)` (grant), `cancel()` |
+| `extensionPopups`, `extensionSidePanels` | `ExtensionPopupRequest`, `ExtensionSidePanelRequest` | Open requests: `accept()` (popup) and `accept(side:)` (panel) send `bdk_ui_update` `{"placed":true}` and stay open; `side` sends `{"side"}`; `sizeChanges` and `visibilityChanges` come from `bdk_ui_set_update_handler`; `reject()` (deny), `close()` (accept `{"action":"close"}`); `closed` is the request's `cancellation` |
+| `extensionInstalls`, `extensionUninstalls` | `ExtensionInstallRequest`, `ExtensionUninstallRequest` | `accept(confirmedBy:)`, `confirm(confirmedBy:)` (grant), `cancel()` (deny) |
 | `translation` | `TranslationRequest` | `translate(from:to:)`, `revert()`, `always(for:)`, `never(for:)`, `neverForThisSite()`, `dismiss()` (none grants, none needs a gesture) |
 | `deviceChoosers`, `screenCapture`, `webAuthn` | `BDKRawUIRequest` | `complete(_:arguments:confirmedBy:)` with "grant", "deny" or "accept" |
 
@@ -302,6 +306,23 @@ so a test can start a load and act on it (supersede it, stop it) before the stub
   request kinds (`downloads`, `passwords`) takes `BDKUIRequest`; `NewWindowRequest.newContents` and the other
   page-carrying fields are optional; `BDKMenuItem` has no `icon`; there is no `AutofillSuggestionsRequest.preview`,
   or `ProviderDescriptor` beyond the generated `BDKProviderDescriptor`.
+* Windows (T-SWF-08): `BDKWindow.nsWindow` is weak and optional (the registry must not keep an `NSWindow` alive);
+  `extensionWindowID` is `Int?` (nil for the ABI's -1); `WindowRequest` is a struct with `action` (the doc's enum) and
+  `extensionID`, so the delegate learns which extension asked; anchor rectangles are given in AppKit window
+  coordinates (bottom-left origin) and converted to the ABI's top-left origin, and an empty rectangle means no anchor;
+  `register` returns the existing `BDKWindow` unchanged (kind included) for a window already registered. The
+  provider and request handler are installed at registration, so setting `anchors` or `delegate` later needs no ABI
+  call.
+* Extensions (T-EXT-02 to T-EXT-06): `profile.extensions` is the generated struct, so values are the generated
+  `BDKExtensionInfo`, `BDKExtensionActionState`, `BDKExtensionCommand` and `BDKCompatibilityReport`, not the doc's
+  `ExtensionInfo` and `ActionState`; icons are `data:` URL strings with `iconImage` (`NSImage?`) and `badgeNSColor`
+  helpers. `actions(for:)` is `async throws` (it is the `extensions.actions` command with the page in the invoke
+  options), not synchronous. `activateAction` and `performCommand` are synchronous and throw; their
+  `ActivationOutcome` is nested in `BDKExtensions` and `.blocked` carries `reason:`. `install(_:)` and `inspect(_:)`
+  take `BDKExtensionSource` values (`.unpacked(_:)`, `.crx(_:)`, `.updateURL(id:url:)`, `.store(name:id:)`).
+  `ExtensionInstallRequest.source` is `BDKExtensionSourceKind`, and `ExtensionUninstallRequest.requestedBy` is
+  `Requester` (`.user`, `.extension(id:)`). `closed` is a `BDKUICancellation`. The popup and panel `secureView` is an
+  empty `NSView` when the runtime delivers no native view (the stub).
 * Commands (T-SVC-05): `BDKCommand` carries its shape; `BDKCommandContext.caller` is `BDKCommandCaller`;
   `runtime.commands` has no `.profile(profile)` convenience beyond `invoke(…, profile:)`.
 
@@ -312,7 +333,8 @@ so a test can start a load and act on it (supersede it, stop it) before the stub
 | Wrappers for services with no definition yet (extensions, favicons, top sites) | The wrappers are generated, so each arrives with its definition | T-ABI-03, T-SWF-04, T-SVC-06 |
 | `config.services.<service>.setKey(_:)`, and the credentials and leak-check providers | `bdk_provider_set_key` always fails `config.keyUnused`: no provider in this runtime takes a key that way (the Google key is `google.apiKey`). The credential and leak-check providers (S14, S16) are proposals | — |
 | `BDKProfiles.events` for the `profiles.*` events | `profiles` is a native namespace | T-ABI-03 |
-| `BDKWindow`, anchors, window delegate, host contexts | `bdk_window_register` takes a window and a kind and nothing more yet; the other `bdk_window_*` functions are not declared | T-UIR-01, T-ADP-06 |
+| Host contexts (`runtime.hostContexts`) | Conditional on decision D1; no ABI | T-ADP-06 |
+| Real popups, side panels, install prompts, anchors and window requests | Only the stub implements them so far: a popup or panel `secureView` and the engine's behaviour arrive with the engine tasks. The stub records outcomes and updates only for requests raised through `bdk_stub_raise_ui_request`, not for the popup an activation raises | T-EXT-02 to T-EXT-06 (engine) |
 | `click`, `hover`, `type`, `press`, `scroll`, `waitFor` on `page.scripting`; `webContentsCreated(_, by: .automation)` | The spec's `Scripting` has no input methods; the commands exist (`contents.click` and the rest) and run through `runtime.commands.invoke` | T-AUT-03 |
 | `BDKRuntime.contents` lookup by id, `BDKProfiles.events`, `ProfileDescriptor.lastUsed`, profile rename by id | Not in the ABI (a rename needs an open profile handle) | T-ABI-03 |
 | `displayURL`, favicon, `capture`, `isCrashed`, `isDiscarded`, `isAutoDiscardable` getter, `isFullscreen`, opener, `extensionTabID`, `hoveredLinkChanged`, discard events (renderer loss is `.rendererGone`) | `bdk_contents_state_t` and the event kinds do not carry them | T-ABI-03 |

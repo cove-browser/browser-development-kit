@@ -18,6 +18,8 @@
 #include "base/values.h"
 #include "bdk/core/runtime/automation_internal.h"
 #include "bdk/engine/devtools_frontend.h"
+#include "bdk/engine/extensions/extension_menu_items.h"
+#include "bdk/engine/extensions/store_source.h"
 #include "bdk/engine/host_context.h"
 #include "bdk/engine/host_view.h"
 #include "bdk/engine/identity.h"
@@ -34,9 +36,12 @@
 #include "bdk/engine/ui_permissions.h"
 #include "bdk/engine/ui_presenters.h"
 #include "bdk/engine/ui_request.h"
+#include "bdk/engine/window_registry.h"
 #include "chrome/browser/history/history_tab_helper.h"
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/browser.h"
+#include "chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h"
 #include "components/input/native_web_keyboard_event.h"
 #include "content/public/browser/context_menu_params.h"
 #include "content/public/browser/host_zoom_map.h"
@@ -153,8 +158,8 @@ base::ListValue MenuItems(const content::ContextMenuParams& params,
 
 // The menu the host view shows for `items`, as the engine offered them or as
 // the application arranged them (BDKMenuItem: "isEnabled", "kind",
-// "children"). The host view's menu is flat, so a submenu's items are shown in
-// its place. An entry that is not an object is skipped.
+// "children"). A submenu with a title is shown as one; without a title its
+// items are shown in its place. An entry that is not an object is skipped.
 void AppendMenuItems(const base::ListValue& items, std::vector<MenuItem>& out) {
   for (const base::Value& v : items) {
     const base::DictValue* d = v.GetIfDict();
@@ -166,8 +171,20 @@ void AppendMenuItems(const base::ListValue& items, std::vector<MenuItem>& out) {
       out.push_back(MenuItem());
       continue;
     }
+    const std::string* title = d->FindString("title");
     if (kind && *kind == "submenu") {
-      if (const base::ListValue* children = d->FindList("children")) {
+      const base::ListValue* children = d->FindList("children");
+      if (!children) {
+        continue;
+      }
+      if (title && !title->empty()) {
+        MenuItem submenu;
+        submenu.title = *title;
+        AppendMenuItems(*children, submenu.children);
+        if (!submenu.children.empty()) {
+          out.push_back(std::move(submenu));
+        }
+      } else {
         AppendMenuItems(*children, out);
       }
       continue;
@@ -178,11 +195,12 @@ void AppendMenuItems(const base::ListValue& items, std::vector<MenuItem>& out) {
     }
     MenuItem item;
     item.id = *id;
-    if (const std::string* title = d->FindString("title")) {
+    if (title) {
       item.title = *title;
     }
     item.enabled = d->FindBool("isEnabled")
                        .value_or(d->FindBool("enabled").value_or(true));
+    item.checked = d->FindBool("isChecked").value_or(false);
     out.push_back(std::move(item));
   }
 }
@@ -199,7 +217,9 @@ Profile* ProfileOf(const bdkcore::Contents& contents) {
 EngineContents::EngineContents(
     const std::shared_ptr<bdkcore::Contents>& contents,
     std::unique_ptr<content::WebContents> web_contents)
-    : core_(contents), host_view_(HostView::Create()) {
+    : core_(contents),
+      handle_(contents->handle),
+      host_view_(HostView::Create()) {
   Registry().push_back(this);
   host_view_->SetWindowChangedCallback(base::BindRepeating(
       &EngineContents::OnHostViewWindowChanged, weak_factory_.GetWeakPtr()));
@@ -210,6 +230,7 @@ EngineContents::EngineContents(
 
 EngineContents::~EngineContents() {
   std::erase(Registry(), this);
+  WindowRegistry::Get().ForgetPage(handle_);
   // Dialogs and find UI go while the page is whole.
   find_.reset();
   dialogs_.reset();
@@ -297,6 +318,8 @@ void EngineContents::Attach(
   // Visits are recorded in history, except in a private profile (the helper
   // has no history service there). Creating it again does nothing.
   HistoryTabHelper::CreateForWebContents(web_contents_);
+  // The store's install button carries the browser's name.
+  InstallStoreRelabeler(web_contents_);
   // A page of a profile that has user scripts gets them now, before its first
   // document loads, so documentStart scripts run in it; a replaced WebContents
   // (restore, discard) needs them again. A profile with none costs nothing.
@@ -323,6 +346,9 @@ void EngineContents::MoveTo(HostContext& context) {
     return;
   }
   HostContexts::Get().Move(web_contents_, context);
+  // The page is attached to the context's window now, or to none for a
+  // parking context.
+  WindowRegistry::Get().NotePage(handle_, context.window());
   // The Browser took the delegate with the tab.
   web_contents_->SetDelegate(this);
   if (focused_) {
@@ -535,13 +561,31 @@ EngineContents* EngineContents::RequestNewWindow(
     const blink::mojom::WindowFeatures* features,
     bool user_gesture) {
   std::shared_ptr<bdkcore::Contents> opener = core();
-  std::shared_ptr<bdkcore::Runtime> rt = opener ? opener->rt.lock() : nullptr;
-  if (!rt || rt->shutting || !HostContexts::CanHost(ProfileOf(*opener))) {
+  return RequestNewPage(opener ? opener->profile : nullptr, opener,
+                        std::move(new_contents), kind, disposition, target_url,
+                        features, user_gesture, std::string());
+}
+
+// static
+EngineContents* EngineContents::RequestNewPage(
+    const std::shared_ptr<bdkcore::Profile>& profile,
+    const std::shared_ptr<bdkcore::Contents>& opener,
+    std::unique_ptr<content::WebContents> new_contents,
+    const std::string& kind,
+    WindowOpenDisposition disposition,
+    const GURL& target_url,
+    const blink::mojom::WindowFeatures* features,
+    bool user_gesture,
+    const std::string& initiator_extension_id) {
+  std::shared_ptr<bdkcore::Runtime> rt = bdkcore::current_runtime();
+  if (!profile || !profile->data || !rt || rt->shutting ||
+      !HostContexts::CanHost(
+          static_cast<EngineProfile*>(profile->data.get())->profile)) {
     return nullptr;
   }
   auto page = std::make_shared<bdkcore::Contents>();
   page->rt = rt;
-  page->profile = opener->profile;
+  page->profile = profile;
   page->handle = bdkcore::table_make(bdkcore::T_CONTENTS, page);
   auto engine_page =
       std::make_unique<EngineContents>(page, std::move(new_contents));
@@ -555,8 +599,16 @@ EngineContents* EngineContents::RequestNewWindow(
   payload.Set("targetURL", DisplayUrl(target_url));
   // Handles are 64-bit: JSON numbers cannot carry them exactly.
   payload.Set("newContents", base::NumberToString(page->handle));
-  payload.Set("opener", base::NumberToString(opener->handle));
+  if (opener) {
+    payload.Set("opener", base::NumberToString(opener->handle));
+  }
   payload.Set("userGesture", user_gesture);
+  if (!initiator_extension_id.empty()) {
+    // An extension asked for the page (its options page): ui-requests.md
+    // section 5.6.
+    payload.Set("initiator",
+                base::DictValue().Set("extensionId", initiator_extension_id));
+  }
   if (features) {
     base::DictValue f;
     if (features->has_x)
@@ -570,26 +622,31 @@ EngineContents* EngineContents::RequestNewWindow(
     payload.Set("features", std::move(f));
   }
 
-  RaiseUiRequest(opener, BDK_SURFACE_NEW_WINDOWS, payload,
-                 base::BindOnce(
-                     [](std::weak_ptr<bdkcore::Contents> weak_page,
-                        const UiResult& result) {
-                       std::shared_ptr<bdkcore::Contents> p = weak_page.lock();
-                       if (!p || p->dead) {
-                         return;
-                       }
-                       if (result.outcome == bdkcore::UiOutcome::kCompleted &&
-                           result.completion == "accept") {
-                         return;  // the application placed the new page
-                       }
-                       // Rejected, cancelled, withdrawn, or no handler: BDK has
-                       // no window of its own to put the page in (the default
-                       // presenter is T-UIR-03, M3).
-                       if (auto runtime = p->rt.lock()) {
-                         bdkcore::destroy_contents(runtime, p);
-                       }
-                     },
-                     std::weak_ptr<bdkcore::Contents>(page)));
+  UiFinish finish = base::BindOnce(
+      [](std::weak_ptr<bdkcore::Contents> weak_page, const UiResult& result) {
+        std::shared_ptr<bdkcore::Contents> p = weak_page.lock();
+        if (!p || p->dead) {
+          return;
+        }
+        if (result.outcome == bdkcore::UiOutcome::kCompleted &&
+            result.completion == "accept") {
+          return;  // the application placed the new page
+        }
+        // Rejected, cancelled, withdrawn, or no handler: BDK has no window of
+        // its own to put the page in (the default presenter is T-UIR-03, M3).
+        if (auto runtime = p->rt.lock()) {
+          bdkcore::destroy_contents(runtime, p);
+        }
+      },
+      std::weak_ptr<bdkcore::Contents>(page));
+  if (opener) {
+    RaiseUiRequest(opener, BDK_SURFACE_NEW_WINDOWS, payload, std::move(finish));
+  } else {
+    // No page is behind the request (an extension's options page opened by a
+    // command): it belongs to the profile.
+    RaiseUiRequest(profile, BDK_SURFACE_NEW_WINDOWS, payload,
+                   std::move(finish));
+  }
   return raw;
 }
 
@@ -748,6 +805,18 @@ void EngineContents::RequestClose() {
   CloseContents(web_contents_.get());
 }
 
+void EngineContents::SetContentsBounds(content::WebContents* source,
+                                       const gfx::Rect& bounds) {
+  // Chromium's delegate for the page's Browser ignores this for a normal
+  // window and sets the bounds of any other: the Browser's window is BDK's,
+  // which asks the application (a window request of kind setFrame).
+  HostContext* context = HostContexts::Get().ContextOf(web_contents_);
+  if (Browser* browser = context ? context->browser() : nullptr) {
+    BrowserWebContentsDelegate::From(browser)->SetContentsBounds(source,
+                                                                 bounds);
+  }
+}
+
 void EngineContents::CloseContents(content::WebContents* source) {
   if (close_reported_) {
     return;
@@ -772,6 +841,18 @@ bool EngineContents::HandleContextMenu(
     return true;
   }
   base::ListValue items = MenuItems(params, web_contents_.get());
+  // The profile's extensions add their items after the page's own; a later
+  // menu replaces them.
+  extension_menu_items_ = ExtensionMenuItems::Create(
+      c, render_frame_host, params, web_contents_.get());
+  if (extension_menu_items_) {
+    if (!items.empty()) {
+      items.Append(base::DictValue().Set("id", "").Set("kind", "separator"));
+    }
+    for (const base::Value& item : extension_menu_items_->items()) {
+      items.Append(item.Clone());
+    }
+  }
   base::DictValue context;
   context.Set("linkURL", DisplayUrl(params.link_url));
   context.Set("srcURL", params.src_url.spec());
@@ -843,6 +924,11 @@ bool EngineContents::HandleContextMenu(
 
 void EngineContents::PerformMenuItem(const content::ContextMenuParams& params,
                                      const std::string& id) {
+  // An extension's item runs through its MenuManager: activeTab is granted for
+  // this page and contextMenus.onClicked names it.
+  if (extension_menu_items_ && extension_menu_items_->Execute(id)) {
+    return;
+  }
   content::NavigationController& controller = web_contents_->GetController();
   if (id == "back" && controller.CanGoBack()) {
     controller.GoBack();

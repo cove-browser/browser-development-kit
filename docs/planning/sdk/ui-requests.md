@@ -96,7 +96,7 @@ The key is what goes in `[ui.surfaces]`. "Modes" lists what the surface allows: 
 | `webauthn` | Passkey and security-key dialogs | D C X | Added (S3) | — |
 | `external_protocols` | "Open this link in another application?" | D C X | Added (S3) | — |
 | `page_health` | Unresponsive page; blocked popups | D C | Added (S3) | — |
-| Extension surfaces | Actions, popups, side panels, menus, options, install prompts | See [extensions.md](extensions.md) | Plan | M5 |
+| Extension surfaces | Actions, popups, side panels, menus, options, install prompts | See [extensions.md](extensions.md) | Plan | M5: surfaces 25 to 32 (`extension_actions` … `extension_uninstalls`), configured under `[extensions.ui]`; see `packages/core/docs/conventions.md`, "Extensions (M5)" |
 
 `[ui] default_browser_surfaces = false` sets every key above to `custom`, which means the application must register a handler for each before start.
 

@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "UI Command",
+  "version": "1.0",
+  "description": "A declared command whose event names the tab in its page's title.",
+  "permissions": ["activeTab", "scripting"],
+  "background": { "service_worker": "sw.js" },
+  "commands": {
+    "run-it": {
+      "suggested_key": { "default": "Ctrl+Shift+Y" },
+      "description": "Run it"
+    }
+  }
+}

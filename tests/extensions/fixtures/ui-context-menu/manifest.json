@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "UI Context Menu",
+  "version": "1.0",
+  "description": "One context-menu item whose click names the tab in its page's title.",
+  "permissions": ["activeTab", "scripting", "contextMenus"],
+  "background": { "service_worker": "sw.js" }
+}

@@ -74,6 +74,10 @@ class DevToolsFrontend : public content::WebContentsObserver {
   void SetFrontend(content::WebContents* frontend);
   void Close() { close_.Run(); }
   void OpenInNewTab(const std::string& url);
+  // Tells the front end which tab it inspects, which a `devtools_page` of an
+  // extension reads as chrome.devtools.inspectedWindow.tabId. DevToolsWindow
+  // does this when the front end has loaded, before extensions are added.
+  void SeedInspectedTabId();
 
   // content::WebContentsObserver, on the inspected page:
   void WebContentsDestroyed() override;

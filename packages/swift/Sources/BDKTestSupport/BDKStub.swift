@@ -172,6 +172,79 @@ public struct BDKStub {
         return reserved != 0
     }
 
+    // MARK: Open requests
+
+    /// Sends the runtime's update (a popup's preferred size, say) to the most recently raised
+    /// request. It reaches the request's update handler on the next pump.
+    public func sendUIUpdate(_ json: String) throws {
+        let handle = try runtime.liveHandle()
+        try check(withBDKStrings([json]) { bdk_stub_send_ui_update(handle, $0[0]) })
+    }
+
+    /// The last update the application sent to an open request, "" for none.
+    public var lastUIUpdate: String {
+        get throws {
+            var buffer = [CChar](repeating: 0, count: 512)
+            try check(bdk_stub_last_ui_update(try runtime.liveHandle(), &buffer, buffer.count))
+            return String(
+                decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
+        }
+    }
+
+    // MARK: Windows
+
+    /// Attaches the page to a registered window, as a view entering it would; nil detaches it.
+    public func attach(_ page: BDKWebContents, to window: BDKWindow?) throws {
+        try check(bdk_stub_attach_contents(page.handle, window?.handle ?? 0))
+    }
+
+    /// Acts as an extension asking for a change to the window. The window's delegate answers on
+    /// the next pump.
+    public func requestWindowChange(_ window: BDKWindow, json: String) throws {
+        try check(withBDKStrings([json]) { bdk_stub_window_request(window.handle, $0[0]) })
+    }
+
+    /// The last answer to a window request (`BDK_UI_*`), 0 before it is known.
+    public var lastWindowAnswer: UInt32 {
+        get throws {
+            var answer: UInt32 = 0
+            try check(bdk_stub_last_window_answer(&answer))
+            return answer
+        }
+    }
+
+    /// Acts as a default presenter asking the window's anchor provider for a role. Nil for "no
+    /// anchor". The rectangle is in the ABI's window coordinates (origin at the top left).
+    public func anchor(of window: BDKWindow, role: BDKWindow.AnchorRole) throws -> CGRect? {
+        var rect = [Double](repeating: 0, count: 4)
+        var found: UInt8 = 0
+        try check(bdk_stub_window_anchor(window.handle, role.rawValue, &rect, &found))
+        return found == 0 ? nil : CGRect(x: rect[0], y: rect[1], width: rect[2], height: rect[3])
+    }
+
+    // MARK: Extensions
+
+    /// Registers the manifest of a package the stub cannot read from disk: `kind` is "crx" with the
+    /// file path, "updateUrl" with the extension id, "store" with "<store>/<id>" or "unpacked" with
+    /// a directory (which overrides its manifest.json). Registering a newer version for an
+    /// installed id is what `checkForUpdates` finds.
+    public func registerExtensionPackage(kind: String, key: String, manifestJSON: String) throws {
+        let handle = try runtime.liveHandle()
+        try check(
+            withBDKStrings([kind, key, manifestJSON]) {
+                bdk_stub_extension_package(handle, $0[0], $0[1], $0[2])
+            })
+    }
+
+    /// How many times the default extensions menu was presented since start.
+    public var menusPresented: UInt32 {
+        get throws {
+            var count: UInt32 = 0
+            try check(bdk_stub_menus_presented(&count))
+            return count
+        }
+    }
+
     // MARK: Services
 
     /// How the stub's operating system answers an authentication request.
@@ -271,7 +344,8 @@ public struct BDKStub {
 
     // MARK: Helpers
 
-    private func check(_ status: bdk_status_t) throws {
+    /// Throws for a status other than `BDK_OK` (the stub refused the call).
+    func check(_ status: bdk_status_t) throws {
         guard status != BDK_OK else { return }
         throw BDKError(
             domain: .runtime, code: "stubRejected",
@@ -279,7 +353,7 @@ public struct BDKStub {
     }
 
     /// Copies a buffer's bytes and releases the buffer.
-    private static func take(_ buffer: bdk_buffer_t) -> Data {
+    static func take(_ buffer: bdk_buffer_t) -> Data {
         let bytes = bdk_buffer_bytes(buffer)
         let data = bytes.data.map { Data(bytes: $0, count: bytes.length) } ?? Data()
         _ = bdk_release(buffer)
@@ -290,102 +364,5 @@ public struct BDKStub {
         withUnsafeBytes(of: tuple) { raw in
             String(decoding: raw.prefix { $0 != 0 }, as: UTF8.self)
         }
-    }
-}
-
-/// A script the test plays in the stub's automation host (`BDKStub.defineScript`).
-@MainActor
-public final class StubScript {
-    /// Every frame BDK sent to the script, in order, parsed.
-    public private(set) var frames: [BDKJSValue] = []
-    /// The stub's identifier of the most recently started task.
-    public private(set) var task: UInt64 = 0
-
-    /// The newest frame BDK sent, or nil before the first.
-    public var last: BDKJSValue? { frames.last }
-
-    func receive(task: UInt64, frame: String) {
-        self.task = task
-        frames.append(BDKJSValue(jsonString: frame) ?? .null)
-    }
-
-    /// Sends a frame from the script, in the wire protocol, as JSON text. It is delivered on the
-    /// next pump, which the awaiting test performs. Throws when the task already ended.
-    public func send(_ frameJSON: String) throws {
-        let status = withBDKString(frameJSON) { bdk_stub_script_send(task, $0) }
-        EventLoop.scheduler?()
-        guard status == BDK_OK else {
-            throw BDKError(
-                domain: .runtime, code: "stubRejected",
-                message: "the stub rejected the frame with status \(status.rawValue)")
-        }
-    }
-
-    /// Sends a frame from the script.
-    public func send(_ frame: BDKJSValue) throws {
-        try send(frame.jsonString)
-    }
-}
-
-// MARK: - Providers
-
-extension BDKStub {
-    /// The page finished loading with these text segments, in `language` (nil: not declared). The
-    /// stub detects, offers or translates as the engine would after a load.
-    public func setPageText(
-        _ texts: [String], language: String? = nil, on page: BDKWebContents
-    ) throws {
-        let json = String(decoding: try JSONEncoder().encode(texts), as: UTF8.self)
-        let status = withBDKStrings([language ?? "", json]) { lent in
-            bdk_stub_page_text_set(page.handle, lent[0], lent[1])
-        }
-        try check(status)
-    }
-
-    /// The page's text segments now: translated while a translation is on.
-    public func pageText(of page: BDKWebContents) throws -> [String] {
-        var buffer: bdk_buffer_t = 0
-        try check(bdk_stub_page_text(page.handle, &buffer))
-        return try JSONDecoder().decode([String].self, from: Self.take(buffer))
-    }
-
-    /// Loads a block list for the default reputation provider, as a downloaded list whose
-    /// signature was checked would be. Throws `provider.invalidList` for a list the core refuses.
-    public func loadReputationList(_ listJSON: String) throws {
-        let handle = try runtime.liveHandle()
-        var error: bdk_error_t = 0
-        let status = withBDKString(listJSON) { list in
-            bdk_stub_reputation_list_load(handle, list, &error)
-        }
-        defer {
-            if error != 0 { bdk_error_release(error) }
-        }
-        guard status != BDK_OK else { return }
-        func string(_ value: bdk_string_t) -> String {
-            guard let data = value.data else { return "" }
-            return String(
-                decoding: UnsafeRawBufferPointer(start: data, count: value.length), as: UTF8.self)
-        }
-        throw BDKError(
-            domain: BDKError.Domain(rawValue: string(bdk_error_domain(error))),
-            code: string(bdk_error_code(error)), message: string(bdk_error_message(error)))
-    }
-
-    /// The page's script calls `watchPosition` (its permission is granted).
-    public func startGeolocationWatch(on page: BDKWebContents, highAccuracy: Bool = false) throws {
-        try check(bdk_stub_geolocation_watch(page.handle, highAccuracy ? 1 : 0))
-    }
-
-    /// The last position or error the page received, as JSON; nil when none.
-    public func lastGeolocation(of page: BDKWebContents) throws -> String? {
-        var buffer: bdk_buffer_t = 0
-        try check(bdk_stub_geolocation_last(page.handle, &buffer))
-        let json = String(decoding: Self.take(buffer), as: UTF8.self)
-        return json.isEmpty ? nil : json
-    }
-
-    /// The page clears its watch.
-    public func stopGeolocationWatch(on page: BDKWebContents) throws {
-        try check(bdk_stub_geolocation_stop(page.handle))
     }
 }

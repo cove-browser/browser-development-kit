@@ -245,15 +245,20 @@ static const t_test_t* const kTables[] = {
     t_provider_tests, /* providers: contracts, configuration, translation, reputation
                          (tests_providers.c) */
     t_pages_tests,
+    t_extension_tests, /* extensions and registered windows (tests_extensions.c) */
 #ifdef BDK_HARNESS_ENGINE_TESTS
     t_engine_tests,            /* scenarios only a real engine can run (tests_engine.c) */
     t_engine_ui_tests,         /* browser-owned surfaces on the engine (tests_engine_ui.c) */
     t_engine_prompt_tests,     /* services and prompts (tests_engine_prompts.c) */
     t_engine_automation_tests, /* automation and DevTools (tests_engine_automation.c) */
     t_engine_provider_tests,   /* providers on Chromium (tests_engine_providers.c) */
-    t_engine_privacy_tests, /* the network audit and Google-free start-up (tests_engine_privacy.c)
-                             */
-    t_engine_pages_tests,   /* internal pages, search and M3 follow-ups (tests_engine_pages.c) */
+    t_engine_privacy_tests,   /* the network audit and Google-free start-up (tests_engine_privacy.c)
+                               */
+    t_engine_pages_tests,     /* internal pages, search and M3 follow-ups (tests_engine_pages.c) */
+    t_engine_extension_tests, /* extension install and policy (tests_engine_extensions.c) */
+    t_engine_extension_ui_tests,    /* extension UI (tests_engine_ext_ui.c) */
+    t_engine_extension_panel_tests, /* windows, side panels, DevTools extensions */
+    t_engine_extension_probe_tests, /* the MV3 probe, T-EXT-01 (tests_engine_ext_probe.c) */
 #endif
 };
 

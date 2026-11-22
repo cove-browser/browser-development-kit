@@ -21,6 +21,7 @@ class Profile;
 namespace bdk {
 
 class DevToolsFrontend;
+class ExtensionMenuItems;
 class HostContext;
 class HostView;
 class PageDialogs;
@@ -63,6 +64,8 @@ class EngineContents : public bdkcore::BackendData,
 
   // The core's side of the page, null once the application destroyed it.
   std::shared_ptr<bdkcore::Contents> Core() const { return core_.lock(); }
+  // The page's handle: valid for the life of the page, which Core() is not.
+  bdk_contents_t handle() const { return handle_; }
   base::WeakPtr<EngineContents> GetWeakPtr() {
     return weak_factory_.GetWeakPtr();
   }
@@ -80,6 +83,22 @@ class EngineContents : public bdkcore::BackendData,
 
   // Every page of the engine, in creation order.
   static const std::vector<EngineContents*>& All();
+
+  // Wraps `new_contents` as a page of `profile` and asks the application where
+  // it goes (a new-window request of `kind`). `opener` is the page that asked,
+  // or null when none did (an extension's options page opened by a command);
+  // `initiator_extension_id` names the extension that asked, or is empty.
+  // Returns the new page, or null when the profile cannot host one.
+  static EngineContents* RequestNewPage(
+      const std::shared_ptr<bdkcore::Profile>& profile,
+      const std::shared_ptr<bdkcore::Contents>& opener,
+      std::unique_ptr<content::WebContents> new_contents,
+      const std::string& kind,
+      WindowOpenDisposition disposition,
+      const GURL& target_url,
+      const blink::mojom::WindowFeatures* features,
+      bool user_gesture,
+      const std::string& initiator_extension_id);
 
   // Moves the page's tab into `context`. A page with a focus keeps being the
   // active tab of the context it moves into.
@@ -146,6 +165,9 @@ class EngineContents : public bdkcore::BackendData,
       bool user_gesture,
       bool* was_blocked) override;
   void CloseContents(content::WebContents* source) override;
+  // window.moveTo and resizeTo of a page in a popup window.
+  void SetContentsBounds(content::WebContents* source,
+                         const gfx::Rect& bounds) override;
   bool HandleContextMenu(content::RenderFrameHost& render_frame_host,
                          const content::ContextMenuParams& params) override;
   content::KeyboardEventProcessingResult PreHandleKeyboardEvent(
@@ -220,6 +242,7 @@ class EngineContents : public bdkcore::BackendData,
   void SetFullscreen(bool fullscreen);
 
   std::weak_ptr<bdkcore::Contents> core_;
+  const bdk_contents_t handle_;
   std::unique_ptr<HostView> host_view_;
   // JavaScript dialogs and file pickers; find in page (ui_dialogs.h,
   // ui_find.h).
@@ -230,6 +253,9 @@ class EngineContents : public bdkcore::BackendData,
   // For a DevTools front-end page: the bindings to the page it inspects, and
   // the default presenter's window while it shows the page.
   std::unique_ptr<DevToolsFrontend> devtools_;
+  // The extension items of the context menu raised last, kept until a later
+  // menu replaces them so that performing one can run it.
+  std::unique_ptr<ExtensionMenuItems> extension_menu_items_;
   base::OnceClosure devtools_window_;
   // For an inspected page: the page of its open front end.
   base::WeakPtr<EngineContents> devtools_page_;

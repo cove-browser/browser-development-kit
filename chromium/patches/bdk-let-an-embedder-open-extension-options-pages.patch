@@ -1,0 +1,104 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BDK Patches <patches@bdk.invalid>
+Date: Fri, 20 Nov 2026 12:00:00 -0800
+Subject: [PATCH] bdk: let an embedder open extension options pages
+
+chrome.runtime.openOptionsPage() and the options item of an extension's
+menu both end in BrowserExtensionWindowController::OpenOptionsPage(),
+which opens the page as a tab of its Browser. BDK pages are tabs of
+Browsers that no window shows, so a tab opened there is one BDK does not
+know and nobody can see. BDK raises a new-window request of kind newPage
+instead, naming the extension as its initiator, so that the application
+places the page.
+
+Add embedder_options_page_hook.h, a small header with a settable hook
+(inline, no new target), and ask it first in OpenOptionsPage(). A value
+returned is the answer of OpenOptionsPage(), so the embedder decides
+whether the page opened; no value leaves Chromium's own path, so Chrome is
+unchanged. Only browser_extension_window_controller.cc and the new header
+change, so nothing widely included is touched.
+
+Used by: the BDK engine (//bdk/engine/extensions/options_page.cc).
+---
+ .../browser_extension_window_controller.cc    |  8 ++++
+ .../extensions/embedder_options_page_hook.h   | 46 +++++++++++++++++++
+ 2 files changed, 54 insertions(+)
+
+diff --git a/chrome/browser/extensions/browser_extension_window_controller.cc b/chrome/browser/extensions/browser_extension_window_controller.cc
+index 06d4b62c70dc082af3bf2798ecbec32dd8a74410..53f50c5df194213822c6deb037a8ba700a6830ae 100644
+--- a/chrome/browser/extensions/browser_extension_window_controller.cc
++++ b/chrome/browser/extensions/browser_extension_window_controller.cc
+@@ -12,6 +12,7 @@
+ #include "base/notimplemented.h"
+ #include "base/strings/stringprintf.h"
+ #include "chrome/browser/extensions/embedder_extension_window_filter.h"
++#include "chrome/browser/extensions/embedder_options_page_hook.h"
+ #include "chrome/browser/extensions/extension_tab_util.h"
+ #include "chrome/browser/extensions/window_controller_list.h"
+ #include "chrome/browser/profiles/profile.h"
+@@ -314,6 +315,13 @@ bool BrowserExtensionWindowController::OpenOptionsPage(
+           ui::PAGE_TRANSITION_LINK);
+   browser_->OpenURL(params, /*navigation_handle_callback=*/{});
+ #else
++  if (const auto& embedder_hook = embedder_options_page_hook::GetHook()) {
++    // An embedder that shows options pages in UI of its own takes the request.
++    if (std::optional<bool> handled = embedder_hook.Run(
++            GetBrowser(), extension, url, open_in_tab)) {
++      return *handled;
++    }
++  }
+   // Force the options page to open in non-OTR window if the extension is not
+   // running in split mode, because it won't be able to save settings from OTR.
+   // This version of OpenOptionsPage() can be called from an OTR window via e.g.
+diff --git a/chrome/browser/extensions/embedder_options_page_hook.h b/chrome/browser/extensions/embedder_options_page_hook.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..ced4699f060bc6cb6f0e95c6f38b6e00d3d7177d
+--- /dev/null
++++ b/chrome/browser/extensions/embedder_options_page_hook.h
+@@ -0,0 +1,46 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_EXTENSIONS_EMBEDDER_OPTIONS_PAGE_HOOK_H_
++#define CHROME_BROWSER_EXTENSIONS_EMBEDDER_OPTIONS_PAGE_HOOK_H_
++
++#include <optional>
++
++#include "base/functional/callback.h"
++#include "base/no_destructor.h"
++
++class BrowserWindowInterface;
++class GURL;
++
++namespace extensions {
++class Extension;
++}  // namespace extensions
++
++// A hook for Chromium embedders that open an extension's options page in UI of
++// their own. When a hook is set, BrowserExtensionWindowController asks it
++// before it opens the page as a tab of `browser`, which is where both
++// chrome.runtime.openOptionsPage and the options item of an extension's menu
++// end. Returning a value means the embedder took the request, and the value is
++// whether the page was opened (the answer of OpenOptionsPage()); returning
++// nothing leaves Chromium's own path unchanged. Only embedders set one, once.
++namespace embedder_options_page_hook {
++
++using Hook = base::RepeatingCallback<std::optional<bool>(
++    BrowserWindowInterface* browser,
++    const extensions::Extension* extension,
++    const GURL& url,
++    bool open_in_tab)>;
++
++inline Hook& GetHook() {
++  static base::NoDestructor<Hook> hook;
++  return *hook;
++}
++
++inline void SetHook(Hook hook) {
++  GetHook() = std::move(hook);
++}
++
++}  // namespace embedder_options_page_hook
++
++#endif  // CHROME_BROWSER_EXTENSIONS_EMBEDDER_OPTIONS_PAGE_HOOK_H_

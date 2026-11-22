@@ -53,7 +53,31 @@ class HostWindowMac : public HostWindow {
   bool IsFullscreen() override {
     return (window_.styleMask & NSWindowStyleMaskFullScreen) != 0;
   }
-  void Activate() override { [window_ makeKeyAndOrderFront:nil]; }
+  void Activate() override {
+    if (window_.isMiniaturized) {
+      [window_ deminiaturize:nil];
+    }
+    [window_ makeKeyAndOrderFront:nil];
+  }
+  void SetFrame(const gfx::Rect& bounds) override {
+    [window_ setFrame:gfx::ScreenRectToNSRect(bounds) display:YES];
+  }
+  void Minimize() override { [window_ miniaturize:nil]; }
+  void ToggleZoom() override { [window_ zoom:nil]; }
+  void SetFullscreen(bool fullscreen) override {
+    if (IsFullscreen() != fullscreen) {
+      [window_ toggleFullScreen:nil];
+    }
+  }
+  void Close() override {
+    // The window's delegate may veto a close the application owns; a window
+    // with no close button has no performClose.
+    if (window_.styleMask & NSWindowStyleMaskClosable) {
+      [window_ performClose:nil];
+    } else {
+      [window_ close];
+    }
+  }
 
  private:
   // The application owns the window; it unregisters it before it goes.

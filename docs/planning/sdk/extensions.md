@@ -2,6 +2,8 @@
 
 Status: proposal, 2026-11-15. Based on [../architecture.md](../architecture.md) section 10, the spec's section 8A and [../feasibility.md](../feasibility.md) section 3. Names are placeholders. Nothing here has run: the MV3 probe has not been loaded into any browser. Status labels are in [README.md](README.md) section 2. Tasks: T-EXT-01 to T-EXT-09. Extension support is a public v1 gate.
 
+**Built in M5 (2026-11-20), engine pending.** The commands, surfaces, Swift API and window registration below exist and pass against the stub; the engine side is written and not yet built or run ([roadmap.md](../roadmap.md) M5, [amendments.md](../amendments.md) 2.17). Departures from this proposal are in amendments 2.17, `packages/swift/README.md` and `packages/core/docs/conventions.md` ("Extensions (M5)"). Not built: `extensions.inspectView` in the engine (T-EXT-11, M5); a default presenter for new pages that extension UI opens (T-EXT-12, M5); the store's update check being suppressed when the store is off (T-EXT-13, M6); `developer_mode`, `blocklist` and bundled extensions, section 9 (T-EXT-14, M9). The matrix is [docs/extensions/compatibility-matrix.md](../../extensions/compatibility-matrix.md), not run until the engine is (T-EXT-10).
+
 ## 1. What BDK adds and what it leaves alone
 
 | Part | Owner | BDK work |
@@ -311,7 +313,7 @@ Most extension APIs need nothing from BDK. These touch UI or product structure, 
 | `commands` | The application owns shortcuts | BDK exposes the declared commands and the user's bindings. The application binds keys and calls `performCommand`. With no application support, the default extensions menu lists them and nothing is bound. |
 | `tabs.create`, `windows.create` | New-window request | Kind `.newPage` or `.extensionWindow`. If the application rejects, the call rejects. |
 | `tabs.update({active})`, `tabs.highlight` | Layout | Raises an activation request to the window delegate. The application may ignore it; the call then resolves without a change, and the matrix records that. |
-| `tabs.move`, `tabs.group`, `tabGroups` | Tab order and groups | BDK has no order and no groups. `tabs.move` between windows moves the page's view only if the application's delegate does it. `tabGroups` is absent. |
+| `tabs.move`, `tabs.group`, `tabGroups` | Tab order and groups | BDK has no order and no groups. `tabs.move` between windows moves the page's view only if the application's delegate does it. `tabGroups` and `tabs.group` work on the host context's tab model and the application shows no groups: degraded (M5; amendments 2.17). |
 | `tabs.query` | Host contexts | Pages attached to a window are that window's tabs. Off-screen pages follow decision D1. The parking context is hidden from extensions if the M0 probe shows it must be. |
 | `tabs.discard`, `tabs.duplicate`, `tabs.remove` | Application | Delivered as requests to the window delegate, with a default that does the obvious thing to the page |
 | `windows.update` | Window delegate | `WindowRequest`, default applied to the `NSWindow` |
@@ -374,10 +376,10 @@ Incognito compatibility is listed as open in the spec. The probe suite needs cas
 
 | Item | Settled by |
 |---|---|
-| Whether `sidePanel` works at all without `BrowserView` | T-EXT-01, then T-EXT-03 |
+| Whether `sidePanel` works at all without `BrowserView` | T-EXT-03 implements `SidePanelUI` with no patch; engine run pending |
 | What extensions observe for off-screen pages | Decision D1, T-ADP-08 |
-| Whether the parking context must be hidden from `windows.getAll` | T-EXT-01 |
-| Placement of the default extensions menu with no anchor | T-EXT-02 |
+| Whether the parking context must be hidden from `windows.getAll` | Settled from the source in M5: it is listed, so a patch hides it; the probe scenario runs with the engine |
+| Placement of the default extensions menu with no anchor | Settled in M5: a trailing title-bar accessory button (amendments 2.17) |
 | Chrome Web Store as a source | Decided (D4): a named source per application. T-EXT-09 |
 | `commands` with application-owned shortcuts | T-EXT-04; the API above is the proposal |
 | `omnibox` | Depends on addition S1 |

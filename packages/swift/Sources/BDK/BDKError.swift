@@ -23,6 +23,7 @@ public struct BDKError: Error, Sendable, Equatable, CustomStringConvertible {
         public static let automation = Domain(rawValue: "automation")
         public static let devtools = Domain(rawValue: "devtools")
         public static let platform = Domain(rawValue: "platform")
+        public static let `extension` = Domain(rawValue: "extension")
     }
 
     public let domain: Domain

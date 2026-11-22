@@ -59,7 +59,7 @@ public struct BDKMenuItem: Sendable, Equatable, Identifiable {
         isEnabled = payload.bool("isEnabled", default: true)
         isChecked = payload.bool("isChecked")
         children = payload.objects("children").map(BDKMenuItem.init)
-        if let id = payload.string("extension") {
+        if payload.string("source") == "extension", let id = payload.string("extensionId") {
             source = .extension(id: id)
         } else {
             source = payload.string("source") == "application" ? .application : .browser

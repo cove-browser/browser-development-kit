@@ -7,6 +7,7 @@
 #include "bdk_broker.h"
 #include "bdk_contents.h"
 #include "bdk_diagnostics.h"
+#include "bdk_extensions.h"
 #include "bdk_ids.h"
 #include "bdk_profile.h"
 #include "bdk_provider.h"

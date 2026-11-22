@@ -36,6 +36,9 @@ class BdkContentBrowserClient : public ChromeContentBrowserClient {
   void AppendExtraCommandLineSwitches(base::CommandLine* command_line,
                                       int child_process_id) override;
   void BrowserURLHandlerCreated(content::BrowserURLHandler* handler) override;
+  // Adds the pages throttle first, and keeps a DevTools front end from loading
+  // extension pages when `[extensions.ui] devtools` is "disabled"
+  // (extensions.md 4.8).
   void CreateThrottlesForNavigation(
       content::NavigationThrottleRegistry& registry) override;
   void RegisterTrustedWebUIInterfaceBrokers(

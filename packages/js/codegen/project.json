@@ -43,6 +43,7 @@
         "{workspaceRoot}/packages/js/internal/src/autofill.ts",
         "{workspaceRoot}/packages/js/internal/src/bookmarks.ts",
         "{workspaceRoot}/packages/js/internal/src/downloads.ts",
+        "{workspaceRoot}/packages/js/internal/src/extensions.ts",
         "{workspaceRoot}/packages/js/internal/src/history.ts",
         "{workspaceRoot}/packages/js/internal/src/metadata.ts",
         "{workspaceRoot}/packages/js/internal/src/passwords.ts",

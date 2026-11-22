@@ -15,3 +15,6 @@ bdk-reach-the-address-bubble-handler-through-the-browser-s-user-data.patch
 bdk-register-an-embedder-s-branded-scheme-in-every-process.patch
 bdk-let-an-embedder-record-the-initial-browser-command-line.patch
 bdk-register-the-automation-host-in-the-utility-process.patch
+bdk-let-an-embedder-present-extension-install-and-uninstall-prompts.patch
+bdk-let-an-embedder-keep-a-browser-out-of-the-extension-window-list.patch
+bdk-let-an-embedder-open-extension-options-pages.patch

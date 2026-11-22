@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Install Sidepanel",
+  "version": "1.0",
+  "description": "Uses the side panel and context menu APIs.",
+  "permissions": ["sidePanel", "contextMenus"],
+  "side_panel": {
+    "default_path": "probe.html"
+  },
+  "background": {
+    "service_worker": "sw.js"
+  },
+  "action": {
+    "default_title": "Install Sidepanel"
+  }
+}

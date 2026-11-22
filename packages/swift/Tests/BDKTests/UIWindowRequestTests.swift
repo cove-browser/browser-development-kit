@@ -17,7 +17,7 @@ extension BDKStubTests {
                     "selectionText":"hi","isEditable":true,"spellingSuggestions":["a"]},\
                     "items":[{"id":"copy","kind":"command","role":"copy","title":"Copy"},\
                     {"id":"more","kind":"submenu","title":"More","children":[\
-                    {"id":"inspect","role":"inspect","title":"Inspect","extension":"ext1"}]}]}
+                    {"id":"inspect","role":"inspect","title":"Inspect","source":"extension","extensionId":"ext1"}]}]}
                     """
                 var request = try fixture.deliver(
                     ContextMenuRequest.self, BDK_SURFACE_CONTEXT_MENUS, payload)

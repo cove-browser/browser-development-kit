@@ -11,6 +11,8 @@
 #include "bdk/core/runtime/core_internal.h"
 #include "bdk/engine/bdk_browser_window.h"
 #include "bdk/engine/host_window.h"
+#include "bdk/engine/window_registry.h"
+#include "chrome/browser/extensions/embedder_extension_window_filter.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_active_state_manager/browser_active_state_manager.h"
 #include "chrome/browser/ui/browser_manager_service.h"
@@ -21,6 +23,7 @@
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/web_contents.h"
+#include "ui/base/base_window.h"
 
 namespace bdk {
 
@@ -28,6 +31,10 @@ namespace {
 
 // The window the factory made last, for the context being created.
 BdkBrowserWindow* g_created_window = nullptr;
+// Whether the context being created is a parking context, and its window then:
+// extensions must not see it (see HiddenFromExtensions).
+bool g_creating_parking = false;
+const ui::BaseWindow* g_hidden_window = nullptr;
 
 std::unique_ptr<BrowserWindow, BrowserWindowDeleter> CreateWindow(
     BrowserWindowInterface* browser,
@@ -35,7 +42,19 @@ std::unique_ptr<BrowserWindow, BrowserWindowDeleter> CreateWindow(
     bool in_tab_dragging) {
   auto window = std::make_unique<BdkBrowserWindow>(browser);
   g_created_window = window.get();
+  if (g_creating_parking) {
+    g_hidden_window = window.get();
+  }
   return std::unique_ptr<BrowserWindow, BrowserWindowDeleter>(window.release());
+}
+
+// The extension windows API lists every Browser. A parking context is where
+// pages wait that no window shows; it is not a window of the application, so
+// windows.getAll, tabs.query and windows.onCreated must not report it
+// (T-EXT-01 assertion 10). The extension window controller asks this as it is
+// made, which is before the context exists.
+bool HiddenFromExtensions(BrowserWindowInterface* browser) {
+  return g_hidden_window && browser->GetWindow() == g_hidden_window;
 }
 
 }  // namespace
@@ -44,10 +63,12 @@ HostContext::HostContext(Profile* profile, const bdkcore::Window* window)
     : profile_(profile), window_(window) {}
 
 HostContext::~HostContext() {
+  WindowRegistry::Get().ForgetContext(this);
   if (browser_) {
     // A context is destroyed after its pages moved out. The Browser closes
     // the way Chromium closes any other.
     CHECK_EQ(0, tab_count());
+    BdkBrowserWindow::ScopedTabOperation operation(browser_window());
     BrowserManagerService::SynchronouslyDestroyBrowser(browser_.get());
   }
 }
@@ -97,6 +118,9 @@ std::unique_ptr<tabs::TabModel> HostContext::Release(
   TabStripModel* strip = browser_->GetTabStripModel();
   const int index = strip->GetIndexOfWebContents(contents);
   CHECK_NE(index, TabStripModel::kNoTab);
+  // The strip may empty, which makes Chromium close the window: not a request
+  // for the application.
+  BdkBrowserWindow::ScopedTabOperation operation(browser_window());
   return strip->DetachTabAtForInsertion(index);
 }
 
@@ -114,6 +138,7 @@ void HostContext::Destroy(content::WebContents* contents) {
   TabStripModel* strip = browser_->GetTabStripModel();
   const int index = strip->GetIndexOfWebContents(contents);
   if (index != TabStripModel::kNoTab) {
+    BdkBrowserWindow::ScopedTabOperation operation(browser_window());
     strip->DetachAndDeleteWebContentsAt(index);
   }
 }
@@ -127,6 +152,8 @@ void HostContext::Activate(content::WebContents* contents) {
   strip->ActivateTabAt(index);
   if (!is_parking()) {
     BrowserActiveStateManager::From(browser_.get())->DidBecomeActive();
+    // This context holds the window's active page now.
+    WindowRegistry::Get().NoteActive(window_, this);
   }
 }
 
@@ -139,6 +166,8 @@ HostContexts& HostContexts::Get() {
 HostContexts::HostContexts() {
   embedder_browser_window_factory::SetFactory(
       base::BindRepeating(&CreateWindow));
+  extensions::embedder_extension_window_filter::SetFilter(
+      base::BindRepeating(&HiddenFromExtensions));
 }
 
 HostContexts::~HostContexts() = default;
@@ -152,16 +181,28 @@ bool HostContexts::CanHost(Profile* profile) {
 HostContext& HostContexts::Create(Profile* profile,
                                   const bdkcore::Window* window,
                                   bdk_native_handle_t native) {
-  BrowserWindowCreateParams params(BrowserWindowInterface::TYPE_NORMAL, profile,
-                                   /*from_user_gesture=*/false);
+  // A popup window (bdk_window_register's kind) is a popup to extensions: it
+  // is what windows.get reports. Everything else is a normal window.
+  const bool popup = window && window->kind == BDK_WINDOW_KIND_POPUP;
+  BrowserWindowCreateParams params(popup ? BrowserWindowInterface::TYPE_POPUP
+                                         : BrowserWindowInterface::TYPE_NORMAL,
+                                   profile, /*from_user_gesture=*/false);
   // The application owns what is open and restores it itself.
   params.omit_from_session_restore = true;
   params.should_trigger_session_restore = false;
   g_created_window = nullptr;
+  g_creating_parking = window == nullptr;
+  g_hidden_window = nullptr;
   BrowserWindowInterface* browser = CreateBrowserWindow(std::move(params));
+  g_creating_parking = false;
+  g_hidden_window = nullptr;
   CHECK(browser);
   CHECK(g_created_window);
   g_created_window->InstallAutofillBubbleHandler();
+  g_created_window->InstallSidePanelUI();
+  if (window) {
+    g_created_window->SetRegisteredWindow(window->handle);
+  }
   std::unique_ptr<HostContext> context(new HostContext(profile, window));
   context->browser_ = browser->GetWeakPtr();
   if (window) {
@@ -169,6 +210,7 @@ HostContext& HostContexts::Create(Profile* profile,
     browser_window->SetHostWindow(HostWindow::Wrap(
         native, base::BindRepeating(&BdkBrowserWindow::OnActiveChanged,
                                     base::Unretained(browser_window))));
+    browser_window->InstallExtensionsContainer(native);
     // The window may be the key window already.
     if (browser_window->IsActive()) {
       browser_window->OnActiveChanged(true);
@@ -246,6 +288,7 @@ void HostContexts::UnregisterWindow(const bdkcore::Window* window) {
   for (HostContext* context : ContextsOfWindow(window)) {
     Destroy(context);
   }
+  WindowRegistry::Get().ForgetWindow(window);
 }
 
 std::vector<HostContext*> HostContexts::ContextsOfWindow(

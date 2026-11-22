@@ -212,11 +212,39 @@ struct Request {
     /* Called once, with the outcome and, for kCompleted, the completion and its arguments. */
     std::function<void(UiOutcome, const std::string& completion, const std::string& args)>
         on_finish;
+    /* An open request (a popup, a side panel) can change while its UI is up (bdk_ui.h).
+       The application's update handler, for the runtime's changes (ui_send_update): */
+    bdk_ui_update_cb update_cb = nullptr;
+    void* update_ctx = nullptr;
+    bdk_release_cb update_rel = nullptr;
+    /* The backend's, for the application's changes (bdk_ui_update): called later, in order, with
+       the JSON object, until the request finishes. */
+    std::function<void(const std::string& update)> on_update;
 };
 
 struct Window {
-    uint32_t kind = 0;
+    bdk_window_t handle = 0; /* set before Backend::RegisterWindow */
+    uint32_t kind = BDK_WINDOW_KIND_NORMAL;
     bdk_native_handle_t native{};
+    bdk_anchor_cb anchor_cb = nullptr;
+    void* anchor_ctx = nullptr;
+    bdk_release_cb anchor_rel = nullptr;
+    bdk_window_request_cb request_cb = nullptr;
+    void* request_ctx = nullptr;
+    bdk_release_cb request_rel = nullptr;
+};
+
+/* [extensions] of the resolved configuration (configuration.md 3.7), read at start by
+   extension_configure (extension_policy.cc). Keys with status Added (developer_mode, blocklist,
+   bundled) are not in the schema yet and are not read. */
+struct ExtensionConfig {
+    bool enabled = true;
+    bool allow_all = false;     /* install_policy = "allow_all" */
+    bool private_never = false; /* allow_in_private = "never" */
+    bool unpacked = true, crx = true;
+    bool any_update_url = true;
+    std::vector<std::string> update_urls; /* patterns, when not any */
+    std::vector<std::string> stores;      /* named store sources the application enabled */
 };
 
 /* An application setting (`app.`), declared with bdk_app_setting_register. */
@@ -256,6 +284,9 @@ struct Runtime {
     std::map<uint32_t, UiMode> ui_modes; /* by surface; a surface not listed is kDefault */
     std::map<std::pair<bdk_contents_t, uint32_t>, UiQueue> ui_queues;
     std::vector<std::shared_ptr<Request>> requests;
+    std::vector<std::shared_ptr<Window>> windows; /* registered, in order */
+    ExtensionConfig extensions;
+    std::string browser_name; /* [browser] name, for text BDK shows */
     bdk_log_cb log_cb = nullptr;
     void* log_ctx = nullptr;
     bdk_release_cb log_rel = nullptr;
@@ -354,6 +385,33 @@ class Backend {
     virtual bdk_status_t RegisterWindow(Runtime& rt, const Window& window,
                                         bdk_error_t* out_error) = 0;
     virtual void UnregisterWindow(const Window& window) = 0;
+    /* Which registered window the page is attached to or was last attached to (0 for none), the
+       pages of a window in the order they arrived, its active page, and the identifier extensions
+       give it (-1 before it has one). The defaults know no attachments. */
+    virtual bdk_window_t WindowForContents(const Contents& contents);
+    virtual void WindowContents(const Window& window, std::vector<bdk_contents_t>* contents,
+                                bdk_contents_t* active);
+    virtual int32_t WindowExtensionId(const Window& window);
+
+    /* Extensions (bdk_extensions.h). The core has checked the handles, the thread, the gesture's
+       kind and that the actions surface is not disabled; the backend checks that the gesture is
+       recent and the extension, and fills result_json with {"outcome", "reason"?}. The defaults
+       fail with extension.notFound: no extension is installed. */
+    virtual bdk_status_t ExtensionActivateAction(Runtime& rt,
+                                                 const std::shared_ptr<Contents>& contents,
+                                                 const std::string& extension_id,
+                                                 bdk_native_handle_t gesture,
+                                                 std::string* result_json, bdk_error_t* out_error);
+    virtual bdk_status_t ExtensionPerformCommand(Runtime& rt,
+                                                 const std::shared_ptr<Contents>& contents,
+                                                 const std::string& extension_id,
+                                                 const std::string& command,
+                                                 bdk_native_handle_t gesture,
+                                                 std::string* result_json, bdk_error_t* out_error);
+    /* The default extensions menu; the core has checked that actions are in default mode. The
+       default does nothing. */
+    virtual bdk_status_t ExtensionPresentMenu(Runtime& rt, const Window& window,
+                                              bdk_native_handle_t gesture, bdk_error_t* out_error);
 
     /* Built-in commands (interface/<namespace>.json). The core has already found the command and
        checked the caller, the scope, the gesture and the arguments (broker_internal.h); the backend
@@ -469,11 +527,46 @@ bdk_status_t ui_check_handlers(const Runtime&, bdk_error_t* out_error);
 /* False when the configuration disables the surface: the web or extension API behind it must
    report itself unavailable instead of raising a request. */
 bool ui_surface_available(const Runtime&, uint32_t surface);
+/* The configured mode of a surface. */
+UiMode ui_surface_mode(const Runtime&, uint32_t surface);
+/* Whether the surface table has the surface. */
+bool ui_surface_known(uint32_t surface);
+/* Reads [extensions.ui] (and [extensions] enabled) into the surface modes; fails like
+   ui_configure. Called by bdk_runtime_start after ui_configure. */
+bdk_status_t ui_configure_extensions(Runtime&, const std::string& resolved_config,
+                                     bdk_error_t* out_error);
 /* bdk_ui_complete, bdk_ui_use_default and bdk_ui_request_release, after the handle checks. */
 bdk_status_t ui_complete(Request&, const std::string& completion, const std::string& arguments,
                          bdk_native_handle_t gesture, bdk_error_t* out_error);
 bdk_status_t ui_use_default(Request&, bdk_error_t* out_error);
 void ui_release(Request&);
+/* The runtime's change to an open request: delivered later to the application's update handler,
+   unless the request has finished by then. For backends. */
+void ui_send_update(const std::shared_ptr<Runtime>&, const std::shared_ptr<Request>&,
+                    const std::string& update_json);
+/* bdk_ui_update after the handle checks: hands the change to the backend's on_update, later. */
+bdk_status_t ui_receive_update(const std::shared_ptr<Runtime>&, const std::shared_ptr<Request>&,
+                               const std::string& update_json, bdk_error_t* out_error);
+/* Releases a finished request's update handler, once. */
+void release_update(Request&);
+
+/* Windows. Asks the application's anchor provider for a role (BDK_ANCHOR_*); false for none. For
+   backends, on the UI thread, outside any ABI call. */
+bool window_anchor(const Window&, uint32_t role, double out_rect[4]);
+/* A request for the window (bdk_window.h): the application's handler runs later and done gets its
+   answer (BDK_UI_USE_DEFAULT with no handler), also later. Not called if the window goes first. */
+void window_request(const std::shared_ptr<Runtime>&, const std::shared_ptr<Window>&,
+                    const std::string& request_json, std::function<void(bdk_ui_response_t)> done);
+/* The registered window behind a handle, or null. */
+std::shared_ptr<Window> window_of(bdk_window_t);
+/* Releases the window's handler contexts, once. */
+void release_window_handlers(Window&);
+
+/* Extensions (extension_policy.cc). */
+/* Reads [extensions] of the resolved configuration into rt.extensions and folds the
+   [extensions.ui] modes into the surface modes. Called by bdk_runtime_start after ui_configure. */
+bdk_status_t extension_configure(Runtime&, const std::string& resolved_config,
+                                 bdk_error_t* out_error);
 /* The keyboard handler of the page: the reserve answer, and the unhandled report. */
 bool reserve_key(Contents&, bdk_native_handle_t key_event);
 void report_unhandled_key(Contents&, bdk_native_handle_t key_event);

@@ -1,0 +1,146 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BDK Patches <patches@bdk.invalid>
+Date: Fri, 20 Nov 2026 10:00:00 -0800
+Subject: [PATCH] bdk: let an embedder present extension install and uninstall
+ prompts
+
+Every extension install, re-enable and permission prompt (the install flow,
+chrome.permissions.request, the web store's inline install, a disabled
+extension's re-enable) is shown from
+ExtensionInstallPrompt::GetDefaultShowDialogCallback(), and every uninstall
+confirmation (the extensions menu, chrome.management.uninstall) from
+ExtensionUninstallDialog::Create(). Their implementations are Views and
+dialog models of a Browser's window, and BDK pages are tabs of Browsers whose
+window has no views, so none of these could be shown. BDK raises them as UI
+requests instead (extension_installs and extension_uninstalls), so that the
+application shows its own UI, and shows a native sheet as the default.
+
+Add embedder_extension_dialogs.h, a small header with a settable hook for
+the install dialog callback and a settable factory for the uninstall
+dialog (inline, no new target). The install hook is returned by
+GetDefaultShowDialogCallback() when set, and the uninstall factory is asked
+first in ExtensionUninstallDialog::Create(); a null return declines and
+Chromium's dialog is created. Chrome is unchanged without a hook. Only the
+two files that define those functions and the new header change, so nothing
+widely included is touched.
+
+Used by: the BDK engine (//bdk/engine/extensions/install_prompts.cc).
+---
+ .../extensions/embedder_extension_dialogs.h   | 60 +++++++++++++++++++
+ .../extension_uninstall_dialog_impl.cc        |  7 +++
+ .../extension_install_dialog_view.cc          |  5 ++
+ 3 files changed, 72 insertions(+)
+
+diff --git a/chrome/browser/ui/extensions/embedder_extension_dialogs.h b/chrome/browser/ui/extensions/embedder_extension_dialogs.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..f6001499e8f9d5c2476b16a655048b6f664c7171
+--- /dev/null
++++ b/chrome/browser/ui/extensions/embedder_extension_dialogs.h
+@@ -0,0 +1,60 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_EXTENSIONS_EMBEDDER_EXTENSION_DIALOGS_H_
++#define CHROME_BROWSER_UI_EXTENSIONS_EMBEDDER_EXTENSION_DIALOGS_H_
++
++#include <memory>
++#include <utility>
++
++#include "base/functional/callback.h"
++#include "base/no_destructor.h"
++#include "chrome/browser/extensions/extension_install_prompt.h"
++#include "chrome/browser/extensions/extension_uninstall_dialog.h"
++#include "ui/gfx/native_ui_types.h"
++
++class Profile;
++
++// Hooks for Chromium embedders that show the extension install, permission
++// and uninstall confirmations in UI of their own. Chromium's dialogs are
++// Views or dialog models of a Browser's window; an embedder whose windows
++// have no views cannot show them. Only embedders set a hook, once, before the
++// first extension prompt.
++namespace embedder_extension_dialogs {
++
++// Replaces ExtensionInstallPrompt::GetDefaultShowDialogCallback(), the one
++// place every install, re-enable and permission prompt (the install flow,
++// chrome.permissions.request, the web store's inline install) is shown from.
++// The callback has the signature of ExtensionInstallPrompt::ShowDialogCallback
++// and must run its DoneCallback exactly once.
++inline ExtensionInstallPrompt::ShowDialogCallback& GetInstallDialogHook() {
++  static base::NoDestructor<ExtensionInstallPrompt::ShowDialogCallback> hook;
++  return *hook;
++}
++
++inline void SetInstallDialogHook(
++    ExtensionInstallPrompt::ShowDialogCallback hook) {
++  GetInstallDialogHook() = std::move(hook);
++}
++
++// Asked first by ExtensionUninstallDialog::Create(). A null return declines
++// and Chromium's dialog is created.
++using UninstallDialogFactory = base::RepeatingCallback<
++    std::unique_ptr<extensions::ExtensionUninstallDialog>(
++        Profile*,
++        gfx::NativeWindow,
++        extensions::ExtensionUninstallDialog::Delegate*)>;
++
++inline UninstallDialogFactory& GetUninstallDialogFactory() {
++  static base::NoDestructor<UninstallDialogFactory> factory;
++  return *factory;
++}
++
++inline void SetUninstallDialogFactory(UninstallDialogFactory factory) {
++  GetUninstallDialogFactory() = std::move(factory);
++}
++
++}  // namespace embedder_extension_dialogs
++
++#endif  // CHROME_BROWSER_UI_EXTENSIONS_EMBEDDER_EXTENSION_DIALOGS_H_
+diff --git a/chrome/browser/ui/extensions/extension_uninstall_dialog_impl.cc b/chrome/browser/ui/extensions/extension_uninstall_dialog_impl.cc
+index a31c6083e867d5c66334fad57813c430121da5bb..fd0a17a1fb70050f5f4d1801d5de3cea8f25fd5e 100644
+--- a/chrome/browser/ui/extensions/extension_uninstall_dialog_impl.cc
++++ b/chrome/browser/ui/extensions/extension_uninstall_dialog_impl.cc
+@@ -8,6 +8,7 @@
+ #include "base/functional/callback.h"
+ #include "base/memory/raw_ptr.h"
+ #include "chrome/browser/extensions/extension_uninstall_dialog.h"
++#include "chrome/browser/ui/extensions/embedder_extension_dialogs.h"
+ #include "chrome/browser/ui/extensions/extension_dialog_utils.h"
+ #include "chrome/grit/generated_resources.h"
+ #include "extensions/browser/ui_util.h"
+@@ -163,6 +164,12 @@ std::unique_ptr<extensions::ExtensionUninstallDialog>
+ extensions::ExtensionUninstallDialog::Create(Profile* profile,
+                                              gfx::NativeWindow parent,
+                                              Delegate* delegate) {
++  if (const auto& embedder_factory =
++          embedder_extension_dialogs::GetUninstallDialogFactory()) {
++    if (auto dialog = embedder_factory.Run(profile, parent, delegate)) {
++      return dialog;
++    }
++  }
+   return std::make_unique<ExtensionUninstallDialogImpl>(profile, parent,
+                                                         delegate);
+ }
+diff --git a/chrome/browser/ui/views/extensions/extension_install_dialog_view.cc b/chrome/browser/ui/views/extensions/extension_install_dialog_view.cc
+index 396b18bf343e4674d6601a7c99011bf3dbbc171d..738b0ea46315aa9a9a2d12d1c8fef572940c547e 100644
+--- a/chrome/browser/ui/views/extensions/extension_install_dialog_view.cc
++++ b/chrome/browser/ui/views/extensions/extension_install_dialog_view.cc
+@@ -19,6 +19,7 @@
+ #include "chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h"
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+ #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
++#include "chrome/browser/ui/extensions/embedder_extension_dialogs.h"
+ #include "chrome/browser/ui/scoped_tabbed_browser_displayer.h"
+ #include "chrome/browser/ui/tabs/tab_strip_model.h"
+ #include "chrome/browser/ui/views/chrome_layout_provider.h"
+@@ -762,5 +763,9 @@ END_METADATA
+ // static
+ ExtensionInstallPrompt::ShowDialogCallback
+ ExtensionInstallPrompt::GetDefaultShowDialogCallback() {
++  if (const auto& embedder_hook =
++          embedder_extension_dialogs::GetInstallDialogHook()) {
++    return embedder_hook;
++  }
+   return base::BindRepeating(&ShowExtensionInstallDialogImpl);
+ }

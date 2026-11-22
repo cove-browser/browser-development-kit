@@ -10,7 +10,11 @@
 #include <string>
 #include <vector>
 
+#include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/weak_ptr.h"
+#include "base/values.h"
+#include "bdk/core/include/bdk/bdk_base.h"
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/unload_controller.h"
 #include "ui/gfx/geometry/rect.h"
@@ -25,8 +29,10 @@ class WebContentsModalDialogHost;
 
 namespace bdk {
 
+class BdkExtensionsContainer;
 class HostLocationBar;
 class HostWindow;
+class SidePanelController;
 
 // Chromium's `BrowserWindow` for a host context (architecture.md section
 // 4.2): the window of a `Browser` that holds BDK's pages as tabs. It has no
@@ -44,6 +50,38 @@ class BdkBrowserWindow : public BrowserWindow {
   // Gives the window the application's native window, or none (parking).
   void SetHostWindow(std::unique_ptr<HostWindow> host_window);
   HostWindow* host_window() { return host_window_.get(); }
+  // The registered window (bdk_window.h) this context belongs to, which the
+  // requests of the window's methods are raised for. 0 for parking.
+  void SetRegisteredWindow(bdk_window_t window) { registered_window_ = window; }
+  bdk_window_t registered_window() const { return registered_window_; }
+
+  // Chromium's `Browser::TabStripEmpty` calls `Close()` whenever the tab strip
+  // empties, which happens at every move out of a context. The engine makes
+  // every tab operation of its own inside one of these, so that call is not
+  // the window request an extension's windows.remove is.
+  class ScopedTabOperation {
+   public:
+    // `window` may be null.
+    explicit ScopedTabOperation(BdkBrowserWindow* window);
+    ~ScopedTabOperation();
+    ScopedTabOperation(const ScopedTabOperation&) = delete;
+    ScopedTabOperation& operator=(const ScopedTabOperation&) = delete;
+
+   private:
+    base::WeakPtr<BdkBrowserWindow> window_;
+  };
+
+  // Asks the application to enter or leave fullscreen with the window (the
+  // extension windows API reaches Chromium's exclusive access, which calls
+  // the context's EnterFullscreen and ExitFullscreen).
+  void RequestFullscreen(bool fullscreen);
+
+  // Gives the window the extension side panel UI of its Browser (what
+  // `SidePanelUI::From()` returns). Once the Browser exists.
+  void InstallSidePanelUI();
+  SidePanelController* side_panel_controller() {
+    return side_panel_controller_.get();
+  }
 
   // The native window became or stopped being the key window.
   void OnActiveChanged(bool active);
@@ -53,6 +91,15 @@ class BdkBrowserWindow : public BrowserWindow {
   // the Browser's user data). Once the Browser exists: the handler registers
   // itself with it.
   void InstallAutofillBubbleHandler();
+
+  // Gives the window of a registered native window its extensions container
+  // (extensions/extensions_container.h): the object Chromium asks for popups,
+  // so chrome.action.openPopup works. Once the Browser exists. Not made when
+  // the configuration disables actions and popups.
+  void InstallExtensionsContainer(bdk_native_handle_t native);
+  BdkExtensionsContainer* extensions_container() const {
+    return extensions_container_.get();
+  }
 
   // BrowserWindow:
   gfx::NativeWindow GetNativeWindow() const override;
@@ -126,7 +173,7 @@ class BdkBrowserWindow : public BrowserWindow {
   content::KeyboardEventProcessingResult PreHandleKeyboardEvent(
       const input::NativeWebKeyboardEvent& event) override;
   bool HandleKeyboardEvent(const input::NativeWebKeyboardEvent& event) override;
-  std::unique_ptr<FindBar> CreateFindBar() override;
+  std::unique_ptr<::FindBar> CreateFindBar() override;
   web_modal::WebContentsModalDialogHost* GetWebContentsModalDialogHost()
       override;
   web_modal::WebContentsModalDialogHost* GetWebContentsModalDialogHostFor(
@@ -186,12 +233,24 @@ class BdkBrowserWindow : public BrowserWindow {
   void DeleteBrowserWindow() override;
 
  private:
+  // Raises `request` (bdk_window.h) for the registered window and, when the
+  // application leaves it to BDK, runs `apply` on the native window later. A
+  // parking context has no window to ask for.
+  void RaiseRequest(base::DictValue request,
+                    base::OnceCallback<void(HostWindow&)> apply);
+
   const raw_ptr<BrowserWindowInterface> browser_;
   std::unique_ptr<HostWindow> host_window_;
+  bdk_window_t registered_window_ = 0;
+  int tab_operations_ = 0;
   std::unique_ptr<autofill::AutofillBubbleHandler> autofill_bubble_handler_;
+  std::unique_ptr<BdkExtensionsContainer> extensions_container_;
   mutable std::unique_ptr<HostLocationBar> location_bar_;
   std::unique_ptr<ExclusiveAccessContext> exclusive_access_context_;
   std::unique_ptr<web_modal::WebContentsModalDialogHost> modal_dialog_host_;
+  std::unique_ptr<SidePanelController> side_panel_controller_;
+  // Must be the last member.
+  base::WeakPtrFactory<BdkBrowserWindow> weak_factory_{this};
 };
 
 }  // namespace bdk

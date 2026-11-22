@@ -5,6 +5,7 @@
 #ifndef BDK_ENGINE_UI_PRESENTERS_H_
 #define BDK_ENGINE_UI_PRESENTERS_H_
 
+#include <array>
 #include <memory>
 #include <optional>
 #include <string>
@@ -192,6 +193,17 @@ std::optional<Dismisser> ScriptedPresent(
 void RecordPresented(const std::string& surface,
                      const base::DictValue& payload);
 PresenterRecord PresenterRecordOf(const std::string& surface);
+
+// Where the last prompt that attached to a window anchor
+// (bdk_window_set_anchor_provider) was put: x, y, width, height in the
+// window's content view, origin top left; nothing when no such prompt is up.
+// For tests. A prompt (permission, password, autofill, download) attaches to
+// the anchor of its role when the window's provider supplies one, and is a
+// sheet otherwise.
+std::optional<std::array<double, 4>> AnchoredPromptFrame();
+// Presses the button at `index` of that prompt, as a person would. False when
+// none is up.
+bool AnswerAnchoredPromptForTesting(int index);
 
 }  // namespace bdk
 

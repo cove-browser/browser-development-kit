@@ -7,6 +7,7 @@
 #import <AppKit/AppKit.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <utility>
@@ -17,7 +18,9 @@
 #include "base/functional/callback_helpers.h"
 #include "base/strings/sys_string_conversions.h"
 #include "base/task/single_thread_task_runner.h"
+#include "bdk/core/include/bdk/bdk_ids.h"
 #include "bdk/engine/host_view.h"
+#include "bdk/engine/window_registry.h"
 
 // The default presenters on macOS: small AppKit sheets, panels and views
 // (T-MAC-04: Chromium's own dialog views are not used; see feasibility.md).
@@ -152,6 +155,68 @@
     return YES;
   }
   return NO;
+}
+
+@end
+
+// A prompt attached to a rectangle the application supplied for its role
+// (bdk_window_set_anchor_provider): a message and a row of buttons, just under
+// the anchor. An NSAlert sheet cannot be positioned, so a window with an
+// anchor gets this instead.
+@interface BDKAnchoredPromptView : NSView
+@property(nonatomic, copy) void (^answered)(NSInteger index);
+- (instancetype)initWithMessage:(NSString*)message
+                        buttons:(NSArray<NSString*>*)buttons;
+- (void)pressButton:(NSInteger)index;
+@end
+
+@implementation BDKAnchoredPromptView {
+  NSArray<NSButton*>* _buttons;
+}
+
+@synthesize answered = _answered;
+
+- (instancetype)initWithMessage:(NSString*)message
+                        buttons:(NSArray<NSString*>*)titles {
+  self = [super initWithFrame:NSMakeRect(0, 0, 340, 96)];
+  if (!self) {
+    return nil;
+  }
+  self.wantsLayer = YES;
+  self.layer.backgroundColor = NSColor.windowBackgroundColor.CGColor;
+  self.layer.cornerRadius = 8;
+  self.layer.borderColor = NSColor.separatorColor.CGColor;
+  self.layer.borderWidth = 1;
+  NSTextField* label = [NSTextField wrappingLabelWithString:message];
+  label.font = [NSFont systemFontOfSize:12];
+  label.frame = NSMakeRect(12, 40, 316, 48);
+  [self addSubview:label];
+  NSMutableArray<NSButton*>* buttons = [NSMutableArray array];
+  CGFloat x = 12;
+  for (NSUInteger i = 0; i < titles.count; ++i) {
+    NSButton* button = [NSButton buttonWithTitle:titles[i]
+                                          target:self
+                                          action:@selector(pressed:)];
+    button.tag = static_cast<NSInteger>(i);
+    button.controlSize = NSControlSizeSmall;
+    [button sizeToFit];
+    button.frame = NSMakeRect(x, 8, NSWidth(button.frame), 24);
+    x += NSWidth(button.frame) + 6;
+    [self addSubview:button];
+    [buttons addObject:button];
+  }
+  _buttons = buttons;
+  return self;
+}
+
+- (void)pressed:(NSButton*)sender {
+  [self pressButton:sender.tag];
+}
+
+- (void)pressButton:(NSInteger)index {
+  if (self.answered) {
+    self.answered(index);
+  }
 }
 
 @end
@@ -325,6 +390,49 @@ Dismisser PresentAlert(NSView* anchor,
       done);
 }
 
+BDKAnchoredPromptView* __weak g_anchored_prompt = nil;
+
+// Puts a prompt under `anchor` (window coordinates, origin top left) in the
+// window `view` is in. `done` runs with the pressed button's index unless the
+// prompt was dismissed first. Null when the page is in no window.
+Dismisser PresentAnchored(NSView* view,
+                          std::array<double, 4> anchor,
+                          NSString* message,
+                          NSArray<NSString*>* buttons,
+                          void (^done)(NSInteger)) {
+  NSView* content = view.window.contentView;
+  if (!content) {
+    return base::DoNothing();
+  }
+  BDKAnchoredPromptView* prompt =
+      [[BDKAnchoredPromptView alloc] initWithMessage:message buttons:buttons];
+  const CGFloat width = NSWidth(prompt.frame);
+  const CGFloat height = NSHeight(prompt.frame);
+  const CGFloat x = std::clamp<CGFloat>(
+      anchor[0], 0, std::max<CGFloat>(0, NSWidth(content.bounds) - width));
+  const CGFloat top = anchor[1] + anchor[3] + 4;
+  prompt.frame =
+      NSMakeRect(x, NSHeight(content.bounds) - top - height, width, height);
+  prompt.autoresizingMask = NSViewMinYMargin;
+  [content addSubview:prompt positioned:NSWindowAbove relativeTo:nil];
+  g_anchored_prompt = prompt;
+  auto live = std::make_shared<bool>(true);
+  __weak BDKAnchoredPromptView* weak_prompt = prompt;
+  auto remove = [live, weak_prompt] {
+    *live = false;
+    [weak_prompt removeFromSuperview];
+  };
+  prompt.answered = ^(NSInteger index) {
+    if (!*live) {
+      return;
+    }
+    remove();
+    done(index);
+  };
+  return base::BindOnce([](std::function<void()> remove) { remove(); },
+                        std::function<void()>(remove));
+}
+
 NSView* AnchorOf(HostView* view) {
   if (!view) {
     return nil;
@@ -429,12 +537,38 @@ class PresentersMac : public UiPresenters {
       HostView* view,
       const base::DictValue& payload,
       base::OnceCallback<void(PermissionChoice)> answer) override {
+    const bool one_time = payload.FindBool("offersOneTime").value_or(false);
+    if (std::optional<std::array<double, 4>> anchor =
+            ViewWindowAnchor(view, BDK_ANCHOR_ADDRESS_BAR)) {
+      NSMutableArray<NSString*>* titles =
+          [NSMutableArray arrayWithObject:@"Allow"];
+      if (one_time) {
+        [titles addObject:@"Allow This Time"];
+      }
+      [titles addObjectsFromArray:@[ @"Block", @"Not Now" ]];
+      __block base::OnceCallback<void(PermissionChoice)> callback =
+          std::move(answer);
+      return PresentAnchored(
+          AnchorOf(view), *anchor,
+          [NSString stringWithFormat:@"%@ %@", TextOf(payload, "title"),
+                                     TextOf(payload, "message")],
+          titles, ^(NSInteger index) {
+            PermissionChoice choice = PermissionChoice::kDismiss;
+            if (index == 0) {
+              choice = PermissionChoice::kAllow;
+            } else if (one_time && index == 1) {
+              choice = PermissionChoice::kAllowThisVisit;
+            } else if (index == (one_time ? 2 : 1)) {
+              choice = PermissionChoice::kBlock;
+            }
+            std::move(callback).Run(choice);
+          });
+    }
     NSAlert* alert = [[NSAlert alloc] init];
     alert.messageText =
         [NSString stringWithFormat:@"%@ %@", TextOf(payload, "title"),
                                    TextOf(payload, "message")];
     [alert addButtonWithTitle:@"Allow"];
-    const bool one_time = payload.FindBool("offersOneTime").value_or(false);
     if (one_time) {
       [alert addButtonWithTitle:@"Allow This Time"];
     }
@@ -674,6 +808,34 @@ class PresentersMac : public UiPresenters {
       AnswerLater(std::move(answer), -1);  // nowhere to show it
       return base::DoNothing();
     }
+    // The engine's own prompts attach to the window's anchor for their role
+    // when it supplies one: passwords and autofill at the address bar,
+    // downloads at the downloads button.
+    const uint32_t role = surface == "downloads"
+                              ? BDK_ANCHOR_DOWNLOADS
+                              : (surface == "passwords" || surface == "autofill"
+                                     ? BDK_ANCHOR_ADDRESS_BAR
+                                     : 0u);
+    if (std::optional<std::array<double, 4>> position =
+            role ? ViewWindowAnchor(view, role) : std::nullopt) {
+      NSMutableArray<NSString*>* titles = [NSMutableArray array];
+      for (const AlertButton& button : alert.buttons) {
+        [titles addObject:base::SysUTF8ToNSString(button.title)];
+      }
+      const size_t button_count = alert.buttons.size();
+      __block base::OnceCallback<void(int)> callback = std::move(answer);
+      return PresentAnchored(
+          anchor, *position,
+          [NSString stringWithFormat:@"%@\n%@",
+                                     base::SysUTF8ToNSString(alert.title),
+                                     base::SysUTF8ToNSString(alert.message)],
+          titles, ^(NSInteger index) {
+            std::move(callback).Run(index >= 0 && static_cast<size_t>(index) <
+                                                      button_count
+                                        ? static_cast<int>(index)
+                                        : -1);
+          });
+    }
     NSAlert* ns_alert = [[NSAlert alloc] init];
     ns_alert.messageText = base::SysUTF8ToNSString(alert.title);
     ns_alert.informativeText = base::SysUTF8ToNSString(alert.message);
@@ -798,6 +960,28 @@ class PresentersMac : public UiPresenters {
 };
 
 }  // namespace
+
+std::optional<std::array<double, 4>> AnchoredPromptFrame() {
+  BDKAnchoredPromptView* prompt = g_anchored_prompt;
+  NSView* content = prompt.superview;
+  if (!content) {
+    return std::nullopt;
+  }
+  const NSRect frame = prompt.frame;
+  return std::array<double, 4>{
+      frame.origin.x,
+      NSHeight(content.bounds) - frame.origin.y - frame.size.height,
+      frame.size.width, frame.size.height};
+}
+
+bool AnswerAnchoredPromptForTesting(int index) {
+  BDKAnchoredPromptView* prompt = g_anchored_prompt;
+  if (!prompt.superview) {
+    return false;
+  }
+  [prompt pressButton:index];
+  return true;
+}
 
 std::unique_ptr<UiPresenters> CreatePlatformPresenters() {
   return std::make_unique<PresentersMac>();

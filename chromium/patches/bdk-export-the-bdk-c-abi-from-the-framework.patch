@@ -19,15 +19,15 @@ build.
 
 Used by: the BDK engine (//bdk/engine) and the Swift SDK.
 ---
- chrome/app/framework.exports | 104 +++++++++++++++++++++++++++++++++++
- chrome/app/framework.order   | 104 +++++++++++++++++++++++++++++++++++
- 2 files changed, 208 insertions(+)
+ chrome/app/framework.exports | 115 +++++++++++++++++++++++++++++++++++
+ chrome/app/framework.order   | 115 +++++++++++++++++++++++++++++++++++
+ 2 files changed, 230 insertions(+)
 
 diff --git a/chrome/app/framework.exports b/chrome/app/framework.exports
-index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..d8c47875fedad2758b1bdeb561543ad2d6f93914 100644
+index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..4bd5da8156a0eee1f23254158d1ae82c96e93a1a 100644
 --- a/chrome/app/framework.exports
 +++ b/chrome/app/framework.exports
-@@ -20,3 +20,107 @@ _ChromeAppModeStart_v8
+@@ -20,3 +20,118 @@ _ChromeAppModeStart_v8
  _ChromeMain
  _ChromeWebAppShortcutCopierMain
  _bdk_overlay_marker
@@ -89,6 +89,9 @@ index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..d8c47875fedad2758b1bdeb561543ad2
 +_bdk_error_domain
 +_bdk_error_message
 +_bdk_error_release
++_bdk_extension_action_activate
++_bdk_extension_command_perform
++_bdk_extension_menu_present
 +_bdk_invoke
 +_bdk_invoke_named
 +_bdk_log_set_handler
@@ -128,18 +131,26 @@ index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..d8c47875fedad2758b1bdeb561543ad2
 +_bdk_ui_complete
 +_bdk_ui_request_release
 +_bdk_ui_set_handler
++_bdk_ui_set_update_handler
 +_bdk_ui_set_withdrawn_handler
++_bdk_ui_update
 +_bdk_ui_use_default
 +_bdk_unsubscribe
++_bdk_window_active_contents
++_bdk_window_contents
++_bdk_window_extension_id
++_bdk_window_for_contents
 +_bdk_window_register
++_bdk_window_set_anchor_provider
++_bdk_window_set_request_handler
 +_bdk_window_unregister
 +_OBJC_METACLASS_$_BDKApplicationBase
 +_OBJC_CLASS_$_BDKApplicationBase
 diff --git a/chrome/app/framework.order b/chrome/app/framework.order
-index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..6231e15dfc2bc56d18da91e3a13eb07e2ccad890 100644
+index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..3ddaf19e46c03c2549f5db7dd63ece5d1b935986 100644
 --- a/chrome/app/framework.order
 +++ b/chrome/app/framework.order
-@@ -33,5 +33,109 @@ _ChromeWebAppShortcutCopierMain
+@@ -33,5 +33,120 @@ _ChromeWebAppShortcutCopierMain
  # repository.
  _bdk_overlay_marker
  
@@ -198,6 +209,9 @@ index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..6231e15dfc2bc56d18da91e3a13eb07e
 +_bdk_error_domain
 +_bdk_error_message
 +_bdk_error_release
++_bdk_extension_action_activate
++_bdk_extension_command_perform
++_bdk_extension_menu_present
 +_bdk_invoke
 +_bdk_invoke_named
 +_bdk_log_set_handler
@@ -237,10 +251,18 @@ index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..6231e15dfc2bc56d18da91e3a13eb07e
 +_bdk_ui_complete
 +_bdk_ui_request_release
 +_bdk_ui_set_handler
++_bdk_ui_set_update_handler
 +_bdk_ui_set_withdrawn_handler
++_bdk_ui_update
 +_bdk_ui_use_default
 +_bdk_unsubscribe
++_bdk_window_active_contents
++_bdk_window_contents
++_bdk_window_extension_id
++_bdk_window_for_contents
 +_bdk_window_register
++_bdk_window_set_anchor_provider
++_bdk_window_set_request_handler
 +_bdk_window_unregister
 +
  # _ChromeMain must be listed last.  That's the whole point of this file.

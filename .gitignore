@@ -17,6 +17,7 @@ apps/**/bdk.resolved.json
 packages/js/internal/src/autofill.ts
 packages/js/internal/src/bookmarks.ts
 packages/js/internal/src/downloads.ts
+packages/js/internal/src/extensions.ts
 packages/js/internal/src/history.ts
 packages/js/internal/src/metadata.ts
 packages/js/internal/src/passwords.ts
@@ -30,3 +31,4 @@ packages/js/internal/src/translation.ts
 packages/js/internal/src/types.ts
 # CMake builds of packages/core next to build/ (engine conformance, sanitizers)
 packages/core/build-*/
+tests/extensions/results/

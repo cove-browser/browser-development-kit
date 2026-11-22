@@ -35,6 +35,22 @@ struct UiResult {
 
 using UiFinish = base::OnceCallback<void(const UiResult&)>;
 
+// What an open request adds to a raise (a popup, a side panel: the request
+// stays open while its view is on screen): the native view the application
+// embeds, the registered window it belongs to (0 for none) and what to do with
+// the application's updates ({"placed":true}, bdk_ui_update), called later, in
+// order, until the request finishes.
+struct OpenRequest {
+  OpenRequest();
+  OpenRequest(OpenRequest&&);
+  OpenRequest& operator=(OpenRequest&&);
+  ~OpenRequest();
+
+  bdk_native_handle_t secure_view{};
+  bdk_window_t window = 0;
+  base::RepeatingCallback<void(const std::string&)> on_update;
+};
+
 // The engine's one way to raise a request: raises one of `surface` for
 // `contents` through the core's router, with `payload` (the fields of
 // ui-requests.md section 5 for the surface) and calls `finish` once, later,
@@ -50,7 +66,17 @@ std::shared_ptr<bdkcore::Request> RaiseUiRequest(
     const base::DictValue& payload,
     UiFinish finish,
     HostView* anchor_view = nullptr,
-    std::optional<std::array<double, 2>> point_in_view = std::nullopt);
+    std::optional<std::array<double, 2>> point_in_view = std::nullopt,
+    std::optional<OpenRequest> open = std::nullopt);
+
+// A request no page is behind (an extension's options page opened from a
+// command): it belongs to `profile` alone. Otherwise as above, and with no
+// anchor.
+std::shared_ptr<bdkcore::Request> RaiseUiRequest(
+    const std::shared_ptr<bdkcore::Profile>& profile,
+    uint32_t surface,
+    const base::DictValue& payload,
+    UiFinish finish);
 
 // The same for a page, anchored at the top of its view.
 std::shared_ptr<bdkcore::Request> RaiseUiRequest(EngineContents& page,

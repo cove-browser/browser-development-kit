@@ -7,6 +7,8 @@
 #include <memory>
 
 #include "base/functional/bind.h"
+#include "bdk/engine/extensions/install_prompts.h"
+#include "bdk/engine/extensions/options_page.h"
 #include "bdk/engine/services/autofill_prompts.h"
 #include "bdk/engine/services/password_prompts.h"
 #include "bdk/engine/services/print_prompts.h"
@@ -23,6 +25,8 @@ void InstallPromptHooks() {
       }));
   embedder_print_preview_hook::SetHook(base::BindRepeating(&OnPrintRequested));
   InstallAutofillPopupHook();
+  InstallExtensionPromptHooks();
+  InstallExtensionOptionsPageHook();
 }
 
 }  // namespace bdk

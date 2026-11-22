@@ -247,6 +247,8 @@ Precedent for giving up `Browser`: CEF carries a patch to add "minimal support f
 
 Assertions for the first real run are listed in [tasks.md](tasks.md) under T-EXT-01.
 
+M5 (2026-11-20): the probe was fixed for real MV3 behaviour and moved to `tests/extensions/probe` (its worker kept events in memory, which MV3 discards; `action.onClicked` never fires with a `default_popup`; `sidePanel.open` needs a gesture). Its scenarios are written (`packages/core/tests/tests_engine_ext_probe.c`, assertions 1 to 5, 7 and 10) and have not run: engine build and test pending. Read from the source while writing them: `BrowserExtensionWindowController` lists every `Browser`, so the parking context would appear in `windows.getAll` and fire `windows.onCreated`; a patch keeps it out. Chromium 158 refuses non-component MV2 extensions in every build.
+
 ---
 
 ## 4. Branded privileged WebUI schemes

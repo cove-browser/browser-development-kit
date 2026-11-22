@@ -21,6 +21,7 @@ extern const t_test_t t_broker_tests[];
 extern const t_test_t t_profile_tests[];
 extern const t_test_t t_contents_tests[];
 extern const t_test_t t_ui_tests[];
+extern const t_test_t t_extension_tests[];
 extern const t_test_t t_automation_tests[];
 extern const t_test_t t_endpoint_tests[];
 extern const t_test_t t_provider_tests[];
@@ -29,6 +30,10 @@ extern const t_test_t t_pages_tests[];
 extern const t_test_t t_engine_tests[];
 extern const t_test_t t_engine_ui_tests[];
 extern const t_test_t t_engine_prompt_tests[];
+extern const t_test_t t_engine_extension_tests[];
+extern const t_test_t t_engine_extension_panel_tests[];
+extern const t_test_t t_engine_extension_probe_tests[];
+extern const t_test_t t_engine_extension_ui_tests[];
 extern const t_test_t t_engine_automation_tests[];
 extern const t_test_t t_engine_provider_tests[];
 extern const t_test_t t_engine_privacy_tests[];
@@ -79,7 +84,7 @@ typedef struct t_capture {
     int results, releases, progress;
     int result_seq, release_seq;
     int has_error, has_binary;
-    char domain[48], code[48], message[160], json[512];
+    char domain[48], code[48], message[160], json[32768];
     double fraction;
     void (*on_result)(struct t_capture*); /* optional hook, runs inside the result callback */
     void* hook_data;

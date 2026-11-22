@@ -7,10 +7,14 @@
 #include <string_view>
 #include <utility>
 
+#include "base/functional/bind.h"
 #include "base/notimplemented.h"
 #include "base/observer_list.h"
+#include "bdk/engine/extensions/extensions_container.h"
+#include "bdk/engine/extensions/side_panel_host.h"
 #include "bdk/engine/host_window.h"
 #include "bdk/engine/services/autofill_prompts.h"
+#include "bdk/engine/window_registry.h"
 #include "chrome/browser/themes/theme_service.h"
 #include "chrome/browser/ui/autofill/autofill_bubble_handler.h"
 #include "chrome/browser/ui/browser_active_state_manager/browser_active_state_manager.h"
@@ -38,10 +42,11 @@ namespace bdk {
 namespace {
 
 // Chromium's exclusive access (fullscreen, pointer lock) as far as a host
-// context takes part in it. BDK asks the application for fullscreen itself, as
-// a UI request from the page's delegate, so Chromium's own entry points do
-// nothing yet; what a service reads (is the window fullscreen, which tab is
-// active) comes from the window.
+// context takes part in it. BDK asks the application for a page's fullscreen
+// itself, as a UI request from the page's delegate; Chromium's own entry
+// points raise the window request an extension's windows.update needs. What a
+// service reads (is the window fullscreen, which tab is active) comes from the
+// window.
 class HostExclusiveAccessContext : public ExclusiveAccessContext {
  public:
   HostExclusiveAccessContext(BrowserWindowInterface* browser,
@@ -51,12 +56,14 @@ class HostExclusiveAccessContext : public ExclusiveAccessContext {
   // ExclusiveAccessContext:
   Profile* GetProfile() override { return browser_->GetProfile(); }
   bool IsFullscreen() const override { return window_->IsFullscreen(); }
+  // Only the extension windows API reaches these (a tab's fullscreen is the
+  // page's own request): the application is asked for the window's.
   void EnterFullscreen(const url::Origin& origin,
                        ExclusiveAccessBubbleType bubble_type,
                        FullscreenTabParams fullscreen_tab_params) override {
-    NOTIMPLEMENTED_LOG_ONCE();
+    window_->RequestFullscreen(true);
   }
-  void ExitFullscreen() override { NOTIMPLEMENTED_LOG_ONCE(); }
+  void ExitFullscreen() override { window_->RequestFullscreen(false); }
   void UpdateExclusiveAccessBubble(
       const ExclusiveAccessBubbleParams& params,
       ExclusiveAccessBubbleHideCallback first_hide_callback) override {
@@ -106,7 +113,7 @@ class HostModalDialogHost : public web_modal::WebContentsModalDialogHost {
 // A find bar that shows nothing. Find UI becomes a UI request with the find
 // service; until then a find session runs and its results are kept by the
 // tab's find helper, which is what a service reads.
-class HostFindBar : public FindBar {
+class HostFindBar : public ::FindBar {
  public:
   // FindBar:
   FindBarController* GetFindBarController() const override {
@@ -216,6 +223,10 @@ BdkBrowserWindow::BdkBrowserWindow(BrowserWindowInterface* browser)
       modal_dialog_host_(std::make_unique<HostModalDialogHost>()) {}
 
 BdkBrowserWindow::~BdkBrowserWindow() {
+  // Closes an open panel while the Browser is whole.
+  side_panel_controller_.reset();
+  // Its popup and view models use the Browser's tab list.
+  extensions_container_.reset();
   autofill_bubble_handler_.reset();
   // A window implementation tears the Browser's window-scoped features down
   // before it goes (WebUIBrowserWindow and BrowserWidget do the same).
@@ -226,8 +237,59 @@ void BdkBrowserWindow::InstallAutofillBubbleHandler() {
   autofill_bubble_handler_ = CreateAutofillBubbleHandler(browser_);
 }
 
+void BdkBrowserWindow::InstallSidePanelUI() {
+  side_panel_controller_ =
+      std::make_unique<SidePanelController>(browser_, this);
+}
+
+void BdkBrowserWindow::InstallExtensionsContainer(bdk_native_handle_t native) {
+  extensions_container_ = BdkExtensionsContainer::Create(browser_, native);
+}
+
 void BdkBrowserWindow::SetHostWindow(std::unique_ptr<HostWindow> host_window) {
   host_window_ = std::move(host_window);
+}
+
+BdkBrowserWindow::ScopedTabOperation::ScopedTabOperation(
+    BdkBrowserWindow* window) {
+  if (window) {
+    window_ = window->weak_factory_.GetWeakPtr();
+    ++window->tab_operations_;
+  }
+}
+
+BdkBrowserWindow::ScopedTabOperation::~ScopedTabOperation() {
+  if (window_) {
+    --window_->tab_operations_;
+  }
+}
+
+void BdkBrowserWindow::RaiseRequest(
+    base::DictValue request,
+    base::OnceCallback<void(HostWindow&)> apply) {
+  if (!registered_window_ || !host_window_) {
+    return;
+  }
+  RaiseWindowRequest(
+      registered_window_, std::move(request),
+      base::BindOnce(
+          [](base::WeakPtr<BdkBrowserWindow> self,
+             base::OnceCallback<void(HostWindow&)> apply, bool use_default) {
+            // The application handled or rejected it, or the context went.
+            if (use_default && self && self->host_window_) {
+              std::move(apply).Run(*self->host_window_);
+            }
+          },
+          weak_factory_.GetWeakPtr(), std::move(apply)));
+}
+
+void BdkBrowserWindow::RequestFullscreen(bool fullscreen) {
+  RaiseRequest(WindowRequest(fullscreen ? "enterFullscreen" : "exitFullscreen"),
+               base::BindOnce(
+                   [](bool fullscreen, HostWindow& window) {
+                     window.SetFullscreen(fullscreen);
+                   },
+                   fullscreen));
 }
 
 void BdkBrowserWindow::OnActiveChanged(bool active) {
@@ -358,7 +420,9 @@ bool BdkBrowserWindow::IsTabStripEditable() const {
 void BdkBrowserWindow::DisableTabStripEditingForTesting() {}
 
 bool BdkBrowserWindow::IsToolbarVisible() const {
-  return false;
+  // chrome.action.openPopup asks: a window with an extensions container is the
+  // window a popup can open in.
+  return extensions_container_ != nullptr;
 }
 
 bool BdkBrowserWindow::IsToolbarShowing() const {
@@ -431,7 +495,7 @@ bool BdkBrowserWindow::HandleKeyboardEvent(
   return false;
 }
 
-std::unique_ptr<FindBar> BdkBrowserWindow::CreateFindBar() {
+std::unique_ptr<::FindBar> BdkBrowserWindow::CreateFindBar() {
   return std::make_unique<HostFindBar>();
 }
 
@@ -569,13 +633,26 @@ void BdkBrowserWindow::ShowInactive() {
 }
 
 // Chromium closes a window whose tab strip empties. A host context outlives
-// its tabs: the engine closes it when its window goes.
-void BdkBrowserWindow::Close() {}
-
-void BdkBrowserWindow::Activate() {
-  if (host_window_) {
-    host_window_->Activate();
+// its tabs: the engine closes it when its window goes, so that call, which the
+// engine's own tab operations make (see ScopedTabOperation), does nothing. Any
+// other close is an extension's windows.remove, and the application's window
+// is the application's to close: a request.
+void BdkBrowserWindow::Close() {
+  if (tab_operations_ > 0) {
+    return;
   }
+  RaiseRequest(WindowRequest("close"),
+               base::BindOnce([](HostWindow& window) { window.Close(); }));
+}
+
+// The window requests below are Chromium's windows.update (an extension) and
+// window.moveTo and resizeTo (a page of a popup window, through
+// EngineContents::SetContentsBounds). Each asks the application; with no
+// handler, or when it answers "use default", BDK applies it to the native
+// window.
+void BdkBrowserWindow::Activate() {
+  RaiseRequest(WindowRequest("activate"),
+               base::BindOnce([](HostWindow& window) { window.Activate(); }));
 }
 
 void BdkBrowserWindow::Deactivate() {
@@ -583,19 +660,42 @@ void BdkBrowserWindow::Deactivate() {
 }
 
 void BdkBrowserWindow::Maximize() {
-  NOTIMPLEMENTED_LOG_ONCE();
+  // AppKit's zoom toggles, so a window that is zoomed already is left alone.
+  if (IsMaximized()) {
+    return;
+  }
+  RaiseRequest(WindowRequest("zoom"),
+               base::BindOnce([](HostWindow& window) { window.ToggleZoom(); }));
 }
 
 void BdkBrowserWindow::Minimize() {
-  NOTIMPLEMENTED_LOG_ONCE();
+  RaiseRequest(WindowRequest("minimize"),
+               base::BindOnce([](HostWindow& window) { window.Minimize(); }));
 }
 
 void BdkBrowserWindow::Restore() {
-  NOTIMPLEMENTED_LOG_ONCE();
+  if (IsMinimized()) {
+    // Activating a minimised window restores it.
+    Activate();
+  } else if (IsMaximized()) {
+    RaiseRequest(WindowRequest("zoom"), base::BindOnce([](HostWindow& window) {
+                   window.ToggleZoom();
+                 }));
+  }
 }
 
 void BdkBrowserWindow::SetBounds(const gfx::Rect& bounds) {
-  NOTIMPLEMENTED_LOG_ONCE();
+  base::DictValue request = WindowRequest("setFrame");
+  request.Set("frame", base::DictValue()
+                           .Set("x", bounds.x())
+                           .Set("y", bounds.y())
+                           .Set("width", bounds.width())
+                           .Set("height", bounds.height()));
+  RaiseRequest(
+      std::move(request),
+      base::BindOnce(
+          [](gfx::Rect bounds, HostWindow& window) { window.SetFrame(bounds); },
+          bounds));
 }
 
 void BdkBrowserWindow::FlashFrame(bool flash) {

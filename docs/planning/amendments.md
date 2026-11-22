@@ -1,6 +1,6 @@
 # Amendments to the BDK plan
 
-Dated 2026-11-15; section 2.10 was added on 2026-11-16, 2.12 and 2.13 on 2026-11-19, 2.14 to 2.16 on 2026-11-20. This lists everything that changed in the planning documents after the 2026-11-14 version, following the product owner's review. If you read the 2026-11-14 documents, reading this is enough. The other documents already contain these changes; nothing here still needs to be applied.
+Dated 2026-11-15; section 2.10 was added on 2026-11-16, 2.12 and 2.13 on 2026-11-19, 2.14 to 2.17 on 2026-11-20. This lists everything that changed in the planning documents after the 2026-11-14 version, following the product owner's review. If you read the 2026-11-14 documents, reading this is enough. The other documents already contain these changes; nothing here still needs to be applied.
 
 ## 1. Summary
 
@@ -310,6 +310,30 @@ New in the ABI: `bdk_session_run`, `bdk_task_cancel`, `bdk_task_subscribe`, `bdk
 `_close`, `bdk_automation_hello_accept` and `_refuse` (the export patch lists them). New patch: "bdk: register the
 automation host in the utility process" (Chromium has no embedder hook for utility services). With M4's two patches, the series is 17.
 A saved page (`contents.save`) appears in the profile's downloads, because Chromium saves pages as downloads.
+
+### 2.17 Extensions written in M5 (2026-11-20)
+
+M5's engine code is written and not yet built; the rest passes without Chromium. Where the build departs from
+[sdk/extensions.md](sdk/extensions.md), [sdk/swift-api.md](sdk/swift-api.md) 8.1 and tasks T-EXT-01 to T-EXT-09 and
+T-SWF-08 (detail in `packages/core/docs/conventions.md`, "Extensions (M5)"):
+
+| Planned | Built | Why |
+|---|---|---|
+| Extension surfaces named by their `[extensions.ui]` keys | Eight surfaces, 25 to 32: the six keys plus install and uninstall prompts, which cannot be disabled | The keys `context_menus` and `devtools` are already `[ui.surfaces]` names; the prompts need a surface and must not be switched off |
+| A custom surface needs a handler | Not for `actions`, `context_menus`, `options_pages` and `devtools` | They raise no request of their own |
+| `accept()`, `sizeChanges`, `side`, `visibilityChanges`, `closed` on popups and side panels | A popup or panel is a request that stays open while its view is up; `bdk_ui_update` and `bdk_ui_set_update_handler` carry changes both ways; a withdrawal is `closed` | One request per view keeps the router's rules (one at a time, withdrawal, release) |
+| `activateAction`, `performCommand`, `presentDefaultMenu` as calls | C functions in `bdk_extensions.h` that take the confirming event | A command from the host carries no gesture |
+| `extensions.actions(for:)` synchronous | `extensions.actions`, an async command with the page in the call's options | Every other read is a command |
+| Install and update checks in the engine | `runtime/extension_policy` in the shared core: source policy and manifest inspection for the stub and the engine | The same refusals on both, tested in CI |
+| `tabGroups` absent | Degraded: it works on the host context's tab model and the application shows no groups | Chromium's implementation needs nothing from BDK; hiding it would need a patch for no gain |
+| MV2 | Not loadable: Chromium 158 disables every non-component MV2 extension in every build (`manifest_v2_handler.cc`) | `EngineFacts.manifest_versions` is `{3}` |
+| Default extensions menu placement "open" | A trailing title-bar accessory button when actions are `default` and the window has no anchor provider; `bdk_extension_menu_present` from the application's own menu | Settles extensions.md section 11 |
+| The parking context, open (T-EXT-01 assertion 10) | Hidden from the extension windows API by a patch | Chromium lists it and fires `windows.onCreated` for it, which wakes service workers |
+| Side panel needs a `BrowserWindowFeatures` patch (T-EXT-03) | No patch: `chrome.sidePanel.open` ends at the abstract `SidePanelUI::Show`, which BDK implements | Smaller than the planned patch |
+
+Three patches were added, each with its reason in its message: extension install and uninstall prompts, keeping a
+`Browser` out of the extension window list, and opening an extension's options page. With M4's and M7's patches, the series is 20.
+`developer_mode`, `blocklist` and `[extensions.bundled]` (S6) are still Added and not read (T-EXT-14).
 
 ## 3. Tasks and workflows
 
