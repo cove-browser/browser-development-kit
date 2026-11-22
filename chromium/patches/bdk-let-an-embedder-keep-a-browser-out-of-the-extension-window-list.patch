@@ -27,12 +27,12 @@ and the new header are touched.
 
 Used by: the BDK engine (//bdk/engine/host_context.cc).
 ---
- .../browser_extension_window_controller.cc    | 13 ++++++-
+ .../browser_extension_window_controller.cc    | 13 +++++-
  .../embedder_extension_window_filter.h        | 43 +++++++++++++++++++
  2 files changed, 55 insertions(+), 1 deletion(-)
 
 diff --git a/chrome/browser/extensions/browser_extension_window_controller.cc b/chrome/browser/extensions/browser_extension_window_controller.cc
-index 497220fc726c4e37c1685d459b69369cba6ee21a..06d4b62c70dc082af3bf2798ecbec32dd8a74410 100644
+index 497220fc726c4e37c1685d459b69369cba6ee21a..8b670cffb0ebec73ae3725f635206f9b1bd64e6e 100644
 --- a/chrome/browser/extensions/browser_extension_window_controller.cc
 +++ b/chrome/browser/extensions/browser_extension_window_controller.cc
 @@ -11,6 +11,7 @@
@@ -57,7 +57,7 @@ index 497220fc726c4e37c1685d459b69369cba6ee21a..06d4b62c70dc082af3bf2798ecbec32d
  }
  
  BrowserExtensionWindowController::~BrowserExtensionWindowController() {
-@@ -183,6 +189,11 @@ void BrowserExtensionWindowController::SetFullscreenMode(
+@@ -183,6 +189,11 @@ content::WebContents* BrowserExtensionWindowController::GetWebContentsAt(
  bool BrowserExtensionWindowController::IsVisibleToTabsAPIForExtension(
      const Extension* extension,
      bool allow_dev_tools_windows) const {
@@ -71,7 +71,7 @@ index 497220fc726c4e37c1685d459b69369cba6ee21a..06d4b62c70dc082af3bf2798ecbec32d
    // pass in mojom::ContextType or some way to detect caller type.
 diff --git a/chrome/browser/extensions/embedder_extension_window_filter.h b/chrome/browser/extensions/embedder_extension_window_filter.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..74aff4bdfbdcbcb024c977a0e3a24afce0f06658
+index 0000000000000000000000000000000000000000..e140d118d57f97b3a0df84962f122d1da84dc051
 --- /dev/null
 +++ b/chrome/browser/extensions/embedder_extension_window_filter.h
 @@ -0,0 +1,43 @@
