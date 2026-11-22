@@ -15,6 +15,7 @@
 #include "bdk/engine/pages/pages_navigation_throttle.h"
 #include "bdk/engine/providers/geolocation_provider.h"
 #include "bdk/engine/providers/provider_settings.h"
+#include "bdk/engine/startup_completion.h"
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_auth.h"
 #include "chrome/browser/chrome_browser_main.h"
@@ -71,7 +72,10 @@ class BdkBrowserMainExtraParts : public ChromeBrowserMainExtraParts {
  public:
   // After the threads exist and before Chrome's own platform setup, which
   // installs the operating system's location permission unless one is.
-  void PostCreateThreads() override { InstallGeolocationPermission(); }
+  void PostCreateThreads() override {
+    InstallGeolocationPermission();
+    HoldStartupUntilRuntimeStarts();
+  }
 };
 
 }  // namespace

@@ -63,6 +63,7 @@
 #include "bdk/engine/services/services.h"
 #include "bdk/engine/services/user_scripts.h"
 #include "bdk/engine/session_state.h"
+#include "bdk/engine/startup_completion.h"
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_find.h"
 #include "bdk/engine/ui_notifications.h"
@@ -276,6 +277,8 @@ class EngineBackend final : public bdkcore::Backend {
       p->name = name;
       rt.profiles.push_back(std::move(p));
     }
+    // Chromium's after-start-up work may run from the next idle on.
+    RuntimeStarted();
     return BDK_OK;
   }
 

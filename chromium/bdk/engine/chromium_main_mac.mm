@@ -174,8 +174,13 @@ bool StartChromium(const ChromiumStartOptions& options, std::string* error) {
   // that load finishes is a fatal check in the SQL layer, and the application
   // decides when its profiles are deleted. The cost: how often the
   // intervention has fired on a site is forgotten when the application quits.
+  //
+  // Start-up ends when the runtime's start has completed and Chromium's main
+  // loop is first idle, not when a visible tab of a Chromium window has loaded
+  // (there is none): see startup_completion.h.
   std::string enabled_features =
-      "HeavyAdPrivacyMitigations:OptOutStoreDisabled/true";
+      "HeavyAdPrivacyMitigations:OptOutStoreDisabled/true,"
+      "ImprovedStartupBestEffortDelay:StartupDelayVisibleTabTimeout/0s";
   // Chromium reads only the last --disable-features and --enable-features, so
   // the caller's lists are merged into one switch each.
   constexpr std::string_view kDisableFeatures = "disable-features=";

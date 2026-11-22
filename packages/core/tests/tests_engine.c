@@ -3,6 +3,7 @@
    the engine conformance app (BDK_HARNESS_ENGINE_TESTS); pages are driven through the engine's test
    hooks (bdk_testing.h), and every http(s) load is served by the engine's test interceptor. */
 #include <stdlib.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "bdk_testing.h"
@@ -832,13 +833,27 @@ static void value_of(const char* json, char* out, size_t n) {
 
 /* Chromium's heavy-ad intervention keeps an opt-out store per profile. BDK keeps it in memory, as
    Chrome does for an off-the-record profile: on disk, its database is loaded by a best-effort task,
-   which BDK's Chromium runs only once start-up is complete (its failsafe, minutes later), and a
-   load for a profile deleted by then fails a fatal check in the SQL layer. */
+   and a load for a profile deleted before that task ran fails a fatal check in the SQL layer. */
 static void test_engine_the_heavy_ad_opt_out_store_stays_in_memory(void) {
     t_start_frozen();
     char json[64];
     command("heavy_ad.store", "{}", json, sizeof json);
     CHECK(strcmp(json, "{\"store\":\"memory\"}") == 0);
+}
+
+/* T-ADP-10: Chromium's after-start-up work (AfterStartupTaskUtils, best-effort tasks) runs once
+   the runtime has started, not after Chromium's three-minute failsafe: a BDK application opens no
+   Chromium window whose tab would end start-up. Run alone, this is the process's first start. */
+static void test_engine_after_startup_work_runs_once_the_runtime_has_started(void) {
+    t_start_frozen();
+    char json[64];
+    command("startup.post", "{}", NULL, 0);
+    const time_t until = time(NULL) + 10;
+    do {
+        t_pump();
+        command("startup.state", "{}", json, sizeof json);
+    } while (!strstr(json, "\"ran\":true") && time(NULL) < until);
+    CHECK(strcmp(json, "{\"complete\":true,\"ran\":true}") == 0);
 }
 
 /* Reads a preference of the page's profile as Chromium holds it. */
@@ -1306,6 +1321,8 @@ const t_test_t t_engine_tests[] = {
      test_engine_a_closed_profile_releases_its_descriptors},
     {"engine_the_heavy_ad_opt_out_store_stays_in_memory",
      test_engine_the_heavy_ad_opt_out_store_stays_in_memory},
+    {"engine_after_startup_work_runs_once_the_runtime_has_started",
+     test_engine_after_startup_work_runs_once_the_runtime_has_started},
     {"engine_history_is_searched_paginated_and_cleared",
      test_engine_history_is_searched_paginated_and_cleared},
     {"engine_bookmarks_nest_move_and_remove", test_engine_bookmarks_nest_move_and_remove},

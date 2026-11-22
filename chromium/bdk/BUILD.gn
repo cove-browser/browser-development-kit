@@ -234,6 +234,8 @@ source_set("bdk") {
       "engine/services/user_scripts.h",
       "engine/session_state.cc",
       "engine/session_state.h",
+      "engine/startup_completion.cc",
+      "engine/startup_completion.h",
       "engine/testing.cc",
       "engine/testing.h",
       "engine/testing_commands.cc",
