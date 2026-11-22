@@ -190,7 +190,8 @@ where it was silent (2026-11-20):
 7. Gestures from the host. `bdk_extension_action_activate`, `bdk_extension_command_perform` and
    `bdk_extension_menu_present` (`bdk_extensions.h`) take the confirming event, like a granting completion: the core
    checks its kind (`ui.gestureRequired`), the engine that it is recent and went to one of the application's windows.
-   They are functions, not commands, because a command from the host has no gesture to give. Activation is
+   They are functions, not commands, because a command from the host has no gesture to give. An extension that is
+   not installed and enabled is `extension.notFound` before the engine judges the event. Activation is
    synchronous, as Chromium's `ExtensionActionRunner::RunAction` is; a popup or panel follows as a request.
 8. Windows (T-SWF-08). `bdk_window_register` takes `BDK_WINDOW_KIND_NORMAL` or `_POPUP` (anything else is
    `BDK_ERR_INVALID_ARGUMENT`); the engine creates that window's host contexts with the matching `Browser` type, so

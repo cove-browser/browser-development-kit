@@ -255,8 +255,8 @@ void ActionsCommand(const std::shared_ptr<ServiceCall>& call) {
   call->Resolve(ToJson(ExtensionActionStates(call->profile(), page)));
 }
 
-// The page and extension a function of bdk_extensions.h names, after the
-// gesture is checked. Fails like the header says.
+// The page and extension a function of bdk_extensions.h names, then the
+// gesture checked. Fails like the header says.
 bool ResolveActivation(const std::shared_ptr<bdkcore::Contents>& page,
                        const std::string& extension_id,
                        bdk_native_handle_t gesture,
@@ -264,15 +264,6 @@ bool ResolveActivation(const std::shared_ptr<bdkcore::Contents>& page,
                        EngineContents** engine_page,
                        const Extension** extension,
                        bdk_status_t* status) {
-  // The core checked the gesture's kind; the engine checks that the operating
-  // system delivered it recently to a window of this application.
-  if (!UiPresenters::Get().IsRecentGesture(gesture)) {
-    *status = bdkcore::fail(out_error, BDK_DOMAIN_UI, BDK_CODE_GESTURE_REQUIRED,
-                            "the action needs the event that clicked it, "
-                            "delivered recently to one of the application's "
-                            "windows");
-    return false;
-  }
   *engine_page = EngineContents::From(*page);
   *extension = EnabledExtension(ProfileOf(*page), extension_id);
   if (!*extension) {
@@ -280,6 +271,16 @@ bool ResolveActivation(const std::shared_ptr<bdkcore::Contents>& page,
                             "no extension \"" + extension_id +
                                 "\" is installed and enabled in the page's "
                                 "profile");
+    return false;
+  }
+  // The core checked the gesture's kind; the engine checks that the operating
+  // system delivered it recently to a window of this application. An
+  // extension that is not there is reported first, as on the stub.
+  if (!UiPresenters::Get().IsRecentGesture(gesture)) {
+    *status = bdkcore::fail(out_error, BDK_DOMAIN_UI, BDK_CODE_GESTURE_REQUIRED,
+                            "the action needs the event that clicked it, "
+                            "delivered recently to one of the application's "
+                            "windows");
     return false;
   }
   return true;
