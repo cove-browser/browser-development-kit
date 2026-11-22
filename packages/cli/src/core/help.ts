@@ -7,7 +7,7 @@ Usage:
   bdk build config [--out <file>]
   bdk build codegen [--out <dir>] [--commands <file>] [--resolved <file>]
   bdk build pages [--bundle <App.app>] [--resolved <file>]
-  bdk build automation --bundle <App.app> [--out <file>]
+  bdk build automation --bundle <App.app> [--out <file>] [--watch]
   bdk build devtools --bundle <App.app> [--out <file>]
   bdk build sign --bundle <App.app> --identity <name|-> [--team <id>] [--entitlements <file>]
   bdk --help | --version
@@ -39,6 +39,7 @@ Options:
                           For \`build sign\`. In an Xcode build they default to CODESIGNING_FOLDER_PATH,
                           EXPANDED_CODE_SIGN_IDENTITY, DEVELOPMENT_TEAM and CODE_SIGN_ENTITLEMENTS.
                           BDK_SKIP_SIGNING=1 skips the step
+  --watch                 For \`build automation\`: build once, then rebuild when a script changes, until Ctrl-C
   -h, --help              Show this help
   -V, --version           Show the version
 

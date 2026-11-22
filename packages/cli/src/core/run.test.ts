@@ -55,6 +55,9 @@ describe("usage errors (exit 2)", () => {
     ],
     [["build", "config", "embed"], 'Unknown build step "embed"'],
     [["--bogus"], "Unknown option"],
+    [["build", "config", "--watch"], "--watch applies to `bdk build automation` only"],
+    [["build", "--watch"], "--watch applies to `bdk build automation` only"],
+    [["build", "automation", "pages", "--watch"], "one step at a time"],
   ])("%j", async (argv, text) => {
     const ctx = testContext();
     expect(await run(argv, ctx)).toBe(ExitCode.Usage);

@@ -4,6 +4,7 @@ import { resolveConfig } from "./core/config/index.js";
 import { ExitCode } from "./core/exit-codes.js";
 import { run } from "./core/run.js";
 import { cliVersion } from "./core/version.js";
+import { fsWatcher, untilInterrupted } from "./core/watch.js";
 import { selectPlatform } from "./platform/select.js";
 
 /** The executable's entry point: the only file that wires the real process, assets and platform. */
@@ -19,6 +20,7 @@ async function main(): Promise<number> {
     platform: selectPlatform(),
     resolveConfig,
     loadBundler,
+    watch: { watcher: fsWatcher, stopped: untilInterrupted, debounceMs: 100 },
   });
 }
 

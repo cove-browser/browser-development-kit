@@ -27,5 +27,10 @@ export interface Step {
   applies?(input: Omit<StepInput, "project">): boolean;
   /** Flags this step reads besides the global ones. */
   flags: readonly StepFlag[];
+  /**
+   * The directory `--watch` watches, relative to the project; absent when the step has no `--watch`.
+   * Registered only by steps whose rebuild is incremental.
+   */
+  watchDirectory?(project: Project): Promise<string>;
   run(input: StepInput): Promise<StepResult>;
 }
