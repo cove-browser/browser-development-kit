@@ -35,9 +35,10 @@ opt_in_rules:
 
 # swift-api.md names `ID` types and the `ui` domain, and nests Navigation.Entry two deep. x and y are
 # coordinates (window features, points). `to` is the target of a translation (`translate(to:)`, a
-# language pair's `from` and `to`), as swift-api.md 6.7 and 11.2 name it.
+# language pair's `from` and `to`), as swift-api.md 6.7 and 11.2 name it. `dx` and `dy` are scroll
+# distances, as in `contents.scroll`; `by` is the label of `webContentsCreated(_, by:)` (swift-api.md 4.3).
 identifier_name:
-  excluded: [id, ui, x, y, to]
+  excluded: [id, ui, x, y, to, dx, dy, by]
 type_name:
   excluded: [ID]
 nesting:
