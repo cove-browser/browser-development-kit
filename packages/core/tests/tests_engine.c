@@ -1049,6 +1049,54 @@ static void test_engine_bookmarks_are_imported_and_exported_as_html(void) {
     rmdir(dir);
 }
 
+/* T-SVC-12: closing a profile while its bookmarks are being exported. Chromium writes the file
+   from a best-effort task that answers later; the export keeps the profile loaded until then, so
+   nothing still points at a profile that is gone (Chromium's dangling-pointer check aborts the
+   engine otherwise). The call ends once, and the profile is unloaded after it. */
+static void test_engine_closing_a_profile_during_a_bookmarks_export(void) {
+    t_start_frozen();
+    char id[64];
+    t_create_profile("Export while closing", id, sizeof id);
+    bdk_profile_t p = t_open_profile(id);
+    char dir[] = "/tmp/bdk-engine-bookmarks-XXXXXX";
+    REQUIRE(mkdtemp(dir) != NULL);
+    char in[96], out[96], args[256];
+    snprintf(in, sizeof in, "%s/in.html", dir);
+    snprintf(out, sizeof out, "%s/out.html", dir);
+    write_text_file(in, BOOKMARKS_FIXTURE);
+    t_capture_t cap;
+    snprintf(args, sizeof args, "{\"path\":\"%s\"}", in);
+    svc("bookmarks.import", args, p, &cap);
+    CHECK(!cap.has_error);
+
+    bdk_invoke_options_t o;
+    memset(&o, 0, sizeof o);
+    o.struct_size = sizeof o;
+    o.profile = p;
+    t_cap_init(&cap);
+    snprintf(args, sizeof args, "{\"path\":\"%s\"}", out);
+    REQUIRE(bdk_invoke_named(t_runtime, S("bookmarks.export"), S(args), &o, t_on_result,
+                             t_on_progress, &cap, t_on_release) != 0);
+    REQUIRE(bdk_profile_close(p, NULL) == BDK_OK);
+    for (int i = 0; i < 1000 && cap.results == 0; ++i) {
+        t_pump();
+        bdk_testing_run_for(0.01);
+    }
+    CHECK(cap.results == 1);
+    /* The writer's answer and the profile's unload come after: still alive here. */
+    for (int i = 0; i < 300; ++i) {
+        t_pump();
+        bdk_testing_run_for(0.01);
+    }
+    CHECK(cap.results == 1);
+    /* The profile opens again, as one instance. */
+    bdk_profile_t again = t_open_profile(id);
+    REQUIRE(bdk_profile_close(again, NULL) == BDK_OK);
+    unlink(in);
+    unlink(out);
+    rmdir(dir);
+}
+
 /* The first time the item's state is `state`, within a time limit. */
 static int wait_for_download_state(bdk_profile_t p, const char* id, const char* state) {
     char args[64], want[48];
@@ -1326,6 +1374,8 @@ const t_test_t t_engine_tests[] = {
     {"engine_history_is_searched_paginated_and_cleared",
      test_engine_history_is_searched_paginated_and_cleared},
     {"engine_bookmarks_nest_move_and_remove", test_engine_bookmarks_nest_move_and_remove},
+    {"engine_closing_a_profile_during_a_bookmarks_export",
+     test_engine_closing_a_profile_during_a_bookmarks_export},
     {"engine_bookmarks_are_imported_and_exported_as_html",
      test_engine_bookmarks_are_imported_and_exported_as_html},
     {"engine_a_download_completes_and_is_controllable",
