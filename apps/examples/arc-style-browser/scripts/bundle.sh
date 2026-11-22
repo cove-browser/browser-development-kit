@@ -48,18 +48,19 @@ minos="$(vtool -show-build "$app/Contents/MacOS/ArcStyleBrowser" | awk '/minos/ 
 vtool -set-build-version macos "$minos" "$sdk" -replace -output "$app/Contents/MacOS/ArcStyleBrowser" \
   "$app/Contents/MacOS/ArcStyleBrowser"
 cp "$project/Info.plist" "$app/Contents/Info.plist"
-cp "$project/bdk.resolved.json" "$app/Contents/Resources/bdk.resolved.json"
 # The bundled pages and the SDK they import, and the automation script with @bdk/automation inlined; before
 # signing, which covers Resources.
 bdk build pages --bundle "$app" --project "$project"
 bdk build automation --bundle "$app" --project "$project"
+# After the automation step, which records each script's bundle and digest in the resolved file.
+cp "$project/bdk.resolved.json" "$app/Contents/Resources/bdk.resolved.json"
 # The executable links the framework only when it was built against the real runtime.
 if otool -L "$product" | grep -q "Chromium Framework.framework"; then
   mkdir -p "$app/Contents/Frameworks"
   # A copy-on-write clone on APFS; the runtime store is read-only, the bundle must not be.
   cp -cR "$framework" "$app/Contents/Frameworks/"
   chmod -R u+w "$app/Contents/Frameworks"
-  bdk build sign --bundle "$app" --identity -
+  bdk build sign --bundle "$app" --project "$project" --identity -
 else
   codesign --force --sign - "$app"
 fi

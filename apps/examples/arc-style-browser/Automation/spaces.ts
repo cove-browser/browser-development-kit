@@ -10,8 +10,13 @@ export default async function main(args: { account?: string } | null) {
   const report: { url: string; title: string; profile: string; signedIn: boolean }[] = [];
   for (const page of pages) {
     if (args?.account) await page.navigate(args.account, { waitUntil: "finished" });
+    // A page the application opened a moment ago may still be loading its first site.
+    await page.waitFor({ load: "finished" }, { timeoutMs: 15000 });
     const state = await page.state();
-    const signedIn = await page.evaluate<boolean>("document.cookie.includes('session=')");
+    // A document with no cookie access (about:blank, say) is not signed in.
+    const signedIn = await page.evaluate<boolean>(
+      "(() => { try { return document.cookie.includes('session='); } catch { return false; } })()",
+    );
     report.push({ url: state.url, title: state.title, profile: state.profile, signedIn });
     task.progress(report.length / pages.length, state.title);
   }

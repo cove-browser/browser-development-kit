@@ -9,6 +9,7 @@ import BDK
 @MainActor
 public final class ExtensionPlacement {
     /// A popup on screen, for the status report and the tests.
+    @MainActor
     public struct Popup {
         public let extensionID: String
         public let secureView: NSView

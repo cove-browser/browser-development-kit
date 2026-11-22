@@ -75,8 +75,11 @@ struct E2ETests {
                 supportDirectory: directory,
                 arguments: ["--do", "split-next", "--do", "pin", "--do", "switch-space=Work"])
             defer { first.kill() }
-            let before = try await first.waitForStatus { $0.actionsDone }
+            _ = try await first.waitForStatus { $0.actionsDone }
             #expect(try await first.quitGracefully() == 0)
+            // What the application showed as it quit, which is what it saved.
+            let before = try AppStatus.read(from: first.statusFile)
+            #expect(before.phase == .terminating)
 
             let second = try AppRun(supportDirectory: directory)
             defer { second.kill() }
@@ -97,7 +100,9 @@ struct E2ETests {
         try await withSupportDirectory { directory in
             let app = try AppRun(supportDirectory: directory, arguments: ["--do", "settings"])
             defer { app.kill() }
-            let status = try await app.waitForStatus { $0.actionsDone && $0.settingsURL != nil }
+            let status = try await app.waitForStatus {
+                $0.actionsDone && $0.settingsURL?.hasPrefix("arc:") == true
+            }
             #expect(status.settingsURL == "arc://settings/")
             #expect(try await app.quitGracefully() == 0)
         }
