@@ -28,6 +28,8 @@ int bdk_ext_place_view(int window, bdk_native_handle_t view, double x, double y,
                        double height);
 int bdk_ext_view_in_window(bdk_native_handle_t view);
 void bdk_ext_remove_view(bdk_native_handle_t view);
+void bdk_ext_watch_view(bdk_native_handle_t view);
+int bdk_ext_watched_view_in_window(void);
 
 #define PAGE "https://bdk.test/panels"
 
@@ -538,6 +540,7 @@ static void test_ext_side_panel_open_reaches_an_application_container(void) {
     CHECK(ext_has(g_plog.payload, "panel.html"));
     CHECK(g_plog.placed == 1);
     CHECK(bdk_ext_view_in_window(g_plog.view));
+    bdk_ext_watch_view(g_plog.view);
     /* The application's container, not BDK's frame; the request stays open while the view is up. */
     REQUIRE(panel_is(w, "\"requestOpen\":true"));
     state_of(w, out, sizeof out);
@@ -545,12 +548,13 @@ static void test_ext_side_panel_open_reaches_an_application_container(void) {
     /* The side the application reported is what getLayout answers. */
     open_panel_from_page(c, ext, "layout");
     CHECK(wait_for_title(c, "ok:\"left\""));
-    /* Closing from the container completes the request and takes the panel down. */
+    /* Closing from the container completes the request and takes the panel down: the runtime
+       takes its view out of the container (the view is the runtime's, gone with the request). */
     bdk_error_t err = 0;
     REQUIRE(bdk_ui_complete(g_plog.request, S("accept"), S("{\"action\":\"close\"}"), no_gesture(),
                             &err) == BDK_OK);
     CHECK(panel_is(w, "\"open\":false"));
-    bdk_ext_remove_view(g_plog.view);
+    CHECK(!bdk_ext_watched_view_in_window());
     unregister_window(w);
     bdk_ext_window_close(window);
 }
@@ -566,12 +570,15 @@ static void test_ext_an_extension_closing_its_panel_withdraws_the_request(void) 
     open_panel_from_page(c, ext, "openWindow");
     REQUIRE(wait_for_title(c, "ok:null"));
     REQUIRE(panel_is(w, "\"requestOpen\":true"));
+    bdk_ext_watch_view(g_plog.view);
+    CHECK(bdk_ext_watched_view_in_window());
     open_panel_from_page(c, ext, "close");
     CHECK(wait_for_title(c, "ok:null"));
     CHECK(panel_is(w, "\"open\":false"));
     ext_pumps(5);
     CHECK(g_plog.withdrawn == 1);
-    bdk_ext_remove_view(g_plog.view);
+    /* Withdrawn: the runtime took its view out of the application's container. */
+    CHECK(!bdk_ext_watched_view_in_window());
     unregister_window(w);
     bdk_ext_window_close(window);
 }
@@ -617,7 +624,11 @@ test_ext_a_page_panel_hides_and_shows_with_the_active_page_and_a_second_panel_re
         t_pump();
     CHECK(ext_has(g_plog.last_update, "\"visible\":true"));
 
-    /* The window panel opens in its place: one panel per window, so the first is withdrawn. */
+    /* With b focused, the window panel opens in its place: one panel per window, so the first is
+       withdrawn. (With a focused, Chromium keeps a page's own panel when the window's is opened:
+       OpenGlobalExtensionSidePanel shows the window's for the other pages only.) */
+    REQUIRE(bdk_contents_focus(b) == BDK_OK);
+    ext_pumps(3);
     open_panel_from_page(a, ext, "openWindow");
     CHECK(wait_for_title(a, "ok:null"));
     for (int i = 0; i < 60 && g_plog.calls < 2; ++i)

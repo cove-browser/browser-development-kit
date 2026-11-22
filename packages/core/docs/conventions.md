@@ -157,7 +157,9 @@ where it was silent (2026-11-20):
    `{"side":"leading"|"trailing"}`), and `bdk_ui_set_update_handler` receives the runtime's
    (`{"preferredSize":{"width","height"}}` for a popup, `{"visible":bool}` for a page-scoped panel). Both are
    delivered later and in order; nothing is delivered after the request finishes, and the update handler is released
-   then. With no handler the default presenter shows the view (a transient panel at the extensions anchor; a panel at
+   then. The secure view is the runtime's and lives as long as the request: when the request finishes, the runtime
+   removes the view from the application's container and may destroy it, so the application does not touch it
+   afterwards. With no handler the default presenter shows the view (a transient panel at the extensions anchor; a panel at
    the trailing edge of the page's window).
 4. Payloads. `extension_popups`: `extensionId`, `extensionName`, `url`, `trigger` (`userClick`, `openPopupAPI`,
    `command`), `preferredSize`; `secure_view` is the popup's native view. `extension_side_panels`: `extensionId`,
