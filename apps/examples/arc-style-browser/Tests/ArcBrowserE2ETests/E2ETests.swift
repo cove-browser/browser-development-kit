@@ -35,10 +35,6 @@ struct E2ETests {
             #expect(
                 shown.count == 1 && shown.first?.pinned == true && shown.first?.space == "Personal")
             #expect(status.pages.filter { $0.window == nil }.allSatisfy { !$0.onScreen })
-            if Self.onChromium {
-                // Chromium reports every page whose view is in no window as hidden.
-                #expect(status.pages.filter { !$0.onScreen }.allSatisfy { !$0.runtimeVisible })
-            }
             #expect(try await app.quitGracefully() == 0)
             #expect(
                 FileManager.default.fileExists(
@@ -76,6 +72,18 @@ struct E2ETests {
                 arguments: ["--do", "split-next", "--do", "pin", "--do", "switch-space=Work"])
             defer { first.kill() }
             _ = try await first.waitForStatus { $0.actionsDone }
+            if Self.onChromium {
+                // The pinned Personal page, which left the window while the other pane had focus,
+                // comes to report hidden once Chromium has seen its view leave. (The pane that had
+                // focus, and a page whose view has never been in a window, still report visible:
+                // T-ADP-10.)
+                let switched = try await first.waitForStatus(timeout: .seconds(10)) { status in
+                    status.pages.contains {
+                        $0.space == "Personal" && $0.pinned && !$0.runtimeVisible
+                    }
+                }
+                #expect(switched.pages.filter { $0.space == "Personal" && !$0.onScreen }.count == 2)
+            }
             #expect(try await first.quitGracefully() == 0)
             // What the application showed as it quit, which is what it saved.
             let before = try AppStatus.read(from: first.statusFile)
