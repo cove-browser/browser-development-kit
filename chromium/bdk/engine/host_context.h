@@ -132,8 +132,9 @@ class HostContexts {
   // Destroys every context; none may hold a page.
   void DestroyAll();
 
-  // Whether `browser` is a host context's.
+  // Whether `browser` is a host context's, and whether a parking context's.
   bool IsHostContext(const BrowserWindowInterface* browser) const;
+  bool IsParkingContext(const BrowserWindowInterface* browser) const;
   size_t ContextCount() const { return contexts_.size(); }
 
  private:

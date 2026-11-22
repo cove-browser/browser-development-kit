@@ -52,9 +52,11 @@ std::unique_ptr<BrowserWindow, BrowserWindowDeleter> CreateWindow(
 // pages wait that no window shows; it is not a window of the application, so
 // windows.getAll, tabs.query and windows.onCreated must not report it
 // (T-EXT-01 assertion 10). The extension window controller asks this as it is
-// made, which is before the context exists.
+// made, which is before the context exists, and again whenever tabs.query
+// walks the Browsers.
 bool HiddenFromExtensions(BrowserWindowInterface* browser) {
-  return g_hidden_window && browser->GetWindow() == g_hidden_window;
+  return (g_hidden_window && browser->GetWindow() == g_hidden_window) ||
+         HostContexts::Get().IsParkingContext(browser);
 }
 
 }  // namespace
@@ -332,6 +334,13 @@ void HostContexts::Destroy(HostContext* context) {
   // Out of the list first: the Browser's teardown must not find it.
   std::unique_ptr<HostContext> owned = std::move(*it);
   contexts_.erase(it);
+}
+
+bool HostContexts::IsParkingContext(
+    const BrowserWindowInterface* browser) const {
+  return std::ranges::any_of(contexts_, [browser](const auto& context) {
+    return context->is_parking() && context->browser_.get() == browser;
+  });
 }
 
 bool HostContexts::IsHostContext(const BrowserWindowInterface* browser) const {

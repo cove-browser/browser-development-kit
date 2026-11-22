@@ -20,14 +20,16 @@ predicate (no new target: it is inline, as embedder_browser_window_factory.h
 is), and ask it in BrowserExtensionWindowController's constructor before the
 controller is listed. With no filter, or a filter that says no, nothing
 changes. The controller itself still exists for the Browser, so extension
-views that find it through the Browser keep working. Only the one .cc and the
-new header are touched.
+views that find it through the Browser keep working. tabs.query does not use
+the list: it walks every Browser and asks each controller's
+IsVisibleToTabsAPIForExtension, so that asks the filter too. Only the one .cc
+and the new header are touched.
 
 Used by: the BDK engine (//bdk/engine/host_context.cc).
 ---
- .../browser_extension_window_controller.cc    |  8 +++-
- .../embedder_extension_window_filter.h        | 42 +++++++++++++++++++
- 2 files changed, 49 insertions(+), 1 deletion(-)
+ .../browser_extension_window_controller.cc    | 13 ++++++-
+ .../embedder_extension_window_filter.h        | 43 +++++++++++++++++++
+ 2 files changed, 55 insertions(+), 1 deletion(-)
 
 diff --git a/chrome/browser/extensions/browser_extension_window_controller.cc b/chrome/browser/extensions/browser_extension_window_controller.cc
 index 497220fc726c4e37c1685d459b69369cba6ee21a..06d4b62c70dc082af3bf2798ecbec32dd8a74410 100644
@@ -55,12 +57,24 @@ index 497220fc726c4e37c1685d459b69369cba6ee21a..06d4b62c70dc082af3bf2798ecbec32d
  }
  
  BrowserExtensionWindowController::~BrowserExtensionWindowController() {
+@@ -183,6 +189,11 @@ void BrowserExtensionWindowController::SetFullscreenMode(
+ bool BrowserExtensionWindowController::IsVisibleToTabsAPIForExtension(
+     const Extension* extension,
+     bool allow_dev_tools_windows) const {
++  // tabs.query walks every Browser rather than the list: a hidden one is not
++  // visible to it either.
++  if (embedder_extension_window_filter::IsHidden(&*browser_)) {
++    return false;
++  }
+   // TODO(joelhockey): We are assuming that the caller is webui when |extension|
+   // is null and allowing access to all windows. It would be better if we could
+   // pass in mojom::ContextType or some way to detect caller type.
 diff --git a/chrome/browser/extensions/embedder_extension_window_filter.h b/chrome/browser/extensions/embedder_extension_window_filter.h
 new file mode 100644
 index 0000000000000000000000000000000000000000..74aff4bdfbdcbcb024c977a0e3a24afce0f06658
 --- /dev/null
 +++ b/chrome/browser/extensions/embedder_extension_window_filter.h
-@@ -0,0 +1,42 @@
+@@ -0,0 +1,43 @@
 +// Copyright 2026 The Chromium Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -78,10 +92,11 @@ index 0000000000000000000000000000000000000000..74aff4bdfbdcbcb024c977a0e3a24afc
 +// A hook for Chromium embedders that own Browsers which are not windows a
 +// person can see (a place where pages wait, say). When a filter is set,
 +// BrowserExtensionWindowController does not add a Browser the filter returns
-+// true for to the WindowControllerList, so the extension windows and tabs APIs
-+// and their events never report it. The filter is asked once, as the Browser's
-+// controller is made. Only embedders set one, once, before any Browser is
-+// created.
++// true for to the WindowControllerList, and its controller is not visible to
++// the tabs API, so the extension windows and tabs APIs and their events never
++// report it. The filter is asked as the Browser's controller is made and again
++// later, so its answer must not change. Only embedders set one, once, before
++// any Browser is created.
 +namespace extensions::embedder_extension_window_filter {
 +
 +using Filter = base::RepeatingCallback<bool(BrowserWindowInterface* browser)>;
