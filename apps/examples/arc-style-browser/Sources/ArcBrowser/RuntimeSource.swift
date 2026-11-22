@@ -14,6 +14,7 @@ import Foundation
     enum RuntimeSource {
         /// Reported in the status file, so a test can tell which runtime it ran against.
         static let name = "chromium"
+        static let notice = ""
 
         static func start(_ configuration: BDKConfiguration) throws -> BDKRuntime {
             try BDKRuntime.start(configuration)
@@ -27,6 +28,8 @@ import Foundation
     @MainActor
     enum RuntimeSource {
         static let name = "stub"
+        /// The stub renders nothing, so each window says so: a page shows its URL and title only.
+        static let notice = "Stub runtime: pages do not render (see README, Run it)"
 
         static func start(_ configuration: BDKConfiguration) throws -> BDKRuntime {
             try BDKRuntime.startStub(configuration)

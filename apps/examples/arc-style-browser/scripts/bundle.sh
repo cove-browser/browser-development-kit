@@ -63,6 +63,9 @@ if otool -L "$product" | grep -q "Chromium Framework.framework"; then
   bdk build sign --bundle "$app" --project "$project" --identity -
 else
   codesign --force --sign - "$app"
+  echo "note: built against the stub runtime, which renders no page. To run on Chromium, set" >&2
+  echo "      BDK_RUNTIME_FRAMEWORKS to a local engine build's Frameworks directory, or run" >&2
+  echo "      pnpm chromium:runtime (see the README, Run it)." >&2
 fi
 
 echo "$app"

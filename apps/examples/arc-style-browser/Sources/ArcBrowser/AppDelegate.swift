@@ -68,6 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             runtime: runtime, session: loadSession(), extensions: extensions)
         controller.onChange = { [weak self] in self?.report() }
         controller.showsWindowsInBackground = options.background
+        controller.windowSubtitle = RuntimeSource.notice
         self.controller = controller
         try await controller.start()
         phase = .running

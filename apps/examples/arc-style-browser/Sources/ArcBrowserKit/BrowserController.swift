@@ -22,6 +22,9 @@ public final class BrowserController {
     public internal(set) var automationResult: String?
     /// Windows open behind the others and never take focus (`--background`).
     public var showsWindowsInBackground = false
+    /// Shown under each window's title; the application says there which runtime it runs on when
+    /// that is the stub, which renders nothing.
+    public var windowSubtitle = ""
     /// Called after anything the status report shows may have changed.
     public var onChange: () -> Void = {}
     let extensions: ExtensionPlacement
@@ -70,7 +73,8 @@ public final class BrowserController {
     /// opens and closes windows to match the layout.
     public func apply() {
         for window in layout.windows where windows[window.id] == nil {
-            let browserWindow = BrowserWindow(id: window.id, runtime: runtime)
+            let browserWindow = BrowserWindow(
+                id: window.id, runtime: runtime, subtitle: windowSubtitle)
             wire(browserWindow)
             windows[window.id] = browserWindow
             browserWindow.showWindow(background: showsWindowsInBackground)

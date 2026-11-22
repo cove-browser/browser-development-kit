@@ -22,7 +22,8 @@ Which runtime it runs on is decided by `Package.swift`, as for the minimal brows
 `.bdk/runtime` (`pnpm chromium:runtime`), or a local engine build's frameworks directory in
 `BDK_RUNTIME_FRAMEWORKS`, or else the in-memory stub (always with `BDK_RUNTIME=stub`). On the stub nothing
 renders (each page shows its URL and title), the settings page does not load and the automation script does
-not run. To run on a local engine build:
+not run; each window's subtitle and `scripts/bundle.sh` say so. To run on a local engine build (it must be built
+from this branch, since the runtime refuses a framework with another ABI hash):
 
 ```sh
 BDK_RUNTIME_FRAMEWORKS=~/.bdk/chromium/managed/src/out/release/Chromium.app/Contents/Frameworks \

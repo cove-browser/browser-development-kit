@@ -20,15 +20,17 @@ public final class BrowserWindow: NSObject, NSWindowDelegate {
     var onClose: () -> Void = {}
     var onBecameKey: () -> Void = {}
 
-    init(id: Layout.WindowID, runtime: BDKRuntime) {
+    init(id: Layout.WindowID, runtime: BDKRuntime, subtitle: String) {
         self.id = id
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1280, height: 780),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            // Not .fullSizeContentView: the sidebar's controls and the panes' headers would sit
+            // under the title bar, over the window's close, minimize and zoom buttons.
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false)
         super.init()
         window.title = "Arc-style Browser"
-        window.titlebarAppearsTransparent = true
+        window.subtitle = subtitle
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 820, height: 420)
         window.delegate = self
