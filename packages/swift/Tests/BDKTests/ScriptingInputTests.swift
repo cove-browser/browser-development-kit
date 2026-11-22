@@ -152,9 +152,11 @@ extension BDKStubTests {
             try await withProfile { runtime, profile in
                 try runtime.stub.scriptNavigation(to: example, title: "Page")
                 let page = try profile.webContents.create()
+                // Both calls are queued before either runs: the stub's clock moves only when nothing
+                // is queued, so a wait left alone would reach its deadline before the load starts.
                 let waiter = Task { try await page.scripting.waitFor(.load(.finished)) }
-                await Task.yield()  // the wait is registered before the load starts
-                try await page.navigation.load(example)
+                let load = Task { try await page.navigation.load(example) }
+                _ = try await load.value
                 try await waiter.value
             }
         }
@@ -166,8 +168,8 @@ extension BDKStubTests {
                 let waiter = Task {
                     try await page.scripting.waitFor(.url("https://example.com/*"))
                 }
-                await Task.yield()
-                try await page.navigation.load(example)
+                let load = Task { try await page.navigation.load(example) }
+                _ = try await load.value
                 try await waiter.value
                 // The URL already matches, so a second wait returns at once.
                 try await page.scripting.waitFor(.url("*example.com/page"))
