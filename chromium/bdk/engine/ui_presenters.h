@@ -150,6 +150,16 @@ class UiPresenters {
   virtual Dismisser ShowPageWindow(HostView* view,
                                    const std::string& title,
                                    base::OnceClosure closed) = 0;
+  // payload: one step of a webauthn request (ui-requests.md 5.18). `answer`
+  // gets what the person chose as the completion a handler would give:
+  // {"completion": "accept", "mechanism" | "pin" | "action"}, {"completion":
+  // "grant", "account"} or {"completion": "deny"}, which closing the sheet
+  // gives too. A script answers the same way, or with one such answer per
+  // step name ({"enterPIN": {...}, "touchSecurityKey": {"none": true}}).
+  virtual Dismisser ShowWebAuthn(
+      HostView* view,
+      const base::DictValue& payload,
+      base::OnceCallback<void(base::DictValue)> answer) = 0;
   // payload: the find request payload (initialText).
   virtual std::unique_ptr<FindBar> ShowFindBar(HostView* view,
                                                const base::DictValue& payload,

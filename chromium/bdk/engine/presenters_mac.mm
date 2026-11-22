@@ -10,7 +10,9 @@
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "base/apple/foundation_util.h"
 #include "base/files/file_path.h"
@@ -878,6 +880,112 @@ class PresentersMac : public UiPresenters {
             std::move(callback).Run(std::nullopt);
           }
         });
+  }
+
+  Dismisser ShowWebAuthn(
+      HostView* view,
+      const base::DictValue& payload,
+      base::OnceCallback<void(base::DictValue)> answer) override {
+    // One sheet per step, in Chromium's wording: a button per mechanism or
+    // account where the step is a choice, a PIN field where it asks for one,
+    // the step's own button where it has one, and the step's cancel button
+    // last (Escape's).
+    const std::string step =
+        payload.FindString("step") ? *payload.FindString("step") : "";
+    NSAlert* alert = [[NSAlert alloc] init];
+    alert.messageText = TextOf(payload, "title");
+    NSString* message = TextOf(payload, "message");
+    NSString* error = TextOf(payload, "error");
+    alert.informativeText =
+        error.length ? [NSString stringWithFormat:@"%@\n\n%@", message, error]
+                     : message;
+    // Each button's answer, in the order the buttons were added.
+    auto answers = std::make_shared<std::vector<base::DictValue>>();
+    auto add = [&](NSString* title, base::DictValue choice) {
+      [alert addButtonWithTitle:title];
+      answers->push_back(std::move(choice));
+    };
+    const char* list = step == "chooseMechanism" ? "mechanisms"
+                       : step == "chooseAccount" ? "accounts"
+                                                 : nullptr;
+    if (const base::ListValue* options =
+            list ? payload.FindList(list) : nullptr) {
+      const bool account = step == "chooseAccount";
+      for (const base::Value& option : *options) {
+        if (!option.is_dict()) {
+          continue;
+        }
+        const base::DictValue& entry = option.GetDict();
+        NSString* name = Str(entry, "name");
+        if (account && !name.length) {
+          name = Str(entry, "displayName");
+        }
+        base::DictValue choice;
+        choice.Set("completion", account ? "grant" : "accept");
+        choice.Set(account ? "account" : "mechanism",
+                   entry.FindString("id") ? *entry.FindString("id") : "");
+        add(name, std::move(choice));
+      }
+    }
+    NSSecureTextField* pin = nil;
+    NSSecureTextField* confirm = nil;
+    if (const base::DictValue* entry = payload.FindDict("pin")) {
+      const bool twice = Str(*entry, "mode").length &&
+                         ![Str(*entry, "mode") isEqualToString:@"enter"];
+      NSView* form =
+          [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 260, twice ? 56 : 24)];
+      pin = [[NSSecureTextField alloc]
+          initWithFrame:NSMakeRect(0, twice ? 32 : 0, 260, 24)];
+      pin.placeholderString = @"PIN";
+      [form addSubview:pin];
+      if (twice) {
+        confirm =
+            [[NSSecureTextField alloc] initWithFrame:NSMakeRect(0, 0, 260, 24)];
+        confirm.placeholderString = @"Confirm PIN";
+        [form addSubview:confirm];
+      }
+      alert.accessoryView = form;
+    }
+    NSString* accept = Str(payload, "acceptLabel");
+    if (accept.length && !list) {
+      base::DictValue choice;
+      choice.Set("completion", "accept");
+      add(accept, std::move(choice));
+    }
+    NSString* other = Str(payload, "otherMechanismsLabel");
+    if (other.length) {
+      base::DictValue choice;
+      choice.Set("completion", "accept");
+      choice.Set("action", "otherMechanisms");
+      add(other, std::move(choice));
+    }
+    NSString* cancel = Str(payload, "cancelLabel");
+    base::DictValue deny;
+    deny.Set("completion", "deny");
+    add(cancel.length ? cancel : @"Cancel", std::move(deny));
+    __block base::OnceCallback<void(base::DictValue)> callback =
+        std::move(answer);
+    return PresentAlert(AnchorOf(view), alert, ^(NSModalResponse response) {
+      const NSInteger index = response - NSAlertFirstButtonReturn;
+      if (index < 0 || static_cast<size_t>(index) >= answers->size()) {
+        base::DictValue closed;
+        closed.Set("completion", "deny");
+        std::move(callback).Run(std::move(closed));
+        return;
+      }
+      base::DictValue choice = std::move((*answers)[index]);
+      const std::string* completion = choice.FindString("completion");
+      if (pin && completion && *completion == "accept" &&
+          !choice.FindString("action")) {
+        choice.Set("pin", base::SysNSStringToUTF8(pin.stringValue));
+        if (confirm) {
+          // Chromium's sheet compares the two and says when they differ.
+          choice.Set("pinConfirmation",
+                     base::SysNSStringToUTF8(confirm.stringValue));
+        }
+      }
+      std::move(callback).Run(std::move(choice));
+    });
   }
 
   Dismisser ShowPageWindow(HostView* view,
