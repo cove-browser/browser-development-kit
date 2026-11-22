@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BDK Patches <patches@bdk.invalid>
+Date: Fri, 20 Nov 2026 22:22:56 -0800
+Subject: [PATCH] bdk: let an embedder record the initial browser command line
+
+BDK starts the browser through content::RunContentProcess() from
+bdk_runtime_start(), not through ChromeMain(), so the snapshot of the
+browser's initial command line that ChromeMain() takes is never made.
+GetInitialBrowserCommandLine() then fails on an empty optional the first
+time anything reads it: chrome://policy's PolicyUI does in its constructor,
+which runs as soon as a frame is picked for the URL, before any navigation
+throttle can block it. The storage is file-local to chrome_main.cc, so no
+overlay code can fill it.
+
+Add SetInitialBrowserCommandLine(), which records the snapshot as
+ChromeMain() does. Nothing changes for Chrome, which never calls it.
+
+Used by: the BDK engine start-up (//bdk/engine/chromium_main_mac.mm).
+---
+ chrome/app/chrome_main.cc | 4 ++++
+ chrome/app/chrome_main.h  | 5 +++++
+ 2 files changed, 9 insertions(+)
+
+diff --git a/chrome/app/chrome_main.cc b/chrome/app/chrome_main.cc
+index 199142d67135ea46b9aa232c0283ad7d21f7b3f1..7907f2f6b002e8b0039dc5be48f933341479925a 100644
+--- a/chrome/app/chrome_main.cc
++++ b/chrome/app/chrome_main.cc
+@@ -77,6 +77,10 @@ const base::CommandLine& GetInitialBrowserCommandLine() {
+   return GetInitialCommandLineStorage().value();
+ }
+ 
++void SetInitialBrowserCommandLine(const base::CommandLine& command_line) {
++  GetInitialCommandLineStorage() = command_line;
++}
++
+ #if BUILDFLAG(IS_WIN)
+ // We use extern C for the prototype DLLEXPORT to avoid C++ name mangling.
+ extern "C" {
+diff --git a/chrome/app/chrome_main.h b/chrome/app/chrome_main.h
+index dc973527904139b24f1b47e252d17c00b09bfdad..d935a73d041a582b8673c9de95480796d8beab9b 100644
+--- a/chrome/app/chrome_main.h
++++ b/chrome/app/chrome_main.h
+@@ -15,4 +15,9 @@ class CommandLine;
+ // This function is only available in the browser process.
+ const base::CommandLine& GetInitialBrowserCommandLine();
+ 
++// Records `command_line` as the browser process's initial command line, for an
++// embedder that starts the browser without ChromeMain(). Call it once, right
++// after base::CommandLine::Init(), before anything changes the command line.
++void SetInitialBrowserCommandLine(const base::CommandLine& command_line);
++
+ #endif  // CHROME_APP_CHROME_MAIN_H_

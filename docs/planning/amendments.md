@@ -1,6 +1,6 @@
 # Amendments to the BDK plan
 
-Dated 2026-11-15; section 2.10 was added on 2026-11-16. This lists everything that changed in the planning documents after the 2026-11-14 version, following the product owner's review. If you read the 2026-11-14 documents, reading this is enough. The other documents already contain these changes; nothing here still needs to be applied.
+Dated 2026-11-15; section 2.10 was added on 2026-11-16, 2.12 and 2.13 on 2026-11-19, 2.14 to 2.17 on 2026-11-20. This lists everything that changed in the planning documents after the 2026-11-14 version, following the product owner's review. If you read the 2026-11-14 documents, reading this is enough. The other documents already contain these changes; nothing here still needs to be applied.
 
 ## 1. Summary
 
@@ -248,7 +248,70 @@ No `BdkBrowserWindow` method that logs (`NOTIMPLEMENTED_LOG_ONCE`) was reached b
 
 Four patches were added or changed: the series is ten (the test-hook export patch also lists `bdk_testing_host_context_count` and `bdk_testing_tab_info`).
 
-### 2.14 Extensions written in M5 (2026-11-20)
+### 2.14 Internal pages built in M4 (2026-11-20)
+
+M4 was written with no Chromium build: the parts that need none are tested, and the engine parts wait for the main session's build (roadmap M4 status). Where the build departs from architecture 8 and 9, feasibility 4 and 5, and the SDK documents:
+
+| Planned | Built | Why |
+|---|---|---|
+| T-WUI-01 (M0): an alias-scheme prototype before M4 | Built in its final form in M4: the scheme comes from `browser.internal_scheme`, the browser gets `--bdk-internal-scheme` at start and copies it to every child, and a new patch registers it as standard and secure in `ChromeContentClient::AddAdditionalSchemes` | Child processes run Chrome's own `ChromeMainDelegate` and `ChromeContentClient`, so no subclass can add a scheme there; Chromium registers schemes once per process, so a second runtime in one process keeps the first's |
+| A route registry in the engine (T-WUI-02) | The route table, its registrations and every rule are in the core (`packages/core/runtime/routes.h`); the engine applies the core's answers in a `BrowserURLHandler` pair and a navigation throttle | One set of rules, tested on the stub and the engine by the same conformance tests |
+| A disabled page shows "the standard error page" | `ERR_BLOCKED_BY_CLIENT` for a disabled route (and a native handler answering blocked), `ERR_INVALID_URL` for an unknown one. A web page's or a redirect's navigation to a branded URL is dropped with no error page, as Chromium drops a web page's `chrome://` link | Chromium's own codes, which every backend reports |
+| "No alternate route" to an overridden built-in page | Every `chrome://` navigation of a BDK page must be the internal URL its route is served at now; anything else (an overridden or disabled built-in, a page that is no route, an excluded page) shows the error page. Frames inside Chromium's own pages are not policed | Applies to pages BDK owns; Chromium's DevTools, print and extension pages are left alone |
+| Branded URLs in history and session data | Every URL the engine reports is its branded form. Internal pages are not recorded in history, as in Chrome; session data is opaque and restores the internal URL. An alias is shown as its target route | Chromium's history excludes `chrome://`; an alias shares the target's identity |
+| BDK's new-tab page (configuration.md 4.1) | Served at `chrome://bdk-new-tab` when `new-tab` is in `chromium` mode; a bundled `new-tab` page uses the same host | A route has one mode at a time, so the host is never ambiguous |
+| Swift registration of a route | Any valid route name may be registered `native` or `disabled`; `chromium` needs a built-in; `bundled` needs the route's page in the resolved file; `credits` cannot be disabled; an alias or reserved name cannot be registered | architecture 8.2's limits, made exact |
+| The broker reached by "a Mojo interface bound to that page" | `bdk.mojom.PageBroker` (`chromium/bdk/engine/pages/page_broker.mojom`): Invoke, Cancel, Subscribe, Unsubscribe and a client for progress and events, registered for `BundledPageUI` only. Its WebUI bindings are compiled by Chromium's TypeScript build and embedded in the engine, served at `/@bdk/page_broker.mojom-webui.js` | Bindings that always match the runtime, without changing the framework's resource packs |
+| The gesture of a page's call | The frame's transient user activation, read by the browser at the call; the page cannot claim one | A page's message is not evidence of a gesture |
+| Content security policy "Chromium's standard for WebUI" | Chromium's, made stricter: `default-src 'self'`, scripts, styles and fonts from the page and `chrome://resources`, images also `data:` and `chrome://favicon2`, no frames, no forms, Trusted Types required with no policy | javascript-api.md 2.2; frameworks that assign strings to sinks need a policy, still the open choice of sdk/README.md section 7 |
+| The SDK served at `/@bdk/internal/` | `bdk build pages` copies the built `@bdk/internal` modules into `Contents/Resources/BDK/js/internal`; the Vite preset leaves `@bdk/internal/*` imports external, so every page uses that copy | One module for Vite and no-build pages |
+| Vite builds of all pages at once | One Vite build per page directory | A multi-page build put shared chunks above a page's directory, outside its own origin |
+| T-UIR-08: host print preview, or record the system panel | **The system print panel is the permanent default.** Print preview is not hosted | `PrintPreviewDialogController` places the preview in a `WebContentsModalDialogHost` of the `Browser`'s window through Views' constrained web dialog; the BDK window has no Views widget and its modal host is a stub. PDFs come from `contents.pdf` (T-SVC-09, M7) and the panel's own Save as PDF |
+| `page.zoom` is a number | `page.zoom` is a `ZoomControl` (`factor`, `set(_:scope:)`); reading the level is `page.zoom.factor` | swift-api.md 6.7's `page.zoom.set(...)` cannot live on a `Double` |
+| Generated bindings "are Nx outputs and are not committed" (repository-and-tooling.md 11) | Split by who reads them. Committed, and checked by `js-codegen:codegen-check`: `interface/ids.json`, `bdk_ids.h`, `generated/bdk_command_table.inc` and `BDKServices.swift`. Git-ignored, and written by `js-codegen:codegen`, on which every `js-internal` target depends: the `@bdk/internal` service modules. `@bdk/automation`'s service modules (T-JS-04, M7) are to be handled like `@bdk/internal`'s | The registry is the record of every identifier ever assigned, not a derivation; the Chromium GN build and SwiftPM compile the header, the tables and the Swift wrappers and cannot run the generator. Only Nx targets read the TypeScript modules, which are one function per command, so a definition's diff already shows the change |
+
+The patch series is 15: the new scheme patch, and the C ABI export patch lists the six new functions (the test-hook export patch is regenerated against it). `chromium:patch-check` passes.
+
+### 2.15 Providers and privacy in M6 (2026-11-20)
+
+M6 departs from architecture 11, 11.1 and 12, feasibility 6 and tasks T-PRV-02 to T-PRV-09 as follows. The engine half is written, not built.
+
+| Planned | Built | Why |
+|---|---|---|
+| A BDK renderer agent replacing script injection (architecture 11) | Two scripts run by the browser in the translate isolated world of the main frame read and write text nodes; no renderer code | The browser-process API (`ExecuteJavaScriptInIsolatedWorld`) needs no patch and keeps the page's script away from them. Frames other than the main frame are not translated |
+| Chromium's language detection reused | Reused, but on macOS it needs a TFLite model the optimization guide downloads from Google; BDK does not fetch it, so detection rests on the page's declared language or the provider's `detect` | No Google request by default (feasibility 6) |
+| The Google key "supplied at start" | `google_api_key` in `bdk_start_config_t`; `bdk_provider_set_key` takes no key in this runtime | Chromium allows the key to be set once, before anything reads it (`InitializeApiKeyCacheInstance`) |
+| Endpoint remap for every provider | Only for the default reputation lists; Safe Browsing's and the network location provider's hosts are constants (T-PRV-14, after v1) | No overlay hook reaches them |
+| A component-data mirror (D5 options a to c) | The data ships with each runtime release and the component updater is off | Update-check responses are signed by Google per request (CUP) |
+| `translation.*` from services.md 5.12 | Plus `translation.present`; every command takes a profile (a call that names a page addresses the page's profile) | Swift's `page.translation.present()` needs a command; the generator puts one namespace on one scope |
+| A translation request that moves through its phases (ui-requests.md 5.10) | The request is the offer; later phases are events | A request is completed once |
+
+New tasks: T-PRV-11, T-PRV-12 and T-PRV-13 (M6), and T-PRV-14 (after v1). The task list is 128.
+
+### 2.16 Automation and DevTools built in M7 (2026-11-20)
+
+M7 was written with the engine unbuilt: the parts that need no Chromium pass their tests, the engine's are written
+against the pinned source and wait for a build (T-AUT-06). Where it departs from architecture 9.3, javascript-api.md
+5 to 8, c-abi.md 9, services.md 5.15 to 5.17 and ui-requests.md 5.15:
+
+| Planned | Built | Why |
+|---|---|---|
+| A runtime for scripts chosen by a spike | V8 in a `kService` utility process for bundled scripts, an external runtime on the local socket for external tools, one JSON protocol for both ([feasibility.md](feasibility.md) section 12) | Both were needed anyway (T-AUT-04 is the external one); one protocol keeps one set of checks |
+| Automation in the engine (architecture 2, "automation host endpoint") | Sessions, tasks, the protocol, the endpoint, the user-script registry and the `contents.*` commands that need no renderer are in the runtime core; the engine only runs scripts and renderer work | Logic that needs no Chromium lives where CI tests it (2.7); the stub and the engine cannot disagree |
+| `@bdk/*` left external, provided by the host (javascript-api.md 8) | `bdk build automation` inlines `@bdk/automation`, `@bdk/commands` and `@bdk/events` into each script: one ES module with no imports | The host then provides only a transport; the runtime carries no copy of the JavaScript library, and the protocol is versioned in `start` and `welcome` |
+| `bdk_automation_subscribe_audit` (c-abi.md 9) | The built-in events `automation.sessionCreated`, `sessionRevoked` and `commandInvoked` (capability `automation.audit`) | One subscription mechanism; an auditing session can be granted them |
+| `bdk_automation_endpoint_open(authenticator_cb)` returning a session | The hello reaches a callback with a `bdk_context_t`; the application answers later with `bdk_automation_hello_accept(session)` or `_refuse` | Authentication may be asynchronous (an application asking its own server) |
+| A session's profiles | Open profile ids resolved to handles when the session is created: a profile closed and reopened leaves the scope | Scope stays a set of handles in the broker; reopening is a new grant |
+| Undocked DevTools as a new-window request of kind `devTools` (2.12) | A `devtools` request carrying the front end as a page (ui-requests.md 5.15), with an undocked window of BDK's own as the default presenter | The surface the spec defines; `[ui.surfaces] devtools` now governs it |
+| A replaced front end "served in place of the default" | Chromium's `--custom-devtools-frontend` switch, set at each start on the bundle's `BDK/DevTools/Frontend/`, entry `index.html`; packaged by `bdk build devtools` | Chromium's data source reads the switch per request: no patch |
+| A slow subscriber's events coalesced (services.md 7) | A connection 64 MiB behind is closed with `automation.overloaded` | Simple and safe for v0; coalescing is T-AUT-07 |
+
+New in the ABI: `bdk_session_run`, `bdk_task_cancel`, `bdk_task_subscribe`, `bdk_automation_endpoint_open` and
+`_close`, `bdk_automation_hello_accept` and `_refuse` (the export patch lists them). New patch: "bdk: register the
+automation host in the utility process" (Chromium has no embedder hook for utility services). With M4's two patches, the series is 17.
+A saved page (`contents.save`) appears in the profile's downloads, because Chromium saves pages as downloads.
+
+### 2.17 Extensions written in M5 (2026-11-20)
 
 M5's engine code is written and not yet built; the rest passes without Chromium. Where the build departs from
 [sdk/extensions.md](sdk/extensions.md), [sdk/swift-api.md](sdk/swift-api.md) 8.1 and tasks T-EXT-01 to T-EXT-09 and
@@ -269,7 +332,7 @@ T-SWF-08 (detail in `packages/core/docs/conventions.md`, "Extensions (M5)"):
 | Side panel needs a `BrowserWindowFeatures` patch (T-EXT-03) | No patch: `chrome.sidePanel.open` ends at the abstract `SidePanelUI::Show`, which BDK implements | Smaller than the planned patch |
 
 Three patches were added, each with its reason in its message: extension install and uninstall prompts, keeping a
-`Browser` out of the extension window list, and opening an extension's options page. The series is seventeen.
+`Browser` out of the extension window list, and opening an extension's options page. With M4's and M7's patches, the series is 20.
 `developer_mode`, `blocklist` and `[extensions.bundled]` (S6) are still Added and not read (T-EXT-14).
 
 ## 3. Tasks and workflows
@@ -289,6 +352,8 @@ Three patches were added, each with its reason in its message: extension install
 | T-CLI-02 | From 2026-11-16: prompts, a flag for every prompt, page templates. M to L. |
 | T-CLI-04, T-CFG-02 | From 2026-11-16: depend on T-CLI-05. |
 | T-REP-01 | From 2026-11-16: also writes `.node-version`. |
+| T-CLI-06, T-JS-05, T-SWF-09, T-SVC-11 | New, M5 (2026-11-20): left over from M4 (roadmap M4 status). |
+| T-WUI-07, T-PRV-10 | New, M6 (2026-11-20): left over from M4. |
 
 The task list goes from 103 to 106 tasks. The README said 100 before, which was already wrong; it now says 106. With T-CLI-05 on 2026-11-16 it is 107.
 

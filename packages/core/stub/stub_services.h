@@ -12,6 +12,12 @@
 
 namespace bdkstub {
 
+/* The stub's automation host (stub_automation.cc): scripts the tests define as callbacks. */
+void automation_reset();
+void automation_start(const std::shared_ptr<bdkcore::TaskPort>& task);
+void automation_end(bdkcore::TaskPort& task);
+void automation_scripts_changed();
+
 /* Forgets every stored value and resets the test controls. Called at runtime start. */
 void services_reset();
 
@@ -56,6 +62,17 @@ bdk_status_t extensions_activate(bdkcore::Runtime& rt,
 /* Makes the request the one bdk_stub_send_ui_update and bdk_stub_last_ui_update address, and
    records the application's updates to it (stub_backend.cc). */
 void track_request(const std::shared_ptr<bdkcore::Request>& request);
+
+/* What the page hooks (bdk_stub_page_bind, bdk_stub_page_navigate) need of a stub page
+   (stub_backend.cc). */
+/* The internal URL the page committed last, as Chromium's frame would report it. */
+std::string page_committed_url(const bdkcore::Contents& contents);
+/* Keeps a caller bound for the page, to revoke it when the page navigates or closes. */
+void page_keep_caller(bdkcore::Contents& contents, std::shared_ptr<bdkcore::Caller> caller);
+/* A navigation the page starts itself: trusted only when it shows an internal page. */
+void page_navigate(const std::shared_ptr<bdkcore::Contents>& contents, const std::string& url);
+/* Chromium terminates a renderer that asks for an interface it may not have. */
+void page_renderer_gone(const std::shared_ptr<bdkcore::Contents>& contents, const char* reason);
 
 } // namespace bdkstub
 

@@ -99,6 +99,24 @@ BDK_EXPORT bdk_status_t bdk_contents_find_present(bdk_contents_t, bdk_error_t*);
 /* Raises a `printing` UI request (BDK_SURFACE_PRINTING) as the print command does. */
 BDK_EXPORT bdk_status_t bdk_contents_print(bdk_contents_t, bdk_error_t*);
 
+/* Page commands (T-SWF-06, swift-api.md section 9): what a menu item or toolbar button invokes on
+   a page. command is a BDK_PAGE_COMMAND_*; an unknown one is BDK_ERR_INVALID_ARGUMENT.
+   can_perform writes 1 when the command would do something now, as Chromium would enable it, and
+   0 otherwise. perform on a command that cannot be performed fails with contents.commandDisabled.
+   find and print raise the same UI requests as bdk_contents_find_present and bdk_contents_print. */
+BDK_EXPORT bdk_status_t bdk_contents_can_perform_command(bdk_contents_t, uint32_t command,
+                                                         uint8_t* out_enabled, bdk_error_t*);
+BDK_EXPORT bdk_status_t bdk_contents_perform_command(bdk_contents_t, uint32_t command,
+                                                     bdk_error_t*);
+/* Sets the zoom level for this page only (BDK_ZOOM_SCOPE_PAGE) or for every page of its site
+   (BDK_ZOOM_SCOPE_SITE, Chromium's per-site level, kept by the profile). bdk_contents_set_zoom is
+   the page scope. zoom is a factor; 1 is the default. An unknown scope is
+   BDK_ERR_INVALID_ARGUMENT. */
+BDK_EXPORT bdk_status_t bdk_contents_set_zoom_scoped(bdk_contents_t, double zoom, uint32_t scope,
+                                                     bdk_error_t*);
+/* Closes the page's picture-in-picture window, if it has one; otherwise does nothing. */
+BDK_EXPORT bdk_status_t bdk_contents_exit_picture_in_picture(bdk_contents_t, bdk_error_t*);
+
 /* Events (section 5.3). The struct and every string in it are valid until the callback returns. */
 typedef struct bdk_contents_event {
     size_t struct_size;

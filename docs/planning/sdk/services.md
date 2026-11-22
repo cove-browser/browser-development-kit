@@ -301,7 +301,11 @@ A settings page manages preferences and models. Translating a page is done from 
 
 Events: `translation.preferencesChanged`, `translation.modelsChanged`, `translation.stateChanged` (sessions and Swift).
 
+Built in M6 (2026-11-20): defined in `packages/core/interface/translation.json`, answered by the stub and built and tested on the engine. Every command takes a profile (the page's when a page is named); `translation.present` was added to raise the request from Swift or a session. Shapes: `translation.provider` answers the provider's descriptor (`id`, `name`, `privacy`, `host`, `policyUrl`, `protection`); `languages` answers `{pairs: [{from, to, installed}]}`; preferences are `{target, alwaysTranslate, neverTranslate, neverSites, offers}`, kept in Chromium's translate preferences. On the engine `neverTranslate` is never empty: Chromium starts it with the application's language and does not remove its last language, so that language can stay on both lists after it is put on the always list (the stub has no such floor); `state` and `translate` answer `{phase, detected, from, to, progress, error}`. `translation.stateChanged` is `{page, state}` with `page` the page's handle as a decimal string (provisional until M7's page identifiers). With the default provider the commands that need a provider answer `provider.unavailable` until the engine of T-PRV-02 exists. A disabled `translation` surface makes every command answer `provider.unavailable`.
+
 ### 5.13 `search`: address-bar services (Added, S1)
+
+Built in M4 (T-SVC-10) as `interface/search.json`, with `search.enginesChanged`: done in the stub; the engine service on `TemplateURLService` and the omnibox is written and waits for an engine build. Engine ids are Chromium's sync GUIDs. Changing the default engine's suggest or favicon URL is refused (Chromium changes only name, keyword and URL in place). Not built: the first-run engines from `[search]` (S1 is unconfirmed) and the suggest setting off by default; Chromium's prepopulated engines and its search-suggest preference apply (T-PRV-10, M6).
 
 | Command | Capability | Marks | Does |
 |---|---|---|---|
@@ -328,7 +332,7 @@ Rules:
 
 Events: `topSites.changed`.
 
-### 5.15 `contents`: pages (Plan, M7, T-AUT-03)
+### 5.15 `contents`: pages (Plan, M7, T-AUT-03; written in M7; passes on the stub, engine build and test pending (T-AUT-06))
 
 For Swift and automation sessions. Never for internal pages. Swift normally uses the typed objects in [swift-api.md](swift-api.md) section 6, which are the same operations.
 
@@ -340,7 +344,7 @@ For Swift and automation sessions. Never for internal pages. Swift normally uses
 | `contents.close` | `contents.control` | | |
 | `contents.navigate` | `contents.control` | | Returns when committed |
 | `contents.reload`, `contents.stop`, `contents.goBack`, `contents.goForward` | `contents.control` | | |
-| `contents.waitFor` | `contents.read` | | Load finished, network idle, a selector present, a URL pattern, or a script predicate; with a deadline |
+| `contents.waitFor` | `contents.read` | | Load finished, network idle, a selector present, a URL pattern, or a script predicate (which runs in the page, so a session also needs `contents.script`); with a deadline |
 | `contents.frames` | `contents.read` | | Frame tree |
 | `contents.text` | `contents.read` | | Visible text of a frame |
 | `contents.snapshot` | `contents.read` | | DOM or accessibility tree, as structured data |
@@ -359,9 +363,11 @@ Rules:
 - A session cannot answer a UI request. A permission prompt raised by a page a session is driving waits for the user, or is denied if the application's handler says so.
 - Every `contents.*` call by a session emits an audit event to Swift.
 
-Events: `contents.created`, `contents.closed`, `contents.navigated`, `contents.loadingChanged`, `contents.titleChanged`, `contents.crashed`, `contents.dialogOpened` (so a script knows it is blocked on a dialog it cannot answer).
+Events: `contents.created`, `contents.closed`, `contents.navigated`, `contents.loadingChanged`, `contents.titleChanged`, `contents.crashed`, `contents.dialogOpened` (so a script knows it is blocked on a dialog it cannot answer), and `contents.attentionRequested`.
 
-### 5.16 `scripts`: persistent user scripts (Plan, M7, T-AUT-03)
+As built in M7 (the definitions are `interface/contents.json`; the rules are `packages/core/docs/conventions.md`, "Automation"): the page a command addresses is the invoke options' `contents` (a call frame's `contents`), never an argument; the runtime core answers `list`, `get`, `create`, `close`, `navigate`, the history moves, `waitFor` on `load` and `url`, `setMuted`, `setZoom` and `requestAttention`, the engine the rest. `contents.save` writes `htmlOnly`, `completePage` or `singleFile` (MHTML) to a path the caller names and appears in the profile's downloads. `htmlOnly` fetches the page again, as Chrome does; when it cannot be fetched again, the save fails with `platform.failed` rather than answering for a file Chromium did not write. `screenshot` and `pdf` answer `{mimeType, byteLength, path?}` with the bytes outside the JSON, or write the file the caller names; PDF sizes and margins are in inches. A page created by a session belongs to the application, which is told by `contents.created` with `createdBy`. Errors added: `contents.internalPage`, `contents.scriptError`, `contents.notSerializable`, `contents.noElement`, `broker.timeout`.
+
+### 5.16 `scripts`: persistent user scripts (Plan, M7, T-AUT-03; written in M7; passes on the stub, engine build and test pending (T-AUT-06))
 
 | Command | Capability | Marks | Does |
 |---|---|---|---|
@@ -369,9 +375,9 @@ Events: `contents.created`, `contents.closed`, `contents.navigated`, `contents.l
 | `scripts.unregister` | `contents.script` | N | |
 | `scripts.list` | `contents.read` | N | |
 
-Scripts registered by a session are removed when the session is revoked.
+Scripts registered by a session are removed when the session is revoked. As built: kept by the runtime core in memory for the runtime's life (not across a relaunch); `runAt` defaults to `documentIdle` and `world` to an isolated world named like the id; a session may replace or remove only its own, owned by the session itself rather than its name (names may repeat). A user script runs on every page of the profile, so a session whose `scope.contents` is not `"all"` is refused `scripts.register` with `capability.outOfScope`.
 
-### 5.17 `debug`: the DevTools protocol (Plan, M7, T-AUT-03)
+### 5.17 `debug`: the DevTools protocol (Plan, M7, T-AUT-03; written in M7; passes on the stub, engine build and test pending (T-AUT-06))
 
 | Command | Capability | Marks | Does |
 |---|---|---|---|
@@ -381,7 +387,7 @@ Scripts registered by a session are removed when the session is revoked.
 
 Events: `debug.event`, `debug.detached`.
 
-`contents.debug` is close to full control of a page. The protocol domains that reach beyond a page, such as `Browser`, `Target` for other pages, and `SystemInfo`, are refused for sessions. Internal pages cannot be attached to.
+`contents.debug` is close to full control of a page. The protocol domains that reach beyond a page, such as `Browser`, `Target` for other pages, and `SystemInfo`, are refused for sessions. Internal pages cannot be attached to. As built, the refused domains are Browser, Target, SystemInfo, Tethering, Storage, IO, ServiceWorker and BackgroundService; `[devtools] protocol = false` refuses `debug.*` to every caller (`devtools.protocolDisabled`); events go only to the caller that attached. Swift-only `devtools.open`, `close` and `state` with `devtools.stateChanged` drive the front end (`interface/devtools.json`).
 
 ### 5.18 `system` (Plan, M3, T-SVC-06)
 
@@ -444,7 +450,7 @@ Rules:
 |---|---|
 | Subscribing | By event name, with an optional filter. Requires the read capability of the namespace: `history.read` for `history.visited`. `app.` events need the capability with the event's name. |
 | Delivery | In order per source. Not replayed: a subscriber sees events from the moment it subscribes, and reads current state with a command. |
-| Scope | A page receives events for its own profile. A session receives events for the profiles and pages in its scope. |
+| Scope | A page receives events for its own profile and application-wide events (such as `profiles.created` or an application-scope `settings.changed`), never another profile's. It does not receive `settings.changed` for an `app.` key declared with `exposedToPages: false`. A session receives events for the profiles and pages in its scope. |
 | Back-pressure | A subscriber that falls behind has events coalesced where the event type allows (progress, state) and is disconnected with an error where it does not (changes). The limit is set in T-SVC-01. |
 | End | A subscription ends with its page or session. |
 
@@ -472,7 +478,7 @@ The spec excludes any built-in sync and says an application may build its own on
 - `privacy.clear` cannot stop a removal that has begun: a cancelled call is answered cancelled and the removal runs on. `privacy.estimate` counts history, cookies and downloads within the call's `range` and `origins` (history and downloads by the origin of their URL, cookies by domain match on the origin's host and by creation time, downloads by start time); the other types report 0 items.
 - `downloads.start` starts the download directly; the downloads UI request it is marked with belongs to the downloads surface work. `downloads.retry` resumes an interrupted download that can resume and otherwise starts again from the URL.
 - Built-in events are emitted through the core (conventions.md, "The broker", item 12). `history.visited` says `application` for a visit added with `history.add` and `user` for a navigation.
-- Screenshots and PDFs are not commands until M7; the engine has the functions (`capture_service.cc`).
+- Screenshots, PDFs and saved pages are `contents.screenshot`, `pdf` and `save` since M7 (5.15).
 - `bookmarks.import` (T-SVC-07) reads the file with Chromium's `ContentBookmarkParser`, which runs the Netscape-format HTML parser in a utility process as Chromium's own import does, then adds the entries itself. They go into a new folder titled "Imported bookmarks" at the end of the other bookmarks (never the bar, and the profile's existing bookmarks are untouched), keeping the file's folders; an entry with an invalid URL is skipped. It answers `{imported}`, the number of bookmarks (folders are not counted), and reports progress (0 on starting to read, 0.5 once parsed, then every 100 added). A path that is empty, unreadable or not bookmarks HTML fails with `broker.invalidArguments`. A private profile imports into its parent's bookmarks.
 - `bookmarks.export` (T-SVC-07) writes the profile's bookmarks with Chromium's `bookmark_html_writer`, favicons included. It answers `null`; a file that cannot be written fails with `platform.failed`, and a second export while one runs for the same bookmarks with `platform.busy`.
 - `permissions.certificateExceptions` answers `{hosts}`: the hosts (sorted, no port) where a certificate error was proceeded past and the decision still holds, from Chromium's `StatefulSSLHostStateDelegate` (T-SVC-07). `permissions.revokeCertificateException` takes `{host}`, forgets the decision (and closes idle connections, so the next visit meets the error again) and answers `null`, also when there was none. Each profile keeps its own; a private profile's go with it.

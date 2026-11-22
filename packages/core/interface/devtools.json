@@ -1,0 +1,44 @@
+{
+  "namespace": "devtools",
+  "since": 1,
+  "types": {
+    "DevToolsState": {
+      "open": "bool",
+      "frontend": "string?"
+    }
+  },
+  "commands": [
+    {
+      "name": "devtools.open",
+      "callers": ["swift"],
+      "profile": "none",
+      "raises": "devtools",
+      "args": {},
+      "result": "void"
+    },
+    {
+      "name": "devtools.close",
+      "callers": ["swift"],
+      "profile": "none",
+      "args": {},
+      "result": "void"
+    },
+    {
+      "name": "devtools.state",
+      "callers": ["swift"],
+      "profile": "none",
+      "args": {},
+      "result": "DevToolsState"
+    }
+  ],
+  "events": [
+    {
+      "name": "devtools.stateChanged",
+      "capability": "contents.read",
+      "payload": {
+        "contents": "string",
+        "open": "bool"
+      }
+    }
+  ]
+}

@@ -1,0 +1,142 @@
+{
+  "namespace": "search",
+  "since": 1,
+  "types": {
+    "SearchEngineSource": {
+      "enum": ["product", "user"]
+    },
+    "SearchEngine": {
+      "id": "string",
+      "name": "string",
+      "keyword": "string",
+      "searchUrl": "string",
+      "suggestUrl": "string?",
+      "faviconUrl": "url?",
+      "isDefault": "bool",
+      "source": "SearchEngineSource"
+    },
+    "InputKind": {
+      "enum": ["url", "search"]
+    },
+    "Classification": {
+      "kind": "InputKind",
+      "url": "url?",
+      "engineId": "string?"
+    },
+    "SuggestionType": {
+      "enum": ["url", "history", "bookmark", "keyword", "search"]
+    },
+    "Suggestion": {
+      "type": "SuggestionType",
+      "text": "string",
+      "url": "url",
+      "relevance": "int",
+      "inlineCompletion": "string?"
+    }
+  },
+  "commands": [
+    {
+      "name": "search.engines",
+      "capability": "search.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {},
+      "result": {
+        "engines": "SearchEngine[]"
+      }
+    },
+    {
+      "name": "search.addEngine",
+      "capability": "search.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "name": "string",
+        "keyword": "string",
+        "searchUrl": "string",
+        "suggestUrl": "string?",
+        "faviconUrl": "url?"
+      },
+      "result": "SearchEngine"
+    },
+    {
+      "name": "search.updateEngine",
+      "capability": "search.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string",
+        "name": "string?",
+        "keyword": "string?",
+        "searchUrl": "string?",
+        "suggestUrl": "string?",
+        "faviconUrl": "url?"
+      },
+      "result": "SearchEngine"
+    },
+    {
+      "name": "search.removeEngine",
+      "capability": "search.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string"
+      },
+      "result": "void"
+    },
+    {
+      "name": "search.setDefault",
+      "capability": "search.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "requires": ["gesture"],
+      "args": {
+        "id": "string"
+      },
+      "result": "void"
+    },
+    {
+      "name": "search.classify",
+      "capability": "search.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "text": "string"
+      },
+      "result": "Classification"
+    },
+    {
+      "name": "search.suggestions",
+      "capability": "search.read",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "text": "string",
+        "limit": "int?"
+      },
+      "result": {
+        "suggestions": "Suggestion[]"
+      }
+    },
+    {
+      "name": "search.deleteSuggestion",
+      "capability": "history.write",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "url": "url"
+      },
+      "result": "void"
+    }
+  ],
+  "events": [
+    {
+      "name": "search.enginesChanged",
+      "capability": "search.read",
+      "payload": {
+        "engines": "SearchEngine[]",
+        "source": "ChangeSource"
+      }
+    }
+  ]
+}

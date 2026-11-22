@@ -138,6 +138,13 @@ BDK_EXPORT bdk_status_t bdk_testing_tab_info(bdk_contents_t,
    dangerous content (this build has no Safe Browsing or file-type policy to
    flag a real one before M6) script_page {"url", "body", "contentType",
    "headers"}  serves later navigations to url with this content
+   reputation.list {"json"} -> {"loaded", "error"}  gives the default
+   reputation provider a block list, as a download whose signature was checked
+   would providers.settings -> {"componentUpdatesDisabled", "syncDisabled",
+   "platformOnlyGeolocation", "googleKey", "geolocation", "reputation"}  what
+   Chromium runs with network.hosts {"path"} -> {"hosts": [...]}  the hosts a
+   net log written with --log-net-log has requests or resolutions for
+   hsts.add {"contents", "host"}  the page's profile treats host as HSTS
    extensions.pack {"dir", "crx", "key"} -> {"id"}  packs the directory into the
    CRX with Chromium's ExtensionCreator, signed with the key in the file `key`
    (made when missing), so a second package of the same key is an update of the

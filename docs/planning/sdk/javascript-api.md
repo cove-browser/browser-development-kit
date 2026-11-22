@@ -86,7 +86,7 @@ Both give the same module. Types come from the generated declarations (section 7
 
 ## 3. `@bdk/internal/*`
 
-Plan, M4, task T-JS-03. One module per service namespace. Each function is a thin typed wrapper over one broker command in [services.md](services.md) section 5, with the same name after the dot.
+Built in M4 (T-JS-03), tested with a mock transport; the engine side is written and waits for an engine build. One module per service namespace. Each function is a thin typed wrapper over one broker command in [services.md](services.md) section 5, with the same name after the dot.
 
 | Module | Wraps | Capabilities used |
 |---|---|---|
@@ -110,6 +110,8 @@ Plan, M4, task T-JS-03. One module per service namespace. Each function is a thi
 | `@bdk/internal/events` | `app.*` events | The event's own name |
 
 There is no `@bdk/internal/contents`, `debug` or `automation`. Pages cannot hold those capabilities ([services.md](services.md) section 4).
+
+Built in M4: `page`, `settings`, `profiles`, `history`, `bookmarks`, `downloads`, `permissions`, `privacy`, `passwords`, `autofill`, `search`, `system`, `commands`, `events` and `testing`. Not built, with their namespaces: `extensions` (T-EXT-02, M5), `translation` (T-PRV-03, M6), `favicons` and `top-sites` (S12, T-SVC-11, M5). As built, a generated function takes one arguments object (`settings.get({ key })`), a command whose result has one field resolves to that field, and `SettingKey` is `string` until the catalogue is a definition (T-JS-05, M5). Event filters are not applied to a page's subscriptions yet (T-JS-05).
 
 ### 3.1 Shape
 
@@ -222,7 +224,7 @@ A new-tab page with no table in `bdk.toml` has no capability. It is still an iso
 
 ## 5. The automation host
 
-Plan, M7. The runtime choice is a spike (task T-AUT-01): V8 in a sandboxed utility process, or an external runtime on the local channel. The API below is the same either way. If the first is chosen, scripts have no Node APIs; that is risk R21.
+Plan, M7; written in M7; passes on the stub, engine build and test pending (T-AUT-06). The runtime choice was the spike T-AUT-01 ([../feasibility.md](../feasibility.md) section 12): bundled scripts run in V8 in a sandboxed utility process, external tools on the local channel, one protocol for both. Scripts have no Node APIs (risk R21); they have the protocol, `setTimeout`, `clearTimeout`, `console`, `queueMicrotask` and `AbortController`. `@bdk/automation` is built (`packages/js/automation`); its service namespaces are loosely typed until the declarations are generated (T-JS-06, M8), and `Page.translate` calls `translation.*`, which T-PRV-03 (M6) defines.
 
 ### 5.1 Layout and build
 
@@ -234,7 +236,7 @@ BrowserApp/
     └── lib/                  # shared modules; not scripts
 ```
 
-Each top-level file is one script. `bdk build automation` bundles each with Rolldown into the application bundle and records its digest in the resolved file. Only bundled scripts can run in the in-process host; a session cannot be handed source text at runtime unless the application registers an `app.` command that does it.
+Each top-level file is one script. `bdk build automation` bundles each with Rolldown into the application bundle and records its digest in the resolved file (`bundle`, `bundle_digest`); the engine refuses a script whose bytes do not match. Only bundled scripts can run in the in-process host; a session cannot be handed source text at runtime unless the application registers an `app.` command that does it.
 
 ### 5.2 A script
 
@@ -330,7 +332,7 @@ BDK ships no CLI, no MCP or ACP server, no agent identity and no consent UI. Tho
 
 ## 6. DevTools customisation
 
-Plan, M7, task T-AUT-05. Chosen in `[devtools]` ([configuration.md](configuration.md) 3.12).
+Plan, M7, task T-AUT-05; written in M7; passes on the stub, engine build and test pending (T-AUT-06). Chosen in `[devtools]` ([configuration.md](configuration.md) 3.12). `bdk build devtools` packages a replacement (entry `index.html`) into `Contents/Resources/BDK/DevTools/Frontend/` and an overlay into `.../Overlay/`.
 
 | Mode | What the developer supplies | Packaging |
 |---|---|---|
@@ -343,7 +345,7 @@ Rules: front-end resources are packaged in the signed bundle, never loaded from 
 
 ## 7. Code generation
 
-Plan, M4, tasks T-JS-01 and T-JS-02. Nothing is published to npm. Everything is generated on the developer's machine during the build.
+Built in M4 (T-JS-01, T-JS-02, T-CLI-04): `bdk build codegen` writes `@bdk/internal`, `@bdk/protocol`, `@bdk/vite` and the generated `@bdk/internal/app.d.ts` and `@bdk/env.d.ts`, and links `node_modules/@bdk`. Not built: the extractor that writes `bdk.commands.json` in an Xcode build (T-CLI-06, M5). Nothing is published to npm. Everything is generated on the developer's machine during the build.
 
 ```text
 packages/core/interface/*.json  ─────────────┐   shipped inside the BDK package
@@ -374,7 +376,7 @@ bdk.toml grants ─────────────────────�
 | Tool | Used for | Supplied by BDK |
 |---|---|---|
 | Vite | Internal pages, optional | A preset: `import { bdk } from "@bdk/vite"` in `Pages/vite.config.ts`. It sets one entry per page directory, resolves `@bdk/internal/*`, emits no inline scripts, uses relative asset URLs, and fails the build on anything the content security policy would block. |
-| Rolldown | Automation scripts | A fixed configuration run by `bdk build automation`: one bundle per script, ES module output, `@bdk/*` left external and provided by the host |
+| Rolldown | Automation scripts | A fixed configuration run by `bdk build automation`: one bundle per script, an ES module with no imports, `@bdk/*` inlined (decided in M7, [../amendments.md](../amendments.md) 2.16: the host provides only a transport), written to `Contents/Resources/BDK/Automation/<name>.js` with its digest in the resolved file. Rolldown comes from the project's `node_modules` |
 | Frameworks | Internal pages, optional | Starter templates for the frameworks `bdk init` offers ([cli.md](cli.md) 4.3): vanilla, React, Vue, Svelte, Solid, Preact and Lit as proposed, each in TypeScript or JavaScript. `@bdk/internal/*` is framework-neutral: promises and async iterators, no hooks or stores. A template wraps them in the framework's own idiom in a few lines the developer owns. |
 | TypeScript | Type checking | Generated declarations and a base `tsconfig` to extend |
 | Node and a package manager | Only if the application uses Vite or npm packages | Not supplied. `bdk doctor` reports their versions. An application with plain HTML pages needs neither. |

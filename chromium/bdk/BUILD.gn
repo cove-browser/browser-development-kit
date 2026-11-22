@@ -3,6 +3,9 @@
 # the C ABI headers from packages/core under //bdk/core, and linked into the
 # Mac framework by the first patch in chromium/patches.
 
+import("//mojo/public/tools/bindings/mojom.gni")
+import("//tools/typescript/webui_ts_library.gni")
+
 config("core_config") {
   include_dirs = [
     "core/include",
@@ -17,15 +20,27 @@ config("core_config") {
 source_set("core") {
   sources = [
     "core/runtime/app_settings.cc",
+    "core/runtime/automation.cc",
+    "core/runtime/automation_internal.h",
+    "core/runtime/automation_state.h",
     "core/runtime/broker.cc",
     "core/runtime/broker_args.cc",
     "core/runtime/broker_internal.h",
     "core/runtime/core.cc",
     "core/runtime/core_host.cc",
+    "core/runtime/contents_commands.cc",
     "core/runtime/core_internal.h",
     "core/runtime/core_windows.cc",
     "core/runtime/extension_policy.cc",
     "core/runtime/extension_policy.h",
+    "core/runtime/local_socket.h",
+    "core/runtime/local_socket_posix.cc",
+    "core/runtime/providers.cc",
+    "core/runtime/providers_internal.h",
+    "core/runtime/reputation_lists.cc",
+    "core/runtime/routes.cc",
+    "core/runtime/routes.h",
+    "core/runtime/translation.cc",
     "core/runtime/ui_router.cc",
   ]
   public_configs = [ ":core_config" ]
@@ -49,6 +64,35 @@ config("core_raw_ptr_exclusion") {
   ]
 }
 
+# The page broker an internal page reaches (engine/pages, T-WUI-04). The
+# WebUI bindings are TypeScript; they are compiled and the JavaScript is
+# embedded in the engine as a header, so the bundled-page data source serves
+# bindings that always match the runtime (/@bdk/page_broker.mojom-webui.js).
+mojom("page_broker_mojom") {
+  sources = [ "engine/pages/page_broker.mojom" ]
+  webui_module_path = "/@bdk"
+}
+
+webui_ts_library("page_broker_ts") {
+  root_dir = "$root_gen_dir/bdk/engine/pages"
+  out_dir = "$target_gen_dir/page_broker_tsc"
+  in_files = [ "page_broker.mojom-webui.ts" ]
+  deps = [ "//ui/webui/resources/mojo:build_ts" ]
+  extra_deps = [ ":page_broker_mojom_ts__generator" ]
+}
+
+action("page_broker_js_header") {
+  script = "build/embed_text.py"
+  inputs = [ "$target_gen_dir/page_broker_tsc/page_broker.mojom-webui.js" ]
+  outputs = [ "$target_gen_dir/engine/pages/page_broker_js.h" ]
+  args = [
+    rebase_path(inputs[0], root_build_dir),
+    rebase_path(outputs[0], root_build_dir),
+    "kPageBrokerMojomWebUiJs",
+  ]
+  deps = [ ":page_broker_ts" ]
+}
+
 source_set("bdk") {
   sources = [
     "bdk_overlay.cc",
@@ -57,6 +101,8 @@ source_set("bdk") {
   if (is_mac) {
     sources += [
       "engine/application_mac.mm",
+      "engine/automation/automation_host_launcher.cc",
+      "engine/automation/automation_host_launcher.h",
       "engine/bdk_browser_window.cc",
       "engine/bdk_browser_window.h",
       "engine/bdk_testing.h",
@@ -123,6 +169,20 @@ source_set("bdk") {
       "engine/identity.h",
       "engine/json_util.cc",
       "engine/json_util.h",
+      "engine/page_protocol.cc",
+      "engine/page_protocol.h",
+      "engine/pages/bundled_page_source.cc",
+      "engine/pages/bundled_page_source.h",
+      "engine/pages/bundled_page_ui.cc",
+      "engine/pages/bundled_page_ui.h",
+      "engine/pages/page_broker_impl.cc",
+      "engine/pages/page_broker_impl.h",
+      "engine/pages/page_commands.cc",
+      "engine/pages/page_commands.h",
+      "engine/pages/page_routes.cc",
+      "engine/pages/page_routes.h",
+      "engine/pages/pages_navigation_throttle.cc",
+      "engine/pages/pages_navigation_throttle.h",
       "engine/services/authentication.cc",
       "engine/services/autofill_prompts.cc",
       "engine/services/autofill_prompts.h",
@@ -135,7 +195,10 @@ source_set("bdk") {
       "engine/services/capture_service.cc",
       "engine/services/capture_service.h",
       "engine/services/command_dispatch.cc",
+      "engine/services/contents_service.cc",
       "engine/services/cookies_service.cc",
+      "engine/services/debug_service.cc",
+      "engine/services/devtools_service.cc",
       "engine/services/download_prompts.cc",
       "engine/services/download_prompts.h",
       "engine/services/downloads_service.cc",
@@ -144,6 +207,7 @@ source_set("bdk") {
       "engine/services/history_service.cc",
       "engine/services/interstitial_prompts.cc",
       "engine/services/interstitial_prompts.h",
+      "engine/services/page_call.h",
       "engine/services/password_prompts.cc",
       "engine/services/password_prompts.h",
       "engine/services/passwords_service.cc",
@@ -153,6 +217,7 @@ source_set("bdk") {
       "engine/services/print_prompts.cc",
       "engine/services/print_prompts.h",
       "engine/services/privacy_service.cc",
+      "engine/services/search_service.cc",
       "engine/services/profiles_service.cc",
       "engine/services/prompt_hooks.cc",
       "engine/services/prompt_hooks.h",
@@ -165,12 +230,22 @@ source_set("bdk") {
       "engine/services/system_mac.mm",
       "engine/services/system_platform.h",
       "engine/services/system_service.cc",
+      "engine/services/user_scripts.cc",
+      "engine/services/user_scripts.h",
       "engine/session_state.cc",
       "engine/session_state.h",
       "engine/testing.cc",
       "engine/testing.h",
       "engine/testing_commands.cc",
       "engine/presenters_mac.mm",
+      "engine/providers/geolocation_provider.cc",
+      "engine/providers/geolocation_provider.h",
+      "engine/providers/provider_settings.cc",
+      "engine/providers/provider_settings.h",
+      "engine/providers/reputation_service.cc",
+      "engine/providers/reputation_service.h",
+      "engine/providers/translation_service.cc",
+      "engine/providers/translation_service.h",
       "engine/ui_auth.cc",
       "engine/ui_auth.h",
       "engine/ui_dialogs.cc",
@@ -190,10 +265,19 @@ source_set("bdk") {
     ]
     deps = [
       ":core",
+      ":page_broker_js_header",
+      ":page_broker_mojom",
+      "//chrome/browser/picture_in_picture",
+      "//components/omnibox/browser",
+      "//components/search_engines",
+      "//ui/webui",
       "//base",
+      "//bdk/engine/automation:mojom",
+      "//crypto",
       "//chrome/app:branded_strings",
       "//chrome/browser",
       "//chrome/browser:chrome_browser_application_mac",
+      "//chrome/common",
       "//chrome/browser/devtools",
       "//chrome/browser/extensions",
       "//chrome/browser/extensions/api/side_panel",
@@ -205,12 +289,20 @@ source_set("bdk") {
       "//components/autofill/core/browser",
       "//components/crx_file",
       "//components/password_manager/core/browser",
+      "//components/prefs",
+      "//components/safe_browsing:buildflags",
       "//components/safe_browsing/content/browser",
+      "//components/safe_browsing/content/browser:safe_browsing_service",
+      "//components/safe_browsing/core/browser/db:database_manager",
+      "//components/translate/content/browser",
+      "//components/translate/core/browser",
+      "//components/translate/core/common",
       "//components/security_interstitials/content:security_interstitial_page",
       "//components/input",
       "//components/content_settings/core/browser",
       "//components/content_settings/core/common",
       "//components/find_in_page",
+      "//components/heavy_ad_intervention",
       "//components/keep_alive_registry",
       "//components/os_crypt/common:keychain_password_mac",
       "//components/permissions",
@@ -228,6 +320,9 @@ source_set("bdk") {
       "//extensions/browser",
       "//extensions/browser/updater",
       "//extensions/common",
+      "//google_apis",
+      "//services/device/public/cpp/geolocation",
+      "//services/device/public/mojom",
       "//mojo/public/cpp/bindings",
       "//mojo/public/cpp/system",
       "//net",

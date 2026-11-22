@@ -1,0 +1,36 @@
+# Copyright 2026 The BDK Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# The automation host (M7, T-AUT-01 and T-AUT-02): V8 in a sandboxed utility
+# process. See chromium/bdk/README.md.
+
+import("//mojo/public/tools/bindings/mojom.gni")
+
+mojom("mojom") {
+  sources = [ "automation_host.mojom" ]
+  public_deps = [ "//sandbox/policy/mojom" ]
+}
+
+# The utility process side. Linked into //chrome/utility (patch "bdk: register
+# the automation host in the utility process"), so it depends on nothing in
+# //chrome and nothing of the core. Its only public function is
+# RunAutomationHost, which the utility process's service factory calls.
+source_set("utility") {
+  sources = [
+    "automation_host_service.cc",
+    "automation_host_service.h",
+  ]
+
+  configs += [ "//v8:external_startup_data" ]
+
+  deps = [
+    "//base",
+    "//gin",
+    "//mojo/public/cpp/bindings",
+    "//tools/v8_context_snapshot:buildflags",
+    "//v8",
+  ]
+
+  public_deps = [ ":mojom" ]
+}

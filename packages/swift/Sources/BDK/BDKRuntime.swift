@@ -48,6 +48,8 @@ public final class BDKRuntime {
     public private(set) lazy var commands = BDKCommands(runtime: self)
     /// The application windows registered with the runtime.
     public private(set) lazy var windows = BDKWindows(runtime: self)
+    /// Automation sessions, tasks and the external endpoint (swift-api.md section 13).
+    public private(set) lazy var automation = BDKAutomation(runtime: self)
     public private(set) var areRegistrationsFrozen = false
 
     package private(set) var handle: bdk_runtime_t
@@ -91,6 +93,7 @@ public final class BDKRuntime {
             configuration.bundleURL?.path ?? "",
             configuration.launch.userDataDirectory?.path ?? "",
             host.hash,
+            configuration.services.google.apiKey ?? "",
         ]
         let status = withBDKStrings(strings) { lent in
             var config = bdk_start_config_t()
@@ -99,6 +102,7 @@ public final class BDKRuntime {
             config.bundle_path = lent[1]
             config.user_data_path_override = lent[2]
             config.host_abi_hash = lent[3]
+            config.google_api_key = lent[4]
             config.host_abi_version = host.version
             if let application: NSApplication = NSApp {
                 config.native_app = bdk_native_handle_t(
@@ -159,12 +163,14 @@ public final class BDKRuntime {
 
     // MARK: Registrations
 
-    /// Hands the configuration's UI handlers, commands, events and settings to the runtime. Both are
-    /// registrations, so this runs before the freeze.
+    /// Hands the configuration's UI handlers, page routes, commands, events, settings and providers to
+    /// the runtime. All are registrations, so this runs before the freeze.
     private func register(_ configuration: BDKConfiguration) throws {
         try ui.attach(to: self, from: configuration)
+        try configuration.pages.adopt(into: self)
         try commands.adopt(configuration.commands)
         try configuration.settings.adopt(into: self)
+        try configuration.services.adopt(into: self)
     }
 
     /// Freezes the route and capability tables. Registrations after this fail with
@@ -273,6 +279,7 @@ public final class BDKRuntime {
     }
 
     private func invalidateChildren() {
+        automation.invalidate()
         commands.invalidate()
         for contents in webContents { contents.invalidate() }
         for profile in profiles.loaded { profile.invalidate() }

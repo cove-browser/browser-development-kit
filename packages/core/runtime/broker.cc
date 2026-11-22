@@ -5,6 +5,7 @@
 #include <cstring>
 #include <unordered_map>
 
+#include "automation_internal.h"
 #include "bdk_command_table.inc"
 #include "broker_internal.h"
 
@@ -97,7 +98,10 @@ std::string caller_info(const Caller& c) {
     out += ",\"capabilities\":[";
     for (size_t i = 0; i < c.capabilities.size(); ++i)
         out += (i ? ",\"" : "\"") + json_escape(c.capabilities[i]) + "\"";
-    return out + "]}";
+    out += ']';
+    if (c.kind == CallerKind::kPage && !c.internal_scheme.empty())
+        out += ",\"internalScheme\":\"" + json_escape(c.internal_scheme) + "\"";
+    return out + "}";
 }
 
 /* ---- One call ---- */
@@ -166,6 +170,16 @@ bool check_scope(const std::shared_ptr<Pending>& p) {
                    "the page is outside the session's scope");
             return false;
         }
+        /* A page is in scope only in a profile that is: "all pages" means all pages of those. */
+        if (o.contents && !caller.scope.all_profiles) {
+            auto page = contents_of(o.contents);
+            if (page &&
+                (!page->profile || !is_member(caller.scope.profiles, page->profile->handle))) {
+                refuse(p, BDK_DOMAIN_CAPABILITY, BDK_CODE_OUT_OF_SCOPE,
+                       "the page is in a profile outside the session's scope");
+                return false;
+            }
+        }
         break;
     }
 
@@ -182,6 +196,18 @@ bool check_scope(const std::shared_ptr<Pending>& p) {
             refuse(p, BDK_DOMAIN_CONTENTS, BDK_CODE_STALE, "the page is gone");
             return false;
         }
+    }
+    /* A call that names a page and no profile addresses the page's profile (translation.state). */
+    if (mode != table::kProfileNone && !p->profile && p->contents && p->contents->profile &&
+        p->contents->profile->open) {
+        bdk_profile_t own = p->contents->profile->handle;
+        if (caller.kind == CallerKind::kSession && !caller.scope.all_profiles &&
+            !is_member(caller.scope.profiles, own)) {
+            refuse(p, BDK_DOMAIN_CAPABILITY, BDK_CODE_OUT_OF_SCOPE,
+                   "the page's profile is outside the session's scope");
+            return false;
+        }
+        p->profile = p->contents->profile;
     }
     if (mode == table::kProfileRequired && !p->profile) {
         refuse(p, BDK_DOMAIN_BROKER, BDK_CODE_INVALID_ARGUMENTS,
@@ -254,6 +280,8 @@ void validate_and_run(const std::shared_ptr<Pending>& p) {
             c->Stop();
     };
     if (settings_call && app_settings_execute(*p->rt, call, parsed))
+        return;
+    if (core_execute_command(*p->rt, call, parsed))
         return;
     backend().ExecuteCommand(*p->rt, call);
 }
@@ -457,26 +485,77 @@ bdk_call_t broker_invoke_abi(bdk_runtime_t h, const std::string* name, uint32_t 
     return broker_submit(rt, host_caller(), ref, str(args), opts, false, cb, prog, ctx, rel);
 }
 
-bool emit_builtin_event(const std::shared_ptr<Runtime>& rt, const std::string& name,
-                        bdk_profile_t profile, const std::string& payload_json) {
-    uint32_t id = 0;
+namespace {
+
+uint32_t builtin_event_id(const std::string& name) {
     for (size_t i = 0; i < table::kEventCount; ++i) {
         if (name == table::kEvents[i].name)
-            id = table::kEvents[i].id;
+            return table::kEvents[i].id;
     }
+    return 0;
+}
+
+/* to: nullptr delivers to the host and to every session in scope; the host's caller delivers to
+   the host only; a session's caller to that session only. */
+bool emit_event(const std::shared_ptr<Runtime>& rt, const Caller* to, const std::string& name,
+                bdk_profile_t profile, bdk_contents_t contents, const std::string& payload_json) {
+    uint32_t id = builtin_event_id(name);
     if (id == 0)
         return false;
-    post([rt, name, id, profile, payload_json] {
-        auto subs = rt->subs;
-        for (auto& s : subs) {
-            if (!s->active || !s->ecb || (s->profile != 0 && s->profile != profile))
-                continue;
-            if ((!s->event_name.empty() && s->event_name == name) ||
-                (s->event_id != 0 && s->event_id == id))
-                s->ecb(s->ctx, id, view(name), view(payload_json));
+    std::shared_ptr<Caller> only;
+    if (to && to->kind != CallerKind::kHost)
+        only = std::const_pointer_cast<Caller>(to->shared_from_this());
+    const bool host = !to || to->kind == CallerKind::kHost;
+    const bool sessions = !to || only;
+    post([rt, name, id, profile, contents, payload_json, host, sessions, only] {
+        if (host) {
+            bool hidden_from_pages = false;
+            if (name == "settings.changed") {
+                JsonValue parsed;
+                std::string not_exposed;
+                hidden_from_pages = !json_parse(payload_json, &parsed) ||
+                                    !app_settings_exposed(*rt, parsed, &not_exposed);
+            }
+            auto subs = rt->subs;
+            for (auto& s : subs) {
+                if (!s->active || !s->ecb)
+                    continue;
+                if (s->page && hidden_from_pages)
+                    continue;
+                const bool everywhere = profile == 0 && s->page; /* application-wide, to pages */
+                if ((s->profile != 0 && s->profile != profile && !everywhere) ||
+                    (s->contents != 0 && s->contents != contents))
+                    continue;
+                if ((!s->event_name.empty() && s->event_name == name) ||
+                    (s->event_id != 0 && s->event_id == id))
+                    s->ecb(s->ctx, id, view(name), view(payload_json));
+            }
         }
+        if (sessions)
+            automation_deliver_event(rt, name, id, profile, contents, payload_json, only.get());
     });
     return true;
+}
+
+} // namespace
+
+bool emit_builtin_event(const std::shared_ptr<Runtime>& rt, const std::string& name,
+                        bdk_profile_t profile, const std::string& payload_json) {
+    return emit_event(rt, nullptr, name, profile, 0, payload_json);
+}
+
+bool emit_builtin_event_for(const std::shared_ptr<Runtime>& rt, const std::string& name,
+                            bdk_profile_t profile, bdk_contents_t contents,
+                            const std::string& payload_json) {
+    return emit_event(rt, nullptr, name, profile, contents, payload_json);
+}
+
+bool emit_builtin_event_to(const std::shared_ptr<Runtime>& rt,
+                           const std::shared_ptr<Caller>& caller, const std::string& name,
+                           bdk_profile_t profile, bdk_contents_t contents,
+                           const std::string& payload_json) {
+    return emit_event(rt, caller ? caller.get() : host_caller().get(), name, profile, contents,
+                      payload_json);
 }
 
 void broker_revoke_caller(const std::shared_ptr<Caller>& caller) {
@@ -487,6 +566,61 @@ void broker_revoke_caller(const std::shared_ptr<Caller>& caller) {
         if (auto c = w.lock())
             cancel_with(c, "the caller was revoked");
     }
+    auto subs = std::move(caller->subs);
+    caller->subs.clear();
+    for (auto& w : subs) {
+        if (auto s = w.lock())
+            deactivate(s);
+    }
+}
+
+bdk_subscription_t broker_subscribe_as(const std::shared_ptr<Runtime>& rt,
+                                       const std::shared_ptr<Caller>& caller,
+                                       const std::string& event, bdk_event_cb cb, void* ctx,
+                                       bdk_release_cb rel, std::string* domain, std::string* code,
+                                       std::string* message) {
+    auto refuse_with = [&](const char* d, const char* c, const std::string& m) {
+        *domain = d;
+        *code = c;
+        *message = m;
+        return bdk_subscription_t{0};
+    };
+    if (caller->kind != CallerKind::kPage)
+        return refuse_with(BDK_DOMAIN_BROKER, BDK_CODE_NOT_IMPLEMENTED,
+                           "only internal pages subscribe through the broker before M7");
+    if (caller->revoked)
+        return refuse_with(BDK_DOMAIN_CAPABILITY, BDK_CODE_DENIED, "the caller was revoked");
+    std::string capability;
+    uint32_t id = 0;
+    for (size_t i = 0; i < table::kEventCount; ++i) {
+        if (event == table::kEvents[i].name) {
+            capability = table::kEvents[i].capability;
+            id = table::kEvents[i].id;
+        }
+    }
+    if (id == 0) {
+        auto declared = rt->events.find(event);
+        if (declared == rt->events.end())
+            return refuse_with(BDK_DOMAIN_BROKER, "unknownEvent",
+                               "there is no event '" + event + "'");
+        capability = event;
+        id = declared->second;
+    }
+    if (!capability_granted(*caller, capability))
+        return refuse_with(BDK_DOMAIN_CAPABILITY, BDK_CODE_DENIED,
+                           "'" + event + "' needs the capability '" + capability + "'");
+    auto s = std::make_shared<Sub>();
+    s->ecb = cb;
+    s->ctx = ctx;
+    s->rel = rel;
+    s->event_id = id;
+    s->event_name = event;
+    s->profile = caller->profile; /* a page sees its own profile's and application-wide events */
+    s->page = true;
+    s->handle = table_make(T_SUB, s);
+    rt->subs.push_back(s);
+    caller->subs.push_back(s);
+    return s->handle;
 }
 
 void resolve_call(const std::shared_ptr<Call>& call, const std::string& result_json) {
@@ -507,6 +641,9 @@ void resolve_call(const std::shared_ptr<Call>& call, const std::string& result_j
 
 /* ---- CommandControl ---- */
 
+Caller::Caller() = default;
+Caller::~Caller() = default;
+
 CommandControl::CommandControl(std::shared_ptr<Call> call, bool progress)
     : call_(std::move(call)), progress_(progress) {}
 
@@ -525,6 +662,16 @@ void CommandControl::Progress(double fraction, const std::string& message) {
 
 void CommandControl::Resolve(const std::string& result_json) {
     resolve_call(call_, result_json);
+}
+
+void CommandControl::ResolveBinary(const std::string& result_json, std::string bytes) {
+    if (call_->done)
+        return;
+    if (result_json.size() > kMaxPayloadBytes || !valid_json(result_json)) {
+        resolve_call(call_, result_json); /* answers payloadTooLarge or the invalid JSON */
+        return;
+    }
+    finish_call_binary(call_, result_json, std::move(bytes));
 }
 
 void CommandControl::Reject(const char* domain, const char* code, const std::string& message) {

@@ -1,7 +1,7 @@
 # swift
 
 The macOS SDK: a Swift layer over the C ABI in `packages/core`. Spec: `docs/planning/sdk/swift-api.md`. Tasks
-T-SWF-01 to T-SWF-04, T-SVC-05 and the Swift wrappers of T-SVC-02, T-SVC-03, T-SVC-04 and T-SVC-06 are implemented and tested against the in-memory stub runtime. Nothing here has run against
+T-SWF-01 to T-SWF-04, T-SWF-06, T-SVC-05, the M7 page and automation APIs (T-AUT-02 to T-AUT-05, T-SVC-09) and the Swift wrappers of T-SVC-02, T-SVC-03, T-SVC-04 and T-SVC-06 are implemented and tested against the in-memory stub runtime. Nothing here has run against
 Chromium, and nothing in this package claims engine behaviour works: the real runtime arrives with T-PKG-04 and
 the engine tasks.
 
@@ -43,7 +43,7 @@ session (a logged-in Mac or the hosted macOS runner).
 | Configuration | `BDKConfiguration` (resolved JSON, bundle URL, `LaunchOptions.userDataDirectory`), `load(from:)` reads `bdk.resolved.json` from a bundle. Route resolution is the CLI's job. | T-SWF-02 |
 | Runtime | `BDKRuntime`: `start`, `shared`, `isRunning`, `info`, `events`, `shutdown()`, `terminate(replyingTo:)`. `start` freezes the registrations. | T-SWF-02 |
 | Profiles | `BDKProfiles` (`list`, `create`, `open(id:)`, `open(_:createIfMissing:)`, `openPrivate`, `delete`, `loaded`), `BDKProfile` (`info`, `rename`, `close`, `webContents`) | T-SWF-02 |
-| Pages | `BDKWebContents`: create, `close()`, `destroy()`, `state()` and state properties, `navigation` (`load`, `reload`, `stop`, `goBack`, `goForward`, `go(toOffset:)`, `go(toIndex:)`, `entries`), `setMuted`, `setZoom`, `setUserAgent`, `discard`, `setAutoDiscardable`, `sessionState`, `restore`, `focus`, `events` | T-SWF-02 |
+| Pages | `BDKWebContents`: create, `close()`, `destroy()`, `state()` and state properties, `navigation` (`load`, `reload`, `stop`, `goBack`, `goForward`, `go(toOffset:)`, `go(toIndex:)`, `entries`), `setMuted`, `setZoom`, `zoom` (`factor`, `set(_:scope:)`), `media` (`isMuted`, `exitPictureInPicture()`), `canPerform(_:)` and `perform(_:)` for `PageCommand`, `setUserAgent`, `discard`, `setAutoDiscardable`, `sessionState`, `restore`, `focus`, `events` | T-SWF-02 |
 | Errors | `BDKError` with `domain`, `code`, `message`, `details`; `stale` for any object used after destruction, profile close or shutdown | T-SWF-02 |
 | Events | `BDKEventSequence`: any number of iterators, each sees every event from when it was created (call `makeAsyncIterator()` before the action, since an iterator created inside a `Task` subscribes when the task first runs) | T-SWF-02 |
 | Calls | Asynchronous ABI calls bridge to `async throws` with a continuation resumed once; cancelling the task calls `bdk_call_cancel` and throws `broker.cancelled` | T-SWF-02 |
@@ -52,9 +52,80 @@ session (a logged-in Mac or the hosted macOS runner).
 | Windows | `runtime.windows.register(_:_:)` (public; a page view entering an unregistered window registers it as `.normal`), `BDKWindow` (`nsWindow`, `kind`, `pages`, `activePage`, `extensionWindowID`, `anchors`, `delegate`), `BDKWindowDelegate`, `WindowRequest`, `BDKWebContents.window` | T-SWF-08 |
 | Extensions | `profile.extensions` (the generated `BDKExtensions` plus `Sources/BDK/BDKExtensions+Host.swift`: install sources, `actions(for:)`, `actionChanges`, `activateAction`, `performCommand`, `presentDefaultMenu`), `ExtensionPopupRequest`, `ExtensionSidePanelRequest`, `ExtensionInstallRequest`, `ExtensionUninstallRequest` | T-EXT-02 to T-EXT-06 |
 | Settings | `BDKSettingKey`, `BDKSettingRegistry` (`config.settings`), typed `settings.get`, `set`, `reset`, `describe` on `BDKSettings`, `config.declarations` | T-SVC-08 |
+| Providers | `config.services` (`BDKServiceRegistry`), the provider protocols, `page.translation`, `TranslationRequest` (see below) | T-PRV-01, T-PRV-03, T-PRV-09 |
+| Page routes | `config.pages` (`PageRegistrations.register(_:_:)`), `PageMode` (`.chromium`, `.bundled`, `.native`, `.disabled`), `NativePageRequest`, `NativePageResult` | T-SWF-06 |
 | Commands | `BDKCommand`, `BDKEvent`, `BDKCommandRegistry` (`config.commands`), `BDKCommands` (`runtime.commands`: `register`, `declare`, `emit`, `events`, `invoke`), `BDKCommandContext`, `BDKDeclarations` | T-SVC-05 |
+| Scripting | `page.scripting` (`Scripting`): `evaluate`, `call`, `insertCSS`, `remove`, `frames`, `query`, `snapshot`, over `contents.*` | T-AUT-03 |
+| Capture | `page.capture` (`PageCapture`): `screenshot`, `pdf`, `save`, over `contents.screenshot`, `pdf` and `save`. `BDKCommands.invokeBinary` returns the bytes of a command marked binary next to its JSON | T-SVC-09 |
+| DevTools | `page.devTools` (`DevTools`): `present`, `close`, `state`, `isOpen`, `attachProtocol` returning a `BDKDevToolsProtocol` (`send`, `events`, `detach`); errors in the `devtools` domain | T-AUT-05 |
+| Automation | `runtime.automation` (`BDKAutomation`): `makeSession`, `events`, `external.open`; `BDKAutomationSession` (`run`, `grant(contents:)`, `revoke`), `BDKAutomationTask` (`events`, `value`, `cancel`), `BDKAutomationEndpoint` (`socketPath`, `close`) | T-AUT-02, T-AUT-04 |
 
 Pages and profiles dropped without `close()` are closed on deinit with a warning in the log.
+
+### Page routes and page commands
+
+`config.pages.register("downloads", .native { request in … return .handled })` sets how a route is served, as in
+architecture.md 8.2. `start` hands each registration to `bdk_page_handler_register` between the runtime start and
+the freeze, so a registration the runtime refuses (`config.noBuiltin`, `routeUnknown`, `routeInvalid`, `routeMode`,
+and `handlerMissing` at the freeze) is the start error and nothing is left running. Registering a route twice keeps
+the last registration, so only one per route crosses the ABI. A native handler runs on the main actor and gets a
+`NativePageRequest` (`route`, `url`, `path`, `query`, `source`, `profile`); `source` is the page object the
+application holds for the page that asked, nil for one it does not hold. A request whose profile the application
+does not hold, or whose JSON is malformed, is answered `.blocked`. The handler's context is released with the
+runtime.
+
+`page.canPerform(_:)` and `page.perform(_:)` take a `PageCommand`; `canPerform` is false on a closed page and
+`perform` throws `contents.stale` there, or `contents.commandDisabled` for a command that cannot be performed now.
+`page.zoom.set(_:scope:)` (`.page`, `.site`), `page.media.isMuted` and `page.media.exitPictureInPicture()` are the
+page controls. `page.zoom` is a `ZoomControl`; the factor is `page.zoom.factor`.
+
+`profile.search` is the generated `BDKSearch`. Against the stub its commands answer `broker.notImplemented`, so the
+tests do not call them. Native routes and page commands are tested in `PageTests.swift` against the stub's route
+table (the resolved JSON of `packages/core/tests/tests_pages.c`); a native route commits nothing, so those tests
+start the load through the ABI instead of awaiting `navigation.load`.
+
+### Page automation, sessions and the endpoint (M7)
+
+`page.scripting`, `page.capture` and `page.devTools` are thin wrappers: each call is a `contents.*`, `debug.*` or
+`devtools.*` command with the page as the invoke options' `contents`, so a closed page throws `contents.stale`. The
+stub has no renderer: captures return fixed bytes, `frames` one frame, and the other scripting commands answer
+`broker.notImplemented`; real answers are engine scenarios.
+
+Mapping rules this package chose (swift-api.md is silent):
+
+* Types are nested where the spec names them bare: `Scripting.World`, `Scripting.FrameSelector`, `Scripting.Snapshot`,
+  `Scripting.InjectedStyle`, `PageCapture.ScreenshotArea`, `PageCapture.PDFOptions`. Frames, elements, snapshot
+  kinds and save formats are the generated `BDKFrameInfo` (`ID` is `String`), `BDKElementInfo`, `BDKSnapshotKind` and
+  `BDKSaveFormat`.
+* `World.page` sends `world: "page"`; `.isolated(name)` sends the name, and `""` or `"page"` throw
+  `broker.invalidArguments` (the engine reads "page" as the page's own world). `FrameSelector.main` and `.all` send no
+  `frame`, which the engine reads as the main frame; `.frame(id)` sends the id. `call` builds
+  `(<function>)(<JSON arguments>)` and evaluates it. `query` also takes `limit`.
+* `screenshot` always asks for PNG. `PDFOptions` paper and margins are in inches; a nil field takes the engine's
+  default; `pdf` takes an `onProgress` closure. `Paper.a4` is 8.27 x 11.69, `.letter` 8.5 x 11.
+* `DevTools.present()` and `close()` are `async throws` (they are commands, unlike `find.present()`). `isOpen` starts
+  false, follows `devtools.stateChanged` (subscribed when `page.devTools` is first read) and is refreshed from
+  `devtools.state` after `present()`, `close()` and `state()`.
+* `attachProtocol()` subscribes to `debug.event` and `debug.detached` before it attaches, so no event is lost.
+  `events` is filtered by the session id and ends at `detach()` or `debug.detached`. `detach()` is synchronous and
+  idempotent (the command is sent in a task). `send` after a detach throws `devtools.detached`. A session object
+  stays alive until it ends: keep it or call `detach()`.
+* `BDKAutomation.Scope.profiles` is `[BDKProfile]?` (nil is every profile); `ContentsScope` is `.all`, `.created`,
+  `.explicit([BDKWebContents])` (the pages are granted right after creation). `SessionOptions.capabilities` defaults to
+  none.
+* `BDKAutomationSession.run` is `throws`, not `async`: `bdk_session_run` is synchronous. `grant(contents:)` throws;
+  `revoke()` does not and may be repeated. The runtime keeps a session until it is revoked and a running task until
+  it finishes. `BDKAutomationTask.value` follows the FINISHED event (`broker.cancelled`, `automation.sessionRevoked`,
+  `automation.hostGone`, `automation.scriptFailed`); the task's `events` end at FINISHED. A task's
+  `.commandInvoked(command, error:)` error carries the domain and code only.
+* `runtime.automation.events` reports `.sessionCreated`, `.sessionRevoked`, `.commandInvoked` and
+  `.contentsCreated(page, bySession:)`. A page a session created is wrapped with `BDKWebContents.adopt`, kept by the
+  runtime and destroyed once it reports `closed`; pages the application made are not announced.
+* `external.open(directory:authenticate:)`: the closure is `async throws`, runs on the main actor per hello and
+  returns `.accept(session:)` or `.refuse(message:)` (the message has a default, so `.refuse()` works); a throw
+  refuses with the error's description. At most one endpoint is open; `socketPath` is a `String`.
+* `BDKStub.defineScript(_:)` plays a script in the stub's host: `StubScript.frames` holds what BDK sent and
+  `send(_:)` answers in the wire protocol; `crashAutomationHost()` and `automationCount(_:)` expose the other hooks.
 
 ### UI requests
 
@@ -90,7 +161,8 @@ throws `ui.requestCompleted`; completing a withdrawn request does nothing.
 | `devTools`, `externalProtocols` | `DevToolsRequest`, `ExternalProtocolRequest` | `accept()`, `reject()`; `open(remember:confirmedBy:)` (grant), `cancel()` |
 | `extensionPopups`, `extensionSidePanels` | `ExtensionPopupRequest`, `ExtensionSidePanelRequest` | Open requests: `accept()` (popup) and `accept(side:)` (panel) send `bdk_ui_update` `{"placed":true}` and stay open; `side` sends `{"side"}`; `sizeChanges` and `visibilityChanges` come from `bdk_ui_set_update_handler`; `reject()` (deny), `close()` (accept `{"action":"close"}`); `closed` is the request's `cancellation` |
 | `extensionInstalls`, `extensionUninstalls` | `ExtensionInstallRequest`, `ExtensionUninstallRequest` | `accept(confirmedBy:)`, `confirm(confirmedBy:)` (grant), `cancel()` (deny) |
-| `translation`, `deviceChoosers`, `screenCapture`, `webAuthn` | `BDKRawUIRequest` | `complete(_:arguments:confirmedBy:)` with "grant", "deny" or "accept" |
+| `translation` | `TranslationRequest` | `translate(from:to:)`, `revert()`, `always(for:)`, `never(for:)`, `neverForThisSite()`, `dismiss()` (none grants, none needs a gesture) |
+| `deviceChoosers`, `screenCapture`, `webAuthn` | `BDKRawUIRequest` | `complete(_:arguments:confirmedBy:)` with "grant", "deny" or "accept" |
 
 Completion mapping (provisional, settled here for T-UIR-01 to T-UIR-06): a completion that grants (permission, a kept
 dangerous download, a saved password or card, an accepted suggestion, a proceed past an interstitial, opening an
@@ -130,6 +202,42 @@ sorted keys, so equal input gives equal bytes. Each command entry is an interfac
 `capability`, `callers`, `profile`, `args`, `result`, optional `requires`, `progress`, `types`) with the same type
 expressions as `packages/core/interface`. The extractor (T-JS-02, T-CLI-04) is a small executable target of the
 application that builds its configuration the same way and calls `write(to:)`; the generator reads the JSON.
+
+### Providers and page translation
+
+`config.services.translation.register(MyProvider())`, `.reputation.register(…)` and `.geolocation.register(…)` collect
+the implementations of a service whose `provider` is `app` in `bdk.toml`; `config.services.google.apiKey` is the key of a
+service whose provider is `google` (it goes to `bdk_start_config_t.google_api_key`). `BDKRuntime.start` registers each
+with `bdk_provider_register` before the freeze, so start errors are `BDKError`s: `config.providerMissing` (an `app`
+service with no provider, found at the freeze), `config.providerNotApp`, `config.descriptorInvalid`, `config.keyMissing`
+and `config.keyUnused`. A registry is a value; registering twice for a service keeps the last.
+
+| Protocol | Required | Optional operations (refining protocols, offered to BDK only when the provider conforms) |
+|---|---|---|
+| `BDKTranslationProvider` | `supportedPairs()`, `translate(_:pair:context:)` | `BDKTranslationModelManaging` (`prepare(_:progress:)`, `removeModel(_:)`), `BDKLanguageDetecting` (`detectLanguage(of:)`) |
+| `BDKReputationProvider` | `check(_:context:)` | `BDKDownloadChecking` (`check(_ download:)`), `BDKReputationUpdating` (`update()`) |
+| `BDKGeolocationProvider` | `positions(_:)`, an `AsyncThrowingStream<BDKPosition, Error>` | |
+
+Each call runs the provider in a task on the main actor and answers with `bdk_provider_resolve` or `bdk_provider_reject`:
+a `BDKError` in the `provider` domain keeps its code, any other error is `provider.remoteError` with its description.
+The core checks every answer against the contract (`provider.contractViolation`; conventions.md, "Providers"), for
+instance that a navigation verdict is not `dangerousDownload`. When BDK no longer wants an answer (the page navigated,
+the translation was reverted, the watch stopped, shutdown) the task is cancelled. A geolocation watch reports each
+position of the stream with `bdk_provider_report` and ends when the stream finishes (the call resolves with null) or
+BDK cancels it, which ends the iteration and so triggers the stream's `onTermination`. A `BDKError` with the code
+`permissionDenied`, `positionUnavailable` or `timeout` thrown by the stream is reported to the page as the position
+error. `BDKTranslationModelManaging.prepare` reports progress through its closure.
+
+`page.translation` (swift-api.md 6.7) is `state()`, `translate(to:from:)`, `revert()` and `present()`: the page commands
+`translation.state`, `translate`, `revert` and `present`, invoked by name with the page in the options (the core finds
+the profile). They are not generated, because they act on a page. `BDKWebContents.Event.translation(BDKTranslationState)`
+carries `BDK_CONTENTS_EVENT_TRANSLATION`. The profile's provider, languages, models and preferences are the generated
+`profile.translation`. `TranslationRequest` is the offer (and what `present()` raises); later phases are the events.
+
+Against the stub, `BDKStub` also sets and reads a page's text (`setPageText(_:language:on:)`, `pageText(of:)`: the stub
+detects, offers and translates as the engine would after a load), loads a reputation list (`loadReputationList(_:)`) and
+starts, reads and stops a page's geolocation watch (`startGeolocationWatch(on:highAccuracy:)`, `lastGeolocation(of:)`,
+`stopGeolocationWatch(on:)`). `CBDKStub` exports `bdk_stub_providers.h` for them.
 
 ### Services
 
@@ -197,7 +305,7 @@ so a test can start a load and act on it (supersede it, stop it) before the stub
   `BDKWindow` yet); `profile` is optional; `setHandler` throws (it can fail after the freeze); a surface with two
   request kinds (`downloads`, `passwords`) takes `BDKUIRequest`; `NewWindowRequest.newContents` and the other
   page-carrying fields are optional; `BDKMenuItem` has no `icon`; there is no `AutofillSuggestionsRequest.preview`,
-  or `ProviderDescriptor` beyond `BDKProviderDescriptor(name:isRemote:)`.
+  or `ProviderDescriptor` beyond the generated `BDKProviderDescriptor`.
 * Windows (T-SWF-08): `BDKWindow.nsWindow` is weak and optional (the registry must not keep an `NSWindow` alive);
   `extensionWindowID` is `Int?` (nil for the ABI's -1); `WindowRequest` is a struct with `action` (the doc's enum) and
   `extensionID`, so the delegate learns which extension asked; anchor rectangles are given in AppKit window
@@ -222,11 +330,12 @@ so a test can start a load and act on it (supersede it, stop it) before the stub
 
 | Left out | Why | Task |
 |---|---|---|
-| Page registration and providers on `BDKConfiguration`; wrappers for services with no definition yet (search, translation, extensions, favicons, top sites; page-scoped capture) | The ABI declares `bdk_page_handler_register` and `bdk_provider_register`; the wrappers are generated, so each arrives with its definition | T-ABI-03, T-SWF-04, T-SVC-06 |
+| Wrappers for services with no definition yet (extensions, favicons, top sites) | The wrappers are generated, so each arrives with its definition | T-ABI-03, T-SWF-04, T-SVC-06 |
+| `config.services.<service>.setKey(_:)`, and the credentials and leak-check providers | `bdk_provider_set_key` always fails `config.keyUnused`: no provider in this runtime takes a key that way (the Google key is `google.apiKey`). The credential and leak-check providers (S14, S16) are proposals | — |
 | `BDKProfiles.events` for the `profiles.*` events | `profiles` is a native namespace | T-ABI-03 |
 | Host contexts (`runtime.hostContexts`) | Conditional on decision D1; no ABI | T-ADP-06 |
 | Real popups, side panels, install prompts, anchors and window requests | Only the stub implements them so far: a popup or panel `secureView` and the engine's behaviour arrive with the engine tasks. The stub records outcomes and updates only for requests raised through `bdk_stub_raise_ui_request`, not for the popup an activation raises | T-EXT-02 to T-EXT-06 (engine) |
-| Page commands (`perform`, `canPerform`), capture, translation, scripting, user scripts | Not declared in the ABI | T-UIR-04, T-UIR-06, T-SVC-06, T-AUT-03 |
+| `click`, `hover`, `type`, `press`, `scroll`, `waitFor` on `page.scripting`; `webContentsCreated(_, by: .automation)` | The spec's `Scripting` has no input methods; the commands exist (`contents.click` and the rest) and run through `runtime.commands.invoke` | T-AUT-03 |
 | `BDKRuntime.contents` lookup by id, `BDKProfiles.events`, `ProfileDescriptor.lastUsed`, profile rename by id | Not in the ABI (a rename needs an open profile handle) | T-ABI-03 |
 | `displayURL`, favicon, `capture`, `isCrashed`, `isDiscarded`, `isAutoDiscardable` getter, `isFullscreen`, opener, `extensionTabID`, `hoveredLinkChanged`, discard events (renderer loss is `.rendererGone`) | `bdk_contents_state_t` and the event kinds do not carry them | T-ABI-03 |
 | Navigation `LoadOptions`, `prune`, `deferInitialLoad`, `userAgent` and `isInitiallyMuted` creation options | Not in `bdk_contents_options_t` or `bdk_contents_load` | T-ABI-03 |

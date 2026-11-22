@@ -20,6 +20,7 @@
 #include <condition_variable>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -46,6 +47,61 @@ bdk_string_t View(const char* s) {
     return bdk_string_t{s, s ? strlen(s) : 0};
 }
 
+/* Removes a data directory the harness made itself. Registered before Chromium starts, so it runs
+   after Chromium's own exit work; Chromium's threads can still write a little after it, and a run
+   that crashes or is killed leaves the directory. A failed removal is reported on stderr.
+   scripts/test-engine.sh owns the directory instead (BDK_ENGINE_DATA_DIR) and removes it once the
+   process has gone. */
+void RemoveDataDir() {
+    std::error_code error;
+    std::filesystem::remove_all(g_data_dir, error);
+    if (error) {
+        fprintf(stderr, "could not remove the engine suite's data directory %s: %s\n",
+                g_data_dir.c_str(), error.message().c_str());
+    }
+}
+
+/* BDK_ENGINE_SILENT=1 runs the suite without getting in the way of whoever is using the Mac: the
+   harness never activates, has no Dock icon or menu bar, keeps its windows behind every other
+   window and never takes them fullscreen. Chromium is told to keep drawing a hidden page, as
+   screenshots, captures and the accessibility tree need it drawn. What needs the harness
+   frontmost (an input method's composition) is skipped, as when macOS refuses to bring it
+   forward. */
+bool Silent() {
+    static const bool silent = [] {
+        const char* value = getenv("BDK_ENGINE_SILENT");
+        return value && *value && strcmp(value, "0") != 0;
+    }();
+    return silent;
+}
+
+/* A harness window, which a silent run keeps out of fullscreen (its own Space). */
+NSWindow* NewWindow(NSRect frame, NSWindowStyleMask style) {
+    NSWindow* window = [[NSWindow alloc] initWithContentRect:frame
+                                                   styleMask:style
+                                                     backing:NSBackingStoreBuffered
+                                                       defer:NO];
+    window.releasedWhenClosed = NO;
+    if (Silent())
+        window.collectionBehavior |= NSWindowCollectionBehaviorFullScreenNone;
+    return window;
+}
+
+/* Shows a harness window: in front, and key when `key`. A silent run puts it behind every other
+   window instead; it is still key within the harness, which is never the active application. */
+void ShowWindow(NSWindow* window, bool key) {
+    if (Silent()) {
+        [window orderBack:nil];
+        if (key)
+            [window makeKeyWindow];
+        return;
+    }
+    if (key)
+        [window makeKeyAndOrderFront:nil];
+    else
+        [window orderFront:nil];
+}
+
 } // namespace
 
 extern "C" {
@@ -59,6 +115,55 @@ const char* bdk_harness_engine_surfaces = NULL;
    configuration, for example {"ui":{"popups":"disabled"}}. Cleared by the next start. */
 const char* bdk_harness_engine_extensions = NULL;
 
+/* The bundle the engine reads internal pages from: the bundled routes of the page tests
+   (tests_pages.c, tests_engine_pages.c) with fixture pages. Each page sets its title to
+   "page:<route>" and, in its module, holds the page broker (bdkInvoke), so a scenario can call the
+   broker as the page. */
+static const char* kFixtureScript =
+    "import {PageBroker, PageClientCallbackRouter} from '/@bdk/page_broker.mojom-webui.js';\n"
+    "const broker = PageBroker.getRemote();\n"
+    "const router = new PageClientCallbackRouter();\n"
+    "broker.setClient(router.$.bindNewPipeAndPassRemote());\n"
+    "let next = 1n;\n"
+    "window.bdkInvoke = async (command, args) => {\n"
+    "  const r = await broker.invoke(next++, command, JSON.stringify(args ?? {}));\n"
+    "  document.title = (r.ok ? 'ok:' : 'err:') + r.resultJson;\n"
+    "};\n"
+    "document.title = 'page:' + location.host.replace(/^bdk-/, '');\n";
+
+static void write_file(const std::string& path, const char* text) {
+    FILE* f = fopen(path.c_str(), "w");
+    if (f) {
+        fputs(text, f);
+        fclose(f);
+    }
+}
+
+static const std::string& fixture_bundle(void) {
+    static std::string bundle;
+    if (bundle.empty()) {
+        bundle = g_data_dir + "/Conformance.app";
+        const std::string resources = bundle + "/Contents/Resources";
+        for (const char* page : {"Settings", "Agents"}) {
+            const std::string dir = resources + "/Pages/" + page;
+            std::string mkdir = "/bin/mkdir -p '" + dir + "'";
+            if (system(mkdir.c_str()) != 0)
+                continue;
+            write_file(dir + "/index.html",
+                       "<!doctype html><meta charset=utf-8><title>loading</title>"
+                       "<script type=module src=./main.js></script>");
+            write_file(dir + "/main.js", kFixtureScript);
+        }
+        /* Scripts and DevTools front ends are read from the bundle's Resources/BDK: this app's,
+           where CMakeLists.txt packages the fixtures. */
+        std::error_code ignored;
+        std::filesystem::create_symlink(std::string(NSBundle.mainBundle.resourcePath.UTF8String) +
+                                            "/BDK",
+                                        resources + "/BDK", ignored);
+    }
+    return bundle;
+}
+
 void bdk_harness_prepare_start_config(bdk_start_config_t* config) {
     /* The suite expects each runtime to start with no profiles, as with a new data directory. */
     if (!bdk_harness_engine_keep_profiles)
@@ -66,6 +171,14 @@ void bdk_harness_prepare_start_config(bdk_start_config_t* config) {
     /* Scripted navigations belong to one runtime, as with the stub. */
     bdk_testing_intercept_all(0);
     bdk_testing_intercept_all(1);
+    config->user_data_path_override = View(g_data_dir.c_str());
+    config->bundle_path = View(fixture_bundle().c_str());
+    /* A test that names its own configuration (t_start_with) gives the browser name. */
+    std::string given(config->resolved_config_json.data ? config->resolved_config_json.data : "",
+                      config->resolved_config_json.length);
+    if (given.find("\"routes\"") != std::string::npos ||
+        given.find("\"internal_scheme\"") != std::string::npos)
+        return;
     /* The engine needs a browser name for its identity; everything else is the suite's. */
     static std::string resolved;
     resolved = "{\"browser\":{\"name\":\"BDK Conformance\"}";
@@ -73,11 +186,12 @@ void bdk_harness_prepare_start_config(bdk_start_config_t* config) {
         resolved += std::string(",\"surfaces\":") + bdk_harness_engine_surfaces;
     if (bdk_harness_engine_extensions)
         resolved += std::string(",\"extensions\":") + bdk_harness_engine_extensions;
+    if (t_config_extra) /* the suite's own members, such as [automation] */
+        resolved += std::string(",") + t_config_extra;
     resolved += "}";
     bdk_harness_engine_surfaces = NULL;
     bdk_harness_engine_extensions = NULL;
     config->resolved_config_json = View(resolved.c_str());
-    config->user_data_path_override = View(g_data_dir.c_str());
 }
 
 int bdk_harness_engine_open_descriptors(void) {
@@ -150,12 +264,8 @@ void bdk_harness_attach_view(bdk_contents_t contents) {
     static NSWindow* shared;
     static CGFloat next_x;
     if (!shared) {
-        shared = [[NSWindow alloc] initWithContentRect:NSMakeRect(60, 60, 1280, 480)
-                                             styleMask:NSWindowStyleMaskTitled
-                                               backing:NSBackingStoreBuffered
-                                                 defer:NO];
-        shared.releasedWhenClosed = NO;
-        [shared makeKeyAndOrderFront:nil];
+        shared = NewWindow(NSMakeRect(60, 60, 1280, 480), NSWindowStyleMaskTitled);
+        ShowWindow(shared, true);
     }
     bdk_native_handle_t view;
     bdk_error_t error = 0;
@@ -185,12 +295,8 @@ static NSMutableDictionary<NSNumber*, NSNumber*>* WindowHandles() {
 }
 
 static int OpenRegisteredWindow(bdk_runtime_t rt, uint32_t kind) {
-    NSWindow* window = [[NSWindow alloc] initWithContentRect:NSMakeRect(100, 100, 640, 480)
-                                                   styleMask:NSWindowStyleMaskTitled
-                                                     backing:NSBackingStoreBuffered
-                                                       defer:NO];
-    window.releasedWhenClosed = NO;
-    [window orderFront:nil];
+    NSWindow* window = NewWindow(NSMakeRect(100, 100, 640, 480), NSWindowStyleMaskTitled);
+    ShowWindow(window, false);
     bdk_native_handle_t native;
     memset(&native, 0, sizeof native);
     native.kind = BDK_NATIVE_NSWINDOW;
@@ -293,12 +399,8 @@ void bdk_harness_engine_show(bdk_contents_t contents, int visible) {
         bdk_error_t error = 0;
         if (bdk_contents_native_view(contents, &view, &error) != BDK_OK || !view.pointer)
             return;
-        window = [[NSWindow alloc]
-            initWithContentRect:NSMakeRect(80, 80, 640, 480)
-                      styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskResizable
-                        backing:NSBackingStoreBuffered
-                          defer:NO];
-        window.releasedWhenClosed = NO;
+        window = NewWindow(NSMakeRect(80, 80, 640, 480),
+                           NSWindowStyleMaskTitled | NSWindowStyleMaskResizable);
         NSView* page = (__bridge NSView*)view.pointer;
         page.frame = window.contentView.bounds;
         page.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
@@ -309,7 +411,7 @@ void bdk_harness_engine_show(bdk_contents_t contents, int visible) {
     NSView* page = window.contentView.subviews.firstObject;
     page.hidden = !visible;
     if (visible) {
-        [window makeKeyAndOrderFront:nil];
+        ShowWindow(window, true);
     } else {
         [window orderOut:nil];
     }
@@ -398,7 +500,8 @@ int bdk_harness_engine_answer_sheet(bdk_contents_t contents, int index) {
 }
 
 int bdk_harness_engine_window_is_key(bdk_contents_t contents) {
-    return WindowOf(contents).isKeyWindow ? 1 : 0;
+    /* Silent, the harness is never active, so no window of it has the keyboard. */
+    return !Silent() && WindowOf(contents).isKeyWindow ? 1 : 0;
 }
 
 int bdk_harness_engine_compose(bdk_contents_t contents, const char* marked, const char* text) {
@@ -627,10 +730,12 @@ void RunSuite(void*) {
     }
     bdk_testing_intercept_all(1);
     /* Frontmost, so its windows become key: Chromium counts focus only in the key window. */
+    if (!Silent()) {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    [NSApp activateIgnoringOtherApps:YES];
+        [NSApp activateIgnoringOtherApps:YES];
 #pragma clang diagnostic pop
+    }
     g_warmup = warmup;
     /* Posted through the engine, so it runs as a Chromium task inside Chromium's main loop, which
        must be the outer one for the suite's nested pumping to let Chromium work. */
@@ -649,24 +754,42 @@ int main(int argc, char** argv) {
            window). macOS does not let a process make itself frontmost while another application
            is (cooperative activation), so the harness's window cannot be relied on to be key; the
            scenarios test BDK's requests, not those policies. */
+        /* Chromium starts once per process and registers the branded scheme then: the page
+           tests' scheme, conf, is named here for the whole run, whatever the first runtime's
+           configuration says. */
         setenv("BDK_ENGINE_SWITCHES",
                "disable-features=SuppressFullscreenFromUnfocusedView,"
-               "RWHVMacHasFocusReturnsFalseForNonKeyWindow",
+               "RWHVMacHasFocusReturnsFalseForNonKeyWindow bdk-internal-scheme=conf",
                0);
-        char dir[] = "/tmp/bdk-engine-conformance-XXXXXX";
-        if (!mkdtemp(dir)) {
-            perror("mkdtemp");
-            return 2;
+        if (Silent()) {
+            /* Behind other windows a page is occluded, and Chromium stops drawing it. */
+            std::string switches = getenv("BDK_ENGINE_SWITCHES");
+            switches += " disable-backgrounding-occluded-windows";
+            setenv("BDK_ENGINE_SWITCHES", switches.c_str(), 1);
         }
-        g_data_dir = dir;
+        /* Each run has a new data directory, a Chromium profile tree of up to hundreds of
+           megabytes: the caller's, or one the harness makes and removes. */
+        if (const char* given = getenv("BDK_ENGINE_DATA_DIR"); given && *given) {
+            g_data_dir = given;
+        } else {
+            char dir[] = "/tmp/bdk-engine-conformance-XXXXXX";
+            if (!mkdtemp(dir)) {
+                perror("mkdtemp");
+                return 2;
+            }
+            g_data_dir = dir;
+            atexit(RemoveDataDir);
+        }
         g_argc = argc;
         g_argv = argv;
         [BDKHarnessApplication sharedApplication];
         BDKHarnessDelegate* delegate = [[BDKHarnessDelegate alloc] init];
         NSApp.delegate = delegate;
         /* A regular, active application: its windows become key, so pages can take focus and
-           enter fullscreen, and Chromium sees them shown and hidden. */
-        [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+           enter fullscreen, and Chromium sees them shown and hidden. A silent run is an accessory:
+           no Dock icon, no menu bar, never activated. */
+        [NSApp setActivationPolicy:Silent() ? NSApplicationActivationPolicyAccessory
+                                            : NSApplicationActivationPolicyRegular];
         [NSApp run];
     }
     return 0;

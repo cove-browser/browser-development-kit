@@ -21,6 +21,7 @@ public struct BDKError: Error, Sendable, Equatable, CustomStringConvertible {
         public static let ui = Domain(rawValue: "ui")
         public static let provider = Domain(rawValue: "provider")
         public static let automation = Domain(rawValue: "automation")
+        public static let devtools = Domain(rawValue: "devtools")
         public static let platform = Domain(rawValue: "platform")
         public static let `extension` = Domain(rawValue: "extension")
     }
@@ -53,6 +54,8 @@ extension BDKError {
         case profile
         case contents
         case request
+        case session
+        case task
 
         var domain: Domain {
             switch self {
@@ -60,6 +63,7 @@ extension BDKError {
             case .profile: .profile
             case .contents: .contents
             case .request: .ui
+            case .session, .task: .automation
             }
         }
 
@@ -69,6 +73,8 @@ extension BDKError {
             case .profile: "profile"
             case .contents: "contents"
             case .request: "request"
+            case .session: "session"
+            case .task: "task"
             }
         }
     }

@@ -57,9 +57,9 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
    `bdk_key_unhandled_cb`, `bdk_native_page_cb`. Provisional shapes are in the headers.
 8. `bdk_subscribe_named` was added (by-name pair of `bdk_subscribe`): application events have names and no
    generated identifier, so they could not be observed otherwise.
-9. `bdk_provider_register` and `bdk_provider_set_key` take a `bdk_runtime_t` (c-abi.md omits it). The vtable has no
-   callbacks yet because their signatures are not specified.
-10. Application command, event and page-route names must start with `app.` (`config.nameNotApp`). Duplicates fail
+9. `bdk_provider_register` and `bdk_provider_set_key` take a `bdk_runtime_t` (c-abi.md omits it). The vtable and its
+   contract are in "Providers" below (T-PRV-01).
+10. Application command and event names must start with `app.` (`config.nameNotApp`). Duplicates fail
     with `config.duplicateName` (not in the swift-api error table).
 10a. Application settings (`bdk_app_setting_register`, T-SVC-08): the broker, not the backend, answers `settings.get`,
     `getMany`, `describe`, `set` and `reset` for `app.` keys (`runtime/app_settings.cc`), so every runtime behaves the
@@ -89,6 +89,8 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
     (`runtime/broker_internal.h`): delivered later, in order, to the subscriptions for the event's name or
     identifier. A subscription made with a profile in its options gets only that profile's events; one made
     without gets every profile's. Events with no profile (`profiles.*`) reach only the unfiltered subscriptions.
+    A page in the options works the same way: the subscription gets only events emitted for that page
+    (`emit_builtin_event_for` and `emit_builtin_event_to` name one), and none of the events that name no page.
 12. `bdk_native_handle_t` and `bdk_native_kind_t` live in `bdk_base.h` (c-abi.md puts them in section 5.4) because the
     start configuration needs them.
 13. `include/bdk/bdk_ids.h` is generated (T-ABI-03) from `interface/*.json` and the registry `interface/ids.json`; do
@@ -100,6 +102,17 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
 14. A surface's mode comes from `surfaces` in the resolved configuration. A surface that is not listed is `default`
     (the resolver lists them all). `[ui] default_browser_surfaces` is already folded into the listed modes by the
     resolver, so the core never reads it.
+
+15. Logical routes (`runtime/routes.{h,cc}`, M4). The core reads `browser.internal_scheme`, `routes` and `aliases`
+    at start and owns every rule of architecture.md section 8: `bdk_page_handler_register` sets a route's mode before
+    the freeze (`config.noBuiltin`, `routeUnknown`, `routeInvalid`, `routeMode`; `config.handlerMissing` at the
+    freeze for a native route with no handler), `resolve_navigation` says what a URL becomes (load the internal URL,
+    native, blocked with `ERR_BLOCKED_BY_CLIENT` for a disabled route and `ERR_INVALID_URL` for an unknown one, or
+    dropped when a web page asks), `display_url` gives the branded form a backend must report, `page_caller_bind`
+    makes a bundled page's caller, and `broker_subscribe_as` subscribes it to events it holds (sessions subscribe in
+    M7). An alias is shown as its target route. The built-in routes and their Chromium hosts are a table in
+    `routes.cc`, checked at the pin; packages/cli lists the same routes. Internal pages are not recorded in history,
+    as in Chrome. Page subscriptions take no filter yet.
 
 ### The UI request router
 
@@ -190,8 +203,8 @@ where it was silent (2026-11-20):
 ### Named in c-abi.md and not declared (nothing states their shape)
 
 `bdk_contents_prune`, `_perform_command`, `_can_perform_command`, `_set_host_context`;
-`bdk_session_run`, `bdk_task_*`, `bdk_automation_endpoint_*`, `bdk_automation_subscribe_audit`;
-`bdk_crash_reports_*`, `bdk_netlog_*`. Interface definition validation and generated identifiers are T-ABI-03.
+`bdk_crash_reports_*`, `bdk_netlog_*`. `bdk_automation_subscribe_audit` is not declared on purpose: the audit trail
+is the built-in events of namespace `automation` ("Automation" below). Interface definition validation and generated identifiers are T-ABI-03.
 
 ## Interface definitions and identifiers
 
@@ -219,7 +232,7 @@ from the registry is a renumbering and fails; so does a new constant that takes 
 
 To add an identifier: edit the definition, run `pnpm exec nx run js-codegen:codegen` (rewrites `ids.json`,
 `bdk_ids.h` and `generated/bdk_command_table.inc`, the tables the broker reads), run `cmake -DMODE=generate -P packages/core/cmake/abi-hash.cmake` (the definitions are hashed), and
-commit all of it. `pnpm exec nx run js-codegen:codegen-check` fails when the committed outputs are stale; `js-codegen:test`
+commit all of it except the `@bdk/internal` modules, which are git-ignored build outputs (amendments.md 2.14). `pnpm exec nx run js-codegen:codegen-check` fails when the committed outputs are stale; `js-codegen:test`
 and the `abi-linux` job run the same check. To remove one, delete it from the definition and regenerate. Do not edit
 `ids.json` by hand except to resolve a merge: two branches that add identifiers conflict there, and the fix is to keep
 both sides and re-run the generator, which fails if two names ended up with one identifier.
@@ -283,7 +296,8 @@ Decisions taken where the specification was silent (2026-11-19):
     `deleteUrls`, `deleteRange`, `deleteAll`), bookmarks (`roots`, `get`, `children`, `create`, `createFolder`, `update`, `move`, `remove`,
     `search`, `forUrl`), `downloads.list` and `get` (empty), `permissions.get`, `set`, `reset`, `getDefault`,
     `setDefault`, `cookies.sites` (empty), `privacy.clear` (clears history; reports progress), `passwords.add`, `list`,
-    `forOrigin`, `reveal`, `update`, `remove`, `autofill.addresses.add`, `list`, `remove` and
+    `forOrigin`, `reveal`, `update`, `remove`, `autofill.addresses.add`, `list`, `remove`, `search.engines`, `addEngine`, `updateEngine`, `removeEngine`, `setDefault`, `classify` (a stand-in for
+    Chromium's classifier), `suggestions` (stub history and bookmarks only), `deleteSuggestion`, and
     `system.defaultBrowser.status`. Everything else answers `broker.notImplemented`. It is the reference for result
     shapes, not for Chromium's behaviour. `runtime.caller` is answered by the core itself.
 13. The conformance tests that need an internal caller or the stub's services check `bdk_harness_broker_hooks()` and are
@@ -293,9 +307,185 @@ Decisions taken where the specification was silent (2026-11-19):
     `notImplemented` (the first four are in the swift-api.md table; `notImplemented` is new, domain `broker`).
     `gestureRequired` is reused in domain `capability`.
 
-Not done here: subscribing to events (the capability check of services.md section 7, scope and back-pressure), the
-`translation`, `search`, `favicons`, `extensions`, `contents`, `scripts` and `debug` namespaces, and the Swift and
-TypeScript wrappers generated from the definitions.
+15. A call that names a page and no profile addresses the page's profile (`translation.state`). A session must
+    have that profile in its scope (`capability.outOfScope`).
+
+Not done here: the host's and pages' event subscriptions are not checked by capability (sessions' are, see
+"Automation"), the `favicons` and `extensions` namespaces (`search` arrived with M4, `translation` with M6), and the TypeScript declarations
+generated from the definitions (T-JS-02).
+
+## Automation
+
+Specification: architecture.md 9.3, services.md 5.15 to 5.17, javascript-api.md 5, c-abi.md 9. Tasks T-AUT-01 to
+T-AUT-05, T-SVC-09. The core does everything that needs no Chromium (`runtime/automation.cc`,
+`runtime/contents_commands.cc`, `runtime/local_socket_posix.cc`); a backend runs scripts and renderer work. Decisions
+taken where the specification was silent (2026-11-20):
+
+1. A session (`bdk_session_create`) is a broker `Caller` of kind session with the application's capabilities (checked
+   by `grant_error`) and scope: `profiles` is `"all"` or a list of open profile ids, resolved to handles at creation
+   (a profile closed and reopened leaves the scope); `contents` is `"all"` (every page of those profiles),
+   `"created"` (default: pages the session creates) or `"explicit"` (pages granted with
+   `bdk_session_grant_contents`; pages it creates are added too). A page is in scope only in a profile that is
+   (`check_scope`). With one profile in scope it is the default profile of a call.
+2. Revocation (`bdk_session_revoke`, or `bdk_release` of the session) revokes the caller (its calls end with
+   `broker.cancelled`), ends its tasks with `automation.sessionRevoked`, closes its external connections with a
+   `closed` frame and removes its user scripts. At shutdown every session is revoked without the audit event.
+3. One wire protocol for scripts and external tools: one JSON object per frame, field `type`. Client to BDK: `hello
+   {protocol, token, client?}` (external only, first), `call {id, command, args?, profile?, contents?}`, `cancel {id}`,
+   `subscribe {id, event, profile?, contents?}`, `unsubscribe {id}`, and from a script only `progress {fraction,
+   message}`, `log {level, message}`, `done {result}`, `failed {error: {message, stack?}}`. BDK to client: `welcome
+   {protocol, session: {name, capabilities}}`, `start {protocol, task, script, arguments, session}` (a script's first
+   frame), `result {id, value, binary?}` (binary in base64), `error {id, error: {domain, code, message}}`, `progress
+   {id, fraction, message}`, `event {id, name, payload}`, `abort {error}` (the task is being torn down) and `closed
+   {error}` (sent before BDK closes a connection). Ids are positive integers unique per connection across calls and
+   subscriptions; a reused id, an unknown `type` or a frame that is not a JSON object closes the connection with
+   `broker.invalidArguments`. Pages are the decimal string of their handle, profiles their id. Protocol version 1.
+4. Tasks: `bdk_session_run` checks `[automation] enabled` (`automation.disabled`) and that the script is a key of
+   the resolved `automation.scripts` (`automation.scriptNotFound`), then, on a later task, calls
+   `Backend::StartTask` with a `TaskPort` and sends the `start` frame. Events reach `bdk_task_subscribe`:
+   PROGRESS, LOG, COMMAND (one per call, when it ends) and FINISHED last (`{"result"}` or `{"error"}`); a
+   subscription after the end gets FINISHED alone. `bdk_task_cancel` and releasing a running task's handle send
+   `abort` and finish it with `broker.cancelled`; a `failed` frame or a host that could not load the script is
+   `automation.scriptFailed`; a host crash `automation.hostGone`. `Backend::EndTask` tears the script down after any
+   end. A `done` result is capped at 4 MiB like any result.
+5. Audit: every call a session makes emits `automation.commandInvoked {session, task?, command, profile?, contents?,
+   error?}` when it ends, refused calls included (also those the connection refuses before the broker: arguments
+   that are not an object, an unknown profile, a stale page); `automation.sessionCreated` and `automation.sessionRevoked` frame a
+   session's life. They are built-in events with capability `automation.audit`, so the host subscribes with
+   `bdk_subscribe_named` and an auditing session can be granted them; no separate audit function exists.
+6. A session subscribes to built-in events and declared `app.` events. The event's capability is checked when it
+   subscribes (an `app.` event needs the capability named like it), and each event is delivered only when its
+   profile and page are in the session's scope. Events of a page carry it: backends use `emit_builtin_event_for`
+   (scope by page) or `emit_builtin_event_to` (one caller only: `debug.event` goes to whoever attached).
+7. The external endpoint (`bdk_automation_endpoint_open`) needs `[automation.external] enabled`
+   (`automation.disabled`). It is a Unix-domain stream socket, 0600, in a new 0700 directory (`mkdtemp`) under the
+   temporary directory or a directory the application names (it must be the user's and not writable by others);
+   every connection's peer must have the user's uid (`getpeereid`, `SO_PEERCRED`). Frames are a 4-byte big-endian
+   length and the JSON, at most 32 MiB. Nothing listens on a network port; the conformance suite checks that no
+   socket of the process listens on anything but a Unix-domain address. The first frame must be `hello`; the
+   application gets it through its callback with a `bdk_context_t` and answers once, now or later, with
+   `bdk_automation_hello_accept` (a live session) or `_refuse` (a `closed` frame with `capability.denied` and its
+   message). At most 64 connections at a time; one that falls 64 MiB behind is closed (`automation.overloaded`)
+   instead of having events coalesced. A transport thread (`std::thread`, `poll`) moves bytes; everything else is
+   on the UI thread. `local_socket_posix.cc` is the core's one platform file; Windows replaces it.
+8. The core answers, on the Backend's page operations so every runtime behaves the same, `contents.list`, `get`,
+   `create` (the page belongs to the application, which gets `contents.created` with `createdBy` and destroys it like
+   any other), `close`, `navigate` (resolves `{url, errorPage}` at commit, or at load with `waitUntil: "finished"`; a
+   failed navigation is `navigation.<code>`), `reload`, `stop`, `goBack`, `goForward` (no entry:
+   `broker.invalidArguments`), `waitFor` with `load` and `url` (a `*` glob) only, deadline `timeoutMs` (default 30 s,
+   `broker.timeout`, through `Backend::PostDelayed`), `setMuted`, `setZoom` and `requestAttention` (the event
+   `contents.attentionRequested`; BDK moves no view). Every other `contents.*` command goes to the backend. A command
+   that needs a page and names none is `broker.invalidArguments`. Page events become `contents.navigated`,
+   `loadingChanged`, `titleChanged`, `closed` and `crashed`; a UI request raised for a page is
+   `contents.dialogOpened`, so a script knows it waits on the user (it cannot answer requests).
+9. `scripts.*`: the core keeps a profile's user scripts (in memory, for the runtime's life), in registration order,
+   and gives all of them to `Backend::UserScriptsChanged` after each change. A script needs an id, a match pattern
+   and JavaScript or CSS; `runAt` defaults to `documentIdle` and `world` to an isolated world named like the id. A
+   session can replace or remove only its own scripts (`capability.denied`); the host any.
+10. `debug.*`: `[devtools] protocol = false` refuses `debug.attach` and `debug.send` to every caller
+    (`devtools.protocolDisabled`); sessions are refused the methods of the domains Browser, Target, SystemInfo,
+    Tethering, Storage, IO, ServiceWorker and BackgroundService (`capability.denied`). `devtools.open` is refused when
+    `[devtools] frontend = "disabled"` (`devtools.disabled`).
+11. Binary results (commands marked `binary`): `CommandControl::ResolveBinary` delivers the bytes as the result
+    callback's `bdk_buffer_t`, borrowed for the callback, outside the 4 MiB JSON limit.
+12. The stub. `Backend::PostDelayed` has no clock: its time moves only when nothing else is queued (`bdk_stub_pump`
+    then runs the earliest delayed task). Its automation host runs scripts the test defines as callbacks
+    (`stub/bdk_stub_automation.h`, through `tests/harness_automation.h`; a runtime with a real host links
+    `tests/harness_automation_unsupported.c` and those tests are skipped). `contents.frames` and `text` answer the main
+    frame and `""`, `screenshot` and `pdf` fixed minimal PNG and PDF bytes; the rest of the renderer's commands answer
+    `broker.notImplemented`. `bdk_stub_automation_server` (tests/automation_server.c) is the stub with its endpoint
+    open, for clients in other languages.
+
+## Providers
+
+Specification: architecture.md 11 and 11.1, configuration.md 3.8, swift-api.md 11.2, c-abi.md 9. Tasks T-PRV-01
+(contracts) and T-PRV-09 (choosing a provider). The core does everything here once (`runtime/providers.cc`,
+`translation.cc`, `reputation_lists.cc`, `providers_internal.h`), so the stub and the engine behave the same.
+
+Choosing a provider. `bdk_runtime_start` reads `services` from the resolved configuration before the backend starts:
+
+| Service | Built in this runtime | Start error for a name BDK documents but has not built | `endpoint` |
+|---|---|---|---|
+| `translation` | `default`, `app` | `apple`, `deepl`, `microsoft`, `google`: `config.providerUnavailable` (T-PRV-08) | `config.endpointUnsupported` |
+| `reputation` | `default`, `app`, `google` | `web-risk`: `config.providerUnavailable` | Only with `default`: where the lists are fetched (https, or http on the loopback address) |
+| `geolocation` | `system`, `app`, `google` | | `config.endpointUnsupported`: the network provider's host is a constant (T-PRV-14) |
+| `credentials`, `leak_check` | Only their defaults (`chromium`, `none`); S14 and S16 are proposals | Anything else: `config.providerUnavailable` | |
+
+An unknown name or a value of the wrong kind is `config.resolvedInvalid` (the CLI's `services.provider_unknown` comes
+first). The Google key is `google_api_key` in `bdk_start_config_t`, not `bdk_provider_set_key`, because Chromium reads
+its key before it starts and allows setting it only once (`InitializeApiKeyCacheInstance`, `google_api_keys.cc`). A
+service with `provider = "google"` and no key is `config.keyMissing`; a key with no such service is `config.keyUnused`,
+so a key never reaches Chromium for services the application did not configure that way (architecture.md 16,
+invariant 9). `bdk_provider_set_key` fails with `config.keyUnused`: no named provider in this runtime takes a key.
+
+Registering. `bdk_provider_register(runtime, service, vtable, ctx, release, err)` works between start and the freeze
+for a service configured `app` (otherwise `config.providerNotApp`); the freeze fails with `config.providerMissing`
+while one has none. The vtable starts with `descriptor_json`: `id`, `name`, `privacy` (`onDevice` or `remote`) and,
+for a remote provider, `host` and an https `policyUrl` (`config.descriptorInvalid`, swift-api.md 11.2). Required
+operations: translation `supported_pairs` and `translate`; reputation `check_url`; geolocation `start`. An unknown
+service (also `credentials` and `leak_check`), a null vtable or a missing required operation is
+`BDK_ERR_INVALID_ARGUMENT`.
+
+Calls. The core calls an operation with a `bdk_context_t` and a JSON input, on the UI thread and never from the call
+that caused it. The provider answers once with `bdk_provider_resolve` or `bdk_provider_reject`, reports with
+`bdk_provider_progress` (prepare) and `bdk_provider_report` (geolocation positions). Reports sent before the answer
+are delivered before it. The optional `cancel` operation is called, from a task of its own, when BDK no longer wants
+the answer (the page navigated, the translation was reverted, the watch stopped, the runtime shuts down); afterwards
+the context is stale, `bdk_provider_is_cancelled` answers 1 and any answer is ignored. At shutdown every outstanding
+call is cancelled before the provider's release callback runs. c-abi.md's geolocation `stop` is this `cancel`.
+
+The contract, checked by the core on every answer (`provider.contractViolation` names the problem):
+
+| Operation | Answer |
+|---|---|
+| `supported_pairs` | `{"pairs":[{"from","to","installed"}]}`: two different language codes (two or three letters, then `-` subtags); `installed` defaults to true |
+| `translate` | `{"texts":[...]}` with as many strings as were sent |
+| `detect` | `null`, or `{"language","reliable"}` |
+| `check_url` | `{"verdict"}`: `safe`, `unknown`, `malware`, `phishing`, `unwantedSoftware` |
+| `check_download` | `{"verdict"}`: `safe`, `unknown`, `malware`, `unwantedSoftware`, `dangerousDownload` |
+| `start` reports | `{"latitude","longitude","accuracy"}` in range, optional `altitude`, `altitudeAccuracy`, `heading`, `speed`, `timestamp`; or `{"error":"permissionDenied" \| "positionUnavailable" \| "timeout","message"}`. A malformed report ends the watch, so a page is never given a wrong place |
+
+A rejection keeps its code in the `provider` domain; one in another domain becomes `provider.remoteError` with the
+original in the message. A backend's own provider (the default translation engine) answers through the same checks
+(`translation_call`).
+
+Translation. `translation_job_start` sends a page's text segments: the provider's pairs first
+(`provider.unsupportedPair`; languages match on the primary subtag), `prepare` for a pair that is not installed, then
+batches of at most 64 segments and 16 KiB, one at a time; blank segments are not sent, and a segment over 16 KiB goes as
+pieces that fit (split at a space, else at a character boundary) whose answers are joined. The page's state
+(`translation_set_state`) is reported as a `BDK_CONTENTS_EVENT_TRANSLATION` event (detail: the `TranslationState` JSON)
+and as `translation.stateChanged` (`page` is the contents handle as a decimal string, provisional until M7's page
+identifiers). `translation_decide`: no offer for an undetermined language or the target; a language on the always list
+is translated without asking; otherwise an offer unless offers are off, the language is on the never list or the site
+is. A disabled `translation` surface turns the service off: every `translation.*` command fails with
+`provider.unavailable`. The request (ui-requests.md 5.10) is raised for an offer and by `translation.present`; its
+payload is `phase` (`offer`, `translating`, `translated`, `failed`), `detected`, `target`, `languages`, `provider`. It
+is the offer, not a request that moves through the phases: later phases are the events. Completions (none grants):
+`translate` (`from`, `to`), `revert`, `always` and `never` (`language`, default the detected one), `neverForSite`,
+`dismiss`.
+
+Reputation lists (decision D2, T-PRV-05). The default provider's format, parsed by `reputation_list_parse`:
+
+```json
+{ "format": "bdk-reputation-list", "version": 1, "sequence": 42, "generated": 1763600000000,
+  "expires": 1763686400000, "source": "…",
+  "entries": [ { "expression": "evil.example/", "verdict": "phishing" } ] }
+```
+
+An expression is a lower-case host and a path, as Safe Browsing forms them: a URL is looked up by up to five host
+suffixes (the host, then the last five components successively shortened, not the bare top-level domain; an IP
+literal only as itself) times up to six paths (the path with its query, without it, `/` and up to three prefixes
+ending in `/`). Verdicts are `malware`, `phishing` and `unwantedSoftware`. A list replaces the current one only with a
+higher `sequence`; an expired list answers `unknown` for everything, which blocks nothing. The backend that fetches a
+list checks its signature before parsing it. The warning's payload (`reputation_warning_payload`) carries the
+provider's descriptor; for the default lists it says "reduced protection" (architecture.md 11).
+
+The stub. `stub/stub_providers.cc` runs the translation commands over page text the test sets
+(`stub/bdk_stub_providers.h`, through `tests/harness_providers.h`), checks each http(s) navigation with the reputation
+provider before it commits (a blocked one fails with `{"code":"blocked"}` and `net::ERR_BLOCKED_BY_CLIENT`), and
+starts geolocation watches. Its default translation provider is unavailable, as the engine's is until the engine of
+T-PRV-02 lands. Provider tests that need those hooks are skipped by a runtime without them (the engine runs the same
+behaviour on real pages, `tests/tests_engine_providers.c`).
 
 ## The ABI hash
 
@@ -345,9 +535,15 @@ pthreads, and builds on macOS and Linux.
 it drives the engine through `chromium/bdk/engine/bdk_testing.h`. Chromium starts once per process, so the
 harness keeps it between runtimes (`BDK_ENGINE_KEEP_CHROMIUM`), forgets persistent profiles at each start (the
 suite expects a new data directory) and serves every http(s) load from the engine's interceptor. It needs a
-logged-in Mac. The whole suite runs in one process: a runtime start and stop leaves nothing behind, and a profile
+logged-in Mac. Each run has a new data directory under `/tmp` (`bdk-engine-conformance-*`, a Chromium profile tree): `scripts/test-engine.sh` makes it, passes it as `BDK_ENGINE_DATA_DIR` and removes it once the app has exited, even after a crash. Run directly, the harness makes its own and removes it at exit; a crash then leaves it. The whole suite runs in one process: a runtime start and stop leaves nothing behind, and a profile
 BDK closes is unloaded by Chromium (`engine_a_closed_profile_releases_its_descriptors` counts descriptors). Scenarios that need a key window (an input method's composition) are skipped, with a message,
 when macOS does not let the harness come to the front. `BDK_TEST_TRACE=1` prints every contents event.
+
+`BDK_ENGINE_SILENT=1` (or `nx run core:test-engine:silent`) runs it without getting in the way of whoever is using
+the Mac: the harness never activates, has no Dock icon or menu bar, keeps its windows behind every other window and
+never takes one fullscreen, and Chromium keeps drawing its occluded pages (`disable-backgrounding-occluded-windows`).
+The scenarios that need a key window are skipped, as above. The screen must still be unlocked: with it locked, page
+capture, the accessibility tree and both HTML fullscreen scenarios fail.
 
 A harness implements four hooks besides pumping and acting as Chromium: `bdk_harness_prepare_start_config`,
 `bdk_harness_attach_view` (focus needs a window in a real runtime), `bdk_harness_session_format` (tests that

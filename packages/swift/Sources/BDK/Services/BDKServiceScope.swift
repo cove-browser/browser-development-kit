@@ -35,6 +35,8 @@ enum BDKServiceCoding {
 struct BDKServiceScope {
     let runtime: BDKRuntime
     let profile: BDKProfile?
+    /// The page a page command targets, for `contents.*`, `debug.*` and `devtools.*`.
+    var contents: BDKWebContents?
 
     /// Calls `name` and decodes its result.
     func call<Arguments: Encodable, Output: Decodable>(
@@ -53,13 +55,24 @@ struct BDKServiceScope {
         _ = try await invoke(name, arguments, onProgress: onProgress)
     }
 
+    /// Calls a command marked binary and returns its result and its bytes.
+    func callBinary<Arguments: Encodable, Output: Decodable>(
+        _ name: String, _ arguments: Arguments, as type: Output.Type,
+        onProgress: (@MainActor (Double, String) -> Void)? = nil
+    ) async throws -> (value: Output, binary: Data?) {
+        let result = try await runtime.commands.invokeBinary(
+            name, arguments: try BDKServiceCoding.encode(arguments), profile: profile,
+            contents: contents, onProgress: onProgress)
+        return (try BDKServiceCoding.decode(type, from: result.json), result.binary)
+    }
+
     private func invoke<Arguments: Encodable>(
         _ name: String, _ arguments: Arguments,
         onProgress: (@MainActor (Double, String) -> Void)?
     ) async throws -> String {
         try await runtime.commands.invoke(
             name, arguments: try BDKServiceCoding.encode(arguments), profile: profile,
-            onProgress: onProgress)
+            contents: contents, onProgress: onProgress)
     }
 
     /// Subscribes to the events named `names` now and merges them into one stream of decoded events.

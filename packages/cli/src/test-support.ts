@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Assets } from "./assets.js";
+import { loadBundler } from "./core/automation/loader.js";
 import type { Context } from "./core/context.js";
 import { genericPlatform } from "./platform/generic/index.js";
 
@@ -18,6 +19,10 @@ export function memoryAssets(files: Record<string, string>): Assets {
       if (text === undefined) throw new Error(`no test asset ${name}`);
       return text;
     },
+    list: (prefix) =>
+      Object.keys(files)
+        .filter((name) => name.startsWith(prefix))
+        .sort(),
   };
 }
 
@@ -34,6 +39,7 @@ export function testContext(overrides: Partial<Context> = {}): TestContext {
     assets: memoryAssets({ "bdk.schema.json": '{"type":"object"}' }),
     platform: genericPlatform,
     resolveConfig: () => Promise.resolve({ diagnostics: [], resolved: { ok: true } }),
+    loadBundler,
     ...overrides,
     out,
     err,

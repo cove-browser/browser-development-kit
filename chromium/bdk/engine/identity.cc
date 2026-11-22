@@ -52,6 +52,10 @@ bool DevToolsEnabled() {
   return g_devtools_enabled;
 }
 
+void SetDevToolsEnabled(bool enabled) {
+  g_devtools_enabled = enabled;
+}
+
 void ApplyIdentityBeforeStart(const Identity& identity) {
 #if BUILDFLAG(IS_MAC)
   KeychainPassword::GetServiceName() = identity.keychain_item;

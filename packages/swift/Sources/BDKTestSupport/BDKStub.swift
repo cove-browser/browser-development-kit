@@ -293,6 +293,55 @@ public struct BDKStub {
         bdk_stub_service_count(try runtime.liveHandle(), which.rawValue)
     }
 
+    // MARK: Automation
+
+    /// Defines the script `name` as one the test plays: the stub runs no JavaScript, so a task of
+    /// this script receives the frames BDK sends to it (the first is `start`) and answers with
+    /// `StubScript.send`. The name must also be listed in the resolved configuration's
+    /// `automation.scripts`.
+    public func defineScript(_ name: String) throws -> StubScript {
+        let handle = try runtime.liveHandle()
+        let script = StubScript()
+        // The stub keeps the context until the runtime stops, so this reference is never released.
+        let context = Unmanaged.passRetained(script).toOpaque()
+        let status = withBDKString(name) { name in
+            bdk_stub_script_define(
+                handle, name,
+                { context, task, frame in
+                    guard let context else { return }
+                    let script = Unmanaged<StubScript>.fromOpaque(context).takeUnretainedValue()
+                    let text =
+                        frame.data.map {
+                            String(
+                                decoding: UnsafeRawBufferPointer(start: $0, count: frame.length),
+                                as: UTF8.self)
+                        } ?? ""
+                    MainActor.assumeIsolated { script.receive(task: task, frame: text) }
+                }, context)
+        }
+        try check(status)
+        return script
+    }
+
+    /// The host process dies: every running task ends with `automation.hostGone`.
+    public func crashAutomationHost() throws {
+        try check(bdk_stub_automation_host_crash(try runtime.liveHandle()))
+    }
+
+    /// The counters of `automationCount`.
+    public enum AutomationCount: UInt32, Sendable {
+        /// Tasks the host started.
+        case started = 0
+        /// Tasks the host was told to tear down.
+        case ended = 1
+        /// User-script updates the backend received.
+        case scriptsChanged = 2
+    }
+
+    public func automationCount(_ which: AutomationCount) throws -> UInt32 {
+        bdk_stub_automation_count(try runtime.liveHandle(), which.rawValue)
+    }
+
     // MARK: Helpers
 
     private func check(_ status: bdk_status_t) throws {
@@ -302,9 +351,114 @@ public struct BDKStub {
             message: "the stub rejected the call with status \(status.rawValue)")
     }
 
+    /// Copies a buffer's bytes and releases the buffer.
+    private static func take(_ buffer: bdk_buffer_t) -> Data {
+        let bytes = bdk_buffer_bytes(buffer)
+        let data = bytes.data.map { Data(bytes: $0, count: bytes.length) } ?? Data()
+        _ = bdk_release(buffer)
+        return data
+    }
+
     private static func text<Chars>(_ tuple: Chars) -> String {
         withUnsafeBytes(of: tuple) { raw in
             String(decoding: raw.prefix { $0 != 0 }, as: UTF8.self)
         }
+    }
+}
+
+/// A script the test plays in the stub's automation host (`BDKStub.defineScript`).
+@MainActor
+public final class StubScript {
+    /// Every frame BDK sent to the script, in order, parsed.
+    public private(set) var frames: [BDKJSValue] = []
+    /// The stub's identifier of the most recently started task.
+    public private(set) var task: UInt64 = 0
+
+    /// The newest frame BDK sent, or nil before the first.
+    public var last: BDKJSValue? { frames.last }
+
+    func receive(task: UInt64, frame: String) {
+        self.task = task
+        frames.append(BDKJSValue(jsonString: frame) ?? .null)
+    }
+
+    /// Sends a frame from the script, in the wire protocol, as JSON text. It is delivered on the
+    /// next pump, which the awaiting test performs. Throws when the task already ended.
+    public func send(_ frameJSON: String) throws {
+        let status = withBDKString(frameJSON) { bdk_stub_script_send(task, $0) }
+        EventLoop.scheduler?()
+        guard status == BDK_OK else {
+            throw BDKError(
+                domain: .runtime, code: "stubRejected",
+                message: "the stub rejected the frame with status \(status.rawValue)")
+        }
+    }
+
+    /// Sends a frame from the script.
+    public func send(_ frame: BDKJSValue) throws {
+        try send(frame.jsonString)
+    }
+}
+
+// MARK: - Providers
+
+extension BDKStub {
+    /// The page finished loading with these text segments, in `language` (nil: not declared). The
+    /// stub detects, offers or translates as the engine would after a load.
+    public func setPageText(
+        _ texts: [String], language: String? = nil, on page: BDKWebContents
+    ) throws {
+        let json = String(decoding: try JSONEncoder().encode(texts), as: UTF8.self)
+        let status = withBDKStrings([language ?? "", json]) { lent in
+            bdk_stub_page_text_set(page.handle, lent[0], lent[1])
+        }
+        try check(status)
+    }
+
+    /// The page's text segments now: translated while a translation is on.
+    public func pageText(of page: BDKWebContents) throws -> [String] {
+        var buffer: bdk_buffer_t = 0
+        try check(bdk_stub_page_text(page.handle, &buffer))
+        return try JSONDecoder().decode([String].self, from: Self.take(buffer))
+    }
+
+    /// Loads a block list for the default reputation provider, as a downloaded list whose
+    /// signature was checked would be. Throws `provider.invalidList` for a list the core refuses.
+    public func loadReputationList(_ listJSON: String) throws {
+        let handle = try runtime.liveHandle()
+        var error: bdk_error_t = 0
+        let status = withBDKString(listJSON) { list in
+            bdk_stub_reputation_list_load(handle, list, &error)
+        }
+        defer {
+            if error != 0 { bdk_error_release(error) }
+        }
+        guard status != BDK_OK else { return }
+        func string(_ value: bdk_string_t) -> String {
+            guard let data = value.data else { return "" }
+            return String(
+                decoding: UnsafeRawBufferPointer(start: data, count: value.length), as: UTF8.self)
+        }
+        throw BDKError(
+            domain: BDKError.Domain(rawValue: string(bdk_error_domain(error))),
+            code: string(bdk_error_code(error)), message: string(bdk_error_message(error)))
+    }
+
+    /// The page's script calls `watchPosition` (its permission is granted).
+    public func startGeolocationWatch(on page: BDKWebContents, highAccuracy: Bool = false) throws {
+        try check(bdk_stub_geolocation_watch(page.handle, highAccuracy ? 1 : 0))
+    }
+
+    /// The last position or error the page received, as JSON; nil when none.
+    public func lastGeolocation(of page: BDKWebContents) throws -> String? {
+        var buffer: bdk_buffer_t = 0
+        try check(bdk_stub_geolocation_last(page.handle, &buffer))
+        let json = String(decoding: Self.take(buffer), as: UTF8.self)
+        return json.isEmpty ? nil : json
+    }
+
+    /// The page clears its watch.
+    public func stopGeolocationWatch(on page: BDKWebContents) throws {
+        try check(bdk_stub_geolocation_stop(page.handle))
     }
 }

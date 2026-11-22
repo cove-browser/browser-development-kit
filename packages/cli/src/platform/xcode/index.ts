@@ -1,10 +1,10 @@
 import { execFile } from "node:child_process";
-import { stat } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdir, stat, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { BundleFacts } from "../../core/config/index.js";
 import { CliError, ExitCode } from "../../core/exit-codes.js";
-import type { Platform } from "../platform.js";
+import type { BuildLocations, FileList, Platform } from "../platform.js";
 import { signBundle } from "./sign.js";
 import { runTool, type ToolRunner } from "./tools.js";
 
@@ -71,6 +71,28 @@ async function readPlist(file: string, toJson: PlistToJson): Promise<Record<stri
   return parsed as Record<string, unknown>;
 }
 
+/** The build setting that names the declarations file; default `$DERIVED_FILE_DIR/bdk.commands.json`. */
+export const COMMANDS_FILE_SETTING = "BDK_COMMANDS_FILE";
+
+/** Where an Xcode build keeps generated files: under `DERIVED_FILE_DIR`, which is per target and configuration. */
+function xcodeLocations(env: NodeJS.ProcessEnv): BuildLocations | undefined {
+  const derived = env.DERIVED_FILE_DIR;
+  if (!derived) return undefined;
+  const commands = env[COMMANDS_FILE_SETTING];
+  return {
+    commandsFile: commands
+      ? resolve(env.SRCROOT ?? derived, commands)
+      : join(derived, "bdk.commands.json"),
+    jsOut: join(derived, "bdk", "js"),
+    fileListDir: join(derived, "bdk"),
+  };
+}
+
+/** An `.xcfilelist`: one path per line, as Xcode's run-script phases read it. */
+function xcfilelist(paths: readonly string[]): string {
+  return paths.length === 0 ? "" : `${paths.join("\n")}\n`;
+}
+
 /** The macOS platform module: the Xcode build environment and the property lists it names. */
 export function createXcodePlatform(
   toJson: PlistToJson = plutilToJson,
@@ -80,6 +102,24 @@ export function createXcodePlatform(
     name: "xcode",
     isIdeBuild: (env) => env.XCODE_VERSION_ACTUAL !== undefined,
     sign: (request) => signBundle(request, runner),
+    buildLocations: xcodeLocations,
+    async writeFileLists(env, lists: readonly FileList[]) {
+      const dir = xcodeLocations(env)?.fileListDir;
+      if (dir === undefined) return [];
+      await mkdir(dir, { recursive: true });
+      const written: string[] = [];
+      for (const list of lists) {
+        for (const [kind, paths] of [
+          ["input", list.inputs],
+          ["output", list.outputs],
+        ] as const) {
+          const file = join(dir, `${list.phase}.${kind}.xcfilelist`);
+          await writeFile(file, xcfilelist(paths));
+          written.push(file);
+        }
+      }
+      return written;
+    },
     async bundleFacts(env, projectDir) {
       const base = env.SRCROOT ?? projectDir;
       const facts: BundleFacts = {};

@@ -101,6 +101,8 @@ final class CallBox {
     var isFinished = false
     var isCancelRequested = false
     var progress: (@MainActor (Double, String) -> Void)?
+    /// The bytes of a command marked binary, copied before the callback returns.
+    var binary: Data?
 
     func finish(_ outcome: Result<String, BDKError>) {
         isFinished = true
@@ -117,16 +119,25 @@ final class CallBox {
     }
 }
 
-private let resultCallback: bdk_result_cb = { context, error, json, _ in
+private let resultCallback: bdk_result_cb = { context, error, json, binary in
     guard let context else { return }
     let box = Unmanaged<CallBox>.fromOpaque(context).takeUnretainedValue()
     let outcome: Result<String, BDKError>
+    var bytes: Data?
     if error != 0 {
         outcome = .failure(BDKError(handle: error))
     } else {
         outcome = .success(swiftString(json))
+        // The buffer is borrowed: copy it, never release it.
+        if binary != 0 {
+            let view = bdk_buffer_bytes(binary)
+            bytes = view.data.map { Data(bytes: $0, count: view.length) } ?? Data()
+        }
     }
-    MainActor.assumeIsolated { box.finish(outcome) }
+    MainActor.assumeIsolated {
+        box.binary = bytes
+        box.finish(outcome)
+    }
 }
 
 private let progressCallback: bdk_progress_cb = { context, fraction, message in
@@ -163,9 +174,19 @@ func abiAsync(
     _ subject: BDKError.Subject, progress: (@MainActor (Double, String) -> Void)?,
     _ issue: (UnsafeMutableRawPointer, bdk_result_cb, bdk_progress_cb, bdk_release_cb) -> bdk_call_t
 ) async throws -> String {
+    try await abiAsyncBinary(subject, progress: progress, issue).json
+}
+
+/// `abiAsync` for a command marked binary: the result JSON and the bytes the call carried
+/// outside it, or nil for a call that carried none.
+@MainActor
+func abiAsyncBinary(
+    _ subject: BDKError.Subject, progress: (@MainActor (Double, String) -> Void)?,
+    _ issue: (UnsafeMutableRawPointer, bdk_result_cb, bdk_progress_cb, bdk_release_cb) -> bdk_call_t
+) async throws -> (json: String, binary: Data?) {
     let box = CallBox()
     box.progress = progress
-    return try await withTaskCancellationHandler {
+    let json = try await withTaskCancellationHandler {
         try await withCheckedThrowingContinuation { continuation in
             box.continuation = continuation
             let context = Unmanaged.passRetained(box).toOpaque()
@@ -182,6 +203,7 @@ func abiAsync(
     } onCancel: {
         Task { @MainActor in box.cancel() }
     }
+    return (json, box.binary)
 }
 
 /// Decodes the JSON result of a call.

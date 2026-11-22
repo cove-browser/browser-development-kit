@@ -174,6 +174,7 @@ The functions behind the Swift objects in [swift-api.md](swift-api.md) sections 
 | `bdk_contents_set_muted`, `_set_zoom`, `_set_user_agent`, `_perform_command`, `_can_perform_command` | Page controls |
 | `bdk_contents_discard`, `_set_auto_discardable` | Added (S15). Discard a hidden page's renderer; exempt a page from Chromium's automatic discarding. The `bdk_contents_t` handle stays valid across a discard, including when Chromium replaces the underlying WebContents. |
 | `bdk_contents_find_start`, `_find_next`, `_find_previous`, `_find_stop`, `_find_present`, `bdk_contents_print` | Find in page and printing, started by the application (T-SWF-07). `find_start` takes the text and an optional size-prefixed options struct (`match_case`); `find_stop` takes whether to clear the selection. Results arrive as `BDK_CONTENTS_EVENT_FIND_RESULT` events with `{"matchCount","activeIndex","rect","final"}`. `find_present` and `print` raise a `find` and a `printing` UI request. |
+| `bdk_contents_can_perform_command`, `_perform_command`, `_set_zoom_scoped`, `_exit_picture_in_picture` | Added in M4 (T-SWF-06): page commands (`BDK_PAGE_COMMAND_*`), zoom for the page or the site (`BDK_ZOOM_SCOPE_*`), leaving picture-in-picture. `perform` on a disabled command is `contents.commandDisabled`. |
 | `bdk_contents_set_host_context` | Conditional on decision D1 |
 
 Scripting, capture, translation and DevTools go through broker commands, not host functions, because automation uses them too.
@@ -277,6 +278,8 @@ BDK_EXPORT bdk_status_t bdk_page_handler_register(bdk_runtime_t, bdk_string_t ro
 ```
 
 `declaration_json` of `bdk_app_setting_register` is `{"key": "app.…", "default": <json>, "scope": "profile" | "application", "exposedToPages": bool}`; `default` defaults to null, `scope` to `profile` and `exposedToPages` to false. A key that does not start with `app.` is `config.nameNotApp`, a second registration of a key is `config.duplicateName`. The core answers `settings.*` for `app.` keys itself and keeps the values through `Backend::LoadAppSettings` and `SaveAppSettings` (packages/core/docs/conventions.md).
+
+`bdk_page_handler_register` takes a `BDK_PAGE_MODE_*` (M4, T-WUI-02); a native route's callback answers with `bdk_native_page_complete(ctx, BDK_NATIVE_PAGE_HANDLED | BLOCKED)` and can read the asking page with `bdk_native_page_source`. The rules are in `bdk_broker.h` and packages/core/docs/conventions.md decision 15.
 
 All registration functions must be called between `bdk_runtime_start` and `bdk_runtime_freeze_registrations`.
 
@@ -385,10 +388,12 @@ Completions are named in the interface definition for each surface, with the sam
 | Header | Function families |
 |---|---|
 | `bdk_provider.h` | `bdk_provider_register(service, vtable, ctx)` where the vtable is a size-prefixed struct of callbacks: `supported_pairs`, `prepare`, `translate`, `detect` for translation; `check_url`, `check_download`, `update` for reputation; `start`, `stop` for geolocation; `list`, `get_secret`, `save`, `remove` for credentials (Added, S14); `check_credential` for leak check (Added, S16). Each callback receives a context it resolves or rejects later, as application commands do. `bdk_provider_set_key(service, key)`. |
-| `bdk_automation.h` | `bdk_session_create(options_json)`, `bdk_session_revoke`, `bdk_session_grant_contents`, `bdk_session_run(script, arguments_json)` returning a task; `bdk_task_cancel`; `bdk_task_subscribe`; `bdk_automation_endpoint_open(authenticator_cb)`, `bdk_automation_endpoint_close`; `bdk_automation_subscribe_audit` |
+| `bdk_automation.h` | `bdk_session_create(options_json)`, `bdk_session_revoke`, `bdk_session_grant_contents`, `bdk_session_run(script, arguments_json)` returning a task; `bdk_task_cancel`; `bdk_task_subscribe`; `bdk_automation_endpoint_open(authenticator_cb)`, `bdk_automation_endpoint_close`; `bdk_automation_subscribe_audit`. Declared in M7 (provisional signatures in the header): the endpoint's authenticator answers later through `bdk_automation_hello_accept` and `_refuse`, and the audit is the `automation.*` built-in events instead of a function of its own ([../amendments.md](../amendments.md) 2.16) |
 | `bdk_diagnostics.h` | `bdk_log_set_handler`, `bdk_crash_reports_list`, `bdk_crash_reports_set_handler`, `bdk_netlog_start`, `bdk_netlog_stop` |
 
 Provider callbacks may be invoked off the UI thread if the provider declares it; this is the only ABI surface where that is allowed, and the header marks each such callback.
+
+Built in M6 (2026-11-20): `bdk_provider.h` declares the vtable (a descriptor, `cancel` and one callback per operation, all on the UI thread for now) and `bdk_provider_resolve`, `_reject`, `_progress`, `_report` and `_is_cancelled`. The Google key is `google_api_key` in `bdk_start_config_t`, because Chromium reads it before it starts; `bdk_provider_set_key` answers `config.keyUnused`. Credentials (S14) and leak check (S16) have no operations yet. The contract is in `packages/core/docs/conventions.md`, "Providers".
 
 ## 10. The stub runtime and the conformance suite
 

@@ -16,9 +16,23 @@ export const SWIFT_REPORT_PATH = "packages/swift/Sources/BDK/Generated/BDKServic
 /**
  * Namespaces the Swift layer implements by hand, on the ABI's own functions (`bdk_profiles_*`), so no
  * wrapper is generated for them. A namespace is native only because the ABI offers a richer, typed
- * entry point; the commands stay reachable through `runtime.commands.invoke`.
+ * entry point; the commands stay reachable through `runtime.commands.invoke`. `contents`, `debug` and
+ * `devtools` address one page (the invoke options' `contents`), so they are methods of `BDKWebContents`
+ * (`page.scripting`, `page.capture`, `page.devTools`, swift-api.md sections 6 and 14).
  */
-export const NATIVE_NAMESPACES: readonly string[] = ["profiles"];
+export const NATIVE_NAMESPACES: readonly string[] = ["profiles", "contents", "debug", "devtools"];
+
+/**
+ * Commands that act on one page. Swift reaches them through the page (`page.translation`), written by
+ * hand on `BDKWebContents` because the call names the page in its invoke options; no profile-scoped
+ * wrapper is generated for them. The commands stay reachable through `runtime.commands.invoke`.
+ */
+export const PAGE_COMMANDS: readonly string[] = [
+  "translation.state",
+  "translation.translate",
+  "translation.revert",
+  "translation.present",
+];
 
 /** Namespaces whose Swift name differs from the interface name, because `BDKRuntime` has the other. */
 const SERVICE_NAMES: Readonly<Record<string, { accessor: string; type: string }>> = {
@@ -450,7 +464,8 @@ export function renderSwiftServices(definitions: Definitions): string {
   const commands = definitions.commands.filter(
     (command) =>
       command.callers.includes("swift") &&
-      !NATIVE_NAMESPACES.includes(segments(command.name).namespace),
+      !NATIVE_NAMESPACES.includes(segments(command.name).namespace) &&
+      !PAGE_COMMANDS.includes(command.name),
   );
   const namespaces = [
     ...new Set(commands.map((command) => segments(command.name).namespace)),

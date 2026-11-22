@@ -32,7 +32,7 @@ diff --git a/chrome/app/framework.exports b/chrome/app/framework.exports
 index ce3e661d2855e812fecaec12d238421534040364..7536e8295d42b457849f96c03f3b36d704ac7a3e 100644
 --- a/chrome/app/framework.exports
 +++ b/chrome/app/framework.exports
-@@ -117,3 +117,20 @@ _bdk_window_set_request_handler
+@@ -135,3 +135,20 @@ _bdk_window_set_request_handler
  _bdk_window_unregister
  _OBJC_METACLASS_$_BDKApplicationBase
  _OBJC_CLASS_$_BDKApplicationBase
@@ -57,7 +57,7 @@ diff --git a/chrome/app/framework.order b/chrome/app/framework.order
 index 749941f6c402d1fcbed2c108f5eb4f00993eb0b8..c5795773c28e7c977c16174888ed5c8b83f83986 100644
 --- a/chrome/app/framework.order
 +++ b/chrome/app/framework.order
-@@ -126,6 +126,23 @@ _bdk_window_set_anchor_provider
+@@ -144,6 +144,23 @@ _bdk_window_set_anchor_provider
  _bdk_window_set_request_handler
  _bdk_window_unregister
  

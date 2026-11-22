@@ -49,9 +49,11 @@ describe("usage errors (exit 2)", () => {
   it.each([
     [[], "No command given"],
     [["frobnicate"], 'Unknown command "frobnicate". Commands: build'],
-    [["build"], "needs a step. Steps: config"],
-    [["build", "pages"], 'Unknown build step "pages". Steps: config'],
-    [["build", "config", "pages"], 'Unknown build step "pages"'],
+    [
+      ["build", "embed"],
+      'Unknown build step "embed". Steps: config, codegen, pages, automation, devtools, sign',
+    ],
+    [["build", "config", "embed"], 'Unknown build step "embed"'],
     [["--bogus"], "Unknown option"],
   ])("%j", async (argv, text) => {
     const ctx = testContext();
@@ -65,6 +67,39 @@ describe("usage errors (exit 2)", () => {
     const doc = JSON.parse(ctx.out.join(""));
     expect(doc).toMatchObject({ ok: false, exitCode: 2 });
     expect(doc.diagnostics[0].code).toBe("cli.usage");
+  });
+});
+
+describe("bdk build with no step", () => {
+  it("runs the steps that apply: here config, because there is no bundle and no signing", async () => {
+    const { dir } = await tempProject();
+    const ctx = testContext({ cwd: dir });
+    expect(await run(["build", "--json"], ctx)).toBe(0);
+    const document = JSON.parse(ctx.out.join(""));
+    expect(document.command).toBe("build config codegen");
+    expect(Object.keys(document.result)).toEqual(["config", "codegen"]);
+  });
+
+  it("adds pages when an application bundle is named, and sign with an identity", async () => {
+    const { dir } = await tempProject();
+    const ctx = testContext({
+      cwd: dir,
+      env: { BDK_SKIP_SIGNING: "1" },
+      resolveConfig: () => Promise.resolve({ diagnostics: [], resolved: { routes: {} } }),
+    });
+    expect(
+      await run(["build", "--bundle", join(dir, "A.app"), "--identity", "-", "--json"], ctx),
+    ).toBe(0);
+    expect(JSON.parse(ctx.out.join("")).command).toMatch(
+      /^build config codegen pages automation devtools sign/,
+    );
+  });
+
+  it("refuses one --out for both config and codegen", async () => {
+    const { dir } = await tempProject();
+    const ctx = testContext({ cwd: dir });
+    expect(await run(["build", "config", "codegen", "--out", "x"], ctx)).toBe(2);
+    expect(ctx.err.join("")).toContain("cannot be given to codegen and another of them");
   });
 });
 
@@ -92,6 +127,7 @@ describe("bdk build config", () => {
     const ctx = testContext({
       cwd: dir,
       platform: {
+        ...testContext().platform,
         name: "fake",
         isIdeBuild: () => false,
         bundleFacts: () => Promise.resolve({ infoPlist: { CFBundleName: "App" } }),
@@ -150,6 +186,7 @@ describe("bdk build config", () => {
         readText(name) {
           throw new AssetNotFoundError(name);
         },
+        list: () => [],
       },
     });
     expect(await run(["build", "config"], ctx)).toBe(ExitCode.Environment);
@@ -219,6 +256,7 @@ describe("bdk build config", () => {
 });
 
 const ideAwarePlatform: Platform = {
+  ...testContext().platform,
   name: "fake-ide",
   isIdeBuild: (env) => env.XCODE_VERSION_ACTUAL !== undefined,
   bundleFacts: () => Promise.resolve(undefined),

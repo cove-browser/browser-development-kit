@@ -353,7 +353,7 @@ Built-in Chromium pages keep the interfaces Chromium gives them. BDK capabilitie
 
 A dedicated host runs application-authored scripts, independent of any visible page. It exposes WebContents operations, DOM and script execution in permitted worlds, DevTools protocol access, browser-service commands, registered commands and events.
 
-Recommended shape, to be confirmed by a spike in milestone M5:
+Recommended shape, confirmed by the spike in M7 (T-AUT-01, [feasibility.md](feasibility.md) section 12; the V8 half is not built yet):
 
 - A sandboxed utility process in the runtime runs bundled scripts on V8 and reaches the broker over Mojo.
 - For external tools, BDK can open a local socket that is off by default, restricted to the user, and authenticated with a token the application issues. The DevTools protocol is offered over the same authenticated channel, never on a network port.

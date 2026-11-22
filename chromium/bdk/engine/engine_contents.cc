@@ -16,6 +16,7 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/values.h"
+#include "bdk/core/runtime/automation_internal.h"
 #include "bdk/engine/devtools_frontend.h"
 #include "bdk/engine/extensions/extension_menu_items.h"
 #include "bdk/engine/extensions/store_source.h"
@@ -23,13 +24,17 @@
 #include "bdk/engine/host_view.h"
 #include "bdk/engine/identity.h"
 #include "bdk/engine/json_util.h"
+#include "bdk/engine/pages/page_routes.h"
+#include "bdk/engine/providers/translation_service.h"
 #include "bdk/engine/services/interstitial_prompts.h"
 #include "bdk/engine/services/password_prompts.h"
+#include "bdk/engine/services/user_scripts.h"
 #include "bdk/engine/session_state.h"
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_dialogs.h"
 #include "bdk/engine/ui_find.h"
 #include "bdk/engine/ui_permissions.h"
+#include "bdk/engine/ui_presenters.h"
 #include "bdk/engine/ui_request.h"
 #include "bdk/engine/window_registry.h"
 #include "chrome/browser/history/history_tab_helper.h"
@@ -49,6 +54,7 @@
 #include "content/public/browser/render_widget_host.h"
 #include "content/public/browser/render_widget_host_view.h"
 #include "content/public/browser/web_contents.h"
+#include "content/public/common/url_constants.h"
 #include "net/base/net_errors.h"
 #include "third_party/blink/public/common/context_menu_data/edit_flags.h"
 #include "third_party/blink/public/common/page/page_zoom.h"
@@ -228,7 +234,21 @@ EngineContents::~EngineContents() {
   // Dialogs and find UI go while the page is whole.
   find_.reset();
   dialogs_.reset();
-  // The bindings belong to the front end's WebUI, which goes with the page.
+  // A front end's window goes first; then the inspected page learns that its
+  // DevTools closed. The bindings belong to the front end's WebUI, which goes
+  // with the page.
+  if (devtools_window_) {
+    std::move(devtools_window_).Run();
+  }
+  if (devtools_) {
+    if (EngineContents* inspected =
+            devtools_->inspected()
+                ? EngineContents::FromWebContents(devtools_->inspected())
+                : nullptr) {
+      inspected->devtools_page_.reset();
+      inspected->NotifyDevTools(false);
+    }
+  }
   devtools_.reset();
   Observe(nullptr);
   if (web_contents_) {
@@ -300,6 +320,11 @@ void EngineContents::Attach(
   HistoryTabHelper::CreateForWebContents(web_contents_);
   // The store's install button carries the browser's name.
   InstallStoreRelabeler(web_contents_);
+  // A page of a profile that has user scripts gets them now, before its first
+  // document loads, so documentStart scripts run in it; a replaced WebContents
+  // (restore, discard) needs them again. A profile with none costs nothing.
+  ApplyUserScriptsToPage(web_contents_);
+  AttachTranslation(web_contents_);
   // A DevTools front end moves its bindings to the new front-end WebContents
   // before the old one goes.
   if (devtools_) {
@@ -395,7 +420,9 @@ void EngineContents::Emit(uint32_t kind,
                           int32_t net_error,
                           uint32_t flags) {
   if (auto c = core()) {
-    bdkcore::emit_contents_event(c, kind, url, detail, net_error, flags);
+    // The application never sees the internal URL of one of its pages.
+    bdkcore::emit_contents_event(c, kind, DisplayUrl(url), detail, net_error,
+                                 flags);
   }
 }
 
@@ -569,7 +596,7 @@ EngineContents* EngineContents::RequestNewPage(
   base::DictValue payload;
   payload.Set("kind", kind);
   payload.Set("disposition", Disposition(disposition));
-  payload.Set("targetURL", target_url.spec());
+  payload.Set("targetURL", DisplayUrl(target_url));
   // Handles are 64-bit: JSON numbers cannot carry them exactly.
   payload.Set("newContents", base::NumberToString(page->handle));
   if (opener) {
@@ -623,7 +650,22 @@ EngineContents* EngineContents::RequestNewPage(
   return raw;
 }
 
+void EngineContents::ToggleDevTools() {
+  if (DevToolsOpen()) {
+    CloseDevTools();
+    return;
+  }
+  OpenDevTools();
+}
+
 void EngineContents::OpenDevTools() {
+  std::shared_ptr<bdkcore::Contents> inspected = core();
+  std::shared_ptr<bdkcore::Runtime> rt =
+      inspected ? inspected->rt.lock() : nullptr;
+  if (devtools_page_ || !DevToolsEnabled() || !rt || rt->shutting ||
+      !HostContexts::CanHost(ProfileOf(*inspected))) {
+    return;
+  }
   const GURL url = DevToolsFrontend::FrontendURL();
   std::unique_ptr<content::WebContents> frontend = content::WebContents::Create(
       content::WebContents::CreateParams(web_contents_->GetBrowserContext()));
@@ -631,23 +673,132 @@ void EngineContents::OpenDevTools() {
                                     ui::PAGE_TRANSITION_AUTO_TOPLEVEL,
                                     std::string());
   content::WebContents* frontend_contents = frontend.get();
-  EngineContents* page =
-      RequestNewWindow(std::move(frontend), "devTools",
-                       WindowOpenDisposition::kNewWindow, url, nullptr,
-                       /*user_gesture=*/true);
-  if (!page) {
-    return;
-  }
-  base::WeakPtr<EngineContents> weak_page = page->weak_factory_.GetWeakPtr();
-  page->devtools_ = std::make_unique<DevToolsFrontend>(
+
+  // The front end is a page like any other, so the application can place its
+  // view anywhere (swift-api.md 14).
+  auto page = std::make_shared<bdkcore::Contents>();
+  page->rt = rt;
+  page->profile = inspected->profile;
+  page->handle = bdkcore::table_make(bdkcore::T_CONTENTS, page);
+  auto engine_page =
+      std::make_unique<EngineContents>(page, std::move(frontend));
+  EngineContents* front = engine_page.get();
+  page->data = std::move(engine_page);
+  rt->contents.push_back(page);
+  devtools_page_ = front->weak_factory_.GetWeakPtr();
+  base::WeakPtr<EngineContents> weak_front = front->weak_factory_.GetWeakPtr();
+  front->devtools_ = std::make_unique<DevToolsFrontend>(
       frontend_contents, web_contents_.get(),
       base::BindRepeating(
           [](base::WeakPtr<EngineContents> p) {
             // Never from inside the bindings' own call.
             base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
-                FROM_HERE, base::BindOnce(&EngineContents::RequestClose, p));
+                FROM_HERE, base::BindOnce(&EngineContents::CloseFrontEnd, p));
           },
-          weak_page));
+          weak_front));
+
+  base::DictValue payload;
+  // Handles are 64-bit: JSON numbers cannot carry them exactly.
+  payload.Set("inspected", base::NumberToString(inspected->handle));
+  payload.Set("frontend", base::NumberToString(page->handle));
+  payload.Set("preferredDock", "undocked");
+  payload.Set("url", url.spec());
+  RaiseUiRequest(
+      inspected, BDK_SURFACE_DEVTOOLS, payload,
+      base::BindOnce(
+          [](base::WeakPtr<EngineContents> inspected_page,
+             std::weak_ptr<bdkcore::Contents> weak_frontend,
+             const UiResult& result) {
+            std::shared_ptr<bdkcore::Contents> f = weak_frontend.lock();
+            if (!f || f->dead) {
+              return;
+            }
+            EngineContents* front_page = EngineContents::From(*f);
+            if (result.outcome == bdkcore::UiOutcome::kCompleted &&
+                result.completion == "accept") {
+              // The application placed the front end's view.
+            } else if (result.outcome == bdkcore::UiOutcome::kDefaulted &&
+                       front_page) {
+              // The default presenter: an undocked window of BDK's own.
+              // Closing it closes the front end.
+              base::WeakPtr<EngineContents> weak = front_page->GetWeakPtr();
+              front_page->devtools_window_ = UiPresenters::Get().ShowPageWindow(
+                  front_page->host_view_.get(), "DevTools",
+                  base::BindOnce(&EngineContents::CloseFrontEnd, weak));
+            } else {
+              // Rejected, disabled, cancelled or withdrawn: no front end.
+              if (auto runtime = f->rt.lock()) {
+                bdkcore::destroy_contents(runtime, f);
+              }
+              return;
+            }
+            if (inspected_page) {
+              inspected_page->NotifyDevTools(true);
+            }
+          },
+          GetWeakPtr(), std::weak_ptr<bdkcore::Contents>(page)));
+}
+
+void EngineContents::CloseDevTools() {
+  if (devtools_page_) {
+    devtools_page_->CloseFrontEnd();
+  }
+}
+
+void EngineContents::CloseFrontEnd() {
+  if (!devtools_window_) {
+    RequestClose();
+    return;
+  }
+  // Destroyed later: this may run inside the window's own close.
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce(
+                     [](std::weak_ptr<bdkcore::Contents> weak) {
+                       std::shared_ptr<bdkcore::Contents> c = weak.lock();
+                       std::shared_ptr<bdkcore::Runtime> rt =
+                           c ? c->rt.lock() : nullptr;
+                       if (c && rt && !c->dead) {
+                         bdkcore::destroy_contents(rt, c);
+                       }
+                     },
+                     core_));
+}
+
+std::string EngineContents::DevToolsFrontendId() const {
+  if (!devtools_page_) {
+    return std::string();
+  }
+  std::shared_ptr<bdkcore::Contents> f = devtools_page_->core();
+  return f ? bdkcore::contents_id(f->handle) : std::string();
+}
+
+void EngineContents::NotifyDevTools(bool open) {
+  std::shared_ptr<bdkcore::Contents> c = core();
+  std::shared_ptr<bdkcore::Runtime> rt = c ? c->rt.lock() : nullptr;
+  if (!rt || rt->shutting) {
+    return;
+  }
+  bdkcore::emit_builtin_event_for(
+      rt, "devtools.stateChanged", c->profile ? c->profile->handle : 0,
+      c->handle,
+      "{\"contents\":\"" + bdkcore::contents_id(c->handle) +
+          "\",\"open\":" + (open ? "true" : "false") + "}");
+}
+
+bool EngineContents::CanOpenDevTools() {
+  return SurfaceAvailable(core(), BDK_SURFACE_DEVTOOLS);
+}
+
+void EngineContents::OpenViewSource() {
+  const GURL url(content::kViewSourceScheme + std::string(":") +
+                 web_contents_->GetLastCommittedURL().spec());
+  std::unique_ptr<content::WebContents> source = content::WebContents::Create(
+      content::WebContents::CreateParams(web_contents_->GetBrowserContext()));
+  source->GetController().LoadURL(url, content::Referrer(),
+                                  ui::PAGE_TRANSITION_LINK, std::string());
+  RequestNewWindow(std::move(source), "newPage",
+                   WindowOpenDisposition::kNewForegroundTab, url, nullptr,
+                   /*user_gesture=*/true);
 }
 
 void EngineContents::RequestClose() {
@@ -703,10 +854,10 @@ bool EngineContents::HandleContextMenu(
     }
   }
   base::DictValue context;
-  context.Set("linkURL", params.link_url.spec());
+  context.Set("linkURL", DisplayUrl(params.link_url));
   context.Set("srcURL", params.src_url.spec());
-  context.Set("pageURL", params.page_url.spec());
-  context.Set("frameURL", params.frame_url.spec());
+  context.Set("pageURL", DisplayUrl(params.page_url));
+  context.Set("frameURL", DisplayUrl(params.frame_url));
   context.Set("selectionText", base::UTF16ToUTF8(params.selection_text));
   context.Set("isEditable", params.is_editable);
   context.Set("misspelledWord", base::UTF16ToUTF8(params.misspelled_word));

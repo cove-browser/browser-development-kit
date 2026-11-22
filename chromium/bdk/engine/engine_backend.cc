@@ -33,8 +33,12 @@
 #include "base/time/time.h"
 #include "base/values.h"
 #include "bdk/core/generated/bdk_abi_hash.h"
+#include "bdk/core/runtime/automation_internal.h"
 #include "bdk/core/runtime/core_internal.h"
+#include "bdk/core/runtime/providers_internal.h"
+#include "bdk/engine/automation/automation_host_launcher.h"
 #include "bdk/engine/chromium_main.h"
+#include "bdk/engine/devtools_frontend.h"
 #include "bdk/engine/engine_contents.h"
 #include "bdk/engine/extensions/action_service.h"
 #include "bdk/engine/extensions/extension_menu.h"
@@ -43,6 +47,12 @@
 #include "bdk/engine/host_view.h"
 #include "bdk/engine/identity.h"
 #include "bdk/engine/json_util.h"
+#include "bdk/engine/page_protocol.h"
+#include "bdk/engine/pages/bundled_page_ui.h"
+#include "bdk/engine/pages/page_commands.h"
+#include "bdk/engine/pages/page_routes.h"
+#include "bdk/engine/providers/provider_settings.h"
+#include "bdk/engine/providers/reputation_service.h"
 #include "bdk/engine/services/authentication.h"
 #include "bdk/engine/services/download_prompts.h"
 #include "bdk/engine/services/events.h"
@@ -50,6 +60,7 @@
 #include "bdk/engine/services/print_prompts.h"
 #include "bdk/engine/services/prompt_hooks.h"
 #include "bdk/engine/services/services.h"
+#include "bdk/engine/services/user_scripts.h"
 #include "bdk/engine/session_state.h"
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_find.h"
@@ -132,6 +143,25 @@ class EngineBackend final : public bdkcore::Backend {
     }
   }
 
+  // Deadlines of commands (contents.waitFor). Before Chromium runs there is
+  // no page to wait for, so the task runs once the queue reaches it.
+  void PostDelayed(std::function<void()> task, int64_t delay_ms) override {
+    if (!chromium_tasks_.load()) {
+      Post(std::move(task));
+      return;
+    }
+    NoteTaskPosted();
+    content::GetUIThreadTaskRunner({})->PostDelayedTask(
+        FROM_HERE,
+        base::BindOnce(
+            [](std::function<void()> t) {
+              NoteTaskRun();
+              t();
+            },
+            std::move(task)),
+        base::Milliseconds(delay_ms));
+  }
+
   bdk_status_t Start(Runtime& rt,
                      const bdk_start_config_t& config,
                      const std::string& resolved,
@@ -154,6 +184,16 @@ class EngineBackend final : public bdkcore::Backend {
                              "the application data directory is unknown");
       }
       user_data_dir = app_data.Append(identity->storage_directory);
+    }
+    // Providers (T-PRV-09): Chromium's threads read the choice, and the
+    // Google key must reach Chromium before anything reads it.
+    SetProviderSettings(rt);
+    {
+      std::string key_error;
+      if (!ApplyGoogleKey(bdkcore::provider_google_key(rt), &key_error)) {
+        return bdkcore::fail(out_error, BDK_DOMAIN_RUNTIME, "startFailed",
+                             key_error);
+      }
     }
     if (IsChromiumRunning()) {
       if (user_data_dir != requested_user_data_dir_) {
@@ -181,19 +221,41 @@ class EngineBackend final : public bdkcore::Backend {
       ChromiumStartOptions options;
       base::PathService::Get(base::FILE_EXE, &options.program);
       options.user_data_dir = user_data_dir;
-      options.switches = ExtraSwitches();
+      options.switches = ProviderSwitches(CurrentProviderSettings());
+      for (std::string& extra : ExtraSwitches()) {
+        options.switches.push_back(std::move(extra));
+      }
+      InstallReputationService();
+      // The branded scheme is registered in every process as Chromium starts
+      // (the scheme patch reads the switch; the browser client copies it to
+      // each child). Chromium starts once per process, so a later runtime of
+      // the same process keeps the first runtime's registration.
+      const std::string scheme = InternalSchemeOf(resolved);
+      if (!scheme.empty()) {
+        options.switches.push_back(std::string(kInternalSchemeSwitch) + "=" +
+                                   scheme);
+      }
       std::string error;
       if (!StartChromium(options, &error)) {
         return bdkcore::fail(out_error, BDK_DOMAIN_RUNTIME, "startFailed",
                              error);
       }
       ApplyIdentityAfterStart(*identity);
+      ApplyLocalStatePrivacyPrefs();
       InstallPromptHooks();
       chromium_tasks_.store(true);
       registry_writer_ = base::ThreadPool::CreateSequencedTaskRunner(
           {base::MayBlock(), base::TaskShutdownBehavior::BLOCK_SHUTDOWN});
     }
     SetRuntimeInfo(resolved);
+    SetPageProtocolRuntimeInfo(resolved);
+    ConfigureDevTools(resolved,
+                      base::FilePath(bdkcore::str(config.bundle_path)));
+    // Each runtime reads scripts from its own application's bundle.
+    automation_host_ = std::make_unique<AutomationHostLauncher>(
+        base::FilePath(bdkcore::str(config.bundle_path)));
+    SetPagesBundlePath(base::FilePath(bdkcore::str(config.bundle_path)));
+    RegisterBundledPageUIs(rt);
     // The profile Chromium started with. A runtime started in a Chromium that
     // is still running (BDK_ENGINE_KEEP_CHROMIUM) keeps it: the last used
     // profile may by then be one BDK opened and closed, which is unloaded.
@@ -216,6 +278,8 @@ class EngineBackend final : public bdkcore::Backend {
   }
 
   void Shutdown(Runtime& rt, std::function<void()> done) override {
+    // The core ended every task (automation_shutdown); this drops the host.
+    automation_host_.reset();
     // The core has made every handle stale; what is left goes now.
     for (auto& c : rt.contents) {
       c->data.reset();
@@ -345,6 +409,7 @@ class EngineBackend final : public bdkcore::Backend {
                     // (ui_notifications.h).
                     InstallNotificationDisplay(loaded);
                     InstallDownloadPrompts(loaded);
+                    ApplyPrivacyPrefs(loaded);
                     auto data = std::make_unique<EngineProfile>();
                     data->profile = loaded;
                     data->events = CreateServiceEvents(loaded, p);
@@ -369,6 +434,7 @@ class EngineBackend final : public bdkcore::Backend {
                            "Chromium could not create a private profile");
     }
     InstallDownloadPrompts(otr);
+    ApplyPrivacyPrefs(otr);
     auto data = std::make_unique<EngineProfile>();
     data->profile = otr;
     // Cookie and download events; ProfileEvents leaves out the history and
@@ -470,6 +536,36 @@ class EngineBackend final : public bdkcore::Backend {
     Page(*c).Close();
   }
 
+  void StartTask(Runtime& rt,
+                 const std::shared_ptr<bdkcore::TaskPort>& task) override {
+    if (!automation_host_) {
+      bdkcore::Backend::StartTask(rt, task);  // finishes it: no host
+      return;
+    }
+    automation_host_->StartTask(rt, task);
+  }
+
+  void EndTask(Runtime& rt, bdkcore::TaskPort& task) override {
+    if (automation_host_) {
+      automation_host_->EndTask(task);
+    }
+  }
+
+  void UserScriptsChanged(
+      Runtime& rt,
+      bdkcore::Profile& profile,
+      const std::vector<bdkcore::UserScript>& scripts) override {
+    // Scripts are registered on an open profile; a closed one has no pages.
+    auto* data = static_cast<EngineProfile*>(profile.data.get());
+    if (data && data->profile) {
+      ApplyUserScripts(data->profile, scripts);
+    }
+  }
+
+  void CallerRevoked(Runtime& rt, const bdkcore::Caller& caller) override {
+    DetachDebugClientsOf(caller);
+  }
+
   void Authenticate(Runtime& rt,
                     const std::string& reason,
                     std::function<void(bool)> done) override {
@@ -527,7 +623,7 @@ class EngineBackend final : public bdkcore::Backend {
         continue;
       }
       entries->push_back(
-          bdkcore::Entry{entry->GetURL().spec(),
+          bdkcore::Entry{DisplayUrl(entry->GetURL()),
                          base::UTF16ToUTF8(entry->GetTitleForDisplay())});
     }
     *current = entries->empty() ? -1 : controller.GetLastCommittedEntryIndex();
@@ -537,7 +633,7 @@ class EngineBackend final : public bdkcore::Backend {
     EngineContents& page = Page(c);
     content::WebContents* contents = page.web_contents();
     const GURL url = contents->GetLastCommittedURL();
-    state->url = url.is_valid() ? url.spec() : "about:blank";
+    state->url = url.is_valid() ? DisplayUrl(url) : "about:blank";
     content::NavigationEntry* entry =
         contents->GetController().GetLastCommittedEntry();
     state->title = entry && !entry->IsInitialEntry()
@@ -614,8 +710,9 @@ class EngineBackend final : public bdkcore::Backend {
 
   bdk_status_t SetZoom(Contents& c,
                        double zoom,
+                       uint32_t scope,
                        bdk_error_t* out_error) override {
-    Page(c).SetZoom(zoom);
+    SetPageZoom(Page(c), zoom, scope);
     return BDK_OK;
   }
 
@@ -671,6 +768,35 @@ class EngineBackend final : public bdkcore::Backend {
     // The path the print command takes: a `printing` request, then the
     // application's choice or the default presenter.
     OnPrintRequested(Page(*c).web_contents(), /*is_user_initiated=*/true);
+    return BDK_OK;
+  }
+
+  bool CanPerformCommand(const std::shared_ptr<Contents>& c,
+                         uint32_t command) override {
+    return CanPerformPageCommand(Page(*c), command);
+  }
+
+  bdk_status_t PerformCommand(const std::shared_ptr<Contents>& c,
+                              uint32_t command,
+                              bdk_error_t* out_error) override {
+    switch (command) {
+      case BDK_PAGE_COMMAND_FIND:
+        return FindPresent(c, out_error);
+      case BDK_PAGE_COMMAND_FIND_NEXT:
+      case BDK_PAGE_COMMAND_FIND_PREVIOUS:
+        return FindNext(c, command == BDK_PAGE_COMMAND_FIND_NEXT, out_error);
+      case BDK_PAGE_COMMAND_PRINT:
+        return Print(c, out_error);
+      default:
+        Page(*c).LoadIfDiscarded();
+        PerformPageCommand(Page(*c), command);
+        return BDK_OK;
+    }
+  }
+
+  bdk_status_t ExitPictureInPicture(const std::shared_ptr<Contents>& c,
+                                    bdk_error_t* out_error) override {
+    ExitPageFromPictureInPicture(Page(*c));
     return BDK_OK;
   }
 
@@ -894,6 +1020,8 @@ class EngineBackend final : public bdkcore::Backend {
   base::FilePath requested_user_data_dir_;
   raw_ptr<Profile> base_profile_ = nullptr;
   scoped_refptr<base::SequencedTaskRunner> registry_writer_;
+  // The automation host: V8 in a utility process, started with the first task.
+  std::unique_ptr<AutomationHostLauncher> automation_host_;
   // The text of each scope's application settings file, by profile id ("" for
   // the application's).
   std::map<std::string, std::string> app_settings_text_;

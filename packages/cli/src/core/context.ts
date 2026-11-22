@@ -1,5 +1,6 @@
 import type { Assets } from "../assets.js";
 import type { Platform } from "../platform/platform.js";
+import type { Bundler } from "./automation/bundler.js";
 import type { resolveConfig } from "./config/index.js";
 
 /** Everything a run needs from outside, so tests can supply fakes. `src/main.ts` builds the real one. */
@@ -14,4 +15,6 @@ export interface Context {
   assets: Assets;
   platform: Platform;
   resolveConfig: typeof resolveConfig;
+  /** Rolldown, from the project or the CLI's own dependency; undefined when neither has it. */
+  loadBundler: (projectDir: string) => Promise<Bundler | undefined>;
 }

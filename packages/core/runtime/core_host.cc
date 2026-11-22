@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 
+#include "automation_internal.h"
 #include "broker_internal.h"
 
 using namespace bdkcore;
@@ -35,6 +36,7 @@ void close_profile(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Pro
 
 void destroy_contents(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Contents>& c) {
     withdraw_contents_requests(rt, c->handle);
+    automation_forget_contents(rt, c->handle);
     c->dead = true;
     for (auto& s : c->subs)
         deactivate(s);
@@ -53,6 +55,7 @@ void emit_contents_event_now(const std::shared_ptr<Contents>& c, uint32_t kind,
                              uint32_t flags) {
     if (c->dead)
         return;
+    automation_contents_event(c, kind, url, detail, flags);
     bdk_contents_event_t ev;
     memset(&ev, 0, sizeof ev);
     ev.struct_size = sizeof ev;
@@ -588,7 +591,18 @@ BDK_EXPORT bdk_status_t bdk_contents_set_zoom(bdk_contents_t h, double zoom, bdk
         return st;
     if (!(zoom > 0.0))
         return BDK_ERR_INVALID_ARGUMENT;
-    return backend().SetZoom(*c, zoom, err);
+    return backend().SetZoom(*c, zoom, BDK_ZOOM_SCOPE_PAGE, err);
+}
+
+BDK_EXPORT bdk_status_t bdk_contents_set_zoom_scoped(bdk_contents_t h, double zoom, uint32_t scope,
+                                                     bdk_error_t* err) {
+    bdk_status_t st;
+    auto c = open_contents_for(h, err, &st);
+    if (!c)
+        return st;
+    if (!(zoom > 0.0) || (scope != BDK_ZOOM_SCOPE_PAGE && scope != BDK_ZOOM_SCOPE_SITE))
+        return BDK_ERR_INVALID_ARGUMENT;
+    return backend().SetZoom(*c, zoom, scope, err);
 }
 
 BDK_EXPORT bdk_status_t bdk_contents_set_user_agent(bdk_contents_t h, bdk_string_t ua,
@@ -675,6 +689,46 @@ BDK_EXPORT bdk_status_t bdk_contents_print(bdk_contents_t h, bdk_error_t* err) {
     if (!c)
         return st;
     return backend().Print(c, err);
+}
+
+static bool page_command_known(uint32_t command) {
+    return command >= BDK_PAGE_COMMAND_BACK && command <= BDK_PAGE_COMMAND_TOGGLE_FULLSCREEN;
+}
+
+BDK_EXPORT bdk_status_t bdk_contents_can_perform_command(bdk_contents_t h, uint32_t command,
+                                                         uint8_t* out_enabled, bdk_error_t* err) {
+    if (out_enabled)
+        *out_enabled = 0;
+    bdk_status_t st;
+    auto c = open_contents_for(h, err, &st);
+    if (!c)
+        return st;
+    if (!out_enabled || !page_command_known(command))
+        return BDK_ERR_INVALID_ARGUMENT;
+    *out_enabled = backend().CanPerformCommand(c, command) ? 1 : 0;
+    return BDK_OK;
+}
+
+BDK_EXPORT bdk_status_t bdk_contents_perform_command(bdk_contents_t h, uint32_t command,
+                                                     bdk_error_t* err) {
+    bdk_status_t st;
+    auto c = open_contents_for(h, err, &st);
+    if (!c)
+        return st;
+    if (!page_command_known(command))
+        return BDK_ERR_INVALID_ARGUMENT;
+    if (!backend().CanPerformCommand(c, command))
+        return fail(err, BDK_DOMAIN_CONTENTS, "commandDisabled",
+                    "the page command " + std::to_string(command) + " cannot be performed now");
+    return backend().PerformCommand(c, command, err);
+}
+
+BDK_EXPORT bdk_status_t bdk_contents_exit_picture_in_picture(bdk_contents_t h, bdk_error_t* err) {
+    bdk_status_t st;
+    auto c = open_contents_for(h, err, &st);
+    if (!c)
+        return st;
+    return backend().ExitPictureInPicture(c, err);
 }
 
 BDK_EXPORT bdk_subscription_t bdk_contents_subscribe(bdk_contents_t h, bdk_contents_event_cb cb,

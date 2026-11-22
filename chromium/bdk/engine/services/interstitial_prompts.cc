@@ -16,7 +16,9 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/values.h"
 #include "bdk/core/include/bdk/bdk_ids.h"
+#include "bdk/core/runtime/providers_internal.h"
 #include "bdk/engine/engine_contents.h"
+#include "bdk/engine/json_util.h"
 #include "bdk/engine/ui_request.h"
 #include "components/safe_browsing/content/browser/safe_browsing_blocking_page.h"
 #include "components/security_interstitials/content/security_interstitial_page.h"
@@ -147,14 +149,29 @@ void Raise(base::WeakPtr<content::WebContents> weak_contents,
     surface = BDK_SURFACE_REPUTATION_WARNINGS;
     const bool phishing = FlagInPage(html, "phishing");
     payload.Set("verdict", phishing ? "phishing" : "malware");
-    payload.Set("provider", base::DictValue().Set("name", "safe-browsing"));
-    payload.Set("text",
-                base::DictValue()
-                    .Set("title", phishing ? "Deceptive site ahead"
-                                           : "Dangerous site ahead")
-                    .Set("message",
-                         std::string(url.host()) + " is reported as " +
-                             (phishing ? "a phishing site." : "malicious.")));
+    // Who reported it, and for BDK's block lists that their protection is
+    // reduced (architecture.md 11).
+    std::shared_ptr<bdkcore::Runtime> rt = bdkcore::current_runtime();
+    std::optional<base::DictValue> provider =
+        rt ? ParseJsonDict(bdkcore::provider_descriptor(
+                 *rt, bdkcore::Service::kReputation))
+           : std::nullopt;
+    const bool reduced = provider && provider->FindString("protection") &&
+                         *provider->FindString("protection") == "reduced";
+    payload.Set("provider",
+                provider ? std::move(*provider) : base::DictValue());
+    payload.Set(
+        "text",
+        base::DictValue()
+            .Set("title",
+                 phishing ? "Deceptive site ahead" : "Dangerous site ahead")
+            .Set("message",
+                 std::string(url.host()) + " is reported as " +
+                     (phishing ? "a phishing site." : "malicious.") +
+                     (reduced ? " It was found in public block lists, which "
+                                "give reduced protection: an unlisted site is "
+                                "not known to be safe."
+                              : "")));
   }
   base::WeakPtr<content::WebContents> weak = contents->GetWeakPtr();
   Open()[contents] = RaiseUiRequest(

@@ -16,3 +16,8 @@ Verified at b8c2be851f62: every name is declared in the sources (`target_os`/`ta
 `chrome_pgo_phase` in `build/config/compiler/pgo/pgo.gni`, `dcheck_always_on` in
 `build/config/dcheck_always_on.gni`, `use_remoteexec` in `build/toolchain/rbe.gni`, `cc_wrapper` in
 `build/toolchain/cc_wrapper.gni`), and `gn gen out/dev` and `out/release` succeed in the real checkout.
+
+Both also set `support_external_google_api_key = true` (declared in `google_apis/BUILD.gn`), added in M6
+(T-PRV-09) so that one runtime serves applications with and without their own Google key. Only
+`google_apis/buildflags.h` depends on it, read by the `google_apis` target and `fuchsia_web` (not built
+here). Not yet run through `gn gen` or a build: engine build pending.

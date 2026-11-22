@@ -237,6 +237,8 @@ Extra keys:
 
 The spec's illustrative `[services.google]` table of booleans is not used. Choosing Google is `provider = "google"` on the service concerned, so there is one way to say it.
 
+Built in M6 (2026-11-20; core, stub and Swift tested, engine written and not yet built). The runtime reads the resolved `services` at start. A provider BDK names but this runtime does not have (`apple`, `deepl`, `microsoft`, `google` for translation, `web-risk`: T-PRV-08) is the start error `config.providerUnavailable`. `endpoint` is accepted only for the default reputation provider (where its lists come from; https, or http on the loopback address); for any other provider it is `config.endpointUnsupported`, because Chromium's Safe Browsing and network-location hosts are constants (T-PRV-14, after v1). The list download itself is not built (T-PRV-11), so `update_interval` and the endpoint have no effect yet. `models`, `bundled_languages` and `model_source` have no effect until the default translation engine exists (T-PRV-02). A Google key with no `provider = "google"` is `config.keyUnused`, and a Google provider with no key `config.keyMissing`. The rules are in `packages/core/docs/conventions.md`, "Providers".
+
 #### `[services.credentials]` (Added, S14)
 
 | Key | Type | Default | Meaning |
@@ -299,7 +301,7 @@ Keys that would weaken a security invariant cannot be defaulted off. The schema 
 
 | Key | Type | Default | Status | Meaning |
 |---|---|---|---|---|
-| `enabled` | boolean | `false` | Plan, M7 | Whether the automation host exists in this application. |
+| `enabled` | boolean | `false` | Plan, M7; built, engine pending (T-AUT-06) | Whether the automation host exists in this application. `bdk_session_run` fails with `automation.disabled` when false; sessions and the external endpoint do not depend on it. |
 | `directory` | string | `"Automation"` | Plan | Where application-authored scripts live. Each top-level `.ts` or `.js` file is one script, bundled with Rolldown. |
 
 #### `[automation.external]`
@@ -314,7 +316,7 @@ There is no key for a network port. The endpoint is a user-restricted local sock
 
 | Key | Type | Default | Status | Meaning |
 |---|---|---|---|---|
-| `frontend` | `"default"`, `"disabled"`, or a path | `"default"` | Plan, M7, T-AUT-05 | Chromium's DevTools front end, none, or a complete replacement packaged from the path. |
+| `frontend` | `"default"`, `"disabled"`, or a path | `"default"` | Plan, M7, T-AUT-05; built, engine pending (T-AUT-06) | Chromium's DevTools front end, none, or a complete replacement packaged from the path. |
 | `overlay` | path | none | Plan | A directory of CSS and JavaScript loaded into the default front end. The "modified" mode. |
 | `protocol` | boolean | `true` | Plan | Whether the DevTools protocol is available to Swift and to automation sessions that hold `contents.debug`. Independent of the front end. |
 
@@ -609,6 +611,10 @@ Each has a stable code, used by fixtures in `tests/config/`. Messages name the f
 | `pages.capability_unknown` | A capability name that does not exist |
 | `pages.capability_denied` | A capability that pages can never hold |
 | `pages.capability_target` | A grant for a route that is not a bundled page |
+| `pages.resolved_missing`, `pages.resolved_invalid` | `bdk build pages` found no usable `bdk.resolved.json` (added in M4) |
+| `pages.vite_missing`, `pages.vite_failed` | The project's Vite cannot be loaded from the pages directory's `node_modules`, or its build failed (added in M4) |
+| `pages.csp` | A page file holds what the bundled pages' content security policy blocks (added in M4) |
+| `pages.too_large` | A page file is over 16 MiB, the limit of the runtime's data source (added in M4) |
 | `automation.collision` | Two files in the automation directory have the same script name |
 | `ui.surface_unknown` | An unknown surface name |
 | `ui.surface_mode` | A mode the surface does not allow, such as `disabled` for interstitials. The runtime core checks the resolved file again at start and reports the same condition as `ui.surfaceMode` (and an unknown surface as `ui.surfaceUnknown`, a custom surface without a handler at the freeze as `config.handlerMissing`) |

@@ -1,2 +1,3 @@
-/** Placeholder entry point for @bdk/internal; real API lands with its milestone task. */
-export const packageName = "@bdk/internal";
+export { getTransport, invoke, paginate, setTransport, subscribe } from "./call.js";
+export { holdsCapability } from "./capabilities.js";
+export { BdkError, SdkErrors } from "./errors.js";

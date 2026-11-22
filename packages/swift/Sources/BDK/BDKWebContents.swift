@@ -46,6 +46,7 @@ public final class BDKWebContents: Identifiable {
     let broadcaster = EventBroadcaster<Event>()
     private var hostView: BDKWebView?
     var findSession: FindSession?
+    var devToolsSession: DevTools?
     private var lastState = State()
 
     /// False once the page was destroyed, or its profile or runtime went away.
@@ -215,9 +216,8 @@ public final class BDKWebContents: Identifiable {
     public var isMuted: Bool { current.isMuted }
     public var visibility: Visibility { current.visibility }
     public var isFocused: Bool { current.isFocused }
-    public var zoom: Double { current.zoom }
-
-    private var current: State {
+    /// The current state, or the last one read when the page is gone.
+    var current: State {
         (try? state()) ?? lastState
     }
 

@@ -64,6 +64,8 @@ extension BDKWebContents {
         case visibilityChanged(Bool)
         /// A result of the search `find.start` began.
         case findResult(FindSession.Result)
+        /// The page's translation changed phase or progress.
+        case translation(BDKTranslationState)
         /// A kind this version does not know, from a newer runtime.
         case unknown(kind: UInt32)
     }
@@ -121,6 +123,11 @@ extension BDKWebContents.Event {
         switch kind {
         case BDK_CONTENTS_EVENT_FIND_RESULT:
             .findResult(FindSession.Result(detail))
+        case BDK_CONTENTS_EVENT_TRANSLATION:
+            detail.flatMap {
+                try? BDKServiceCoding.decode(BDKTranslationState.self, from: $0.jsonString)
+            }
+            .map { .translation($0) } ?? .unknown(kind: kind)
         default:
             .unknown(kind: kind)
         }

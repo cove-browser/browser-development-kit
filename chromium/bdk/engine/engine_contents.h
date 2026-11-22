@@ -121,12 +121,27 @@ class EngineContents : public bdkcore::BackendData,
   // when it is shown or focused.
   void Discard();
   void Close();
+  // DevTools for this page (T-AUT-05): opens the configured front end in a
+  // page of its own and raises a `devtools` request for it (ui-requests.md
+  // 5.15); does nothing when one is open. CloseDevTools closes it.
+  void OpenDevTools();
+  void CloseDevTools();
+  bool DevToolsOpen() const { return !!devtools_page_; }
+  // The JSON id of the open front end's page, or empty.
+  std::string DevToolsFrontendId() const;
   void SetZoom(double zoom);
   double Zoom();
   void SetUserAgent(const std::string& user_agent);
   // Mutes the page, including the WebContents a discard or restore puts in its
   // place.
   void SetMuted(bool muted);
+  // Closes this page's DevTools when they are open, and opens them otherwise.
+  void ToggleDevTools();
+  // Whether DevTools may open: not when [ui.surfaces] devtools is disabled.
+  bool CanOpenDevTools();
+  // Opens view-source: of the page in a page of its own, through a
+  // new-window request of kind "newPage", as Chrome opens a tab.
+  void OpenViewSource();
   // Whether the page has focus, as the last focus event said.
   bool focused() const { return focused_; }
   // Between Close() and Chromium's CloseContents().
@@ -205,9 +220,12 @@ class EngineContents : public bdkcore::BackendData,
   // The host view moved into or out of a window; the page follows later.
   void OnHostViewWindowChanged();
   void ActivateTab();
-  // Opens undocked DevTools for this page in a page of its own, through a
-  // new-window request of kind "devTools".
-  void OpenDevTools();
+  // The front end of this page opened or closed: devtools.stateChanged.
+  void NotifyDevTools(bool open);
+  // For a front-end page: closes it. In the default presenter's window it
+  // belongs to no one, so it is destroyed; a page the application placed is
+  // asked to close, as window.close() does.
+  void CloseFrontEnd();
   // Asks the application to close this page, as window.close() does.
   void RequestClose();
   // Wraps `new_contents` as a page in the same profile and asks the
@@ -232,11 +250,15 @@ class EngineContents : public bdkcore::BackendData,
   std::unique_ptr<PageFind> find_;
   // Owned by its tab model, in a host context.
   raw_ptr<content::WebContents> web_contents_ = nullptr;
-  // For a DevTools front-end page: the bindings to the page it inspects.
+  // For a DevTools front-end page: the bindings to the page it inspects, and
+  // the default presenter's window while it shows the page.
   std::unique_ptr<DevToolsFrontend> devtools_;
   // The extension items of the context menu raised last, kept until a later
   // menu replaces them so that performing one can run it.
   std::unique_ptr<ExtensionMenuItems> extension_menu_items_;
+  base::OnceClosure devtools_window_;
+  // For an inspected page: the page of its open front end.
+  base::WeakPtr<EngineContents> devtools_page_;
   std::string user_agent_;
   bool muted_ = false;
   double zoom_ = 1.0;

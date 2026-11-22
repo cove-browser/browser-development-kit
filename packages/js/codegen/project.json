@@ -39,7 +39,22 @@
         "{workspaceRoot}/packages/core/include/bdk/bdk_ids.h",
         "{workspaceRoot}/packages/core/generated/bdk_command_table.inc",
         "{workspaceRoot}/packages/core/interface/ids.json",
-        "{workspaceRoot}/packages/swift/Sources/BDK/Generated/BDKServices.swift"
+        "{workspaceRoot}/packages/swift/Sources/BDK/Generated/BDKServices.swift",
+        "{workspaceRoot}/packages/js/internal/src/autofill.ts",
+        "{workspaceRoot}/packages/js/internal/src/bookmarks.ts",
+        "{workspaceRoot}/packages/js/internal/src/downloads.ts",
+        "{workspaceRoot}/packages/js/internal/src/extensions.ts",
+        "{workspaceRoot}/packages/js/internal/src/history.ts",
+        "{workspaceRoot}/packages/js/internal/src/metadata.ts",
+        "{workspaceRoot}/packages/js/internal/src/passwords.ts",
+        "{workspaceRoot}/packages/js/internal/src/permissions.ts",
+        "{workspaceRoot}/packages/js/internal/src/privacy.ts",
+        "{workspaceRoot}/packages/js/internal/src/profiles.ts",
+        "{workspaceRoot}/packages/js/internal/src/search.ts",
+        "{workspaceRoot}/packages/js/internal/src/settings.ts",
+        "{workspaceRoot}/packages/js/internal/src/system.ts",
+        "{workspaceRoot}/packages/js/internal/src/translation.ts",
+        "{workspaceRoot}/packages/js/internal/src/types.ts"
       ]
     },
     "codegen-check": {

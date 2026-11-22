@@ -26,3 +26,9 @@ cc_wrapper = "env CCACHE_SLOPPINESS=time_macros ccache"
 # shared compiler cache of repository-and-tooling.md 7.2. Declared in
 # build/config/c++/c++.gni; measured under T-CHR-06.
 use_clang_modules = false
+
+# The application's own Google key, given at start (T-PRV-09): compiles in
+# google_apis::InitializeAndOverrideAPIKey. Declared in google_apis/BUILD.gn;
+# it changes only google_apis' buildflag header, so it rebuilds google_apis.
+# No key is built in: without one, nothing BDK runs has a key.
+support_external_google_api_key = true

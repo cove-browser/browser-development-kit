@@ -1,0 +1,60 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BDK Patches <patches@bdk.invalid>
+Date: Fri, 20 Nov 2026 09:00:00 -0800
+Subject: [PATCH] bdk: register the automation host in the utility process
+
+BDK runs the scripts of its automation tasks in V8 inside a sandboxed
+utility process (architecture.md section 9.3). The browser launches it with
+content::ServiceProcessHost::Launch<bdk::mojom::AutomationHost>(), and the
+utility process can only bind an interface that its service factory knows:
+RegisterMainThreadServices() in chrome/utility/services.cc is the one place
+that registers them, and neither it nor ChromeContentUtilityClient offers a
+hook for an embedder.
+
+Add //bdk/engine/automation:utility to the Mac dependencies of
+//chrome/utility and register bdk::RunAutomationHost next to the other Mac
+services in chrome/utility/services.cc. The registration is on the main
+thread, where the service owns a V8 isolate and its timers. Nothing else in
+the utility process changes, and the new code is compiled in the Mac build
+only.
+
+Used by: the BDK engine (//bdk/engine/automation).
+---
+ chrome/utility/BUILD.gn    | 2 ++
+ chrome/utility/services.cc | 3 +++
+ 2 files changed, 5 insertions(+)
+
+diff --git a/chrome/utility/BUILD.gn b/chrome/utility/BUILD.gn
+index e5b851a44d644dfd5144ea8e661b546d8c8149a0..615ef0ec533f5870a22a42a2fbfd8a8277b3308c 100644
+--- a/chrome/utility/BUILD.gn
++++ b/chrome/utility/BUILD.gn
+@@ -87,6 +87,8 @@ static_library("utility") {
+ 
+   if (is_mac) {
+     deps += [
++      # BDK: the automation host. See chromium/patches in the BDK repository.
++      "//bdk/engine/automation:utility",
+       "//chrome/services/mac_notifications",
+       "//services/proxy_resolver_mac",
+     ]
+diff --git a/chrome/utility/services.cc b/chrome/utility/services.cc
+index 2dfe79c92ddd4cf368c00e92cfc6002376da1b4c..04ebd9dfbaf85e6d8975c3f87252f83a6ec6dbf3 100644
+--- a/chrome/utility/services.cc
++++ b/chrome/utility/services.cc
+@@ -54,6 +54,7 @@
+ #endif  // BUILDFLAG(IS_WIN)
+ 
+ #if BUILDFLAG(IS_MAC)
++#include "bdk/engine/automation/automation_host_service.h"
+ #include "chrome/services/mac_notifications/mac_notification_provider_impl.h"
+ #include "chrome/services/system_signals/mac/mac_system_signals_service.h"
+ #include "services/proxy_resolver/public/mojom/system_proxy_resolver.mojom.h"
+@@ -544,6 +545,8 @@ void RegisterMainThreadServices(mojo::ServiceFactory& services) {
+ 
+ #if BUILDFLAG(IS_MAC)
+   services.Add(RunMacNotificationService);
++  // BDK: the automation host. See chromium/patches in the BDK repository.
++  services.Add(bdk::RunAutomationHost);
+ #endif  // BUILDFLAG(IS_MAC)
+ 
+ #if (BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION) && \

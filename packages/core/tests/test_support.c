@@ -38,10 +38,15 @@ int str_has(bdk_string_t s, const char* needle) {
     return 0;
 }
 
+const char* t_config_extra = NULL;
+
 void t_fill_start_config(bdk_start_config_t* c) {
+    static char resolved[2048];
     memset(c, 0, sizeof *c);
     c->struct_size = sizeof *c;
-    c->resolved_config_json = S("{\"app\":{\"name\":\"conformance\"}}");
+    snprintf(resolved, sizeof resolved, "{\"app\":{\"name\":\"conformance\"}%s%s}",
+             t_config_extra ? "," : "", t_config_extra ? t_config_extra : "");
+    c->resolved_config_json = S(resolved);
     c->bundle_path = S("/nonexistent/bundle");
     c->framework_path = S("/nonexistent/framework");
     c->host_abi_version = bdk_abi_version();
@@ -54,8 +59,16 @@ void t_pump(void) {
 }
 
 bdk_runtime_t t_start(void) {
+    return t_start_with(NULL);
+}
+
+bdk_runtime_t t_start_with(const char* resolved_json) {
     bdk_start_config_t c;
     t_fill_start_config(&c);
+    if (resolved_json) {
+        c.resolved_config_json = S(resolved_json);
+        bdk_harness_prepare_start_config(&c);
+    }
     bdk_error_t err = 0;
     bdk_status_t s = bdk_runtime_start(&c, &t_runtime, &err);
     if (s != BDK_OK)
@@ -227,12 +240,22 @@ static const t_test_t* const kTables[] = {
     t_profile_tests,
     t_contents_tests,
     t_ui_tests,
+    t_automation_tests,
+    t_endpoint_tests,
+    t_provider_tests, /* providers: contracts, configuration, translation, reputation
+                         (tests_providers.c) */
+    t_pages_tests,
     t_extension_tests, /* extensions and registered windows (tests_extensions.c) */
 #ifdef BDK_HARNESS_ENGINE_TESTS
-    t_engine_tests,                 /* scenarios only a real engine can run (tests_engine.c) */
-    t_engine_ui_tests,              /* browser-owned surfaces on the engine (tests_engine_ui.c) */
-    t_engine_prompt_tests,          /* services and prompts (tests_engine_prompts.c) */
-    t_engine_extension_tests,       /* extension install and policy (tests_engine_extensions.c) */
+    t_engine_tests,            /* scenarios only a real engine can run (tests_engine.c) */
+    t_engine_ui_tests,         /* browser-owned surfaces on the engine (tests_engine_ui.c) */
+    t_engine_prompt_tests,     /* services and prompts (tests_engine_prompts.c) */
+    t_engine_automation_tests, /* automation and DevTools (tests_engine_automation.c) */
+    t_engine_provider_tests,   /* providers on Chromium (tests_engine_providers.c) */
+    t_engine_privacy_tests,   /* the network audit and Google-free start-up (tests_engine_privacy.c)
+                               */
+    t_engine_pages_tests,     /* internal pages, search and M3 follow-ups (tests_engine_pages.c) */
+    t_engine_extension_tests, /* extension install and policy (tests_engine_extensions.c) */
     t_engine_extension_ui_tests,    /* extension UI (tests_engine_ext_ui.c) */
     t_engine_extension_panel_tests, /* windows, side panels, DevTools extensions */
     t_engine_extension_probe_tests, /* the MV3 probe, T-EXT-01 (tests_engine_ext_probe.c) */
@@ -253,6 +276,7 @@ static int run_one(const t_test_t* t) {
         t_runtime = 0;
     }
     t_pump();
+    t_config_extra = NULL;
     printf("%s %s\n", g_failures_in_test ? "[FAIL]" : "[ ok ]", t->name);
     return g_failures_in_test == 0;
 }

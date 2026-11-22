@@ -361,6 +361,19 @@ There is no open equivalent to Google's protection. Open feeds list known threat
 
 Revocation lists, the Certificate Transparency log list and root-store updates arrive this way. BDK has to keep them flowing.
 
+Settled for T-PRV-06 on 2026-11-20, by reading the source at the pin (not run):
+
+| Finding | Evidence | Status |
+|---|---|---|
+| The security data arrives as two components: CRLSet, and "PKI Metadata", which carries the CT log list, key pins and the Chrome Root Store | `registration.cc:179, 185`; `pki_metadata_component_installer.cc:105-122` | Read |
+| Update-check responses are signed with Google's key (CUP) and bound to each request's nonce; `EnabledCupSigning` is fixed to true and no switch turns it off | `request_sender.cc:37-38, 276-290`; `configurator_impl.cc:139-142` | Read |
+| So a mirror can only forward to Google; serving its own responses needs a patch and a signing scheme of BDK's | Follows from the above | Inference |
+| Packages stay authentic from any server: CRX3 with the installer's pinned key | `unpacker.cc:95-103` | Read |
+| `--disable-component-update` registers nothing and checks nothing; the first check is otherwise after 60 seconds, then every 5 hours | `chrome_browser_main.cc:1962-1965`; `configurator_impl.cc:55-66` | Read |
+| With no updates: the CT log list and the root store are compiled in; Chromium's built-in CRLSet is empty, so there is no CRLSet revocation; CT is off in non-branded builds (`kCertificateTransparencyAskBeforeEnabling`), so its 70-day cutoff does not apply | `ct_known_logs.cc:22-23`; `chrome_ct_policy_enforcer.cc:184-187`; `crl_set.cc:382-389`; `browser_features.cc:44-49` | Read |
+
+Decision (D5, delegated): the data ships with each runtime release and the component updater is off. It costs BDK nothing to run and contacts no one; the cost is staleness between releases, and no revocation beyond what the root store removes. A runtime-supplied CRLSet, or Google's updater for these components only, are the options if that is not enough; the second needs the product owner's exception to the no-Google default.
+
 ### Geolocation
 
 | Finding | Evidence | Status |
@@ -371,6 +384,8 @@ Revocation lists, the Certificate Transparency log list and root-store updates a
 | Whether hybrid mode on macOS ever calls the network provider | | Unverified |
 
 Recommended default: the operating-system provider, with the mode forced to platform-only on macOS.
+
+Translation, read on 2026-11-20 (M6): Chromium's language detection on macOS uses a TFLite model that the optimization guide downloads from Google (`translate_util.cc:43-51`); without it the renderer uses only the page's declared language (`translate_agent.cc:270-280`). BDK does not fetch that model, so a page that declares no language is detected only by a provider's `detect`.
 
 ### Extension stores
 
@@ -610,6 +625,46 @@ Milestone M0's last step: on the first working build, a throwaway Swift window w
 | Not verified | That a Views widget can be parented to an `NSWindow` that is not a Views widget. Only the cost of finding out and the dependency on Chrome's anchor types stopped the attempt; it stays an option if a surface (the extensions menu, M5) needs Chromium's own views. |
 
 Sheets are attached to the window of the page's host view, one at a time per window as AppKit queues them, and wait for the page to be in a window. Default presenters are replaceable per surface by a scripted presenter in tests (`bdk_testing_command`, `present.script`), so no test blocks on a panel; one test answers a real sheet.
+
+## 12. The automation host's runtime (T-AUT-01, 2026-11-20)
+
+**Question.** Where does an application's automation script run, so that it reaches nothing but the broker: not
+the application's process, not the operating system, not a page? Architecture 9.3 proposed V8 in a sandboxed utility
+process, with an external runtime on the local channel as the alternative (risk R21).
+
+**Decision.** Both, for different jobs, over one protocol. Bundled scripts run in V8 in a sandboxed utility process.
+External tools (the application's own CLI or agent gateway) use an external runtime of their own on the
+authenticated local socket (T-AUT-04). Both speak the same JSON frames (packages/core/docs/conventions.md,
+"Automation"), so `@bdk/automation` is one library with two transports and the core checks every frame the same way.
+
+| Option | Run against | Status |
+|---|---|---|
+| External runtime on the local channel | The stub runtime: `bdk_stub_automation_server` opens its endpoint; Node (`@bdk/automation/client`) connects with a token, is welcomed as its session, calls `runtime.caller`, `contents.list` and `contents.screenshot` (binary), and is refused `history.search` without the capability and a wrong token | Ran: `nx run js-automation:test`, `src/stub.integration.test.ts`, passes. The endpoint's own tests pass on the stub (`tests_endpoint.c`) |
+| V8 in a utility process | Written in `chromium/bdk/engine/automation` with one patch; not built | Engine build and test pending (T-AUT-06): `engine_a_script_drives_two_pages` runs one script that calls commands |
+
+Read in the source at the pin (158.0.8127.37):
+
+- `services/proxy_resolver/proxy_resolver_v8.cc` is the precedent: `gin::IsolateHolder` with
+  `IsolateType::kUtility`, `gin::V8Initializer::LoadV8Snapshot`, `--jitless`. Its mojom declares
+  `[ServiceSandbox=sandbox.mojom.Sandbox.kService]`, which `content::ServiceProcessHost::Launch` reads.
+- `sandbox/policy/mac/sandbox_mac.mm`: `kService`, `kServiceWithJit` and `kUtility` use the same `utility.sb` profile
+  on macOS.
+- `chrome/app/helper-renderer-entitlements.plist` and `helper-gpu-entitlements.plist` are the only helper
+  entitlements with `allow-jit`, so a utility process cannot map JIT memory: the host runs `--jitless` (passed to
+  `gin::IsolateHolder::Initialize` with V8 feature-flag overrides disallowed).
+- `gin/public/isolate_holder.h`: the `CreateParams` constructor gives the heap limit (512 MiB old generation).
+- `chrome/utility/services.cc` and `ChromeContentUtilityClient` register utility services with no embedder hook, so
+  one patch registers the host (Mac only).
+
+Why not the alternatives: a Node runtime would give scripts the file system and the network, which the broker
+cannot see, and adds an executable to every application; a hidden page would put scripts in a renderer next to
+internal pages, which architecture 9 keeps apart. What a script loses is Node's API (R21): it has the protocol,
+timers, `console`, `queueMicrotask` and `AbortController`, and every capability through the broker.
+
+Not verified until the engine is built (T-AUT-06): that the overlay compiles; that V8 starts in the `kService`
+sandbox on macOS (the snapshot files must be readable there; the proxy resolver's macOS path does not use V8 this
+way); that `--jitless` suffices; what a script costs in start-up and speed; that exceeding the heap limit ends the
+process as `automation.hostGone`.
 
 ## Open items carried into the plan
 

@@ -17,6 +17,15 @@ export function listAssets(dir: string): Record<string, string> {
   return Object.fromEntries(Object.entries(assets).sort(([a], [b]) => (a < b ? -1 : 1)));
 }
 
+/** The built `@bdk/internal` modules as assets, named under `prefix`: `{ "js/internal/settings.js": "<dir>/settings.js" }`. */
+export function internalAssets(
+  dir: string,
+  modules: readonly string[],
+  prefix: string,
+): Record<string, string> {
+  return Object.fromEntries(modules.map((name) => [`${prefix}${name}`, join(dir, name)]));
+}
+
 export interface SeaConfigInput {
   main: string;
   output: string;

@@ -1,0 +1,51 @@
+{
+  "namespace": "scripts",
+  "since": 1,
+  "types": {
+    "RunAt": {
+      "enum": ["documentStart", "documentEnd", "documentIdle"]
+    },
+    "UserScript": {
+      "id": "string",
+      "matches": "string[]",
+      "excludes": "string[]?",
+      "runAt": "RunAt?",
+      "world": "string?",
+      "allFrames": "bool?",
+      "javascript": "string[]?",
+      "css": "string[]?"
+    }
+  },
+  "commands": [
+    {
+      "name": "scripts.register",
+      "capability": "contents.script",
+      "callers": ["swift", "session"],
+      "profile": "required",
+      "args": {
+        "script": "UserScript"
+      },
+      "result": "void"
+    },
+    {
+      "name": "scripts.unregister",
+      "capability": "contents.script",
+      "callers": ["swift", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string"
+      },
+      "result": "void"
+    },
+    {
+      "name": "scripts.list",
+      "capability": "contents.read",
+      "callers": ["swift", "session"],
+      "profile": "required",
+      "args": {},
+      "result": {
+        "scripts": "UserScript[]"
+      }
+    }
+  ]
+}

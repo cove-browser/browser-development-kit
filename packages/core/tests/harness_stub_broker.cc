@@ -72,6 +72,25 @@ bdk_status_t bdk_harness_release_held_commands(bdk_runtime_t rt) {
     return bdk_stub_release_held_commands(rt);
 }
 
+int bdk_harness_page_hooks(void) {
+    return 1;
+}
+
+bdk_status_t bdk_harness_page_bind(bdk_runtime_t rt, bdk_contents_t contents, int subframe,
+                                   bdk_harness_caller_t* out, bdk_error_t* out_error) {
+    return bdk_stub_page_bind(rt, contents, static_cast<uint8_t>(subframe != 0), out, out_error);
+}
+
+bdk_status_t bdk_harness_page_navigate(bdk_contents_t contents, const char* url) {
+    return bdk_stub_page_navigate(contents, text(url));
+}
+
+bdk_subscription_t bdk_harness_subscribe_as(bdk_runtime_t rt, bdk_harness_caller_t caller,
+                                            const char* event, bdk_event_cb cb, void* ctx,
+                                            bdk_release_cb rel, bdk_error_t* out_error) {
+    return bdk_stub_subscribe_as(rt, caller, text(event), cb, ctx, rel, out_error);
+}
+
 unsigned bdk_harness_service_count(bdk_runtime_t rt, unsigned which) {
     return bdk_stub_service_count(rt, which);
 }

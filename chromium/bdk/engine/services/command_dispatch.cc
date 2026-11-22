@@ -7,6 +7,7 @@
 #include "base/no_destructor.h"
 #include "bdk/engine/extensions/action_service.h"
 #include "bdk/engine/extensions/options_page.h"
+#include "bdk/engine/providers/translation_service.h"
 #include "bdk/engine/services/services.h"
 
 namespace bdk {
@@ -28,6 +29,11 @@ const HandlerTable& Handlers() {
     AddExtensionsHandlers(t);
     AddExtensionActionHandlers(t);
     AddOptionsPageHandlers(t);
+    AddContentsHandlers(t);
+    AddDebugHandlers(t);
+    AddDevToolsHandlers(t);
+    AddTranslationHandlers(t);
+    AddSearchHandlers(t);
     return t;
   }());
   return *table;

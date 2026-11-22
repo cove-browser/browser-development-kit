@@ -48,7 +48,7 @@ typedef struct {
     const char* complete_args;
 } ui_log_t;
 
-static ui_log_t g_new_windows, g_menus, g_fullscreen;
+static ui_log_t g_new_windows, g_menus, g_fullscreen, g_devtools;
 /* The profile start_with_page opened. */
 static bdk_profile_t g_page_profile;
 
@@ -76,9 +76,10 @@ static void reset_logs(void) {
     memset(&g_new_windows, 0, sizeof g_new_windows);
     memset(&g_menus, 0, sizeof g_menus);
     memset(&g_fullscreen, 0, sizeof g_fullscreen);
+    memset(&g_devtools, 0, sizeof g_devtools);
 }
 
-/* Starts a runtime with handlers for the three surfaces the engine raises, and one page that has
+/* Starts a runtime with handlers for the surfaces the engine raises here, and one page that has
    loaded the opener page. */
 static bdk_contents_t start_with_page(void) {
     t_start();
@@ -89,6 +90,8 @@ static bdk_contents_t start_with_page(void) {
                                &err) == BDK_OK);
     REQUIRE(bdk_ui_set_handler(t_runtime, BDK_SURFACE_FULLSCREEN, record, &g_fullscreen, NULL,
                                &err) == BDK_OK);
+    REQUIRE(bdk_ui_set_handler(t_runtime, BDK_SURFACE_DEVTOOLS, record, &g_devtools, NULL, &err) ==
+            BDK_OK);
     t_freeze();
     g_page_profile = t_new_profile("Engine");
     bdk_contents_t c = t_new_contents(g_page_profile);
@@ -219,8 +222,9 @@ static void test_engine_a_right_click_on_the_page_offers_navigation_items(void) 
     bdk_harness_engine_show(c, 0);
 }
 
-/* Undocked DevTools arrive as a new-window request of their own kind (T-ADP-05). */
-static void test_engine_inspect_opens_devtools_through_a_new_window_request(void) {
+/* Inspect opens DevTools through a devtools request carrying the front end as a page
+   (ui-requests.md 5.15; until M7 it was a new-window request of kind devTools). */
+static void test_engine_inspect_opens_devtools_through_a_devtools_request(void) {
     reset_logs();
     bdk_contents_t c = start_with_page();
     bdk_harness_engine_show(c, 1);
@@ -229,7 +233,7 @@ static void test_engine_inspect_opens_devtools_through_a_new_window_request(void
         t_pump();
     REQUIRE(g_menus.calls == 1);
     CHECK(strstr(g_menus.payload, "\"id\":\"inspect\"") != NULL);
-    g_new_windows.complete = "accept";
+    g_devtools.complete = "accept";
     bdk_native_handle_t none;
     memset(&none, 0, sizeof none);
     bdk_error_t err = 0;
@@ -237,11 +241,15 @@ static void test_engine_inspect_opens_devtools_through_a_new_window_request(void
                             S("{\"action\":\"perform\",\"item\":\"inspect\"}"), none,
                             &err) == BDK_OK);
     t_pump();
-    REQUIRE(g_new_windows.calls == 1);
-    CHECK(g_new_windows.contents == c);
-    CHECK(strstr(g_new_windows.payload, "\"kind\":\"devTools\"") != NULL);
-    CHECK(strstr(g_new_windows.payload, "\"targetURL\":\"devtools://devtools/bundled/") != NULL);
-    bdk_contents_t front = new_contents_of(g_new_windows.payload);
+    CHECK(g_new_windows.calls == 0);
+    REQUIRE(g_devtools.calls == 1);
+    CHECK(g_devtools.contents == c);
+    CHECK(strstr(g_devtools.payload, "\"url\":\"devtools://devtools/bundled/devtools_app.html") !=
+          NULL);
+    CHECK(strstr(g_devtools.payload, "\"preferredDock\":\"undocked\"") != NULL);
+    char handle[32];
+    REQUIRE(t_json_string(g_devtools.payload, "frontend", handle, sizeof handle));
+    bdk_contents_t front = (bdk_contents_t)strtoull(handle, NULL, 10);
     bdk_harness_engine_show(front, 1);
     bdk_contents_state_t st;
     int loaded = 0;
@@ -822,6 +830,17 @@ static void value_of(const char* json, char* out, size_t n) {
     value_of_member(json, "value", out, n);
 }
 
+/* Chromium's heavy-ad intervention keeps an opt-out store per profile. BDK keeps it in memory, as
+   Chrome does for an off-the-record profile: on disk, its database is loaded by a best-effort task,
+   which BDK's Chromium runs only once start-up is complete (its failsafe, minutes later), and a
+   load for a profile deleted by then fails a fatal check in the SQL layer. */
+static void test_engine_the_heavy_ad_opt_out_store_stays_in_memory(void) {
+    t_start_frozen();
+    char json[64];
+    command("heavy_ad.store", "{}", json, sizeof json);
+    CHECK(strcmp(json, "{\"store\":\"memory\"}") == 0);
+}
+
 /* Reads a preference of the page's profile as Chromium holds it. */
 static void pref_of(bdk_contents_t page, const char* name, char* out, size_t n) {
     char args[256], json[512];
@@ -1251,8 +1270,8 @@ const t_test_t t_engine_tests[] = {
      test_engine_a_right_click_on_a_link_raises_a_context_menu_with_link_items},
     {"engine_a_right_click_on_the_page_offers_navigation_items",
      test_engine_a_right_click_on_the_page_offers_navigation_items},
-    {"engine_inspect_opens_devtools_through_a_new_window_request",
-     test_engine_inspect_opens_devtools_through_a_new_window_request},
+    {"engine_inspect_opens_devtools_through_a_devtools_request",
+     test_engine_inspect_opens_devtools_through_a_devtools_request},
     {"engine_html_fullscreen_enters_and_exits_through_requests",
      test_engine_html_fullscreen_enters_and_exits_through_requests},
     {"engine_a_denied_page_ends_up_not_fullscreen",
@@ -1285,6 +1304,8 @@ const t_test_t t_engine_tests[] = {
      test_engine_persistent_profiles_outlive_the_runtime},
     {"engine_a_closed_profile_releases_its_descriptors",
      test_engine_a_closed_profile_releases_its_descriptors},
+    {"engine_the_heavy_ad_opt_out_store_stays_in_memory",
+     test_engine_the_heavy_ad_opt_out_store_stays_in_memory},
     {"engine_history_is_searched_paginated_and_cleared",
      test_engine_history_is_searched_paginated_and_cleared},
     {"engine_bookmarks_nest_move_and_remove", test_engine_bookmarks_nest_move_and_remove},
