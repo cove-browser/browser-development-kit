@@ -491,7 +491,7 @@ BDK does not edit the application's `Info.plist`. `bdk doctor` and `bdk build` c
 | `LSMinimumSystemVersion` | Yes | Must be at least the `min_os` in the runtime manifest. |
 | `NSCameraUsageDescription`, `NSMicrophoneUsageDescription` | For camera and microphone | macOS refuses capture without them, whatever the site permission says. |
 | `NSLocationUsageDescription` | For geolocation with the system provider | As above. |
-| `NSBluetoothAlwaysUsageDescription` | For Web Bluetooth and passkeys on a phone | As above. Without it Chromium offers no phone in a WebAuthn request (`plist.passkeys_phone`, a note); security keys need nothing. |
+| `NSBluetoothAlwaysUsageDescription` | For Web Bluetooth and passkeys on a phone | As above. Without it the engine reports Bluetooth as unsupported, so a WebAuthn request offers no phone and makes no Bluetooth call (macOS ends a process that calls Bluetooth without it) (`plist.passkeys_phone`, a note); security keys need nothing. |
 | `NSLocalNetworkUsageDescription` | For pages that reach local-network hosts | macOS prompts for local-network access. |
 | `CFBundleURLTypes` with `http` and `https` | To be a default-browser candidate | Launch Services lists only applications that declare them. |
 | `CFBundleDocumentTypes` for HTML | To be a default-browser candidate | As above. |
