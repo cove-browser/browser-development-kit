@@ -238,6 +238,7 @@ public final class NewWindowRequest: BDKUIRequest {
     public let opener: BDKWebContents?
     public let features: WindowFeatures          // requested size and position, from window.open
     public let isUserGesture: Bool
+    public let initiatorExtensionID: String?     // the extension that asked (an options page, a link in its popup)
     public let newContents: BDKWebContents       // already created; has an opener relationship where the web requires one
     public func accept()                         // the application has placed newContents.view, or will
     public func reject()                         // destroys newContents

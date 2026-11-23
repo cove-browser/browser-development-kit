@@ -171,6 +171,9 @@ public final class NewWindowRequest: BDKUIRequest {
     public let opener: BDKWebContents?
     public let features: WindowFeatures
     public let isUserGesture: Bool
+    /// The extension that asked for the page (its options page, a link in its popup), or nil when a
+    /// page asked.
+    public let initiatorExtensionID: String?
     private let newContentsHandle: UInt64?
     private var adoptedContents: BDKWebContents?
 
@@ -186,8 +189,13 @@ public final class NewWindowRequest: BDKUIRequest {
             height: size.double("height"))
         // The payload names it "userGesture" (engine_contents.cc, tests_engine.c).
         isUserGesture = fields.bool("userGesture")
+        initiatorExtensionID = fields.object("initiator")?.string("extensionId")
         newContentsHandle = fields.handle("newContents")
         super.init(delivery, runtime: runtime)
+        // A page an extension opened is announced as such (amendments 2.18, T-EXT-12).
+        if let initiatorExtensionID, let page = newContents {
+            runtime.publish(.webContentsCreated(page, by: .extension(initiatorExtensionID)))
+        }
     }
 
     /// The page the runtime already created for the request, which has an opener relationship where

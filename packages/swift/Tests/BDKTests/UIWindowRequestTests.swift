@@ -72,8 +72,31 @@ extension BDKStubTests {
 
                 request = try fixture.deliver(NewWindowRequest.self, BDK_SURFACE_NEW_WINDOWS)
                 #expect(request.kind == .newPage && request.newContents == nil)
+                #expect(request.initiatorExtensionID == nil)
                 request.reject()
                 try fixture.expectOutcome(.completed, "deny", "{}")
+            }
+        }
+
+        @Test func aPageAnExtensionOpensIsAnnounced() async throws {
+            try await withUIFixture { fixture in
+                let events = EventReader(fixture.runtime.events)
+                let created = try fixture.profile.webContents.create()
+                let request = try fixture.deliver(
+                    NewWindowRequest.self, BDK_SURFACE_NEW_WINDOWS,
+                    """
+                    {"kind":"newPage","disposition":"foreground","newContents":"\(created.id.rawValue)",\
+                    "initiator":{"extensionId":"abcdefghijklmnopabcdefghijklmnop"}}
+                    """)
+                #expect(request.initiatorExtensionID == "abcdefghijklmnopabcdefghijklmnop")
+                let event = try await events.next {
+                    if case .webContentsCreated = $0 { true } else { false }
+                }
+                #expect(
+                    event
+                        == .webContentsCreated(
+                            created, by: .extension("abcdefghijklmnopabcdefghijklmnop")))
+                request.accept()
             }
         }
 

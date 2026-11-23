@@ -18,7 +18,8 @@ public final class BDKRuntime {
         /// An automation session, by its name (a session reached through the external endpoint has no
         /// `BDKAutomationSession` object in the application).
         case automation(session: String)
-        /// A browser extension, by id. Not emitted: the runtime gives no signal for it.
+        /// A browser extension, by id: a page it opened (its options page, a link in its popup), when
+        /// the new-window request reaches a handler.
         case `extension`(String)
     }
 
@@ -27,9 +28,10 @@ public final class BDKRuntime {
         case profileOpened(BDKProfile.ID)
         case profileClosed(BDKProfile.ID)
         case shutdownStarted
-        /// A page someone else created. Today only the pages an automation session creates, which also
-        /// arrive as `runtime.automation.events` `.contentsCreated`. The runtime keeps the page until it
-        /// closes; it is not on screen.
+        /// A page someone else created: by an automation session, which also arrives as
+        /// `runtime.automation.events` `.contentsCreated` and is kept by the runtime until it closes;
+        /// or by an extension, which also arrives as the `NewWindowRequest` that places it. It is not
+        /// on screen until the application puts it there.
         case webContentsCreated(BDKWebContents, by: Creator)
         /// A kind this version does not know, from a newer runtime.
         case unknown(kind: UInt32, detailJSON: String)
