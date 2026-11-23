@@ -294,10 +294,8 @@ bool Run(const std::string& name,
     if (!unit) {
       return false;
     }
-    result.Set(
-        "discarded",
-        unit->DiscardTab(
-            resource_coordinator::mojom::LifecycleUnitDiscardReason::URGENT));
+    result.Set("discarded",
+               unit->DiscardTab(::mojom::LifecycleUnitDiscardReason::URGENT));
     return true;
   }
   if (name == "capture.state") {
