@@ -192,8 +192,9 @@ static void test_engine_a_defaulted_new_window_opens_in_the_default_presenter(vo
     REQUIRE(bdk_testing_command(t_runtime, S("present.record"), S("{\"surface\":\"new_windows\"}"),
                                 record, sizeof record) == BDK_OK);
     CHECK(strstr(record, "\"shown\":1") != NULL);
-    CHECK(strstr(record, "\"width\":320") != NULL);
-    CHECK(strstr(record, "\"height\":240") != NULL);
+    /* The payload is a JSON string inside the record, so its quotes are escaped. */
+    CHECK(strstr(record, "\\\"width\\\":320") != NULL);
+    CHECK(strstr(record, "\\\"height\\\":240") != NULL);
     CHECK(wait_for_title(popup, "https://bdk.test/defaulted"));
     /* Nobody owns a page in BDK's window: window.close() closes it and destroys the page. */
     run_script(popup, "window.close()", 1);
