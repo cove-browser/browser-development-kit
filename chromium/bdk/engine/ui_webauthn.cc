@@ -4,6 +4,8 @@
 
 #include "bdk/engine/ui_webauthn.h"
 
+#include <CoreFoundation/CoreFoundation.h>
+
 #include <cctype>
 #include <memory>
 #include <optional>
@@ -584,18 +586,35 @@ class BdkAuthenticatorDialog : public AuthenticatorRequestDialogViewController,
   base::WeakPtrFactory<BdkAuthenticatorDialog> weak_factory_{this};
 };
 
+// Whether the application may call Bluetooth: the responsible process's
+// Info.plist has a Bluetooth usage string. Chromium's check
+// (base::DoesResponsibleProcessHaveBluetoothMetadata) answers yes without
+// looking when the process is responsible for itself, as when it is opened from
+// the Finder, because Chrome's own Info.plist has one; a BDK application's may
+// not, so in that case its own Info.plist is read.
+bool CanCallBluetooth() {
+  if (!base::IsCurrentProcessSelfResponsible()) {
+    return base::DoesResponsibleProcessHaveBluetoothMetadata();
+  }
+  CFTypeRef usage = CFBundleGetValueForInfoDictionaryKey(
+      CFBundleGetMainBundle(), CFSTR("NSBluetoothAlwaysUsageDescription"));
+  return usage && CFGetTypeID(usage) == CFStringGetTypeID() &&
+         CFStringGetLength(static_cast<CFStringRef>(usage)) > 0;
+}
+
 }  // namespace
 
 void InstallWebAuthnDialogHook() {
   // macOS ends a process that calls a Bluetooth API without Bluetooth metadata
   // in the responsible application's Info.plist. Chrome checks that before its
-  // Bluetooth power manager, but not before starting the phone (hybrid)
-  // discovery or answering whether hybrid is available, which ask only
+  // Bluetooth power manager (and there assumes its own Info.plist when the
+  // process is self-responsible), and not at all before starting the phone
+  // (hybrid) discovery or answering whether hybrid is available, which ask only
   // IsLowEnergySupported(). Without the metadata, Bluetooth is reported as
   // unsupported: no WebAuthn path calls it, security keys over USB still work,
   // and passkeys on a phone are not offered (BDKWebAuthnSupport says what they
   // need).
-  if (!base::DoesResponsibleProcessHaveBluetoothMetadata()) {
+  if (!CanCallBluetooth()) {
     static base::NoDestructor<
         std::unique_ptr<device::BluetoothAdapterFactory::GlobalOverrideValues>>
         no_bluetooth(
