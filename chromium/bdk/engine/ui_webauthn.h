@@ -23,7 +23,10 @@ namespace bdk {
 // promise rejects with NotAllowedError. A page that is not a BDK page gets no
 // dialog and its request is cancelled the same way.
 //
-// Installs the factory the patch adds. Called once, from InstallPromptHooks.
+// Installs the factory the patch adds, and reports Bluetooth as unsupported
+// when the application has no Bluetooth metadata in its Info.plist (macOS ends
+// a process that calls Bluetooth without it). Called once, from
+// InstallPromptHooks.
 void InstallWebAuthnDialogHook();
 
 }  // namespace bdk
