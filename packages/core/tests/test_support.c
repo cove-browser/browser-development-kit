@@ -259,6 +259,8 @@ static const t_test_t* const kTables[] = {
     t_engine_extension_ui_tests,    /* extension UI (tests_engine_ext_ui.c) */
     t_engine_extension_panel_tests, /* windows, side panels, DevTools extensions */
     t_engine_extension_probe_tests, /* the MV3 probe, T-EXT-01 (tests_engine_ext_probe.c) */
+    t_engine_webauthn_tests,        /* passkeys and security keys (tests_engine_webauthn.c) */
+    t_engine_dialogs_tests,         /* Chromium's other browser dialogs (tests_engine_dialogs.c) */
 #endif
 };
 

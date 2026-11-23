@@ -1,0 +1,111 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BDK Patches <patches@bdk.invalid>
+Date: Sun, 22 Nov 2026 12:00:00 -0800
+Subject: [PATCH] bdk: let an embedder present the external protocol dialog
+
+A link to a scheme another application handles (zoommtg:, maps:, ...)
+asks "Open this link in another application?" through
+ExternalProtocolHandler::RunExternalProtocolDialog(), which always
+makes the tab-modal views ExternalProtocolDialog. A BDK page's window
+is not a views widget, so the dialog's widget has no parent host and
+the process ends at a DCHECK in native_widget_mac.mm: clicking such a
+link took the embedding application down (mailto: opens without
+asking, as in Chrome). BDK asks with a native sheet of its own
+instead.
+
+Add embedder_external_protocol_dialog_hook.h, a small header with a
+settable hook (inline, no new target), and call it in
+RunExternalProtocolDialog() after Chrome has decided to ask and found
+the application's name. The embedder launches the URL with
+ExternalProtocolHandler::LaunchUrlWithoutSecurityCheck() if the person
+agrees. The decision to ask (blocked and allowed schemes, policy, the
+gesture checks in LaunchUrl) stays Chrome's. With no hook Chrome is
+unchanged. Only the views dialog's file and the new header change.
+
+Used by: the BDK engine (//bdk/engine/ui_browser_dialogs.cc).
+---
+ .../embedder_external_protocol_dialog_hook.h  | 50 +++++++++++++++++++
+ .../ui/views/external_protocol_dialog.cc      |  7 +++
+ 2 files changed, 57 insertions(+)
+
+diff --git a/chrome/browser/ui/views/embedder_external_protocol_dialog_hook.h b/chrome/browser/ui/views/embedder_external_protocol_dialog_hook.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..8bd6991269762a9a8850bc7d7a9dc463a226955d
+--- /dev/null
++++ b/chrome/browser/ui/views/embedder_external_protocol_dialog_hook.h
+@@ -0,0 +1,50 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_EMBEDDER_EXTERNAL_PROTOCOL_DIALOG_HOOK_H_
++#define CHROME_BROWSER_UI_VIEWS_EMBEDDER_EXTERNAL_PROTOCOL_DIALOG_HOOK_H_
++
++#include <optional>
++#include <string>
++#include <utility>
++
++#include "base/functional/callback.h"
++#include "base/no_destructor.h"
++#include "content/public/browser/weak_document_ptr.h"
++#include "url/gurl.h"
++#include "url/origin.h"
++
++namespace content {
++class WebContents;
++}
++
++// A hook for Chromium embedders that ask "Open this link in another
++// application?" in UI of their own. When a hook is set,
++// ExternalProtocolHandler::RunExternalProtocolDialog() calls it instead of
++// showing the tab-modal views dialog, once Chrome has decided to ask (the
++// scheme is neither blocked nor allowed, and an application handles it). The
++// embedder launches the URL itself if the person agrees, with
++// ExternalProtocolHandler::LaunchUrlWithoutSecurityCheck(). With no hook Chrome
++// is unchanged. Only embedders set one, once, before any page loads.
++namespace embedder_external_protocol_dialog_hook {
++
++using Hook = base::RepeatingCallback<void(
++    const GURL& url,
++    content::WebContents* web_contents,
++    const std::optional<url::Origin>& initiating_origin,
++    content::WeakDocumentPtr initiator_document,
++    const std::u16string& program_name)>;
++
++inline Hook& GetHook() {
++  static base::NoDestructor<Hook> hook;
++  return *hook;
++}
++
++inline void SetHook(Hook hook) {
++  GetHook() = std::move(hook);
++}
++
++}  // namespace embedder_external_protocol_dialog_hook
++
++#endif  // CHROME_BROWSER_UI_VIEWS_EMBEDDER_EXTERNAL_PROTOCOL_DIALOG_HOOK_H_
+diff --git a/chrome/browser/ui/views/external_protocol_dialog.cc b/chrome/browser/ui/views/external_protocol_dialog.cc
+index b0d95981d67683c7c363216658b74c91d7c16da3..78ffdb86e4c3ae47ec14af6f6bc39d74c260f7df 100644
+--- a/chrome/browser/ui/views/external_protocol_dialog.cc
++++ b/chrome/browser/ui/views/external_protocol_dialog.cc
+@@ -17,6 +17,7 @@
+ #include "chrome/browser/tab_contents/tab_util.h"
+ #include "chrome/browser/ui/views/chrome_layout_provider.h"
+ #include "chrome/browser/ui/views/chrome_typography.h"
++#include "chrome/browser/ui/views/embedder_external_protocol_dialog_hook.h"
+ #include "chrome/common/pref_names.h"
+ #include "chrome/grit/generated_resources.h"
+ #include "components/constrained_window/constrained_window_views.h"
+@@ -108,6 +109,12 @@ void ExternalProtocolHandler::RunExternalProtocolDialog(
+     return;
+   }
+ 
++  if (const auto& hook = embedder_external_protocol_dialog_hook::GetHook()) {
++    hook.Run(url, web_contents, initiating_origin,
++             std::move(initiator_document), program_name);
++    return;
++  }
++
+   // Windowing system takes ownership.
+   new ExternalProtocolDialog(web_contents, url, program_name, initiating_origin,
+                              std::move(initiator_document));

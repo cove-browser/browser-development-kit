@@ -57,6 +57,15 @@ class BdkTabDialogs : public TabDialogsViews {
 // Tells the tab's password prompts that its page finished a navigation.
 void OnPageNavigatedForPasswords(content::WebContents* contents);
 
+// The Credential Management API's prompts (T-UIR-10): the account chooser of
+// navigator.credentials.get({password: true}) and the auto sign-in notice that
+// follows the first choice, as native sheets of the `passwords` surface
+// instead of Chrome's tab-modal views dialogs, which ended the process on a
+// BDK page. They answer through Chrome's controller, so the credential the
+// page gets and the auto sign-in setting are Chrome's. Installs the factories
+// a patch adds; called once, from InstallPromptHooks.
+void InstallCredentialManagerPrompts();
+
 }  // namespace bdk
 
 #endif  // BDK_ENGINE_SERVICES_PASSWORD_PROMPTS_H_

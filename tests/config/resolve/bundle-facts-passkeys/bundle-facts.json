@@ -1,0 +1,9 @@
+{
+  "infoPlist": {
+    "NSPrincipalClass": "BDKApplication",
+    "NSBluetoothAlwaysUsageDescription": "Cove uses Bluetooth to sign in with a passkey on your phone."
+  },
+  "entitlements": {
+    "com.apple.security.device.camera": true
+  }
+}

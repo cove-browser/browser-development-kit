@@ -23,6 +23,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var didReportTermination = false
     private var launchFinished = false
     private var privateProfiles: [BDKProfile] = []
+    /// Passkey and security-key steps, drawn by the example instead of BDK's default sheet.
+    private let passkeySheet = PasskeySheet()
+    private lazy var passkeys = PasskeyPresenter(display: passkeySheet)
 
     init(options: AppOptions) {
         self.options = options
@@ -45,6 +48,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let directory = options.supportDirectory {
                 configuration.launch.userDataDirectory = directory.appendingPathComponent("Engine")
             }
+            // A handler is installed before start; the sheet goes on the browser's window.
+            passkeySheet.fallbackWindow = { [weak self] in self?.browser?.window }
+            try passkeys.install(in: configuration)
             runtime = try RuntimeSource.start(configuration)
         } catch {
             // Never continue without a runtime.

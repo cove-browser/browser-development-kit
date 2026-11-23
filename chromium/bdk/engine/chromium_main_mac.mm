@@ -168,6 +168,19 @@ bool StartChromium(const ChromiumStartOptions& options, std::string* error) {
   // process that does not exit cleanly is never removed: engine test runs
   // left gigabytes.
   std::string disabled_features = "MacAppCodeSignClone";
+  // Browser dialogs that are tab-modal views dialogs, which a BDK page's
+  // window cannot parent (it is not a views widget, so each ended the process
+  // at a check), and that BDK neither routes nor shows a sheet for yet
+  // (ui-requests.md 8.2, T-UIR-10). HTTPS-First then asks with its
+  // interstitial page, in the page, as it did before the dialog. The others'
+  // APIs are absent from pages, so a site sees them as unsupported: Payment
+  // Request and Secure Payment Confirmation, FedCM, the Digital Credentials
+  // API, and Web Bluetooth (its chooser is refused, ui_browser_dialogs.h, and
+  // its adapter would need the application's Bluetooth usage string).
+  disabled_features +=
+      ",HttpsFirstDialogUi,WebPayments,SecurePaymentConfirmation,FedCm,"
+      "WebIdentityDigitalCredentials,WebIdentityDigitalCredentialsCreation,"
+      "WebBluetooth";
   // The heavy-ad intervention's opt-out store is kept in memory, as Chrome
   // keeps it for an off-the-record profile. On disk, it opens a database at
   // best-effort priority when the profile starts; a profile deleted before

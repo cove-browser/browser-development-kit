@@ -1,0 +1,100 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BDK Patches <patches@bdk.invalid>
+Date: Sun, 22 Nov 2026 12:00:00 -0800
+Subject: [PATCH] bdk: let an embedder present tab-modal dialog models
+
+chrome::ShowTabModal() shows a ui::DialogModel as a tab-modal views
+dialog. Pages reach it: File System Access asks there whether a site
+may view a directory, warns about a restricted directory or a
+dangerous file, and DevTools asks before it edits a folder. A BDK
+page's window is not a views widget, so the dialog's widget has no
+parent host and the process ends at a DCHECK in native_widget_mac.mm.
+BDK shows the model as a native sheet of its own instead.
+
+Add embedder_tab_modal_dialog_hook.h, a small header with a settable
+hook (inline, no new target), and give ShowTabModal()'s model to it
+first. The hook either takes the model, hosting it as a
+ui::DialogModelHost so the model's own callbacks decide what happens,
+or gives it back for Chrome to show as before. With no hook Chrome is
+unchanged. Only browser_dialogs.cc and the new header change; the
+dialogs and their models are Chrome's own.
+
+Used by: the BDK engine (//bdk/engine/ui_browser_dialogs.cc).
+---
+ chrome/browser/ui/dialogs/browser_dialogs.cc  |  7 ++++
+ .../dialogs/embedder_tab_modal_dialog_hook.h  | 42 +++++++++++++++++++
+ 2 files changed, 49 insertions(+)
+
+diff --git a/chrome/browser/ui/dialogs/browser_dialogs.cc b/chrome/browser/ui/dialogs/browser_dialogs.cc
+index 75e0992d6dcd62f603303c1349374da843a15098..0547686f1459e890145f052497885aaa5908ab3e 100644
+--- a/chrome/browser/ui/dialogs/browser_dialogs.cc
++++ b/chrome/browser/ui/dialogs/browser_dialogs.cc
+@@ -8,6 +8,7 @@
+ #include "base/notimplemented.h"
+ 
+ #if defined(TOOLKIT_VIEWS)
++#include "chrome/browser/ui/dialogs/embedder_tab_modal_dialog_hook.h"
+ #include "components/constrained_window/constrained_window_views.h"
+ #else
+ #include "ui/shell_dialogs/selected_file_info.h"
+@@ -35,6 +36,12 @@ void ShowWindowNamePromptForTesting(BrowserWindowInterface* browser,
+ #if defined(TOOLKIT_VIEWS)
+ void ShowTabModal(std::unique_ptr<ui::DialogModel> dialog_model,
+                   content::WebContents* web_contents) {
++  if (const auto& hook = embedder_tab_modal_dialog_hook::GetHook()) {
++    dialog_model = hook.Run(std::move(dialog_model), web_contents);
++    if (!dialog_model) {
++      return;
++    }
++  }
+   constrained_window::ShowWebModal(std::move(dialog_model), web_contents);
+ }
+ #elif BUILDFLAG(IS_ANDROID)
+diff --git a/chrome/browser/ui/dialogs/embedder_tab_modal_dialog_hook.h b/chrome/browser/ui/dialogs/embedder_tab_modal_dialog_hook.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..53e47866b0ddd97efa585d70f6711badba037e22
+--- /dev/null
++++ b/chrome/browser/ui/dialogs/embedder_tab_modal_dialog_hook.h
+@@ -0,0 +1,42 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_DIALOGS_EMBEDDER_TAB_MODAL_DIALOG_HOOK_H_
++#define CHROME_BROWSER_UI_DIALOGS_EMBEDDER_TAB_MODAL_DIALOG_HOOK_H_
++
++#include <memory>
++#include <utility>
++
++#include "base/functional/callback.h"
++#include "base/no_destructor.h"
++#include "ui/base/models/dialog_model.h"
++
++namespace content {
++class WebContents;
++}
++
++// A hook for Chromium embedders that show tab-modal dialog models in UI of
++// their own. When a hook is set, chrome::ShowTabModal() gives it the model
++// first. The hook returns null when it took the model (it hosts it as a
++// ui::DialogModelHost, and runs the model's callbacks), or gives the model
++// back for Chrome to show as before. With no hook Chrome is unchanged. Only
++// embedders set one, once, before any page loads.
++namespace embedder_tab_modal_dialog_hook {
++
++using Hook = base::RepeatingCallback<std::unique_ptr<ui::DialogModel>(
++    std::unique_ptr<ui::DialogModel> dialog_model,
++    content::WebContents* web_contents)>;
++
++inline Hook& GetHook() {
++  static base::NoDestructor<Hook> hook;
++  return *hook;
++}
++
++inline void SetHook(Hook hook) {
++  GetHook() = std::move(hook);
++}
++
++}  // namespace embedder_tab_modal_dialog_hook
++
++#endif  // CHROME_BROWSER_UI_DIALOGS_EMBEDDER_TAB_MODAL_DIALOG_HOOK_H_

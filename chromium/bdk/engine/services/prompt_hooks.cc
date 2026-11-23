@@ -12,6 +12,8 @@
 #include "bdk/engine/services/autofill_prompts.h"
 #include "bdk/engine/services/password_prompts.h"
 #include "bdk/engine/services/print_prompts.h"
+#include "bdk/engine/ui_browser_dialogs.h"
+#include "bdk/engine/ui_webauthn.h"
 #include "chrome/browser/printing/embedder_print_preview_hook.h"
 #include "chrome/browser/ui/views/embedder_tab_dialogs_factory.h"
 
@@ -27,6 +29,9 @@ void InstallPromptHooks() {
   InstallAutofillPopupHook();
   InstallExtensionPromptHooks();
   InstallExtensionOptionsPageHook();
+  InstallWebAuthnDialogHook();
+  InstallBrowserDialogHooks();
+  InstallCredentialManagerPrompts();
 }
 
 }  // namespace bdk

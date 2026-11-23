@@ -229,7 +229,7 @@ Security rules that override configuration:
 - A custom presenter receives the same origin, risk and permission text the default would show.
 - `disabled` means the feature is unavailable and requests are denied. It never means silently allowed.
 
-Surfaces: permission prompts, JavaScript dialogs, HTTP authentication, file pickers, context menus, new-window requests, downloads, autofill and password prompts, printing and print preview, translation, find in page, fullscreen, notifications, certificate and Safe Browsing interstitials, DevTools, and the extension surfaces in section 10.
+Surfaces: permission prompts, JavaScript dialogs, HTTP authentication, file pickers, context menus, new-window requests, downloads, autofill and password prompts, passkeys and security keys, printing and print preview, translation, find in page, fullscreen, notifications, certificate and Safe Browsing interstitials, DevTools, and the extension surfaces in section 10.
 
 ### Default presenters
 

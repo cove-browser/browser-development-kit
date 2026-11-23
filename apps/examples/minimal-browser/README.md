@@ -49,6 +49,22 @@ The example does not declare commands, so `bdk build codegen` says so in a note 
 declarations. To get editor types for the page, run `bdk build config codegen --project apps/examples/minimal-browser`:
 it writes the `@bdk` packages to `.bdk/js` and links them at `Pages/node_modules/@bdk`.
 
+## Passkeys
+
+The example draws passkey and security-key steps itself instead of using BDK's default sheet (ui-requests.md 5.18,
+T-UIR-09). `PasskeyPresenter` (`Sources/MinimalBrowserKit`) is installed as the `webauthn` handler before the runtime
+starts. Each step of a ceremony is its own `WebAuthnRequest` with the same `ceremonyID`, so it keeps one sheet per
+ceremony and redraws it for the next step. It answers through the step's `presentation` and `perform(_:)`. The sheet
+closes when a step is withdrawn and no next one follows (the ceremony ended), or half a second after an answer that
+no step follows. `PasskeySheet` (`Sources/MinimalBrowser`) draws it on the page's window: the step's text, its error
+or hint, a spinner while the authenticator works, the phone's QR code, a PIN field, a button per mechanism or
+account, and the step's own buttons (Return accepts, Escape cancels). Choosing an account passes the click's event,
+which the runtime requires.
+
+The unit tests (`PasskeyPresenterTests`) raise steps on the stub as the engine raises them. To try it on a real page,
+build against the Chromium runtime, open a passkey demo such as `https://webauthn.io` and register with a security
+key. That check is by hand and has not been done yet (T-UIR-09).
+
 ## Run it
 
 ```sh
@@ -74,9 +90,9 @@ It is a SwiftPM package that depends on the repository's root package by relativ
 
 | Path | Contents |
 |---|---|
-| `Sources/MinimalBrowser` | The application: `main.swift`, `AppDelegate`, `BrowserWindow`, `BrowserPane`, and `RuntimeSource` |
+| `Sources/MinimalBrowser` | The application: `main.swift`, `AppDelegate`, `BrowserWindow`, `BrowserPane`, `PasskeySheet`, and `RuntimeSource` |
 | `Sources/MinimalBrowserCore` | Logic with no runtime: launch options, the status report, address parsing |
-| `Sources/MinimalBrowserKit` | The session store |
+| `Sources/MinimalBrowserKit` | The session store and the passkey presenter |
 | `Tests/MinimalBrowserTests` | Unit tests (the stub runs in process) |
 | `Tests/MinimalBrowserE2ETests` | Launches the built `.app`; `LocalServer` serves the profile tests |
 

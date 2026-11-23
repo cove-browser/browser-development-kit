@@ -723,6 +723,96 @@ static void test_a_permission_grant_cannot_widen_the_request(void) {
     CHECK(t_error_is(err, "ui", "widensRequest"));
 }
 
+/* WebAuthn steps as the engine raises them (ui-requests.md 5.18), with what each offers. */
+static const char* const k_webauthn_accounts =
+    "{\"step\":\"chooseAccount\",\"accounts\":[{\"id\":\"0\",\"name\":\"ada\"},"
+    "{\"id\":\"1\",\"name\":\"grace\"}],\"cancelLabel\":\"Cancel\"}";
+static const char* const k_webauthn_mechanisms =
+    "{\"step\":\"chooseMechanism\",\"mechanisms\":[{\"id\":\"0\",\"kind\":\"securityKey\"}]}";
+static const char* const k_webauthn_pin =
+    "{\"step\":\"enterPIN\",\"pin\":{\"mode\":\"enter\",\"minLength\":4}}";
+static const char* const k_webauthn_error =
+    "{\"step\":\"error\",\"error\":\"timedOut\",\"acceptLabel\":\"Try again\"}";
+
+static bdk_status_t webauthn_step(bdk_contents_t c, const char* payload, const char* completion,
+                                  const char* arguments, bdk_native_handle_t g, bdk_error_t* err) {
+    REQUIRE(bdk_harness_raise_ui_request(t_runtime, BDK_SURFACE_WEBAUTHN, c, payload) == BDK_OK);
+    t_pump();
+    REQUIRE(g_request != 0);
+    bdk_status_t st = bdk_ui_complete(g_request, S(completion), S(arguments), g, err);
+    if (st != BDK_OK)
+        bdk_ui_request_release(g_request); /* the next step starts afresh */
+    return st;
+}
+
+static void test_a_webauthn_account_is_chosen_by_a_grant_with_a_gesture(void) {
+    bdk_contents_t c = setup(BDK_SURFACE_WEBAUTHN, BDK_UI_HANDLED);
+    bdk_error_t err = 0;
+    CHECK(webauthn_step(c, k_webauthn_accounts, "grant", "{\"account\":\"1\"}", no_gesture(),
+                        &err) == BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "ui", "gestureRequired"));
+    /* Choosing an account releases a credential to the site: it is never a plain accept. */
+    CHECK(webauthn_step(c, k_webauthn_accounts, "accept", "{\"account\":\"1\"}", no_gesture(),
+                        &err) == BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "ui", "completionNotAllowed"));
+    CHECK(webauthn_step(c, k_webauthn_accounts, "grant", "{\"account\":\"7\"}", gesture(), &err) ==
+          BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "ui", "widensRequest"));
+    CHECK(webauthn_step(c, k_webauthn_accounts, "grant", "{}", gesture(), &err) == BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "ui", "widensRequest"));
+    CHECK(webauthn_step(c, k_webauthn_accounts, "grant", "{\"account\":1}", gesture(), &err) ==
+          BDK_ERR_INVALID_ARGUMENT);
+    CHECK(webauthn_step(c, k_webauthn_accounts, "grant", "{\"account\":\"1\"}", gesture(), &err) ==
+          BDK_OK);
+    bdk_harness_ui_outcome_t o = last_outcome();
+    CHECK(o.kind == BDK_HARNESS_UI_COMPLETED && strcmp(o.completion, "grant") == 0);
+    CHECK(strcmp(o.arguments_json, "{\"account\":\"1\"}") == 0);
+}
+
+static void test_a_webauthn_step_accepts_only_what_it_offers(void) {
+    bdk_contents_t c = setup(BDK_SURFACE_WEBAUTHN, BDK_UI_HANDLED);
+    bdk_error_t err = 0;
+    CHECK(webauthn_step(c, k_webauthn_mechanisms, "accept", "{\"mechanism\":\"0\"}", no_gesture(),
+                        &err) == BDK_OK);
+    CHECK(webauthn_step(c, k_webauthn_mechanisms, "accept", "{\"mechanism\":\"1\"}", no_gesture(),
+                        &err) == BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "ui", "widensRequest"));
+    CHECK(webauthn_step(c, k_webauthn_mechanisms, "accept", "{\"pin\":\"1234\"}", no_gesture(),
+                        &err) == BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "ui", "widensRequest")); /* the step asks for no PIN */
+    CHECK(webauthn_step(c, k_webauthn_mechanisms, "accept", "{}", no_gesture(), &err) ==
+          BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "ui", "widensRequest")); /* nor has a button of its own */
+    CHECK(webauthn_step(c, k_webauthn_mechanisms, "accept", "{\"action\":\"otherMechanisms\"}",
+                        no_gesture(), &err) == BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "ui", "widensRequest"));
+    CHECK(webauthn_step(c, k_webauthn_pin, "accept", "{\"pin\":\"1234\"}", no_gesture(), &err) ==
+          BDK_OK);
+    CHECK(strcmp(last_outcome().arguments_json, "{\"pin\":\"1234\"}") == 0);
+    CHECK(webauthn_step(c, k_webauthn_error, "accept", "{}", no_gesture(), &err) == BDK_OK);
+    CHECK(webauthn_step(c, k_webauthn_error, "proceed", "{}", gesture(), &err) == BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "ui", "completionNotAllowed"));
+    /* Cancelling is always possible, and a rejected or dropped step never chooses anything. */
+    CHECK(webauthn_step(c, k_webauthn_accounts, "deny", "{}", no_gesture(), &err) == BDK_OK);
+    CHECK(strcmp(last_outcome().completion, "deny") == 0);
+    REQUIRE(bdk_harness_raise_ui_request(t_runtime, BDK_SURFACE_WEBAUTHN, c, k_webauthn_accounts) ==
+            BDK_OK);
+    t_pump();
+    bdk_ui_request_release(g_request);
+    bdk_harness_ui_outcome_t o = last_outcome();
+    CHECK(o.kind == BDK_HARNESS_UI_CANCELLED && o.completion[0] == '\0');
+}
+
+static void test_a_disabled_webauthn_surface_asks_no_one(void) {
+    bdk_contents_t c =
+        setup_surfaces("{\"webauthn\":\"disabled\"}", BDK_SURFACE_WEBAUTHN, BDK_UI_HANDLED);
+    REQUIRE(bdk_harness_raise_ui_request(t_runtime, BDK_SURFACE_WEBAUTHN, c, k_webauthn_accounts) ==
+            BDK_OK);
+    t_pump();
+    CHECK(g_handler_calls == 0);
+    CHECK(last_outcome().kind == BDK_HARNESS_UI_DISABLED);
+}
+
 static void test_a_dropped_request_is_cancelled_never_granted(void) {
     bdk_contents_t c = setup(BDK_SURFACE_PERMISSIONS, BDK_UI_HANDLED);
     REQUIRE(bdk_harness_raise_ui_request(t_runtime, BDK_SURFACE_PERMISSIONS, c,
@@ -882,6 +972,11 @@ const t_test_t t_ui_tests[] = {
     {"ui.granting_completions_need_gesture_per_surface",
      test_granting_completions_need_a_gesture_on_every_surface},
     {"ui.permission_grant_cannot_widen", test_a_permission_grant_cannot_widen_the_request},
+    {"ui.webauthn_account_is_a_grant_with_a_gesture",
+     test_a_webauthn_account_is_chosen_by_a_grant_with_a_gesture},
+    {"ui.webauthn_step_accepts_only_what_it_offers",
+     test_a_webauthn_step_accepts_only_what_it_offers},
+    {"ui.webauthn_disabled_asks_no_one", test_a_disabled_webauthn_surface_asks_no_one},
     {"ui.dropped_request_is_cancelled_never_granted",
      test_a_dropped_request_is_cancelled_never_granted},
     {"ui.find_present_raises_a_find_request",
