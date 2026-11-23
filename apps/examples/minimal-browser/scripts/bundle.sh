@@ -10,7 +10,8 @@
 #    Resources, and `bdk build pages` packages Pages/ (the Settings page) and the SDK into it. Built against the
 #    real runtime (Package.swift: .bdk/runtime exists and BDK_RUNTIME is not "stub"), it also gets the runtime's
 #    framework in Contents/Frameworks, and `bdk build sign` re-signs the framework and its helpers as this
-#    application (ad hoc). Against the stub it is signed ad hoc as is.
+#    application: ad hoc, or with BDK_SIGN_IDENTITY (and BDK_SIGN_TEAM) when set. Against the stub it is signed
+#    ad hoc as is.
 set -euo pipefail
 
 configuration="${1:-debug}"
@@ -54,7 +55,11 @@ if otool -L "$product" | grep -q "Chromium Framework.framework"; then
   # A copy-on-write clone on APFS; the runtime store is read-only, the bundle must not be.
   cp -cR "$framework" "$app/Contents/Frameworks/"
   chmod -R u+w "$app/Contents/Frameworks"
-  bdk build sign --bundle "$app" --identity -
+  # Ad hoc by default. Each ad hoc build is a new code identity, so the Keychain asks again for the engine's
+  # storage key after every rebuild; a real identity is one the Keychain recognises across rebuilds.
+  sign=(--identity "${BDK_SIGN_IDENTITY:--}")
+  if [[ -n "${BDK_SIGN_TEAM:-}" ]]; then sign+=(--team "$BDK_SIGN_TEAM"); fi
+  bdk build sign --bundle "$app" "${sign[@]}"
 else
   codesign --force --sign - "$app"
 fi

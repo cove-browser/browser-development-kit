@@ -80,8 +80,11 @@ TypeScript sources otherwise, builds the executable, and assembles the bundle wi
 (`NSPrincipalClass` = `BDKApplication`, bundle identifier `dev.bdk.examples.minimal-browser`) and
 `bdk.resolved.json` in `Resources`. `bdk build pages` then packages `Pages/` and the SDK into the bundle's
 `Resources` (`Pages/Settings`, `BDK/js/internal`). Built against the real runtime it also gets `Chromium Framework.framework` in
-`Contents/Frameworks` (an APFS clone of the packaged one), and `bdk build sign --identity -` re-signs the
-framework and its helpers as this application; against the stub the bundle is signed ad hoc as it is.
+`Contents/Frameworks` (an APFS clone of the packaged one), and `bdk build sign` re-signs the framework and
+its helpers as this application; against the stub the bundle is signed ad hoc as it is. The signature is ad hoc
+unless `BDK_SIGN_IDENTITY` names a signing identity (`security find-identity -v -p codesigning`; `BDK_SIGN_TEAM`
+is its team). An ad hoc build is a new code identity each time, so the Keychain asks again for Chromium's
+storage key after every rebuild, and Always Allow lasts only until the next one; with a real identity it lasts.
 
 It is a SwiftPM package that depends on the repository's root package by relative path. It builds with
 `swift build` in this directory, without Xcode.
