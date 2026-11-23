@@ -98,7 +98,14 @@ public struct BDKWebAuthnSupport: Sendable, Equatable {
 
     private static func hasEntitlement(_ name: String) -> Bool {
         guard let task = SecTaskCreateFromSelf(nil) else { return false }
-        return SecTaskCopyValueForEntitlement(task, name as CFString, nil) != nil
+        return isEnabled(
+            entitlementValue: SecTaskCopyValueForEntitlement(task, name as CFString, nil))
+    }
+
+    /// A Boolean entitlement is granted only when its value is `true`; a signed `false` is
+    /// still a value, and it disables the capability.
+    static func isEnabled(entitlementValue value: Any?) -> Bool {
+        (value as? Bool) == true
     }
 
     private static var isHardenedRuntime: Bool {

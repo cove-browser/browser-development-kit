@@ -184,6 +184,13 @@ extension BDKStubTests {
             }
         }
 
+        @Test func onlyATrueEntitlementCountsAsGranted() {
+            #expect(BDKWebAuthnSupport.isEnabled(entitlementValue: true))
+            #expect(!BDKWebAuthnSupport.isEnabled(entitlementValue: false))
+            #expect(!BDKWebAuthnSupport.isEnabled(entitlementValue: nil))
+            #expect(!BDKWebAuthnSupport.isEnabled(entitlementValue: "yes"))
+        }
+
         @Test func supportFollowsChromiumsConditions() {
             let sonoma = OperatingSystemVersion(majorVersion: 14, minorVersion: 0, patchVersion: 0)
             let bare = BDKWebAuthnSupport(

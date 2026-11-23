@@ -5,6 +5,7 @@
 #include "bdk/engine/ui_presenters.h"
 
 #import <AppKit/AppKit.h>
+#import <CoreImage/CoreImage.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #include <algorithm>
@@ -882,6 +883,30 @@ class PresentersMac : public UiPresenters {
         });
   }
 
+  // Draws a QR code for `text`, sharp at `side` points, or nil when the
+  // generator is unavailable.
+  static NSImage* QRCodeImage(NSString* text, CGFloat side) {
+    CIFilter* filter = [CIFilter filterWithName:@"CIQRCodeGenerator"];
+    NSData* data = [text dataUsingEncoding:NSISOLatin1StringEncoding];
+    if (!filter || !data) {
+      return nil;
+    }
+    [filter setValue:data forKey:@"inputMessage"];
+    [filter setValue:@"M" forKey:@"inputCorrectionLevel"];
+    CIImage* code = filter.outputImage;
+    if (!code || code.extent.size.width < 1) {
+      return nil;
+    }
+    const CGFloat scale =
+        std::max<CGFloat>(1, std::floor(side * 2 / code.extent.size.width));
+    CIImage* scaled = [code
+        imageByApplyingTransform:CGAffineTransformMakeScale(scale, scale)];
+    NSCIImageRep* rep = [NSCIImageRep imageRepWithCIImage:scaled];
+    NSImage* image = [[NSImage alloc] initWithSize:NSMakeSize(side, side)];
+    [image addRepresentation:rep];
+    return image;
+  }
+
   Dismisser ShowWebAuthn(
       HostView* view,
       const base::DictValue& payload,
@@ -945,6 +970,16 @@ class PresentersMac : public UiPresenters {
         [form addSubview:confirm];
       }
       alert.accessoryView = form;
+    }
+    if (!pin) {
+      // The phone pairs by scanning this code, so the sheet has to show it.
+      NSString* qr = Str(payload, "qrCode");
+      NSImage* image = qr.length ? QRCodeImage(qr, 200) : nil;
+      if (image) {
+        NSImageView* view = [NSImageView imageViewWithImage:image];
+        view.frame = NSMakeRect(0, 0, 200, 200);
+        alert.accessoryView = view;
+      }
     }
     NSString* accept = Str(payload, "acceptLabel");
     if (accept.length && !list) {
