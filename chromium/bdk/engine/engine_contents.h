@@ -89,6 +89,11 @@ class EngineContents : public bdkcore::BackendData,
   // or null when none did (an extension's options page opened by a command);
   // `initiator_extension_id` names the extension that asked, or is empty.
   // Returns the new page, or null when the profile cannot host one.
+  // The navigation `navigation_id` went to a native route's handler, which
+  // showed the page: it ends as handledNatively rather than aborted.
+  void NoteHandledNatively(int64_t navigation_id) {
+    handled_natively_ = navigation_id;
+  }
   // A tab Chromium inserted in a host context by itself (a link in an
   // extension popup, which Chromium opens in the popup's Browser): unless a
   // page holds it by now, it becomes a page, and a new-window request asks
@@ -275,6 +280,8 @@ class EngineContents : public bdkcore::BackendData,
   // For an inspected page: the page of its open front end.
   base::WeakPtr<EngineContents> devtools_page_;
   std::string user_agent_;
+  // The navigation a native route's handler took (NoteHandledNatively), or 0.
+  int64_t handled_natively_ = 0;
   bool muted_ = false;
   double zoom_ = 1.0;
   bool auto_discardable_ = true;

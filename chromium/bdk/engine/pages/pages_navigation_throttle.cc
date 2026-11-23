@@ -138,6 +138,12 @@ content::NavigationThrottle::ThrottleCheckResult PagesNavigationThrottle::Check(
 
 void PagesNavigationThrottle::OnNativeHandled(bool handled) {
   if (handled) {
+    // The page reports the navigation as handled natively rather than
+    // aborted, so navigate(to:) learns why it ended (T-SWF-09).
+    if (EngineContents* page = EngineContents::FromWebContents(
+            navigation_handle()->GetWebContents())) {
+      page->NoteHandledNatively(navigation_handle()->GetNavigationId());
+    }
     CancelDeferredNavigation(CANCEL);
     return;
   }

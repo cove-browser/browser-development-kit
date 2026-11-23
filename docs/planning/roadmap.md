@@ -405,7 +405,8 @@ Each was fixed where it was; the commit messages give the detail.
 |---|---|---|
 | T-AUT-07, T-JS-06 | M8 | The M8 session, in progress |
 | T-EXT-10 | M5 | Nothing now that 56 of the 59 pass (the three left are above); the remaining matrix scenarios and the three real extensions |
-| T-CLI-06, T-JS-05, T-SWF-09, T-EXT-11 | M5 | Nothing; features not yet built, after the fix-up |
+| T-CLI-06, T-JS-05, T-EXT-11 | M5 | Nothing; features not yet built, after the fix-up |
+| T-SWF-09 | M5 | An engine build: written 2026-11-23 and passing on the stub |
 | T-EXT-12 | M5 | An engine build: written 2026-11-23, `engine_a_defaulted_new_window_opens_in_the_default_presenter` not yet run |
 | T-SVC-11 | M5 | The product owner confirming S12 |
 | T-EXT-13, T-WUI-07, T-PRV-12 | M6 | Nothing; Google-contact work proved by the network audit, after the fix-up |
