@@ -1234,7 +1234,13 @@ void EngineContents::DidFinishNavigation(content::NavigationHandle* handle) {
   if (handle->IsErrorPage()) {
     flags |= BDK_EVENT_FLAG_ERROR_PAGE;
   }
-  const char* code = net_error == net::ERR_ABORTED ? "aborted" : "netError";
+  const bool native = handle->GetNavigationId() == handled_natively_;
+  if (native) {
+    handled_natively_ = 0;
+  }
+  const char* code = native                          ? "handledNatively"
+                     : net_error == net::ERR_ABORTED ? "aborted"
+                                                     : "netError";
   Emit(BDK_CONTENTS_EVENT_NAVIGATION_FAILED, url,
        ToJson(base::DictValue()
                   .Set("code", code)

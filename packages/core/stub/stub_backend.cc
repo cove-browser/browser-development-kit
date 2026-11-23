@@ -189,7 +189,8 @@ void begin_nav(const std::shared_ptr<Contents>& c, const std::string& requested,
             if (nav->cancelled || c->dead)
                 return;
             if (handled) {
-                cancel_nav(c, "aborted");
+                /* The navigation ends there; navigate(to:) learns why (T-SWF-09). */
+                cancel_nav(c, "handledNatively");
                 return;
             }
             commit_nav(c, nav, display, -1, flags, kNetErrorBlockedByClient);

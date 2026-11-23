@@ -231,6 +231,23 @@ extension BDKStubTests {
             }
         }
 
+        @Test func navigatingToANativeRouteThrowsHandledNatively() async throws {
+            try await withStubRuntime(routesConfiguration()) { runtime in
+                let profile = try await runtime.profiles.open("Test")
+                let page = try profile.webContents.create()
+                // It returns, with the reason, instead of waiting for a commit that never comes.
+                let url = try #require(URL(string: "conf://downloads"))
+                do {
+                    _ = try await page.navigate(to: url)
+                    Issue.record("navigate(to:) returned a commit")
+                } catch let error as BDKError {
+                    #expect(error.domain == .navigation && error.code == "handledNatively")
+                }
+                #expect(page.url?.absoluteString == "about:blank")
+                try await page.close()
+            }
+        }
+
         @Test func aBlockedNativeRouteShowsTheErrorPage() async throws {
             let configuration = routesConfiguration(downloads: { _ in .blocked })
             try await withStubRuntime(configuration) { runtime in
