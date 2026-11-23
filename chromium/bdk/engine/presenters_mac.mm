@@ -976,9 +976,9 @@ class PresentersMac : public UiPresenters {
       NSString* qr = Str(payload, "qrCode");
       NSImage* image = qr.length ? QRCodeImage(qr, 200) : nil;
       if (image) {
-        NSImageView* view = [NSImageView imageViewWithImage:image];
-        view.frame = NSMakeRect(0, 0, 200, 200);
-        alert.accessoryView = view;
+        NSImageView* code = [NSImageView imageViewWithImage:image];
+        code.frame = NSMakeRect(0, 0, 200, 200);
+        alert.accessoryView = code;
       }
     }
     NSString* accept = Str(payload, "acceptLabel");
