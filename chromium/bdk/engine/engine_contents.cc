@@ -19,6 +19,7 @@
 #include "bdk/core/runtime/automation_internal.h"
 #include "bdk/engine/devtools_frontend.h"
 #include "bdk/engine/extensions/extension_menu_items.h"
+#include "bdk/engine/extensions/extension_ui_util.h"
 #include "bdk/engine/extensions/store_source.h"
 #include "bdk/engine/host_context.h"
 #include "bdk/engine/host_view.h"
@@ -55,6 +56,7 @@
 #include "content/public/browser/render_widget_host_view.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/url_constants.h"
+#include "extensions/common/constants.h"
 #include "net/base/net_errors.h"
 #include "third_party/blink/public/common/context_menu_data/edit_flags.h"
 #include "third_party/blink/public/common/page/page_zoom.h"
@@ -235,11 +237,11 @@ EngineContents::~EngineContents() {
   // Dialogs and find UI go while the page is whole.
   find_.reset();
   dialogs_.reset();
-  // A front end's window goes first; then the inspected page learns that its
-  // DevTools closed. The bindings belong to the front end's WebUI, which goes
-  // with the page.
-  if (devtools_window_) {
-    std::move(devtools_window_).Run();
+  // The page's own window goes first; then the inspected page of a front end
+  // learns that its DevTools closed. The bindings belong to the front end's
+  // WebUI, which goes with the page.
+  if (own_window_) {
+    std::move(own_window_).Run();
   }
   if (devtools_) {
     if (EngineContents* inspected =
@@ -568,6 +570,43 @@ EngineContents* EngineContents::RequestNewWindow(
 }
 
 // static
+void EngineContents::AdoptForeignTab(
+    base::WeakPtr<content::WebContents> weak_contents) {
+  content::WebContents* contents = weak_contents.get();
+  if (!contents || FromWebContents(contents)) {
+    return;  // gone, or a page of BDK's
+  }
+  HostContext* context = HostContexts::Get().ContextOf(contents);
+  std::shared_ptr<bdkcore::Runtime> rt = bdkcore::current_runtime();
+  if (!context || !rt || rt->shutting) {
+    return;
+  }
+  std::shared_ptr<bdkcore::Profile> profile =
+      BdkProfileOf(*rt, context->profile());
+  if (!profile) {
+    return;
+  }
+  // The frame that opened it: a BDK page is the request's opener; an
+  // extension's popup or page is its initiator.
+  std::shared_ptr<bdkcore::Contents> opener;
+  std::string extension_id;
+  if (content::RenderFrameHost* by = contents->GetOpener()) {
+    content::WebContents* opener_contents =
+        content::WebContents::FromRenderFrameHost(by);
+    if (EngineContents* page = FromWebContents(opener_contents)) {
+      opener = page->core();
+    } else if (by->GetLastCommittedURL().SchemeIs(
+                   extensions::kExtensionScheme)) {
+      extension_id = by->GetLastCommittedURL().host();
+    }
+  }
+  const GURL url = contents->GetVisibleURL();
+  RequestNewPage(profile, opener, context->Take(contents), "newPage",
+                 WindowOpenDisposition::kNewForegroundTab, url, nullptr,
+                 /*user_gesture=*/true, extension_id);
+}
+
+// static
 EngineContents* EngineContents::RequestNewPage(
     const std::shared_ptr<bdkcore::Profile>& profile,
     const std::shared_ptr<bdkcore::Contents>& opener,
@@ -623,8 +662,14 @@ EngineContents* EngineContents::RequestNewPage(
     payload.Set("features", std::move(f));
   }
 
+  // The default presenter's window takes the size window.open asked for.
+  const int width =
+      features && features->has_width ? features->bounds.width() : 0;
+  const int height =
+      features && features->has_height ? features->bounds.height() : 0;
   UiFinish finish = base::BindOnce(
-      [](std::weak_ptr<bdkcore::Contents> weak_page, const UiResult& result) {
+      [](std::weak_ptr<bdkcore::Contents> weak_page, std::string title,
+         int width, int height, const UiResult& result) {
         std::shared_ptr<bdkcore::Contents> p = weak_page.lock();
         if (!p || p->dead) {
           return;
@@ -633,13 +678,21 @@ EngineContents* EngineContents::RequestNewPage(
             result.completion == "accept") {
           return;  // the application placed the new page
         }
-        // Rejected, cancelled, withdrawn, or no handler: BDK has no window of
-        // its own to put the page in (the default presenter is T-UIR-03, M3).
+        if (result.outcome == bdkcore::UiOutcome::kDefaulted) {
+          // No handler, or the handler left it to BDK: the default presenter
+          // shows the page in a window of BDK's own (ui-requests.md 5.6).
+          if (EngineContents* shown = EngineContents::From(*p)) {
+            shown->ShowInOwnWindow("new_windows", title, width, height);
+            return;
+          }
+        }
+        // Rejected, disabled, cancelled or withdrawn: no page.
         if (auto runtime = p->rt.lock()) {
           bdkcore::destroy_contents(runtime, p);
         }
       },
-      std::weak_ptr<bdkcore::Contents>(page));
+      std::weak_ptr<bdkcore::Contents>(page), DisplayUrl(target_url), width,
+      height);
   if (opener) {
     RaiseUiRequest(opener, BDK_SURFACE_NEW_WINDOWS, payload, std::move(finish));
   } else {
@@ -694,7 +747,7 @@ void EngineContents::OpenDevTools() {
           [](base::WeakPtr<EngineContents> p) {
             // Never from inside the bindings' own call.
             base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
-                FROM_HERE, base::BindOnce(&EngineContents::CloseFrontEnd, p));
+                FROM_HERE, base::BindOnce(&EngineContents::CloseShownPage, p));
           },
           weak_front));
 
@@ -722,10 +775,7 @@ void EngineContents::OpenDevTools() {
                        front_page) {
               // The default presenter: an undocked window of BDK's own.
               // Closing it closes the front end.
-              base::WeakPtr<EngineContents> weak = front_page->GetWeakPtr();
-              front_page->devtools_window_ = UiPresenters::Get().ShowPageWindow(
-                  front_page->host_view_.get(), "DevTools",
-                  base::BindOnce(&EngineContents::CloseFrontEnd, weak));
+              front_page->ShowInOwnWindow("devtools", "DevTools", 0, 0);
             } else {
               // Rejected, disabled, cancelled or withdrawn: no front end.
               if (auto runtime = f->rt.lock()) {
@@ -742,15 +792,28 @@ void EngineContents::OpenDevTools() {
 
 void EngineContents::CloseDevTools() {
   if (devtools_page_) {
-    devtools_page_->CloseFrontEnd();
+    devtools_page_->CloseShownPage();
   }
 }
 
-void EngineContents::CloseFrontEnd() {
-  if (!devtools_window_) {
+void EngineContents::ShowInOwnWindow(const std::string& surface,
+                                     const std::string& title,
+                                     int width,
+                                     int height) {
+  own_window_ = UiPresenters::Get().ShowPageWindow(
+      surface, host_view_.get(), title, width, height,
+      base::BindOnce(&EngineContents::CloseShownPage, GetWeakPtr()));
+}
+
+void EngineContents::CloseShownPage() {
+  if (!own_window_) {
     RequestClose();
     return;
   }
+  DestroySoon();
+}
+
+void EngineContents::DestroySoon() {
   // Destroyed later: this may run inside the window's own close.
   base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindOnce(
@@ -831,6 +894,11 @@ void EngineContents::CloseContents(content::WebContents* source) {
     }
   }
   Emit(BDK_CONTENTS_EVENT_CLOSED, "", "{}", 0, 0);
+  if (own_window_) {
+    // In the default presenter's window the page is no application's, so
+    // window.close() closes the window and destroys the page.
+    DestroySoon();
+  }
 }
 
 bool EngineContents::HandleContextMenu(
