@@ -269,6 +269,13 @@ static void test_engine_ext_a_handler_grants_an_unpacked_install_with_a_gesture(
     CHECK(strstr(g_seen.payload, "\"source\":\"unpacked\"") != NULL);
     CHECK(strstr(g_seen.payload, "\"warnings\":[") != NULL);
     CHECK(strstr(g_seen.payload, "\"verdict\":\"compatible\"") != NULL);
+    /* Host warnings are lines, never Chromium's empty per-permission details. */
+    const char* hosts = strstr(g_seen.payload, "\"hostWarnings\":[");
+    REQUIRE(hosts != NULL);
+    const char* hosts_end = strchr(hosts, ']');
+    REQUIRE(hosts_end != NULL);
+    const char* empty = strstr(hosts, "\"\"");
+    CHECK(empty == NULL || empty > hosts_end);
 
     /* The handle alone is not a grant. */
     bdk_native_handle_t none;
