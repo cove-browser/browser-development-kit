@@ -184,7 +184,8 @@ public final class NewWindowRequest: BDKUIRequest {
         features = WindowFeatures(
             x: size.double("x"), y: size.double("y"), width: size.double("width"),
             height: size.double("height"))
-        isUserGesture = fields.bool("isUserGesture")
+        // The payload names it "userGesture" (engine_contents.cc, tests_engine.c).
+        isUserGesture = fields.bool("userGesture")
         newContentsHandle = fields.handle("newContents")
         super.init(delivery, runtime: runtime)
     }
