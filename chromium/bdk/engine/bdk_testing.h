@@ -130,7 +130,9 @@ BDK_EXPORT bdk_status_t bdk_testing_tab_info(bdk_contents_t,
    {"value": <the preference's JSON value>} capture.start {"contents", "path",
    "format": "png" | "pdf"} writes the page to the file in the background;
    capture.state -> {"state": 0 (running, or none started) | 1 (written) | 2
-   (failed)} authentication {"answer": "allow" | "deny" | "ask"}  what the
+   (failed)} tab.chromiumDiscard {"contents"} -> {"discarded"}  Chromium's own
+   urgent discard of the page's tab (TabLifecycleUnit), as memory pressure
+   would make it authentication {"answer": "allow" | "deny" | "ask"}  what the
    operating system's authentication prompt answers ("ask" is the real prompt,
    the default); authentication.count -> {"count"}  how many times a command
    asked for it downloads.ask {"on"}  every loaded profile asks where to save,

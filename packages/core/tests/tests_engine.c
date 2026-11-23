@@ -364,6 +364,27 @@ static void test_engine_a_crashed_renderer_reports_renderer_gone(void) {
     CHECK(wait_for_title(c, OPENER));
 }
 
+/* Chromium's own discard (memory pressure) swaps a WebContents with no renderer into a hidden
+   page's tab. The page follows its tab and loads again when it is shown, instead of keeping the
+   destroyed WebContents (found in M8: a page left hidden for hours came back blank). */
+static void test_engine_a_page_chromium_discards_loads_again_when_shown(void) {
+    reset_logs();
+    bdk_contents_t c = start_with_page();
+    char out[128];
+    char args[96];
+    snprintf(args, sizeof args, "{\"contents\":\"%llu\"}", (unsigned long long)c);
+    REQUIRE(bdk_testing_command(t_runtime, S("tab.chromiumDiscard"), S(args), out, sizeof out) ==
+            BDK_OK);
+    CHECK(strstr(out, "\"discarded\":true") != NULL);
+    t_pump();
+    bdk_harness_engine_show(c, 1);
+    for (int i = 0; i < 40; ++i)
+        t_pump();
+    run_script(c, "document.title = 'back'", 0);
+    CHECK(wait_for_title(c, "back"));
+    bdk_harness_engine_show(c, 0);
+}
+
 static void test_engine_showing_and_hiding_the_view_changes_visibility(void) {
     reset_logs();
     bdk_contents_t c = start_with_page();
@@ -1372,6 +1393,8 @@ const t_test_t t_engine_tests[] = {
      test_engine_a_denied_page_ends_up_not_fullscreen},
     {"engine_a_crashed_renderer_reports_renderer_gone",
      test_engine_a_crashed_renderer_reports_renderer_gone},
+    {"engine_a_page_chromium_discards_loads_again_when_shown",
+     test_engine_a_page_chromium_discards_loads_again_when_shown},
     {"engine_showing_and_hiding_the_view_changes_visibility",
      test_engine_showing_and_hiding_the_view_changes_visibility},
     {"engine_keys_the_page_leaves_reach_the_application",

@@ -104,6 +104,9 @@ class HostContext : public TabStripModelObserver {
 
   raw_ptr<Profile> profile_;
   raw_ptr<const bdkcore::Window> window_;
+  // True while a page swaps its own WebContents (Replace), so the observer
+  // does not take the swap for Chromium's discard.
+  bool replacing_ = false;
   base::WeakPtr<BrowserWindowInterface> browser_;
 };
 
