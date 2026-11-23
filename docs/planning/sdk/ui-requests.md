@@ -172,7 +172,7 @@ public final class ClientCertificateRequest: BDKUIRequest {       // Added
 
 Default presenters: a sheet on the page view for credentials; Chromium's certificate selector for client certificates.
 
-Built for client certificates (T-UIR-10, written 2026-11-22, engine not yet run; 8.2): no request is raised yet (S3, T-UIR-13). Chrome's automatic selection (`AutoSelectCertificateForUrls`) runs first; otherwise a sheet of BDK's own lists the first eight certificates by subject and issuer, with Cancel, which goes on without one, as Chromium's selector does. Chromium's selector is a views dialog and is never shown on a BDK page.
+Built for client certificates (T-UIR-10, 2026-11-22; built, with no engine scenario yet; 8.2): no request is raised yet (S3, T-UIR-13). Chrome's automatic selection (`AutoSelectCertificateForUrls`) runs first; otherwise a sheet of BDK's own lists the first eight certificates by subject and issuer, with Cancel, which goes on without one, as Chromium's selector does. Chromium's selector is a views dialog and is never shown on a BDK page.
 
 ### 5.4 File pickers
 
@@ -507,7 +507,7 @@ public final class ScreenCaptureRequest: BDKUIRequest {
 
 Default presenters: Chromium's chooser dialogs and media picker. `disabled`: the API rejects. While a page is capturing, `page.capture` reports it, and the application must show an indicator; the default presenter for that is a small "sharing" bar in the page's window.
 
-Built so far (T-UIR-10, written 2026-11-22, engine not yet run; 8.2): neither surface is routed (S3, T-UIR-13), and Chromium's chooser bubbles and picker cannot be shown on a BDK page, so both behave as `disabled` does. `navigator.usb.requestDevice()` and `navigator.serial.requestPort()` reject with NotFoundError, `navigator.hid.requestDevice()` resolves with no device, and `getDisplayMedia` rejects with NotAllowedError. Web Bluetooth is off at start (`navigator.bluetooth` is absent): nothing could choose a device, and its adapter would need the application's Bluetooth usage string.
+Built so far (T-UIR-10, 2026-11-22, passes on Chromium 158; 8.2): neither surface is routed (S3, T-UIR-13), and Chromium's chooser bubbles and picker cannot be shown on a BDK page, so both behave as `disabled` does. `navigator.usb.requestDevice()` and `navigator.serial.requestPort()` reject with NotFoundError, `navigator.hid.requestDevice()` resolves with no device, and `getDisplayMedia` rejects with NotAllowedError. Web Bluetooth is off at start (`navigator.bluetooth` is absent): nothing could choose a device, and its adapter would need the application's Bluetooth usage string.
 
 ### 5.17 External protocols (Added)
 
@@ -524,7 +524,7 @@ public final class ExternalProtocolRequest: BDKUIRequest {
 
 Default presenter: Chromium's confirmation dialog. `disabled`: external schemes are blocked.
 
-Built so far (T-UIR-10, written 2026-11-22, engine not yet run; 8.2): no request is raised yet (S3, T-UIR-13). Chrome decides whether to ask: blocked schemes stay blocked, `mailto:` and schemes the person allowed open without asking, and policy applies. When it asks, a patch gives the question to the engine, which shows a sheet of BDK's own with Chromium's wording ("Open <application>?") and Cancel as the default button, and opens the application only on "Open". The "always allow" checkbox is not offered.
+Built so far (T-UIR-10, 2026-11-22, passes on Chromium 158; 8.2): no request is raised yet (S3, T-UIR-13). Chrome decides whether to ask: blocked schemes stay blocked, `mailto:` and schemes the person allowed open without asking, and policy applies. When it asks, a patch gives the question to the engine, which shows a sheet of BDK's own with Chromium's wording ("Open <application>?") and Cancel as the default button, and opens the application only on "Open". The "always allow" checkbox is not offered.
 
 ### 5.18 WebAuthn (Added; built, T-UIR-09)
 
@@ -665,9 +665,9 @@ Chromium shows many browser dialogs as tab-modal views dialogs or bubbles (`TabD
 each one a page reached failed a check (`native_widget_mac.mm`, `tab_dialog_manager.cc`) or dereferenced a null
 `BrowserView`, and ended the application. Every caller at the pin was listed and sorted by whether a BDK page can
 reach it. The engine side is `chromium/bdk/engine/ui_browser_dialogs.cc`; the scenarios are
-`packages/core/tests/tests_engine_dialogs.c`. **Written against the source at the pin and checked by
-`chromium:patch-check`; not yet built or run on Chromium (T-UIR-10 stays open until the scenarios pass).** "Not
-reachable" below is from reading the source, not from a test.
+`packages/core/tests/tests_engine_dialogs.c`. **Built and run on Chromium 158 (2026-11-22): the 7 scenarios pass;
+the client-certificate sheet has no scenario yet, so T-UIR-10 stays open for it.** "Not reachable" below is from
+reading the source, not from a test.
 
 | Chromium's dialog | Reached from a BDK page by | Now |
 |---|---|---|
