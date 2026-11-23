@@ -32,6 +32,9 @@ extern const char* bdk_harness_engine_extensions;
 #define PAGE_A "https://bdk.test/ext-ui-a"
 #define PAGE_B "https://bdk.test/ext-ui-b"
 #define PAGE_C "https://bdk.test/ext-ui-c"
+/* Another origin: Chromium keeps an activeTab grant across navigations within the origin
+   (ActiveTabPermissionGranter::DidFinishNavigation) and drops it here. */
+#define PAGE_D "https://other.bdk.test/ext-ui-d"
 
 /* ---- what the handlers recorded ---- */
 
@@ -256,6 +259,8 @@ static void load_fixture(const char* name, char* id, size_t n) {
         pumps(1);
     }
     REQUIRE(strstr(out, "\"done\":true") != NULL);
+    if (strstr(out, "\"id\":\"\""))
+        printf("    the load of %s was refused: %s\n", name, out);
     REQUIRE(t_json_string(out, "id", id, n));
     REQUIRE(id[0] != '\0');
     pumps(20); /* the worker starts */
@@ -382,8 +387,11 @@ static void test_engine_ext_ui_activation_targets_the_focused_page(void) {
     CHECK(strstr(out, "\"granted\":true") != NULL);
     page_ui(g_a, "extui.has_active_tab", extra, out, sizeof out);
     CHECK(strstr(out, "\"granted\":false") != NULL);
-    /* Navigating B removes the grant. */
+    /* A navigation of B within its origin keeps the grant, one to another origin removes it. */
     load_page(g_b, PAGE_C);
+    page_ui(g_b, "extui.has_active_tab", extra, out, sizeof out);
+    CHECK(strstr(out, "\"granted\":true") != NULL);
+    load_page(g_b, PAGE_D);
     page_ui(g_b, "extui.has_active_tab", extra, out, sizeof out);
     CHECK(strstr(out, "\"granted\":false") != NULL);
     stop();
@@ -547,7 +555,10 @@ static void test_engine_ext_ui_the_application_closes_a_popup_and_navigation_clo
 }
 
 static void test_engine_ext_ui_a_disabled_popup_surface_blocks_a_popup_only_click(void) {
-    bdk_harness_engine_extensions = "{\"ui\":{\"popups\":\"disabled\"}}";
+    /* The manifest needs the surface, so the policy refuses it unless allow_all, which installs it
+       with the finding; a click is then blocked rather than lost (as on the stub). */
+    bdk_harness_engine_extensions =
+        "{\"install_policy\":\"allow_all\",\"ui\":{\"popups\":\"disabled\"}}";
     start(0, 1);
     char id[64], result[256];
     load_fixture("ui-action-popup", id, sizeof id);
@@ -692,7 +703,10 @@ static void test_engine_ext_ui_a_context_menu_item_is_listed_performed_and_grant
 }
 
 static void test_engine_ext_ui_a_disabled_context_menu_surface_leaves_the_items_out(void) {
-    bdk_harness_engine_extensions = "{\"ui\":{\"context_menus\":\"disabled\"}}";
+    /* allow_all: the manifest's contextMenus permission is a blocking finding otherwise. The API
+       is then withheld and the items are left out. */
+    bdk_harness_engine_extensions =
+        "{\"install_policy\":\"allow_all\",\"ui\":{\"context_menus\":\"disabled\"}}";
     start(0, 1);
     char id[64], extra[128], out[256];
     load_fixture("ui-context-menu", id, sizeof id);

@@ -21,7 +21,6 @@
 #include "chrome/browser/ui/browser_window/public/embedder_browser_window_factory.h"
 #include "chrome/browser/ui/tabs/tab_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
-#include "chrome/browser/ui/unload_controller.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/web_contents.h"
 #include "ui/base/base_window.h"
@@ -53,27 +52,11 @@ std::unique_ptr<BrowserWindow, BrowserWindowDeleter> CreateWindow(
 // pages wait that no window shows; it is not a window of the application, so
 // windows.getAll, tabs.query and windows.onCreated must not report it
 // (T-EXT-01 assertion 10). The extension window controller asks this as it is
-// made, which is before the context exists.
+// made, which is before the context exists, and again whenever tabs.query
+// walks the Browsers.
 bool HiddenFromExtensions(BrowserWindowInterface* browser) {
-  return g_hidden_window && browser->GetWindow() == g_hidden_window;
-}
-
-// Chromium closes a Browser whose tab strip empties: `UnloadController`'s
-// `TabStripEmpty` starts a window close, and a task it posts when the last tab
-// detaches deletes the Browser. A context's strip empties whenever its last
-// page moves to another context or is destroyed, which is not a request to
-// close it (BDK destroys a context itself, with its window or profile), so the
-// close is cancelled before the posted task runs. Without this the context
-// pointed at a deleted Browser, and the next page to enter it hit
-// `CHECK(browser_)`.
-void KeepOpenWhenEmpty(BrowserWindowInterface* browser) {
-  if (!browser->GetTabStripModel()->empty()) {
-    return;
-  }
-  UnloadController* unload = UnloadController::From(browser);
-  if (unload && unload->is_attempting_to_close_browser()) {
-    unload->CancelWindowClose();
-  }
+  return (g_hidden_window && browser->GetWindow() == g_hidden_window) ||
+         HostContexts::Get().IsParkingContext(browser);
 }
 
 }  // namespace
@@ -140,9 +123,7 @@ std::unique_ptr<tabs::TabModel> HostContext::Release(
   // The strip may empty, which makes Chromium close the window: not a request
   // for the application.
   BdkBrowserWindow::ScopedTabOperation operation(browser_window());
-  std::unique_ptr<tabs::TabModel> tab = strip->DetachTabAtForInsertion(index);
-  KeepOpenWhenEmpty(browser_.get());
-  return tab;
+  return strip->DetachTabAtForInsertion(index);
 }
 
 std::unique_ptr<content::WebContents> HostContext::Replace(
@@ -161,7 +142,6 @@ void HostContext::Destroy(content::WebContents* contents) {
   if (index != TabStripModel::kNoTab) {
     BdkBrowserWindow::ScopedTabOperation operation(browser_window());
     strip->DetachAndDeleteWebContentsAt(index);
-    KeepOpenWhenEmpty(browser_.get());
   }
 }
 
@@ -354,6 +334,13 @@ void HostContexts::Destroy(HostContext* context) {
   // Out of the list first: the Browser's teardown must not find it.
   std::unique_ptr<HostContext> owned = std::move(*it);
   contexts_.erase(it);
+}
+
+bool HostContexts::IsParkingContext(
+    const BrowserWindowInterface* browser) const {
+  return std::ranges::any_of(contexts_, [browser](const auto& context) {
+    return context->is_parking() && context->browser_.get() == browser;
+  });
 }
 
 bool HostContexts::IsHostContext(const BrowserWindowInterface* browser) const {

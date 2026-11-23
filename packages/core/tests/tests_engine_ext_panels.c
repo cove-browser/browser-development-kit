@@ -28,6 +28,8 @@ int bdk_ext_place_view(int window, bdk_native_handle_t view, double x, double y,
                        double height);
 int bdk_ext_view_in_window(bdk_native_handle_t view);
 void bdk_ext_remove_view(bdk_native_handle_t view);
+void bdk_ext_watch_view(bdk_native_handle_t view);
+int bdk_ext_watched_view_in_window(void);
 
 #define PAGE "https://bdk.test/panels"
 
@@ -349,11 +351,13 @@ static void test_ext_windows_remove_raises_close_but_moving_a_page_out_does_not(
     bdk_ext_window_attach(second, c);
     ext_pumps(10);
     CHECK(!ext_has(g_wlog.all, "\"kind\":\"close\""));
-    /* An extension removing the window is one. */
+    /* An extension removing the window is one. The window is the page's: in a silent run no
+       window has focus, so windows.getCurrent may name another. */
     bdk_ext_window_attach(first, c);
     ext_pumps(5);
-    ext_ask(c, ext, "chrome.windows.getCurrent().then(w=>chrome.windows.remove(w.id))", out,
-            sizeof out);
+    ext_ask(c, ext,
+            "chrome.tabs.query({url:'" PAGE "'}).then(t=>chrome.windows.remove(t[0].windowId))",
+            out, sizeof out);
     for (int i = 0; i < 20 && !ext_has(g_wlog.all, "\"kind\":\"close\""); ++i)
         t_pump();
     CHECK(ext_has(g_wlog.all, "\"kind\":\"close\""));
@@ -538,6 +542,7 @@ static void test_ext_side_panel_open_reaches_an_application_container(void) {
     CHECK(ext_has(g_plog.payload, "panel.html"));
     CHECK(g_plog.placed == 1);
     CHECK(bdk_ext_view_in_window(g_plog.view));
+    bdk_ext_watch_view(g_plog.view);
     /* The application's container, not BDK's frame; the request stays open while the view is up. */
     REQUIRE(panel_is(w, "\"requestOpen\":true"));
     state_of(w, out, sizeof out);
@@ -545,13 +550,13 @@ static void test_ext_side_panel_open_reaches_an_application_container(void) {
     /* The side the application reported is what getLayout answers. */
     open_panel_from_page(c, ext, "layout");
     CHECK(wait_for_title(c, "ok:\"left\""));
-    /* Closing from the container completes the request and takes the panel down. */
+    /* Closing from the container completes the request and takes the panel down: the runtime
+       takes its view out of the container (the view is the runtime's, gone with the request). */
     bdk_error_t err = 0;
     REQUIRE(bdk_ui_complete(g_plog.request, S("accept"), S("{\"action\":\"close\"}"), no_gesture(),
                             &err) == BDK_OK);
     CHECK(panel_is(w, "\"open\":false"));
-    /* The secure view is the engine's while the request is open: closing the panel took it out of
-       the container and released it, so the handle must not be used again. */
+    CHECK(!bdk_ext_watched_view_in_window());
     unregister_window(w);
     bdk_ext_window_close(window);
 }
@@ -567,12 +572,15 @@ static void test_ext_an_extension_closing_its_panel_withdraws_the_request(void) 
     open_panel_from_page(c, ext, "openWindow");
     REQUIRE(wait_for_title(c, "ok:null"));
     REQUIRE(panel_is(w, "\"requestOpen\":true"));
+    bdk_ext_watch_view(g_plog.view);
+    CHECK(bdk_ext_watched_view_in_window());
     open_panel_from_page(c, ext, "close");
     CHECK(wait_for_title(c, "ok:null"));
     CHECK(panel_is(w, "\"open\":false"));
     ext_pumps(5);
     CHECK(g_plog.withdrawn == 1);
-    /* Withdrawn: the engine took its secure view out of the container and released it. */
+    /* Withdrawn: the runtime took its view out of the application's container. */
+    CHECK(!bdk_ext_watched_view_in_window());
     unregister_window(w);
     bdk_ext_window_close(window);
 }
@@ -618,7 +626,11 @@ test_ext_a_page_panel_hides_and_shows_with_the_active_page_and_a_second_panel_re
         t_pump();
     CHECK(ext_has(g_plog.last_update, "\"visible\":true"));
 
-    /* The window panel opens in its place: one panel per window, so the first is withdrawn. */
+    /* With b focused, the window panel opens in its place: one panel per window, so the first is
+       withdrawn. (With a focused, Chromium keeps a page's own panel when the window's is opened:
+       OpenGlobalExtensionSidePanel shows the window's for the other pages only.) */
+    REQUIRE(bdk_contents_focus(b) == BDK_OK);
+    ext_pumps(3);
     open_panel_from_page(a, ext, "openWindow");
     CHECK(wait_for_title(a, "ok:null"));
     for (int i = 0; i < 60 && g_plog.calls < 2; ++i)
@@ -637,7 +649,10 @@ static void test_ext_a_disabled_side_panel_surface_creates_nothing(void) {
     int window;
     bdk_window_t w;
     char ext[64], out[1024];
-    bdk_contents_t c = start_panel_page("{\"ui\":{\"side_panels\":\"disabled\"}}",
+    /* allow_all: the manifest's sidePanel is a blocking finding otherwise. The API is then
+       withheld, so sidePanel.open is absent. */
+    bdk_contents_t c = start_panel_page("{\"install_policy\":\"allow_all\",\"ui\":{"
+                                        "\"side_panels\":\"disabled\"}}",
                                         register_panel_handler, &window, &w, ext, sizeof ext);
     g_plog.window = window;
     open_panel_from_page(c, ext, "openWindow");

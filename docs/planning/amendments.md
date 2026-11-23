@@ -1,6 +1,6 @@
 # Amendments to the BDK plan
 
-Dated 2026-11-15; section 2.10 was added on 2026-11-16, 2.12 and 2.13 on 2026-11-19, 2.14 to 2.17 on 2026-11-20, 2.18 on 2026-11-21. This lists everything that changed in the planning documents after the 2026-11-14 version, following the product owner's review. If you read the 2026-11-14 documents, reading this is enough. The other documents already contain these changes; nothing here still needs to be applied.
+Dated 2026-11-15; section 2.10 was added on 2026-11-16, 2.12 and 2.13 on 2026-11-19, 2.14 to 2.17 on 2026-11-20, 2.18 on 2026-11-21, 2.19 to 2.21 on 2026-11-22. This lists everything that changed in the planning documents after the 2026-11-14 version, following the product owner's review. If you read the 2026-11-14 documents, reading this is enough. The other documents already contain these changes; nothing here still needs to be applied.
 
 ## 1. Summary
 
@@ -335,7 +335,72 @@ Three patches were added, each with its reason in its message: extension install
 `Browser` out of the extension window list, and opening an extension's options page. With M4's and M7's patches, the series is 20.
 `developer_mode`, `blocklist` and `[extensions.bundled]` (S6) are still Added and not read (T-EXT-14).
 
-### 2.18 The Arc-style reference application in M8 (2026-11-21)
+### 2.18 Engine scenarios fixed after the M4 to M7 merge (2026-11-21)
+
+The fix-up of roadmap section 6 took these decisions where the documents were silent or Chromium does otherwise:
+
+| Planned or assumed | Decided | Why |
+|---|---|---|
+| A secure view's lifetime (not written down) | The runtime's: valid until its request finishes, then taken out of the application's container and possibly destroyed (`bdk_ui.h`, conventions.md "Extensions (M5)" item 3) | The engine frees the panel's view with its host; an application holding it longer used freed memory |
+| "One extension panel is open per window; opening another closes the first" (extensions.md 4.3) | Kept, but a window panel opened while the active page shows its own panel leaves that panel, as Chromium does (`OpenGlobalExtensionSidePanel`) | BDK follows Chromium's choice of which panel a `Show()` means |
+| `activeTab` "revoked when it navigates" (extensions.md 4.1) | Revoked on a navigation to another origin; kept within the origin (extensions.md 4.1 now says so) | Chromium's `ActiveTabPermissionGranter` |
+| `checkForUpdates` applying an update | Installed at once, even while the old version is running | It is an explicit check, as Chromium's Update button in `chrome://extensions` is; otherwise the update waits for the extension to be idle |
+| `documentStart` for user scripts (services.md 5.16) | Runs once the document's root element exists, before the page's first script; a document loaded right after a change waits for it | Chrome's `document_start`; a DevTools new-document script runs before the root element exists |
+| Chromium's start-up completion (T-ADP-10) | Complete once `bdk_runtime_start` has returned and the main loop is idle (`StartupInProgressRef` plus `ImprovedStartupBestEffortDelay` with no wait for a visible tab) | Chromium waited for a visible tab of a window BDK never opens, then for its three-minute failsafe |
+| The macOS location permission for provider = "app" (T-PRV-04) | Granted, as Chromium sees it, while the runtime uses the application's provider; the operating system's otherwise | It guards the operating system's provider; a page still needs the page's permission |
+| A host context's `Browser` when its tab strip empties | Kept: BDK cancels the close Chromium starts, as Chromium cancels one the person declines | A host context outlives its tabs; the M8 branch fixes the same in `host_context.cc`, and the second to merge drops one |
+
+The window-filter patch also gates `IsVisibleToTabsAPIForExtension`, so the series is still 20 patches. New test switch:
+`BDK_ENGINE_HOST_RESOLVER_RULES` (chromium/bdk/README.md); new test verbs: `network.passthrough`, `startup.post`,
+`startup.state` (`bdk_testing.h`).
+
+### 2.19 WebAuthn requests built ahead of S3 (2026-11-22)
+
+`navigator.credentials` ended the embedding application whenever Chromium's authenticator dialog had to appear (a
+tab-modal views widget with no parent, `native_widget_mac.mm`), so the `webauthn` surface was built before the
+product owner has decided S3 (T-UIR-09, M4). Where the build departs from [sdk/ui-requests.md](sdk/ui-requests.md) 5.18
+as proposed:
+
+| Planned | Built | Why |
+|---|---|---|
+| One `WebAuthnRequest` whose `step` changes | One request per step, with a `ceremonyID`; the next step withdraws the last | Chromium moves on by itself (a key touched, a wrong PIN); a request per step keeps the router's rules (one at a time, withdrawal, release) and needs no new ABI |
+| Steps `.chooseMechanism`, `.touchSecurityKey`, `.enterPIN`, `.chooseAccount`, `.error` | Also `.connectPhone`, `.confirm` and `.other`, with `detail` (Chromium's step name) and Chromium's own text and button labels | These are the steps Chromium's dialog model reports; its sheet models supply the wording a custom presenter must show |
+| `chooseAccount(_:)` | `chooseAccount(_:confirmedBy:)`, a `grant` | It releases a credential to the site: architecture section 7 says a credential prompt is not granted without a gesture |
+| Default presenter: Chromium's WebAuthn dialog | A sheet of BDK's own, from the same payload; Chromium's dialog is never shown on a BDK page | Chromium's needs a views widget (feasibility section 11, T-MAC-04). A new patch lets an embedder supply the dialog's controller |
+| `disabled` in `bdk.toml` | The runtime honours `disabled`; the `[ui.surfaces] webauthn` key still waits for S3 with the other seven | Accepting one S3 key is the product owner's call; meanwhile `WebAuthnRequest.cancelAll` turns passkeys off |
+| Platform passkeys "unverified" | Security keys built (tested with a virtual key); phones and the system provider are Chromium's paths, unverified (T-UIR-12, M9); Touch ID not offered (T-UIR-11, M9) | Chromium's Touch ID keychain group is compiled in; phones need Bluetooth keys in `Info.plist`; the system provider needs Apple's browser entitlement |
+
+New: `BDKWebAuthnSupport` (what each mechanism needs, read from `Info.plist` and the signature), the CLI note
+`plist.passkeys_phone`, the test verbs `webauthn.*` (a virtual CTAP2 key through content's
+`ScopedAuthenticatorEnvironmentForTesting`, no switch) and `present.script` answers for `webauthn`
+(`bdk_testing.h`). The series is 21 patches; the task list is 143. HTTPS-First's "ask before HTTP" dialog fails the same way (`tab_dialog_manager.cc`,
+`Check failed: host`) and is T-UIR-10, M4.
+
+### 2.20 Chromium's other browser dialogs on BDK pages (2026-11-22)
+
+T-UIR-10 listed every caller of Chromium's tab-modal views dialogs and bubbles (`TabDialogManager`,
+`constrained_window::ShowWebModalDialogViews`, `chrome::ShowTabModal`) and found which a BDK page can reach; the list
+is [sdk/ui-requests.md](sdk/ui-requests.md) 8.2. Each one reached failed a check, because a BDK window is not a views
+widget (feasibility section 11). None of their surfaces is routed before S3, so the defaults are BDK's:
+
+| Planned ([sdk/ui-requests.md](sdk/ui-requests.md)) | Built | Why |
+|---|---|---|
+| `external_protocols`: default presenter Chromium's confirmation dialog | A sheet of BDK's own with Chromium's wording, Cancel the default; a patch gives the dialog to the engine once Chrome has decided to ask | Chrome's dialog cannot be parented. Chrome keeps the decision (blocked and allowed schemes, `mailto:` without asking, policy, gestures) |
+| `client_certificates`: Chromium's certificate selector | Chrome's automatic selection, then a sheet with one button per certificate (the first eight) | The selector is a views table; no patch is needed (the browser client's `SelectClientCertificate`) |
+| `device_choosers`: Chromium's chooser dialogs | Refused, as a cancel: `requestDevice()` and `requestPort()` reject, HID resolves empty. Web Bluetooth is off at start | The chooser bubbles dereference a `BrowserView`. Web Bluetooth's adapter would also need the application's Bluetooth usage string |
+| `screen_capture`: Chromium's media picker | Refused: `getDisplayMedia` rejects with NotAllowedError, as `disabled` would | The picker is a tab-modal views dialog |
+| HTTPS-First's "ask before HTTP" dialog (not in the plan) | `HttpsFirstDialogUi` off: HTTPS-First asks with its interstitial page, in the page | The interstitial is a page; the dialog is views |
+| Payment Request, Secure Payment Confirmation, FedCM, Digital Credentials (not in the plan) | Off at start (`WebPayments`, `SecurePaymentConfirmation`, `FedCm`, `WebIdentityDigitalCredentials*`): sites see them as unsupported | Their UI is views only and no surface exists for them |
+| Page-initiated web application installs (not in the plan) | Off: `profile.web_app.install_by_user_enabled` defaults to false | The install dialog is views; a BDK application owns its windows |
+| Tab-modal dialog models (not in the plan) | A sheet: title, paragraphs, OK and Cancel, the model's default first; a patch gives `chrome::ShowTabModal`'s model to the engine | File System Access, DevTools and extension notices use it; a model's own callbacks decide. A model with a field a sheet cannot show is closed as dismissed |
+| The Credential Management API's account chooser and auto sign-in notice (not in the plan) | Sheets of the `passwords` surface, through a patch; Chrome's controller decides | `navigator.credentials.get({password: true})` reached them |
+
+None of this has been built or run on Chromium yet (the engine build was not part of the change), so it is written
+against the source at the pin and checked by `chromium:patch-check`; the scenarios that settle it are
+`tests_engine_dialogs.c` (T-UIR-10, M4). Routing what is
+refused or off waits for S3 (T-UIR-13, M9). The series is 24 patches; the task list is 144.
+
+### 2.21 The Arc-style reference application in M8 (2026-11-21, merged 2026-11-22)
 
 M8 built `apps/examples/arc-style-browser` (T-ARC-02, T-ARC-03) on the public SDK only, settled T-ADP-06, and
 finished the M7 leftovers T-AUT-07 and T-JS-06. BDK gained no space, split or tab API; the one new public
@@ -358,16 +423,17 @@ feasibility 10, tasks T-ARC-02, T-ARC-03, T-ADP-06 and T-AUT-07, and the SDK doc
 Found and fixed while building it, recorded because the M5 status lists them: a host context whose last page
 moved out or closed had its `Browser` deleted by Chromium (`UnloadController::TabStripEmpty` starts a window
 close and a posted task finishes it), so the next page to enter it hit `CHECK(browser_)` in
-`HostContext::Add`; `HostContext` now cancels that close. Two M5 panel scenarios crashed in the test, not the
+`HostContext::Add`. The engine-scenario fix-up (2.18) fixed the same in `BdkBrowserWindow::ScopedTabOperation`,
+which cancels that close, so this branch's copy in `HostContext` was dropped at the merge. Two M5 panel scenarios crashed in the test, not the
 engine: they used a side panel's secure view after its request ended, when the engine has released it.
 
 Found and not fixed: a page whose view has never been in a window, and the focused pane after its view leaves
 the window, report visible (Chromium starts a `WebContents` visible). Creating pages hidden
 (`initially_hidden`) fixed the first and broke pages in the engine harness's background windows, which then
-never became visible, so it was reverted; T-ADP-10 (M9) has the host view report it instead.
+never became visible, so it was reverted; T-ADP-11 (M9) has the host view report it instead.
 
-The patch series is 21. No other C ABI function changed. New tasks: T-ARC-04 and T-ADP-10 (M9). The task
-list is 138.
+The patch series is 25 (this branch's patch is the last). No other C ABI function changed. New tasks: T-ARC-04 and
+T-ADP-11 (M9); the task list is 146. T-ADP-11 was T-ADP-10 on this branch, a number the fix-up had taken.
 
 ## 3. Tasks and workflows
 
@@ -388,8 +454,11 @@ list is 138.
 | T-REP-01 | From 2026-11-16: also writes `.node-version`. |
 | T-CLI-06, T-JS-05, T-SWF-09, T-SVC-11 | New, M5 (2026-11-20): left over from M4 (roadmap M4 status). |
 | T-WUI-07, T-PRV-10 | New, M6 (2026-11-20): left over from M4. |
+| T-UIR-09, T-UIR-10 | New, M4 (2026-11-22): WebAuthn (built, 2.19) and the other tab-modal views dialogs, found after M3. |
+| T-UIR-11, T-UIR-12 | New, M9 (2026-11-22): Touch ID passkeys, phones and system passkeys, which need a signed, entitled application. |
+| T-UIR-13 | New, M9 (2026-11-22): routing what T-UIR-10 refused or turned off, after S3 (2.20). |
 | T-ARC-04 | New, M9 (2026-11-21): left over from M8; the reference application checked by hand and its extension scenarios on the engine through its own windows. |
-| T-ADP-10 | New, M9 (2026-11-21): left over from M8; a never-shown page and a window's focused pane after its view leaves report visible. |
+| T-ADP-11 | New, M9 (2026-11-21): left over from M8; a never-shown page and a window's focused pane after its view leaves report visible. |
 | T-EXT-12 | Widened (2026-11-21): a page an extension opens is also announced as `webContentsCreated(_, by: .extension(id))`. |
 
 The task list goes from 103 to 106 tasks. The README said 100 before, which was already wrong; it now says 106. With T-CLI-05 on 2026-11-16 it is 107.
@@ -427,4 +496,6 @@ The task list goes from 103 to 106 tasks. The README said 100 before, which was 
 | [feasibility.md](feasibility.md) | Section 10, two sentences |
 | [sdk/](sdk/README.md) | New. The index and all nine documents. |
 | [README.md](README.md) | One row for `sdk/` |
+| For 2.20 | [sdk/ui-requests.md](sdk/ui-requests.md) 4, 5.3, 5.14, 5.16, 5.17, 8.2; [tasks.md](tasks.md) T-UIR-09, T-UIR-10, T-UIR-13; [roadmap.md](roadmap.md) M4, M9; `chromium/bdk/README.md`; `chromium/bdk/engine/bdk_testing.h`; `apps/examples/minimal-browser/README.md` |
+| For 2.19 | [sdk/ui-requests.md](sdk/ui-requests.md) 4, 5.18, 8, 8.1; [sdk/README.md](sdk/README.md) S3; [sdk/production-browser.md](sdk/production-browser.md) 2.4; [sdk/configuration.md](sdk/configuration.md) 6, 9; [tasks.md](tasks.md) T-UIR-09 to T-UIR-12; [roadmap.md](roadmap.md) M4, M9; `packages/core/docs/conventions.md` (the router); `chromium/bdk/README.md` |
 | For 2.10 | [sdk/cli.md](sdk/cli.md) section 2; [repository-and-tooling.md](repository-and-tooling.md) 1, 2, 3, 4, 10, 10.1, 10.2, 12; [tasks.md](tasks.md) T-CLI-05; [risks.md](risks.md) R31; [roadmap.md](roadmap.md) M2 |

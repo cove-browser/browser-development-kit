@@ -19,7 +19,10 @@ typedef struct bdk_ui_request_info {
     bdk_profile_t profile;
     bdk_string_t payload_json; /* the fields in ui-requests.md for this surface */
     double anchor[4];          /* x, y, width, height in window coordinates; all zero if none */
-    bdk_native_handle_t secure_view; /* for popups, side panels and hosted front ends */
+    /* For popups, side panels and hosted front ends. The runtime owns the view: it is valid until
+       the request finishes (completed or withdrawn), when the runtime takes it out of wherever the
+       application put it and may destroy it. Do not use it after that. */
+    bdk_native_handle_t secure_view;
 } bdk_ui_request_info_t;
 
 typedef enum bdk_ui_response {

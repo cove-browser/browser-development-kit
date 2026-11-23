@@ -24,6 +24,10 @@ class BdkContentBrowserClient : public ChromeContentBrowserClient {
   BdkContentBrowserClient();
   ~BdkContentBrowserClient() override;
 
+  // Chrome's main parts, with BDK's stages added (BdkBrowserMainExtraParts).
+  std::unique_ptr<content::BrowserMainParts> CreateBrowserMainParts(
+      bool is_integration_test) override;
+
   std::vector<std::unique_ptr<content::URLLoaderRequestInterceptor>>
   WillCreateURLLoaderRequestInterceptors(
       content::NavigationUIData* navigation_ui_data,
@@ -64,6 +68,26 @@ class BdkContentBrowserClient : public ChromeContentBrowserClient {
   std::unique_ptr<device::LocationProvider> OverrideSystemLocationProvider()
       override;
   std::string GetGeolocationApiKey() override;
+
+  // Browser dialogs (T-UIR-10, ui_browser_dialogs.h): Chrome's device
+  // delegates with the chooser refused, and client certificates as a sheet.
+  content::BluetoothDelegate* GetBluetoothDelegate() override;
+  content::UsbDelegate* GetUsbDelegate() override;
+  content::SerialDelegate* GetSerialDelegate() override;
+  content::HidDelegate* GetHidDelegate() override;
+  base::OnceClosure SelectClientCertificate(
+      content::BrowserContext* browser_context,
+      content::ChildProcessId process_id,
+      content::WebContents* web_contents,
+      net::SSLCertRequestInfo* cert_request_info,
+      net::ClientCertIdentityList client_certs,
+      std::unique_ptr<content::ClientCertificateDelegate> delegate) override;
+
+ private:
+  std::unique_ptr<content::BluetoothDelegate> bluetooth_delegate_;
+  std::unique_ptr<content::UsbDelegate> usb_delegate_;
+  std::unique_ptr<content::SerialDelegate> serial_delegate_;
+  std::unique_ptr<content::HidDelegate> hid_delegate_;
 };
 
 }  // namespace bdk

@@ -1,0 +1,102 @@
+{
+  "schema": 1,
+  "bdk_version": "0.0.0",
+  "config_digest": "sha256:846d4249cbbaa7a3fe14d62c0e46d985220bf9b1f6a63c6e19b6c178a32b3b66",
+  "browser": {
+    "name": "Cove",
+    "internal_scheme": "cove",
+    "logo": "app-icon",
+    "user_agent": {}
+  },
+  "storage": {
+    "directory": "Cove",
+    "keychain_item": "Cove Safe Storage"
+  },
+  "runtime": {
+    "mode": "prebuilt",
+    "downgrade": "refuse",
+    "snapshot_on_upgrade": true
+  },
+  "routes": {},
+  "aliases": {},
+  "surfaces": {
+    "permissions": "default",
+    "javascript_dialogs": "default",
+    "http_auth": "default",
+    "file_pickers": "default",
+    "context_menus": "default",
+    "new_windows": "default",
+    "downloads": "default",
+    "passwords": "default",
+    "autofill": "default",
+    "printing": "default",
+    "translation": "default",
+    "find": "default",
+    "fullscreen": "default",
+    "notifications": "default",
+    "certificate_errors": "default",
+    "reputation_warnings": "default",
+    "devtools": "default"
+  },
+  "extensions": {
+    "enabled": true,
+    "install_policy": "reject_known_incompatible",
+    "allow_in_private": "user",
+    "install": {
+      "unpacked": true,
+      "crx": true,
+      "update_urls": "any",
+      "stores": []
+    },
+    "ui": {
+      "actions": "default",
+      "popups": "default",
+      "side_panels": "default",
+      "context_menus": "default",
+      "options_pages": "default",
+      "devtools": "default"
+    },
+    "bundled": {}
+  },
+  "services": {
+    "translation": {
+      "provider": "default",
+      "models": "on-demand",
+      "bundled_languages": []
+    },
+    "reputation": {
+      "provider": "default",
+      "update_interval": "1h"
+    },
+    "geolocation": {
+      "provider": "system"
+    },
+    "credentials": {
+      "provider": "chromium"
+    },
+    "leak_check": {
+      "provider": "none"
+    }
+  },
+  "settings_defaults": {},
+  "automation": {
+    "enabled": false,
+    "scripts": {},
+    "cpu_budget_ms": 60000,
+    "external": {
+      "enabled": false
+    }
+  },
+  "devtools": {
+    "frontend": "default",
+    "protocol": true
+  },
+  "diagnostics": {
+    "crash_reports": "local",
+    "log_level": "warning"
+  },
+  "chromium_features": {
+    "enable": [],
+    "disable": []
+  }
+}

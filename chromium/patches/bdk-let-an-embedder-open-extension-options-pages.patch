@@ -25,7 +25,7 @@ Used by: the BDK engine (//bdk/engine/extensions/options_page.cc).
  2 files changed, 54 insertions(+)
 
 diff --git a/chrome/browser/extensions/browser_extension_window_controller.cc b/chrome/browser/extensions/browser_extension_window_controller.cc
-index 06d4b62c70dc082af3bf2798ecbec32dd8a74410..53f50c5df194213822c6deb037a8ba700a6830ae 100644
+index 8b670cffb0ebec73ae3725f635206f9b1bd64e6e..ce9d52f6fef28aabfcf742d3d91aaf3fbe20eda7 100644
 --- a/chrome/browser/extensions/browser_extension_window_controller.cc
 +++ b/chrome/browser/extensions/browser_extension_window_controller.cc
 @@ -12,6 +12,7 @@
@@ -36,7 +36,7 @@ index 06d4b62c70dc082af3bf2798ecbec32dd8a74410..53f50c5df194213822c6deb037a8ba70
  #include "chrome/browser/extensions/extension_tab_util.h"
  #include "chrome/browser/extensions/window_controller_list.h"
  #include "chrome/browser/profiles/profile.h"
-@@ -314,6 +315,13 @@ bool BrowserExtensionWindowController::OpenOptionsPage(
+@@ -319,6 +320,13 @@ bool BrowserExtensionWindowController::OpenOptionsPage(
            ui::PAGE_TRANSITION_LINK);
    browser_->OpenURL(params, /*navigation_handle_callback=*/{});
  #else

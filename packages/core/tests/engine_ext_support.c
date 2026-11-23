@@ -82,11 +82,13 @@ void ext_eval(bdk_contents_t c, const char* ext, const char* script, char* out, 
 }
 
 /* Runs a promise-returning expression in the service worker and returns what it resolved to, as
-   JSON text with quotes unescaped. */
+   JSON text with quotes unescaped ("null" for a promise that resolves with no value, as
+   windows.remove does). */
 void ext_ask(bdk_contents_t c, const char* ext, const char* promise_expr, char* out, size_t n) {
     char script[1024];
     snprintf(script, sizeof script,
-             "globalThis.out=undefined;(%s).then(v=>{globalThis.out=JSON.stringify(v)});1",
+             "globalThis.out=undefined;(%s).then(v=>{globalThis.out=v===undefined?'null':JSON."
+             "stringify(v)});1",
              promise_expr);
     ext_eval(c, ext, script, out, n);
     for (int i = 0; i < 100; ++i) {

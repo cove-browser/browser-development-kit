@@ -1,0 +1,10 @@
+{
+  "diagnostics": [
+    {
+      "code": "plist.passkeys_phone",
+      "severity": "note",
+      "message": "The entitlements have no com.apple.security.device.bluetooth, so a hardened-runtime build cannot use Bluetooth for Web Bluetooth or passkeys on a phone.",
+      "file": "entitlements"
+    }
+  ]
+}

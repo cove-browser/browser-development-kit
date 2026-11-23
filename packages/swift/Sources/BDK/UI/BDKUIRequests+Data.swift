@@ -321,8 +321,8 @@ public final class ExternalProtocolRequest: BDKUIRequest {
     }
 }
 
-/// A surface with no typed request yet (translation, device choosers, screen capture, WebAuthn,
-/// and any surface a newer runtime adds). It exposes the payload and the three completions of the
+/// A surface with no typed request yet (device choosers, screen capture, and any surface a newer
+/// runtime adds). It exposes the payload and the three completions of the
 /// ABI.
 public final class BDKRawUIRequest: BDKUIRequest {
     /// `completion` is "grant", "deny" or "accept". "grant" needs `event`.

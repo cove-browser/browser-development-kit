@@ -264,6 +264,29 @@ class RoutingPresenters : public UiPresenters {
         });
   }
 
+  Dismisser ShowWebAuthn(
+      HostView* view,
+      const base::DictValue& payload,
+      base::OnceCallback<void(base::DictValue)> answer) override {
+    if (!Scripted::Find("webauthn")) {
+      return platform_->ShowWebAuthn(view, payload, std::move(answer));
+    }
+    const std::string* step = payload.FindString("step");
+    return Scripted::Present(
+        "webauthn", payload,
+        [step = step ? *step : std::string(),
+         answer = std::move(answer)](const base::DictValue& a) mutable {
+          const base::DictValue* chosen = a.FindDict(step);
+          if (!chosen) {
+            chosen = &a;
+          }
+          if (chosen->FindBool("none").value_or(false)) {
+            return;  // undecided at this step
+          }
+          std::move(answer).Run(chosen->Clone());
+        });
+  }
+
   std::unique_ptr<FindBar> ShowFindBar(HostView* view,
                                        const base::DictValue& payload,
                                        FindBarClient* client) override {

@@ -358,8 +358,9 @@ static void test_engine_http_authentication_end_to_end(void) {
     stop_http_server();
 }
 
-/* The TLS server of tests_engine_prompts.c, on a name HSTS can apply to: *.localhost resolves to
-   the loopback address in Chromium. */
+/* The TLS server of tests_engine_prompts.c, on a name HSTS can apply to: Chromium applies no HSTS
+   to *.localhost, so the harness maps hsts.bdk.test to the loopback address
+   (BDK_ENGINE_HOST_RESOLVER_RULES). */
 static pid_t g_tls_pid;
 static int g_tls_port;
 
@@ -372,7 +373,7 @@ static int start_tls_server(void) {
     snprintf(cert, sizeof cert, "%s/c.pem", dir);
     snprintf(cmd, sizeof cmd,
              "/usr/bin/openssl req -x509 -newkey rsa:2048 -nodes -keyout %s -out %s "
-             "-subj /CN=hsts.localhost -days 2 >/dev/null 2>&1",
+             "-subj /CN=hsts.bdk.test -days 2 >/dev/null 2>&1",
              key, cert);
     if (system(cmd) != 0)
         return 0;
@@ -420,25 +421,23 @@ static void test_engine_a_non_overridable_certificate_error_cannot_proceed(void)
     bdk_contents_t c = t_new_contents(t_new_profile("HSTS"));
     bdk_harness_attach_view(c);
     char args[128];
-    snprintf(args, sizeof args, "{\"contents\":\"%llu\",\"host\":\"hsts.localhost\"}",
+    snprintf(args, sizeof args, "{\"contents\":\"%llu\",\"host\":\"hsts.bdk.test\"}",
              (unsigned long long)c);
     REQUIRE(bdk_testing_command(t_runtime, S("hsts.add"), S(args), NULL, 0) == BDK_OK);
+    REQUIRE(bdk_testing_command(t_runtime, S("network.passthrough"),
+                                S("{\"host\":\"hsts.bdk.test\"}"), NULL, 0) == BDK_OK);
     t_pump();
     char url[64];
-    snprintf(url, sizeof url, "https://hsts.localhost:%d/", g_tls_port);
+    snprintf(url, sizeof url, "https://hsts.bdk.test:%d/", g_tls_port);
     REQUIRE(bdk_contents_load(c, S(url), &err) == BDK_OK);
     for (int i = 0; i < 80 && seen.calls == 0; ++i)
         t_pump();
     REQUIRE(seen.calls == 1);
-    if (strstr(seen.payload, "\"isOverridable\":true")) {
-        printf("    (skipped: Chromium did not apply HSTS to hsts.localhost)\n");
-    } else {
-        CHECK(strstr(seen.payload, "\"isOverridable\":false") != NULL);
-        err = 0;
-        CHECK(bdk_ui_complete(seen.request, S("proceed"), S("{}"), bdk_harness_engine_gesture(c, 0),
-                              &err) == BDK_ERR_FAILED);
-        CHECK(t_error_is(err, "ui", "notOverridable"));
-    }
+    CHECK(strstr(seen.payload, "\"isOverridable\":false") != NULL);
+    err = 0;
+    CHECK(bdk_ui_complete(seen.request, S("proceed"), S("{}"), bdk_harness_engine_gesture(c, 0),
+                          &err) == BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "ui", "notOverridable"));
     bdk_ui_request_release(seen.request);
     kill(g_tls_pid, SIGTERM);
     waitpid(g_tls_pid, NULL, 0);

@@ -15,14 +15,24 @@
 #include "bdk/engine/pages/pages_navigation_throttle.h"
 #include "bdk/engine/providers/geolocation_provider.h"
 #include "bdk/engine/providers/provider_settings.h"
+#include "bdk/engine/services/user_scripts.h"
+#include "bdk/engine/startup_completion.h"
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_auth.h"
+#include "bdk/engine/ui_browser_dialogs.h"
+#include "chrome/browser/chrome_browser_main.h"
+#include "chrome/browser/chrome_browser_main_extra_parts.h"
+#include "content/public/browser/bluetooth_delegate.h"
 #include "content/public/browser/browser_url_handler.h"
+#include "content/public/browser/client_certificate_delegate.h"
+#include "content/public/browser/hid_delegate.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/navigation_throttle.h"
 #include "content/public/browser/navigation_throttle_registry.h"
 #include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/serial_delegate.h"
 #include "content/public/browser/url_loader_request_interceptor.h"
+#include "content/public/browser/usb_delegate.h"
 #include "content/public/browser/web_ui_browser_interface_broker_registry.h"
 #include "extensions/common/constants.h"
 #include "services/device/public/cpp/geolocation/location_provider.h"
@@ -64,10 +74,34 @@ class DevToolsExtensionThrottle : public content::NavigationThrottle {
   }
 };
 
+// What BDK does at the stages of Chrome's browser start.
+class BdkBrowserMainExtraParts : public ChromeBrowserMainExtraParts {
+ public:
+  // After the threads exist and before Chrome's own platform setup, which
+  // installs the operating system's location permission unless one is.
+  void PostCreateThreads() override {
+    InstallGeolocationPermission();
+    HoldStartupUntilRuntimeStarts();
+  }
+
+  // Before the first profile, whose preferences take the defaults.
+  void PreProfileInit() override { InstallBrowserDialogPrefDefaults(); }
+};
+
 }  // namespace
 
 BdkContentBrowserClient::BdkContentBrowserClient() = default;
 BdkContentBrowserClient::~BdkContentBrowserClient() = default;
+
+std::unique_ptr<content::BrowserMainParts>
+BdkContentBrowserClient::CreateBrowserMainParts(bool is_integration_test) {
+  std::unique_ptr<content::BrowserMainParts> parts =
+      ChromeContentBrowserClient::CreateBrowserMainParts(is_integration_test);
+  // Chrome's client makes ChromeBrowserMainParts (its platform subclass).
+  static_cast<ChromeBrowserMainParts*>(parts.get())
+      ->AddParts(std::make_unique<BdkBrowserMainExtraParts>());
+  return parts;
+}
 
 std::vector<std::unique_ptr<content::URLLoaderRequestInterceptor>>
 BdkContentBrowserClient::WillCreateURLLoaderRequestInterceptors(
@@ -111,6 +145,7 @@ void BdkContentBrowserClient::CreateThrottlesForNavigation(
   PagesNavigationThrottle::MaybeCreateAndAdd(registry);
   ChromeContentBrowserClient::CreateThrottlesForNavigation(registry);
   registry.AddThrottle(std::make_unique<DevToolsExtensionThrottle>(registry));
+  MaybeAddUserScriptsThrottle(registry);
 }
 
 void BdkContentBrowserClient::RegisterTrustedWebUIInterfaceBrokers(
@@ -155,6 +190,46 @@ std::string BdkContentBrowserClient::GetGeolocationApiKey() {
     return std::string();
   }
   return ChromeContentBrowserClient::GetGeolocationApiKey();
+}
+
+content::BluetoothDelegate* BdkContentBrowserClient::GetBluetoothDelegate() {
+  if (!bluetooth_delegate_) {
+    bluetooth_delegate_ = CreateBluetoothDelegate();
+  }
+  return bluetooth_delegate_.get();
+}
+
+content::UsbDelegate* BdkContentBrowserClient::GetUsbDelegate() {
+  if (!usb_delegate_) {
+    usb_delegate_ = CreateUsbDelegate();
+  }
+  return usb_delegate_.get();
+}
+
+content::SerialDelegate* BdkContentBrowserClient::GetSerialDelegate() {
+  if (!serial_delegate_) {
+    serial_delegate_ = CreateSerialDelegate();
+  }
+  return serial_delegate_.get();
+}
+
+content::HidDelegate* BdkContentBrowserClient::GetHidDelegate() {
+  if (!hid_delegate_) {
+    hid_delegate_ = CreateHidDelegate();
+  }
+  return hid_delegate_.get();
+}
+
+base::OnceClosure BdkContentBrowserClient::SelectClientCertificate(
+    content::BrowserContext* browser_context,
+    content::ChildProcessId process_id,
+    content::WebContents* web_contents,
+    net::SSLCertRequestInfo* cert_request_info,
+    net::ClientCertIdentityList client_certs,
+    std::unique_ptr<content::ClientCertificateDelegate> delegate) {
+  return bdk::SelectClientCertificate(
+      browser_context, web_contents, cert_request_info, std::move(client_certs),
+      std::move(delegate));
 }
 
 }  // namespace bdk

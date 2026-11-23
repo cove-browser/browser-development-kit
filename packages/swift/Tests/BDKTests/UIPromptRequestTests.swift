@@ -49,7 +49,7 @@ extension BDKStubTests {
 
         @Test func aGrantNeedsTheConfirmingEvent() async throws {
             try await withUIFixture { fixture in
-                let request = try fixture.deliver(BDKRawUIRequest.self, BDK_SURFACE_WEBAUTHN)
+                let request = try fixture.deliver(BDKRawUIRequest.self, BDK_SURFACE_SCREEN_CAPTURE)
                 await expectError(.ui, "gestureRequired") { try request.complete("grant") }
                 #expect(!request.isCompleted)
                 try fixture.expectOutcome(.none)

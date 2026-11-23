@@ -91,7 +91,7 @@ struct E2ETests {
                 // The pinned Personal page, which left the window while the other pane had focus,
                 // comes to report hidden once Chromium has seen its view leave. (The pane that had
                 // focus, and a page whose view has never been in a window, still report visible:
-                // T-ADP-10.)
+                // T-ADP-11.)
                 let switched = try await first.waitForStatus(timeout: .seconds(10)) { status in
                     status.pages.contains {
                         $0.space == "Personal" && $0.pinned && !$0.runtimeVisible

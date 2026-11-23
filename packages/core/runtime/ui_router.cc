@@ -637,6 +637,82 @@ bool string_set(const Json& object, const char* key, std::vector<std::string>* o
     return true;
 }
 
+/* Whether the payload's list under key has an entry whose "id" is id. */
+bool offers(const Json& payload, const char* key, const std::string& id) {
+    const Json* list = payload.find(key);
+    if (!list || list->kind != Json::kArray)
+        return false;
+    for (const Json& entry : list->items) {
+        const Json* entry_id = entry.find("id");
+        if (entry_id && entry_id->kind == Json::kString && entry_id->text == id)
+            return true;
+    }
+    return false;
+}
+
+/* WebAuthn (ui-requests.md 5.18): a completion chooses only what the step offers. "grant" chooses
+   an account (and so needs the gesture, as every grant does); "accept" chooses a mechanism, gives
+   the PIN, asks for the other mechanisms or presses the step's own button; "deny" cancels. */
+bdk_status_t check_webauthn(const Request& r, const std::string& completion,
+                            const std::string& arguments, bdk_error_t* err) {
+    if (completion != "accept" && completion != "grant" && completion != "deny")
+        return fail(err, BDK_DOMAIN_UI, "completionNotAllowed",
+                    "a WebAuthn request is completed by accept, grant or deny only");
+    if (completion == "deny")
+        return BDK_OK;
+    Json args;
+    if (!arguments.empty() && (!read_json(arguments, &args) || args.kind != Json::kObject))
+        return BDK_ERR_INVALID_ARGUMENT;
+    Json payload;
+    if (!read_json(r.payload, &payload) || payload.kind != Json::kObject)
+        payload = Json{};
+    auto string_arg = [&](const char* key, std::string* out) -> bdk_status_t {
+        const Json* v = args.find(key);
+        if (!v)
+            return BDK_OK;
+        if (v->kind != Json::kString)
+            return BDK_ERR_INVALID_ARGUMENT;
+        *out = v->text;
+        return BDK_OK;
+    };
+    std::string account, mechanism, pin, action;
+    for (auto [key, out] : {std::pair{"account", &account}, std::pair{"mechanism", &mechanism},
+                            std::pair{"pin", &pin}, std::pair{"action", &action}}) {
+        if (bdk_status_t st = string_arg(key, out))
+            return st;
+    }
+    if (completion == "grant") {
+        if (!offers(payload, "accounts", account))
+            return fail(err, BDK_DOMAIN_UI, "widensRequest",
+                        "a WebAuthn grant chooses one of the accounts the step offers");
+        return BDK_OK;
+    }
+    if (args.find("account"))
+        return fail(err, BDK_DOMAIN_UI, "completionNotAllowed",
+                    "choosing an account is a grant, which needs the gesture");
+    if (args.find("mechanism")) {
+        if (!offers(payload, "mechanisms", mechanism))
+            return fail(err, BDK_DOMAIN_UI, "widensRequest",
+                        "the mechanism \"" + mechanism + "\" is not one the step offers");
+        return BDK_OK;
+    }
+    if (args.find("pin")) {
+        const Json* asks = payload.find("pin");
+        if (!asks || asks->kind != Json::kObject)
+            return fail(err, BDK_DOMAIN_UI, "widensRequest", "the step asks for no PIN");
+        return BDK_OK;
+    }
+    if (args.find("action")) {
+        if (action != "otherMechanisms" || !payload.find("otherMechanismsLabel"))
+            return fail(err, BDK_DOMAIN_UI, "widensRequest",
+                        "the step offers no \"" + action + "\"");
+        return BDK_OK;
+    }
+    if (!payload.find("acceptLabel"))
+        return fail(err, BDK_DOMAIN_UI, "widensRequest", "the step has nothing to accept");
+    return BDK_OK;
+}
+
 } // namespace
 
 bdk_status_t ui_complete(Request& r, const std::string& completion, const std::string& arguments,
@@ -662,6 +738,11 @@ bdk_status_t ui_complete(Request& r, const std::string& completion, const std::s
         if (!overridable || !overridable->is_true())
             return fail(err, BDK_DOMAIN_UI, "notOverridable",
                         "this interstitial cannot be proceeded past");
+    }
+
+    if (r.surface == BDK_SURFACE_WEBAUTHN) {
+        if (bdk_status_t st = check_webauthn(r, completion, arguments, err))
+            return st;
     }
 
     /* A completion accepts a subset of what the request asked for, never more. */

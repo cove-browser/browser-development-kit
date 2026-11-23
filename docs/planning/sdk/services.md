@@ -375,7 +375,7 @@ As built in M7 (the definitions are `interface/contents.json`; the rules are `pa
 | `scripts.unregister` | `contents.script` | N | |
 | `scripts.list` | `contents.read` | N | |
 
-Scripts registered by a session are removed when the session is revoked. As built: kept by the runtime core in memory for the runtime's life (not across a relaunch); `runAt` defaults to `documentIdle` and `world` to an isolated world named like the id; a session may replace or remove only its own, owned by the session itself rather than its name (names may repeat). A user script runs on every page of the profile, so a session whose `scope.contents` is not `"all"` is refused `scripts.register` with `capability.outOfScope`.
+Scripts registered by a session are removed when the session is revoked. As built: kept by the runtime core in memory for the runtime's life (not across a relaunch); `runAt` defaults to `documentIdle` and `world` to an isolated world named like the id; `documentStart` runs as Chrome's `document_start` does, once the document's root element exists and before any of the page's scripts, and a document loaded right after a registration or removal waits for it; a session may replace or remove only its own, owned by the session itself rather than its name (names may repeat). A user script runs on every page of the profile, so a session whose `scope.contents` is not `"all"` is refused `scripts.register` with `capability.outOfScope`.
 
 ### 5.17 `debug`: the DevTools protocol (Plan, M7, T-AUT-03; written in M7; passes on the stub, engine build and test pending (T-AUT-06))
 

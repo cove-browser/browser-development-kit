@@ -27,6 +27,8 @@
 #include "bdk/engine/services/services.h"
 #include "chrome/browser/bookmarks/bookmark_html_writer.h"
 #include "chrome/browser/bookmarks/bookmark_model_factory.h"
+#include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
+#include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"
 #include "chrome/browser/profiles/profile.h"
 #include "components/bookmarks/browser/bookmark_client.h"
 #include "components/bookmarks/browser/bookmark_model.h"
@@ -437,10 +439,17 @@ void Export(const std::shared_ptr<ServiceCall>& c, BookmarkModel&) {
               "another export of these bookmarks is under way");
     return;
   }
+  // The writer answers from a best-effort task, which may run after the
+  // application closed the profile: the export keeps the profile loaded until
+  // then (the call holds it, and Chromium's favicon fetcher points at it),
+  // as BDK keeps an open profile (kBrowserWindow).
+  auto keep_alive = std::make_unique<ScopedProfileKeepAlive>(
+      profile, ProfileKeepAliveOrigin::kBrowserWindow);
   bookmark_html_writer::WriteBookmarks(
       profile, path,
       base::BindPostTaskToCurrentDefault(base::BindOnce(
           [](std::shared_ptr<ServiceCall> c, const Profile* profile,
+             std::unique_ptr<ScopedProfileKeepAlive> keep_alive,
              bookmark_html_writer::Result result) {
             ExportsInFlight().erase(profile);
             if (result == bookmark_html_writer::Result::kSuccess) {
@@ -449,8 +458,10 @@ void Export(const std::shared_ptr<ServiceCall>& c, BookmarkModel&) {
               c->Reject(BDK_DOMAIN_PLATFORM, "failed",
                         "the bookmarks file could not be written");
             }
+            // The call goes before the profile can.
+            c.reset();
           },
-          c, profile)));
+          c, profile, std::move(keep_alive))));
 }
 
 template <ModelHandler handler>

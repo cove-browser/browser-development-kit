@@ -172,11 +172,12 @@ throws `ui.requestCompleted`; completing a withdrawn request does nothing.
 | `extensionPopups`, `extensionSidePanels` | `ExtensionPopupRequest`, `ExtensionSidePanelRequest` | Open requests: `accept()` (popup) and `accept(side:)` (panel) send `bdk_ui_update` `{"placed":true}` and stay open; `side` sends `{"side"}`; `sizeChanges` and `visibilityChanges` come from `bdk_ui_set_update_handler`; `reject()` (deny), `close()` (accept `{"action":"close"}`); `closed` is the request's `cancellation` |
 | `extensionInstalls`, `extensionUninstalls` | `ExtensionInstallRequest`, `ExtensionUninstallRequest` | `accept(confirmedBy:)`, `confirm(confirmedBy:)` (grant), `cancel()` (deny) |
 | `translation` | `TranslationRequest` | `translate(from:to:)`, `revert()`, `always(for:)`, `never(for:)`, `neverForThisSite()`, `dismiss()` (none grants, none needs a gesture) |
-| `deviceChoosers`, `screenCapture`, `webAuthn` | `BDKRawUIRequest` | `complete(_:arguments:confirmedBy:)` with "grant", "deny" or "accept" |
+| `webAuthn` | `WebAuthnRequest`, one per step of a ceremony (same `ceremonyID`; a new step withdraws the last) | `choose(_:)` (accept `{"mechanism"}`), `providePIN(_:)` (accept `{"pin"}`), `chooseAccount(_:confirmedBy:)` (grant `{"account"}`), `accept()` (the step's own button), `useOtherMechanism()` (accept `{"action":"otherMechanisms"}`), `cancel()` (deny); `presentation` and `perform(_:)` describe and answer the step whatever draws it; `qrCodeImage(scale:)`; `cancelAll` as a handler. `BDKWebAuthnSupport.current` says which mechanisms the application can offer and what it lacks for the others |
+| `deviceChoosers`, `screenCapture` | `BDKRawUIRequest` | `complete(_:arguments:confirmedBy:)` with "grant", "deny" or "accept" |
 
 Completion mapping (provisional, settled here for T-UIR-01 to T-UIR-06): a completion that grants (permission, a kept
 dangerous download, a saved password or card, an accepted suggestion, a proceed past an interstitial, opening an
-external protocol, a raw "grant") is `"grant"` and takes the `NSEvent` as the gesture handle. Every other positive
+external protocol, a WebAuthn account, a raw "grant") is `"grant"` and takes the `NSEvent` as the gesture handle. Every other positive
 answer is `"accept"`, every negative one is `"deny"`, and the arguments JSON carries the rest (`{"kinds":[…],
 "duration":"thisVisit"}`, `{"username":…,"password":…}`, `{"paths":[…]}`, `{"action":"perform","item":id}` and so
 on; the code in `Sources/BDK/UI` is the reference until the interface definitions fix them). Completions only

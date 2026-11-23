@@ -60,6 +60,7 @@
 #include "third_party/blink/public/common/page/page_zoom.h"
 #include "third_party/blink/public/common/user_agent/user_agent_metadata.h"
 #include "third_party/blink/public/mojom/frame/fullscreen.mojom.h"
+#include "third_party/blink/public/mojom/mediastream/media_stream.mojom.h"
 #include "third_party/blink/public/mojom/window_features/window_features.mojom.h"
 #include "ui/base/clipboard/scoped_clipboard_writer.h"
 #include "ui/base/page_transition_types.h"
@@ -1084,6 +1085,23 @@ void EngineContents::RequestMediaAccessPermission(
     content::WebContents* web_contents,
     const content::MediaStreamRequest& request,
     content::MediaResponseCallback callback) {
+  // getDisplayMedia: Chrome's source picker is a tab-modal views dialog,
+  // which this page's window cannot parent (it ended the process). Until the
+  // screen_capture surface is built (S3), the request is refused as that
+  // surface's `disabled` mode refuses it: NotAllowedError (T-UIR-10).
+  using blink::mojom::MediaStreamType;
+  for (MediaStreamType type : {request.video_type, request.audio_type}) {
+    if (type == MediaStreamType::DISPLAY_VIDEO_CAPTURE ||
+        type == MediaStreamType::DISPLAY_VIDEO_CAPTURE_THIS_TAB ||
+        type == MediaStreamType::DISPLAY_VIDEO_CAPTURE_SET ||
+        type == MediaStreamType::DISPLAY_AUDIO_CAPTURE) {
+      std::move(callback).Run(
+          blink::mojom::StreamDevicesSet(),
+          blink::mojom::MediaStreamRequestResult::PERMISSION_DENIED,
+          /*ui=*/nullptr);
+      return;
+    }
+  }
   MediaCaptureDevicesDispatcher::GetInstance()->ProcessMediaAccessRequest(
       web_contents, request, std::move(callback), /*extension=*/nullptr);
 }

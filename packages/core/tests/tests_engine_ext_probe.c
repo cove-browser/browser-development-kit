@@ -21,6 +21,9 @@ void bdk_ext_remove_view(bdk_native_handle_t view);
 #define PAGE_A "https://bdk.test/probe/a"
 #define PAGE_B "https://bdk.test/probe/b"
 #define PAGE_C "https://bdk.test/probe/c"
+/* Another origin: Chromium keeps an activeTab grant across navigations within the origin
+   (ActiveTabPermissionGranter::DidFinishNavigation). */
+#define PAGE_OTHER_ORIGIN "https://other.bdk.test/probe/d"
 
 static bdk_profile_t g_profile;
 static bdk_contents_t g_a, g_b;
@@ -63,6 +66,22 @@ static void section(const char* text, const char* from, const char* to, char* ou
         return;
     const char* end = to ? strstr(start, to) : NULL;
     size_t len = end ? (size_t)(end - start) : strlen(start);
+    snprintf(out, n, "%.*s", (int)(len < n ? len : n - 1), start);
+}
+
+/* The first event record of `type` in the probe's events: {"detail":...,"t":...,"type":...}, whose
+   type comes last. */
+static void event_of(const char* events, const char* type, char* out, size_t n) {
+    out[0] = '\0';
+    char key[64];
+    snprintf(key, sizeof key, "\"type\":\"%s\"", type);
+    const char* end = strstr(events, key);
+    if (!end)
+        return;
+    const char* start = end;
+    while (start > events && strncmp(start, "{\"detail\"", 9) != 0)
+        --start;
+    size_t len = (size_t)(end - start) + strlen(key);
     snprintf(out, n, "%.*s", (int)(len < n ? len : n - 1), start);
 }
 
@@ -142,8 +161,10 @@ static void test_engine_ext_probe_focus_fires_on_activated(void) {
     ext_pumps(10);
     probe("events", "{}", out, sizeof out);
     char activated[1024];
-    section(out, "tabs.onActivated", "}", activated, sizeof activated);
+    event_of(out, "tabs.onActivated", activated, sizeof activated);
     CHECK(activated[0] != '\0');
+    if (!mentions_tab(activated, tab_id(g_a)))
+        printf("    tab %d focused; the events were %s\n", tab_id(g_a), out);
     CHECK(mentions_tab(activated, tab_id(g_a)));
 }
 
@@ -225,7 +246,7 @@ static void test_engine_ext_probe_offscreen_pages_in_query(void) {
 }
 
 /* Assertion 5: clicking the action with B focused lets the worker inject into B and not into A;
-   navigating B removes the grant. */
+   navigating B to another origin removes the grant. */
 static void test_engine_ext_probe_action_grants_active_tab_to_one_page(void) {
     setup();
     const int a = tab_id(g_a), b = tab_id(g_b);
@@ -248,7 +269,7 @@ static void test_engine_ext_probe_action_grants_active_tab_to_one_page(void) {
     with_tab("inject", a, out, sizeof out);
     CHECK(ext_has(out, "\"succeeded\":false"));
 
-    load(g_b, PAGE_C);
+    load(g_b, PAGE_OTHER_ORIGIN);
     with_tab("inject", b, out, sizeof out);
     CHECK(ext_has(out, "\"succeeded\":false"));
 }

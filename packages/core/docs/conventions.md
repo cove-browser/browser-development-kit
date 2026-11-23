@@ -132,6 +132,7 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
 | Notices | A request with no `on_finish` (a notice to a custom presenter, such as leaving fullscreen) is delivered at once and never queued. |
 | Dropped | An uncompleted request released by the application finishes `kCancelled`, never granted. |
 | Gesture kind | The core checks that the gesture is an `NSEVENT`. That it is recent and went to a window of this application is the backend's: while a completion's `on_finish` runs, `Request::gesture` holds the borrowed event so the engine can check it (the Chromium engine does: mouse-up or key-down, under 10 s old, delivered to one of the application's windows; anything less grants nothing). `withdraw_ui_request` withdraws one request, for a backend whose own UI went away. |
+| WebAuthn (`webauthn`, T-UIR-09) | One request per step of a ceremony (ui-requests.md 5.18). Completions are `accept`, `grant` and `deny` only (`ui.completionNotAllowed`). `grant` names one of the payload's `accounts` by `id`, and needs the gesture like every grant; `accept` with an `account` is refused (`ui.completionNotAllowed`). `accept` names one of the payload's `mechanisms`, or gives a `pin` where the payload has `pin`, or asks for `{"action":"otherMechanisms"}` where it has `otherMechanismsLabel`, or, with none of these, presses the button of a payload with `acceptLabel`; anything else is `ui.widensRequest`. A non-string `account`, `mechanism`, `pin` or `action` is `BDK_ERR_INVALID_ARGUMENT`. |
 | Extension surfaces | See "Extensions" below. |
 
 ### Extensions (M5)
@@ -157,7 +158,9 @@ where it was silent (2026-11-20):
    `{"side":"leading"|"trailing"}`), and `bdk_ui_set_update_handler` receives the runtime's
    (`{"preferredSize":{"width","height"}}` for a popup, `{"visible":bool}` for a page-scoped panel). Both are
    delivered later and in order; nothing is delivered after the request finishes, and the update handler is released
-   then. With no handler the default presenter shows the view (a transient panel at the extensions anchor; a panel at
+   then. The secure view is the runtime's and lives as long as the request: when the request finishes, the runtime
+   removes the view from the application's container and may destroy it, so the application does not touch it
+   afterwards. With no handler the default presenter shows the view (a transient panel at the extensions anchor; a panel at
    the trailing edge of the page's window).
 4. Payloads. `extension_popups`: `extensionId`, `extensionName`, `url`, `trigger` (`userClick`, `openPopupAPI`,
    `command`), `preferredSize`; `secure_view` is the popup's native view. `extension_side_panels`: `extensionId`,
@@ -188,7 +191,8 @@ where it was silent (2026-11-20):
 7. Gestures from the host. `bdk_extension_action_activate`, `bdk_extension_command_perform` and
    `bdk_extension_menu_present` (`bdk_extensions.h`) take the confirming event, like a granting completion: the core
    checks its kind (`ui.gestureRequired`), the engine that it is recent and went to one of the application's windows.
-   They are functions, not commands, because a command from the host has no gesture to give. Activation is
+   They are functions, not commands, because a command from the host has no gesture to give. An extension that is
+   not installed and enabled is `extension.notFound` before the engine judges the event. Activation is
    synchronous, as Chromium's `ExtensionActionRunner::RunAction` is; a popup or panel follows as a request.
 8. Windows (T-SWF-08). `bdk_window_register` takes `BDK_WINDOW_KIND_NORMAL` or `_POPUP` (anything else is
    `BDK_ERR_INVALID_ARGUMENT`); the engine creates that window's host contexts with the matching `Browser` type, so

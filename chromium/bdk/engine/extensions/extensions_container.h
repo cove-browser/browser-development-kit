@@ -38,8 +38,9 @@ class CommandDispatcher;
 // * `chrome.action.openPopup` finds a container for the window, which makes
 //   `ExtensionActionViewModel::TriggerPopupForAPI` ask this class for a popup.
 // * Activating an action shows its popup here (action_service.cc).
-// * At most one popup is open per window. A new one, a change of the active
-//   page (not a same-document navigation) and `HideActivePopup` close it.
+// * At most one popup is open per window. A new one, another page becoming the
+//   active one and `HideActivePopup` close it; a navigation of the page it was
+//   opened for closes it from the popup itself.
 //
 // It also owns what only a window that shows extensions needs: the object that
 // fires `commands.onCommand` for a page, and the default title-bar button when

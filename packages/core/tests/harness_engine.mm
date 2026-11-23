@@ -28,6 +28,7 @@
 #include "bdk_mac/bdk_application.h"
 #include "bdk_testing.h"
 #include "harness.h"
+#include "harness_engine_windows.h"
 extern "C" {
 #include "test_support.h"
 }
@@ -61,6 +62,10 @@ void RemoveDataDir() {
     }
 }
 
+} // namespace
+
+namespace bdk_harness {
+
 /* BDK_ENGINE_SILENT=1 runs the suite without getting in the way of whoever is using the Mac: the
    harness never activates, has no Dock icon or menu bar, keeps its windows behind every other
    window and never takes them fullscreen. Chromium is told to keep drawing a hidden page, as
@@ -75,7 +80,6 @@ bool Silent() {
     return silent;
 }
 
-/* A harness window, which a silent run keeps out of fullscreen (its own Space). */
 NSWindow* NewWindow(NSRect frame, NSWindowStyleMask style) {
     NSWindow* window = [[NSWindow alloc] initWithContentRect:frame
                                                    styleMask:style
@@ -102,7 +106,11 @@ void ShowWindow(NSWindow* window, bool key) {
         [window orderFront:nil];
 }
 
-} // namespace
+} // namespace bdk_harness
+
+using bdk_harness::NewWindow;
+using bdk_harness::ShowWindow;
+using bdk_harness::Silent;
 
 extern "C" {
 
@@ -766,6 +774,9 @@ int main(int argc, char** argv) {
         setvbuf(stdout, nullptr, _IOLBF, 0);
         setenv("BDK_ENGINE_KEEP_CHROMIUM", "1", 1);
         setenv("BDK_ENGINE_MOCK_KEYCHAIN", "1", 1);
+        /* A name that is not localhost for the loopback servers of the scenarios: Chromium
+           applies no HSTS to *.localhost. */
+        setenv("BDK_ENGINE_HOST_RESOLVER_RULES", "MAP hsts.bdk.test 127.0.0.1", 0);
         /* Chromium refuses fullscreen to a page whose window is not key, and offers autofill
            suggestions only to a view that has focus (which on macOS includes being in the key
            window). macOS does not let a process make itself frontmost while another application

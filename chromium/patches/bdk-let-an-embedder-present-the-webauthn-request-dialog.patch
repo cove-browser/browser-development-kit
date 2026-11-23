@@ -1,0 +1,103 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BDK Patches <patches@bdk.invalid>
+Date: Sun, 22 Nov 2026 12:00:00 -0800
+Subject: [PATCH] bdk: let an embedder present the WebAuthn request dialog
+
+The WebAuthn dialog is created by
+AuthenticatorRequestDialogViewController::Create(), which always makes
+the tab-modal views dialog. A BDK page has a
+WebContentsModalDialogManager (its tab helpers attach one) but its
+window is not a views widget, so the dialog's widget has no parent host
+and the process ends at a DCHECK in native_widget_mac.mm (a tab-modal
+widget needs a parent). Any navigator.credentials call that needs UI
+took the embedding application down. BDK raises each step of the
+request as a UI request instead, so that the application can show its
+own UI, with a native sheet as the default.
+
+Add embedder_authenticator_dialog_factory.h, a small header with a
+settable factory (inline, no new target), and ask it first in Create().
+A null return shows nothing, as when Chrome finds no dialog manager.
+With no factory Chrome is unchanged. Only the views controller and the
+new header change, so nothing widely included is touched, and the
+request's model, steps and delegate are Chrome's own.
+
+Used by: the BDK engine (//bdk/engine/ui_webauthn.cc).
+---
+ ...or_request_dialog_view_controller_views.cc |  5 +++
+ .../embedder_authenticator_dialog_factory.h   | 45 +++++++++++++++++++
+ 2 files changed, 50 insertions(+)
+
+diff --git a/chrome/browser/ui/views/webauthn/authenticator_request_dialog_view_controller_views.cc b/chrome/browser/ui/views/webauthn/authenticator_request_dialog_view_controller_views.cc
+index 427ded25ec4543b07d552b8b5e04b7e84d6fa700..f24d88038407bd67c0c4d3996b1c4a721351c874 100644
+--- a/chrome/browser/ui/views/webauthn/authenticator_request_dialog_view_controller_views.cc
++++ b/chrome/browser/ui/views/webauthn/authenticator_request_dialog_view_controller_views.cc
+@@ -11,6 +11,7 @@
+ #include "chrome/browser/ui/views/extensions/security_dialog_tracker.h"
+ #include "chrome/browser/ui/views/webauthn/authenticator_request_dialog_view.h"
+ #include "chrome/browser/ui/views/webauthn/authenticator_request_sheet_view.h"
++#include "chrome/browser/ui/views/webauthn/embedder_authenticator_dialog_factory.h"
+ #include "chrome/browser/ui/views/webauthn/sheet_view_factory.h"
+ #include "chrome/browser/ui/webauthn/authenticator_request_dialog_view_controller.h"
+ #include "components/constrained_window/constrained_window_views.h"
+@@ -22,6 +23,10 @@ std::unique_ptr<AuthenticatorRequestDialogViewController>
+ AuthenticatorRequestDialogViewController::Create(
+     content::WebContents* web_contents,
+     AuthenticatorRequestDialogModel* model) {
++  if (const auto& factory =
++          embedder_authenticator_dialog_factory::GetFactory()) {
++    return factory.Run(web_contents, model);
++  }
+   // The authenticator request dialog will only be shown for common user-facing
+   // WebContents, which have a |manager|. Most other sources without managers,
+   // like service workers and extension background pages, do not allow WebAuthn
+diff --git a/chrome/browser/ui/views/webauthn/embedder_authenticator_dialog_factory.h b/chrome/browser/ui/views/webauthn/embedder_authenticator_dialog_factory.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..4584ffe9c3da6a44c0fd52f852526fce28755212
+--- /dev/null
++++ b/chrome/browser/ui/views/webauthn/embedder_authenticator_dialog_factory.h
+@@ -0,0 +1,45 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_VIEWS_WEBAUTHN_EMBEDDER_AUTHENTICATOR_DIALOG_FACTORY_H_
++#define CHROME_BROWSER_UI_VIEWS_WEBAUTHN_EMBEDDER_AUTHENTICATOR_DIALOG_FACTORY_H_
++
++#include <memory>
++#include <utility>
++
++#include "base/functional/callback.h"
++#include "base/no_destructor.h"
++#include "chrome/browser/ui/webauthn/authenticator_request_dialog_view_controller.h"
++
++struct AuthenticatorRequestDialogModel;
++
++namespace content {
++class WebContents;
++}
++
++// A hook for Chromium embedders that show the WebAuthn request dialog in UI
++// of their own. When a factory is set,
++// AuthenticatorRequestDialogViewController::Create() returns what it makes
++// instead of the tab-modal views dialog; a null return shows nothing, as when
++// Chrome finds no WebContentsModalDialogManager. With no factory Chrome is
++// unchanged. Only embedders set one, once, before any request is made.
++namespace embedder_authenticator_dialog_factory {
++
++using Factory = base::RepeatingCallback<
++    std::unique_ptr<AuthenticatorRequestDialogViewController>(
++        content::WebContents* web_contents,
++        AuthenticatorRequestDialogModel* model)>;
++
++inline Factory& GetFactory() {
++  static base::NoDestructor<Factory> factory;
++  return *factory;
++}
++
++inline void SetFactory(Factory factory) {
++  GetFactory() = std::move(factory);
++}
++
++}  // namespace embedder_authenticator_dialog_factory
++
++#endif  // CHROME_BROWSER_UI_VIEWS_WEBAUTHN_EMBEDDER_AUTHENTICATOR_DIALOG_FACTORY_H_

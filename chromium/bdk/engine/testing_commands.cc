@@ -24,9 +24,13 @@
 #include "base/files/file_util.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
+#include "base/location.h"
 #include "base/metrics/field_trial_params.h"
+#include "base/no_destructor.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/threading/thread_restrictions.h"
 #include "base/time/time.h"
 #include "base/values.h"
@@ -46,8 +50,11 @@
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_find.h"
 #include "bdk/engine/ui_presenters.h"
+#include "bdk/engine/webauthn_testing.h"
+#include "chrome/browser/after_startup_task_utils.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/dialogs/browser_dialogs.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/heavy_ad_intervention/heavy_ad_features.h"
 #include "components/prefs/pref_service.h"
@@ -57,6 +64,8 @@
 #include "services/device/public/cpp/device_features.h"
 #include "services/device/public/mojom/geolocation_internals.mojom.h"
 #include "services/network/public/mojom/network_context.mojom.h"
+#include "ui/base/models/dialog_model.h"
+#include "ui/base/mojom/dialog_button.mojom.h"
 #include "url/gurl.h"
 
 namespace bdk {
@@ -65,6 +74,49 @@ namespace {
 
 // 0 nothing started or still running, 1 written, 2 failed.
 int g_capture_state = 0;
+
+// Whether the task startup.post posted has run.
+bool& AfterStartupTaskRan() {
+  static bool ran = false;
+  return ran;
+}
+
+// What happened to the last dialog dialogs.tab_modal showed: "accepted",
+// "cancelled" or "closed" (empty while open), and whether the model is gone.
+struct TabModalOutcome {
+  std::string result;
+  bool destroyed = false;
+};
+
+TabModalOutcome& LastTabModal() {
+  static base::NoDestructor<TabModalOutcome> outcome;
+  return *outcome;
+}
+
+// A dialog model as File System Access and DevTools build theirs: a title, a
+// paragraph, OK and Cancel, given to chrome::ShowTabModal.
+void ShowTestTabModal(content::WebContents* contents,
+                      const std::string& title,
+                      const std::string& text,
+                      bool default_cancel) {
+  LastTabModal() = TabModalOutcome();
+  auto set = [](const char* result) {
+    return base::BindOnce(
+        [](const char* value) { LastTabModal().result = value; }, result);
+  };
+  ui::DialogModel::Builder builder;
+  builder.SetTitle(base::UTF8ToUTF16(title))
+      .AddParagraph(ui::DialogModelLabel(base::UTF8ToUTF16(text)))
+      .AddOkButton(set("accepted"))
+      .AddCancelButton(set("cancelled"))
+      .SetCloseActionCallback(set("closed"))
+      .SetDialogDestroyingCallback(
+          base::BindOnce([] { LastTabModal().destroyed = true; }));
+  if (default_cancel) {
+    builder.OverrideDefaultButton(ui::mojom::DialogButton::kCancel);
+  }
+  chrome::ShowTabModal(builder.Build(), contents);
+}
 
 EngineContents* PageOf(const base::DictValue& args) {
   const std::string* handle = args.FindString("contents");
@@ -205,6 +257,20 @@ bool Run(const std::string& name,
     result.Set("store", on_disk ? "disk" : "memory");
     return true;
   }
+  if (name == "startup.post") {
+    // Posts a task the way Chromium posts its after-start-up work
+    // (AfterStartupTaskUtils::PostTask, T-ADP-10); startup.state says whether
+    // it ran.
+    AfterStartupTaskUtils::PostTask(
+        FROM_HERE, base::SequencedTaskRunner::GetCurrentDefault(),
+        base::BindOnce([] { AfterStartupTaskRan() = true; }));
+    return true;
+  }
+  if (name == "startup.state") {
+    result.Set("complete", AfterStartupTaskUtils::IsBrowserStartupComplete());
+    result.Set("ran", AfterStartupTaskRan());
+    return true;
+  }
   if (name == "capture.start") {
     // {"contents", "path", "format": "png" | "pdf"}; poll capture.state.
     EngineContents* page = PageOf(args);
@@ -257,6 +323,9 @@ bool Run(const std::string& name,
   }
   if (name.starts_with("extui.")) {
     return RunExtensionUiTestCommand(name, args, result);
+  }
+  if (name.starts_with("webauthn.")) {
+    return RunWebAuthnTestingCommand(name, args, result);
   }
   if (name == "reputation.list") {
     // {"json"}: the default provider's list, as a checked download would load
@@ -322,6 +391,41 @@ bool Run(const std::string& name,
     result.Set("hosts", std::move(list));
     return true;
   }
+  if (name == "pref.set") {
+    // {"contents", "name", "value"}: sets the Chromium preference `name` of
+    // the page's profile to the JSON value.
+    EngineContents* page = PageOf(args);
+    const std::string* pref_name = args.FindString("name");
+    const base::Value* value = args.Find("value");
+    if (!page || !pref_name || !value) {
+      return false;
+    }
+    PrefService* prefs = ProfileOf(*page->Core())->GetPrefs();
+    const PrefService::Preference* pref = prefs->FindPreference(*pref_name);
+    if (!pref || pref->GetType() != value->type()) {
+      return false;
+    }
+    prefs->Set(*pref_name, value->Clone());
+    return true;
+  }
+  if (name == "dialogs.tab_modal") {
+    // {"contents", "title", "text", "defaultCancel"}: a dialog model through
+    // chrome::ShowTabModal; poll dialogs.tab_modal.result.
+    EngineContents* page = PageOf(args);
+    const std::string* title = args.FindString("title");
+    const std::string* text = args.FindString("text");
+    if (!page || !title || !text) {
+      return false;
+    }
+    ShowTestTabModal(page->web_contents(), *title, *text,
+                     args.FindBool("defaultCancel").value_or(false));
+    return true;
+  }
+  if (name == "dialogs.tab_modal.result") {
+    result.Set("result", LastTabModal().result);
+    result.Set("destroyed", LastTabModal().destroyed);
+    return true;
+  }
   if (name == "hsts.add") {
     // {"contents", "host"}: the page's profile treats the host as HSTS, so a
     // certificate error there is not overridable (T-UIR-07).
@@ -335,6 +439,16 @@ bool Run(const std::string& name,
         ->GetNetworkContext()
         ->AddHSTS(*host, base::Time::Now() + base::Days(1),
                   /*include_subdomains=*/false, base::DoNothing());
+    return true;
+  }
+  if (name == "network.passthrough") {
+    // {"host"}: loads from the host go to the network, not to the scripted
+    // pages (a test's own server on a name mapped to the loopback address).
+    const std::string* host = args.FindString("host");
+    if (!host) {
+      return false;
+    }
+    PassThroughHostForTesting(*host);
     return true;
   }
   if (name == "script_page") {
