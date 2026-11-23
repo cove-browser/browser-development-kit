@@ -275,8 +275,11 @@ class AccountChooserSheet : public AccountChooserPrompt {
     if (!controller_) {
       return;
     }
-    // Either call may destroy this prompt.
-    CredentialManagerDialogController* controller = controller_;
+    // Each answer may end the controller: OnCloseDialog has its delegate
+    // destroy it at once and deletes this prompt only later, without
+    // ControllerGone(), so the pointer is dropped first.
+    CredentialManagerDialogController* controller = controller_.get();
+    controller_ = nullptr;
     if (index >= 0 && static_cast<size_t>(index) < shown_) {
       controller->OnChooseCredentials(
           *controller->GetLocalForms()[index],
@@ -328,7 +331,9 @@ class AutoSigninSheet : public AutoSigninFirstRunPrompt {
     if (!controller_) {
       return;
     }
-    CredentialManagerDialogController* controller = controller_;
+    // As in the account chooser, each answer may end the controller.
+    CredentialManagerDialogController* controller = controller_.get();
+    controller_ = nullptr;
     if (index == 0) {
       controller->OnAutoSigninOK();
     } else if (index == 1) {
