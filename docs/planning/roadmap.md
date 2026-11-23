@@ -217,7 +217,7 @@ Exit criteria: representative real extensions, including a content blocker, a pa
 | T-SWF-08 | Done against the stub (Swift `runtime.windows.register`, `BDKWindow`, anchors, delegate, `page.window`); the engine's window kinds, attachments, anchors and window requests are written, engine build and test pending. The parking context is hidden from the extension windows API by a patch. | swift-api.md 8.1; `packages/swift/README.md` |
 | T-EXT-01 | Written, engine build and test pending: assertions 1 to 5, 7 and 10, and decision D1 (a), in `tests_engine_ext_probe.c`; 6, 8 and 9 are the popup, context-menu and side-panel scenarios. Settled from the source while writing it: Chromium lists the parking context in `windows.getAll` and fires `windows.onCreated` for it, so it is hidden. | [feasibility.md](feasibility.md) section 3 |
 
-Not done, each a task: a handled popup's size updates after it grows (T-EXT-02, M5); the context-menu scenarios on an unlocked screen (T-EXT-04, M5); the 25 matrix scenarios with no engine test yet and the run of the three real extensions (T-EXT-10, M5); `extensions.inspectView` (T-EXT-11, M5); a new page opened from extension UI (an options page, "Manage Extensions", a link in a popup) is dropped when the application has no new-window handler (T-EXT-12, M5); the store update check when the store is off (T-EXT-13, M6, where the network audit is). `developer_mode`, `blocklist` and `[extensions.bundled]` (S6) wait for the product owner's acceptance of those additions and are not read (T-EXT-14, M9).
+Not done, each a task: a handled popup's size updates after it grows (T-EXT-02, M5); the context-menu scenarios on an unlocked screen (T-EXT-04, M5); the 25 matrix scenarios with no engine test yet and the run of the three real extensions (T-EXT-10, M5); `extensions.inspectView` (T-EXT-11, M5); a new page opened from extension UI (an options page, "Manage Extensions", a link in a popup) is dropped when the application has no new-window handler (T-EXT-12, M5; written 2026-11-23, engine scenario not yet run); the store update check when the store is off (T-EXT-13, M6, where the network audit is). `developer_mode`, `blocklist` and `[extensions.bundled]` (S6) wait for the product owner's acceptance of those additions and are not read (T-EXT-14, M9).
 
 ### M6 — Providers and privacy (public v1 gate)
 
@@ -420,7 +420,8 @@ Each was fixed where it was; the commit messages give the detail.
 |---|---|---|
 | T-AUT-07, T-JS-06 | M8 | The M8 session, in progress |
 | T-EXT-10 | M5 | Nothing now that 56 of the 59 pass (the three left are above); the remaining matrix scenarios and the three real extensions |
-| T-CLI-06, T-JS-05, T-SWF-09, T-EXT-11, T-EXT-12 | M5 | Nothing; features not yet built, after the fix-up |
+| T-CLI-06, T-JS-05, T-SWF-09, T-EXT-11 | M5 | Nothing; features not yet built, after the fix-up |
+| T-EXT-12 | M5 | An engine build: written 2026-11-23, `engine_a_defaulted_new_window_opens_in_the_default_presenter` not yet run |
 | T-SVC-11 | M5 | The product owner confirming S12 |
 | T-EXT-13, T-WUI-07, T-PRV-12 | M6 | Nothing; Google-contact work proved by the network audit, after the fix-up |
 | T-PRV-10 | M6 | The product owner confirming S1 |

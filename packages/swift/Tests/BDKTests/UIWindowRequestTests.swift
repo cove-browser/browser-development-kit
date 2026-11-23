@@ -58,7 +58,7 @@ extension BDKStubTests {
                 let payload = """
                     {"kind":"popup","disposition":"popup","targetURL":"https://p.test/",\
                     "opener":"\(fixture.page.id.rawValue)","newContents":"\(created.id.rawValue)",\
-                    "features":{"width":300,"height":200},"isUserGesture":true}
+                    "features":{"width":300,"height":200},"userGesture":true}
                     """
                 var request = try fixture.deliver(
                     NewWindowRequest.self, BDK_SURFACE_NEW_WINDOWS, payload)

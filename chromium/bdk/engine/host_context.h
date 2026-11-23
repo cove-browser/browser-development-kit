@@ -14,6 +14,7 @@
 #include "base/memory/weak_ptr.h"
 #include "base/no_destructor.h"
 #include "bdk/core/include/bdk/bdk_base.h"
+#include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
 
 class Browser;
 class BrowserWindowInterface;
@@ -47,9 +48,15 @@ class HostContexts;
 // between contexts only through the tab model (`Release` then `Add`), so its
 // tab and the services attached to it survive, and the tab's session
 // identifier, which the extension tab identifier derives from, stays.
-class HostContext {
+//
+// A tab Chromium puts in the context itself (a link in an extension popup goes
+// through Browser::OpenURL to the popup's Browser, which is a host context) is
+// no page of BDK's. The context hands it to EngineContents::AdoptForeignTab,
+// which makes it a page and asks the application where it goes, as a
+// new-window request.
+class HostContext : public TabStripModelObserver {
  public:
-  ~HostContext();
+  ~HostContext() override;
 
   // Null once Chromium has destroyed the Browser on its own.
   Browser* browser() const;
@@ -70,6 +77,9 @@ class HostContext {
   void Add(std::unique_ptr<tabs::TabModel> tab);
   // Detaches the page's tab for insertion into another context.
   std::unique_ptr<tabs::TabModel> Release(content::WebContents* contents);
+  // Detaches the tab and takes its WebContents out of it: for a tab that
+  // Chromium inserted, which becomes a page of its own.
+  std::unique_ptr<content::WebContents> Take(content::WebContents* contents);
   // Replaces the page's WebContents in its tab (restore, discard) and returns
   // the old one.
   std::unique_ptr<content::WebContents> Replace(
@@ -85,6 +95,12 @@ class HostContext {
   friend class HostContexts;
 
   HostContext(Profile* profile, const bdkcore::Window* window);
+
+  // TabStripModelObserver:
+  void OnTabStripModelChanged(
+      TabStripModel* tab_strip_model,
+      const TabStripModelChange& change,
+      const TabStripSelectionChange& selection) override;
 
   raw_ptr<Profile> profile_;
   raw_ptr<const bdkcore::Window> window_;

@@ -89,6 +89,11 @@ class EngineContents : public bdkcore::BackendData,
   // or null when none did (an extension's options page opened by a command);
   // `initiator_extension_id` names the extension that asked, or is empty.
   // Returns the new page, or null when the profile cannot host one.
+  // A tab Chromium inserted in a host context by itself (a link in an
+  // extension popup, which Chromium opens in the popup's Browser): unless a
+  // page holds it by now, it becomes a page, and a new-window request asks
+  // the application where it goes (T-EXT-12).
+  static void AdoptForeignTab(base::WeakPtr<content::WebContents> contents);
   static EngineContents* RequestNewPage(
       const std::shared_ptr<bdkcore::Profile>& profile,
       const std::shared_ptr<bdkcore::Contents>& opener,
@@ -222,10 +227,19 @@ class EngineContents : public bdkcore::BackendData,
   void ActivateTab();
   // The front end of this page opened or closed: devtools.stateChanged.
   void NotifyDevTools(bool open);
-  // For a front-end page: closes it. In the default presenter's window it
-  // belongs to no one, so it is destroyed; a page the application placed is
-  // asked to close, as window.close() does.
-  void CloseFrontEnd();
+  // Shows the page in a window of BDK's own: the default presenter of
+  // `surface` (devtools or new_windows). Closing the window destroys the page.
+  void ShowInOwnWindow(const std::string& surface,
+                       const std::string& title,
+                       int width,
+                       int height);
+  // Closes the page. In the default presenter's window it belongs to no one,
+  // so it is destroyed; a page the application placed is asked to close, as
+  // window.close() does.
+  void CloseShownPage();
+  // Destroys the page after the current task: for a page in the default
+  // presenter's window, which no application owns.
+  void DestroySoon();
   // Asks the application to close this page, as window.close() does.
   void RequestClose();
   // Wraps `new_contents` as a page in the same profile and asks the
@@ -250,13 +264,14 @@ class EngineContents : public bdkcore::BackendData,
   std::unique_ptr<PageFind> find_;
   // Owned by its tab model, in a host context.
   raw_ptr<content::WebContents> web_contents_ = nullptr;
-  // For a DevTools front-end page: the bindings to the page it inspects, and
-  // the default presenter's window while it shows the page.
+  // For a DevTools front-end page: the bindings to the page it inspects.
   std::unique_ptr<DevToolsFrontend> devtools_;
   // The extension items of the context menu raised last, kept until a later
   // menu replaces them so that performing one can run it.
   std::unique_ptr<ExtensionMenuItems> extension_menu_items_;
-  base::OnceClosure devtools_window_;
+  // The default presenter's window while it shows the page (a DevTools front
+  // end, or a new page no handler placed); running it closes the window.
+  base::OnceClosure own_window_;
   // For an inspected page: the page of its open front end.
   base::WeakPtr<EngineContents> devtools_page_;
   std::string user_agent_;

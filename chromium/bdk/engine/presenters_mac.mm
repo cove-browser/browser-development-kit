@@ -1023,21 +1023,25 @@ class PresentersMac : public UiPresenters {
     });
   }
 
-  Dismisser ShowPageWindow(HostView* view,
+  Dismisser ShowPageWindow(const std::string& surface,
+                           HostView* view,
                            const std::string& title,
+                           int width,
+                           int height,
                            base::OnceClosure closed) override {
     NSView* page = AnchorOf(view);
     if (!page) {
       return base::DoNothing();
     }
-    NSWindow* window =
-        [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 960, 640)
-                                    styleMask:NSWindowStyleMaskTitled |
-                                              NSWindowStyleMaskClosable |
-                                              NSWindowStyleMaskMiniaturizable |
-                                              NSWindowStyleMaskResizable
-                                      backing:NSBackingStoreBuffered
-                                        defer:NO];
+    NSWindow* window = [[NSWindow alloc]
+        initWithContentRect:NSMakeRect(0, 0, width > 0 ? width : 960,
+                                       height > 0 ? height : 640)
+                  styleMask:NSWindowStyleMaskTitled |
+                            NSWindowStyleMaskClosable |
+                            NSWindowStyleMaskMiniaturizable |
+                            NSWindowStyleMaskResizable
+                    backing:NSBackingStoreBuffered
+                      defer:NO];
     window.releasedWhenClosed = NO;
     window.title = base::SysUTF8ToNSString(title);
     [page removeFromSuperview];
@@ -1046,8 +1050,8 @@ class PresentersMac : public UiPresenters {
     [window.contentView addSubview:page];
     [window center];
     [window makeKeyAndOrderFront:nil];
-    // The person closing the window closes the front end; the dismisser
-    // closes the window without asking again.
+    // The person closing the window closes the page; the dismisser closes
+    // the window without asking again.
     auto pending = std::make_shared<base::OnceClosure>(std::move(closed));
     id observer = [NSNotificationCenter.defaultCenter
         addObserverForName:NSWindowWillCloseNotification

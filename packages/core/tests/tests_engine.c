@@ -174,6 +174,35 @@ static void test_engine_a_rejected_new_window_is_destroyed(void) {
     CHECK(bdk_contents_destroy(popup) == BDK_ERR_STALE_HANDLE);
 }
 
+/* Left to BDK (no handler, or use-default), the new page is shown by the default presenter in a
+   window of BDK's own, at the size window.open asked for, instead of being dropped (T-EXT-12). */
+static void test_engine_a_defaulted_new_window_opens_in_the_default_presenter(void) {
+    reset_logs();
+    g_new_windows.response = BDK_UI_USE_DEFAULT;
+    bdk_contents_t c = start_with_page();
+    char record[512];
+    REQUIRE(bdk_testing_command(t_runtime, S("present.script"),
+                                S("{\"surface\":\"new_windows\",\"answer\":{\"none\":true}}"), NULL,
+                                0) == BDK_OK);
+    run_script(c, "window.open('https://bdk.test/defaulted', '_blank', 'width=320,height=240')", 1);
+    REQUIRE(g_new_windows.calls == 1);
+    bdk_contents_t popup = new_contents_of(g_new_windows.payload);
+    for (int i = 0; i < 10; ++i)
+        t_pump();
+    REQUIRE(bdk_testing_command(t_runtime, S("present.record"), S("{\"surface\":\"new_windows\"}"),
+                                record, sizeof record) == BDK_OK);
+    CHECK(strstr(record, "\"shown\":1") != NULL);
+    CHECK(strstr(record, "\"width\":320") != NULL);
+    CHECK(strstr(record, "\"height\":240") != NULL);
+    CHECK(wait_for_title(popup, "https://bdk.test/defaulted"));
+    /* Nobody owns a page in BDK's window: window.close() closes it and destroys the page. */
+    run_script(popup, "window.close()", 1);
+    for (int i = 0; i < 20; ++i)
+        t_pump();
+    CHECK(bdk_contents_destroy(popup) == BDK_ERR_STALE_HANDLE);
+    bdk_testing_command(t_runtime, S("present.clear"), S("{}"), NULL, 0);
+}
+
 /* ---- context menus (T-MAC-05) ---- */
 
 static void test_engine_a_right_click_on_a_link_raises_a_context_menu_with_link_items(void) {
@@ -1329,6 +1358,8 @@ const t_test_t t_engine_tests[] = {
     {"engine_window_open_without_features_raises_a_new_page_request",
      test_engine_window_open_without_features_raises_a_new_page_request},
     {"engine_a_rejected_new_window_is_destroyed", test_engine_a_rejected_new_window_is_destroyed},
+    {"engine_a_defaulted_new_window_opens_in_the_default_presenter",
+     test_engine_a_defaulted_new_window_opens_in_the_default_presenter},
     {"engine_a_right_click_on_a_link_raises_a_context_menu_with_link_items",
      test_engine_a_right_click_on_a_link_raises_a_context_menu_with_link_items},
     {"engine_a_right_click_on_the_page_offers_navigation_items",

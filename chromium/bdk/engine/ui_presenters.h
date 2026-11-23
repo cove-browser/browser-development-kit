@@ -142,13 +142,18 @@ class UiPresenters {
       HostView* view,
       const std::string& suggested_name,
       base::OnceCallback<void(std::optional<std::string>)> answer) = 0;
-  // The devtools surface's default (ui-requests.md 5.15): an undocked window
-  // of BDK's own that shows `view`, the DevTools front end's page, titled
-  // `title`. `closed` runs when the person closes the window; running the
-  // dismisser closes it without calling `closed`. A script answers
+  // The default of the devtools and new_windows surfaces (ui-requests.md
+  // 5.15 and 5.6): a window of BDK's own that shows `view`, a page (the
+  // DevTools front end, or the page a link or window.open made), titled
+  // `title`, its content `width` by `height` points (0 for BDK's own size).
+  // `closed` runs when the person closes the window; running the dismisser
+  // closes it without calling `closed`. A script for `surface` answers
   // {"answer":"close"} to close it as the person would.
-  virtual Dismisser ShowPageWindow(HostView* view,
+  virtual Dismisser ShowPageWindow(const std::string& surface,
+                                   HostView* view,
                                    const std::string& title,
+                                   int width,
+                                   int height,
                                    base::OnceClosure closed) = 0;
   // payload: one step of a webauthn request (ui-requests.md 5.18). `answer`
   // gets what the person chose as the completion a handler would give:
