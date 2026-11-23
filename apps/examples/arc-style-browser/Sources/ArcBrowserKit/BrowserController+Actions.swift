@@ -140,6 +140,29 @@ extension BrowserController {
         return page
     }
 
+    // MARK: History
+
+    /// What the Go menu does to the focused page.
+    public enum HistoryCommand: Sendable {
+        case reload
+        case back
+        case forward
+    }
+
+    /// Reloads the focused page, or moves it through its history. A page whose renderer went away
+    /// comes back by reloading. Going back or forward with nowhere to go does nothing.
+    public func perform(_ command: HistoryCommand) throws {
+        guard let page = registry.pages[try focusedPage()] else {
+            throw ActionFailure.noFocusedPage
+        }
+        let navigation = page.navigation
+        switch command {
+        case .reload: try navigation.reload()
+        case .back: if try navigation.canGoBack { try navigation.goBack() }
+        case .forward: if try navigation.canGoForward { try navigation.goForward() }
+        }
+    }
+
     // MARK: Extensions
 
     /// Installs an unpacked extension in the focused space's profile. BDK's install prompt asks

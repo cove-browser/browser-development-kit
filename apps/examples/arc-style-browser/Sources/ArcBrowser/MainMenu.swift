@@ -31,8 +31,19 @@ enum MainMenu {
 
         let view = NSMenu(title: "View")
         item(in: view, "Split with Next Page", #selector(AppDelegate.splitNext(_:)), "d", target)
-        item(in: view, "Next Space", #selector(AppDelegate.nextSpace(_:)), "]", target)
+        let nextSpace = view.addItem(
+            withTitle: "Next Space", action: #selector(AppDelegate.nextSpace(_:)),
+            keyEquivalent: "\u{F703}")  // NSRightArrowFunctionKey
+        nextSpace.keyEquivalentModifierMask = [.command, .option]
+        nextSpace.target = target
         bar.addItem(submenu: view, title: "View")
+
+        // The focused page's history; ⌘[ and ⌘] as in Safari and Arc.
+        let history = NSMenu(title: "Go")
+        item(in: history, "Reload Page", #selector(AppDelegate.reload(_:)), "r", target)
+        item(in: history, "Back", #selector(AppDelegate.goBack(_:)), "[", target)
+        item(in: history, "Forward", #selector(AppDelegate.goForward(_:)), "]", target)
+        bar.addItem(submenu: history, title: "Go")
 
         let tools = NSMenu(title: "Tools")
         item(

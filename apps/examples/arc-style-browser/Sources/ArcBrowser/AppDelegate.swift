@@ -112,6 +112,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func splitNext(_ sender: Any?) { run { try $0.splitNext() } }
     @objc func closePage(_ sender: Any?) { run { try await $0.perform(.closePage) } }
+    @objc func reload(_ sender: Any?) {
+        run { try $0.perform(BrowserController.HistoryCommand.reload) }
+    }
+    @objc func goBack(_ sender: Any?) {
+        run { try $0.perform(BrowserController.HistoryCommand.back) }
+    }
+    @objc func goForward(_ sender: Any?) {
+        run { try $0.perform(BrowserController.HistoryCommand.forward) }
+    }
 
     @objc func installExtension(_ sender: Any?) {
         let panel = NSOpenPanel()
