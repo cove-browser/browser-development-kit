@@ -15,6 +15,7 @@ public final class BrowserWindow: NSObject, NSWindowDelegate {
     let sidePanel = SidePanelContainer()
     public private(set) var registered: BDKWindow?
     private(set) var panes: [PaneView] = []
+    private var focusedPane = 0
 
     var onPaneFocused: (Int) -> Void = { _ in }
     var onClose: () -> Void = {}
@@ -71,18 +72,29 @@ public final class BrowserWindow: NSObject, NSWindowDelegate {
         }
         panes = pages.enumerated().map { index, page in
             let pane = kept.first { $0.page === page } ?? PaneView(page: page)
-            pane.onFocus = { [weak self] in self?.onPaneFocused(index) }
+            pane.onFocus = { [weak self] in
+                self?.focusedPane = index
+                self?.updateTitle()
+                self?.onPaneFocused(index)
+            }
+            pane.onTitleChange = { [weak self] in self?.updateTitle() }
             return pane
         }
+        focusedPane = focused
         for view in paneArea.arrangedSubviews { paneArea.removeArrangedSubview(view) }
         for (index, pane) in panes.enumerated() {
             paneArea.addArrangedSubview(pane)
             pane.isFocused = index == focused
         }
-        window.title =
-            panes.indices.contains(focused) ? panes[focused].page.title : "Arc-style Browser"
+        updateTitle()
         // Lay out now, so a page's view has its size before anyone asks whether it is on screen.
         window.contentView?.layoutSubtreeIfNeeded()
+    }
+
+    /// The window's title is the focused pane's: its page's title, or its address before it has one.
+    private func updateTitle() {
+        let title = panes.indices.contains(focusedPane) ? panes[focusedPane].title : ""
+        window.title = title.isEmpty ? "Arc-style Browser" : title
     }
 
     /// Gives the focused pane's page the keyboard, when this is the key window.
@@ -115,6 +127,8 @@ public final class BrowserWindow: NSObject, NSWindowDelegate {
 final class PaneView: NSStackView {
     let page: BDKWebContents
     var onFocus: () -> Void = {}
+    /// Called when the header's text changes.
+    var onTitleChange: () -> Void = {}
     var isFocused = false {
         didSet { header.textColor = isFocused ? .labelColor : .secondaryLabelColor }
     }
@@ -140,9 +154,11 @@ final class PaneView: NSStackView {
         let click = NSClickGestureRecognizer(target: self, action: #selector(clicked))
         header.addGestureRecognizer(click)
         refresh()
-        let events = page.events
+        // Subscribed now, not when the task first runs: a new page's first title can arrive in
+        // between. The iterator only moves from the main actor to this main-actor task.
+        nonisolated(unsafe) var iterator = page.events.makeAsyncIterator()
         observer = Task { @MainActor [weak self] in
-            for await event in events {
+            while let event = await iterator.next() {
                 if case .focusChanged(true) = event { self?.onFocus() }
                 self?.refresh()
             }
@@ -158,9 +174,17 @@ final class PaneView: NSStackView {
         observer?.cancel()
     }
 
+    /// The page's title, or its address before it has one.
+    var title: String {
+        header.stringValue
+    }
+
     private func refresh() {
         guard page.isAlive else { return }
-        header.stringValue = page.title.isEmpty ? (page.url?.absoluteString ?? "") : page.title
+        let text = page.title.isEmpty ? (page.url?.absoluteString ?? "") : page.title
+        guard text != header.stringValue else { return }
+        header.stringValue = text
+        onTitleChange()
     }
 
     @objc private func clicked() {

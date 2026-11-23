@@ -13,6 +13,8 @@ enabled = true
 
 [extensions.install]
 unpacked = true
+# The Chrome Web Store installs (decision D4): its button reads "Add to Arc-style Browser".
+stores = ["chrome-web-store"]
 
 # The application shows actions in its sidebar and places popups and side panels in its own
 # containers (ExtensionPlacement); context menus and options pages keep BDK's defaults.
@@ -20,6 +22,11 @@ unpacked = true
 actions = "custom"
 popups = "custom"
 side_panels = "custom"
+
+# Pages that pages open (target="_blank", window.open, an extension's options page) go into the
+# sidebar (PagePlacement); popups keep BDK's own window.
+[ui.surfaces]
+new_windows = "custom"
 
 # Automation/spaces.ts, run from Tools > Run Automation over Two Spaces.
 [automation]

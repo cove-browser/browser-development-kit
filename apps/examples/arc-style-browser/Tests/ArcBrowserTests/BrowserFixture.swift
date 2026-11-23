@@ -14,6 +14,7 @@ struct BrowserFixture {
     let runtime: BDKRuntime
     let controller: BrowserController
     let placement: ExtensionPlacement
+    let pages: PagePlacement
 
     /// The sites of the initial layout, which the stub answers with these titles.
     static let urls = Layout.InitialURLs(
@@ -60,11 +61,14 @@ func withBrowser(
     let configuration = BDKConfiguration(resolvedJSON: try BrowserFixture.resolvedJSON)
     let placement = ExtensionPlacement()
     try placement.install(in: configuration)
+    let pages = PagePlacement()
+    try pages.install(in: configuration)
     let runtime = try BDKRuntime.startStub(configuration)
     let controller = BrowserController(
         runtime: runtime, session: session, initial: .initial(urls: BrowserFixture.urls),
-        extensions: placement)
-    let fixture = BrowserFixture(runtime: runtime, controller: controller, placement: placement)
+        extensions: placement, pages: pages)
+    let fixture = BrowserFixture(
+        runtime: runtime, controller: controller, placement: placement, pages: pages)
     do {
         try await controller.start()
         try await body(fixture)

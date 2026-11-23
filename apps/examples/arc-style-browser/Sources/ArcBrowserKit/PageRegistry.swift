@@ -63,6 +63,16 @@ public final class PageRegistry {
         return created
     }
 
+    /// A page the runtime made (a new-window request), under the layout's new id.
+    public func adopt(_ page: BDKWebContents, as id: Layout.PageID) {
+        pages[id] = page
+    }
+
+    /// Forgets a page that closed itself, and destroys it.
+    public func forget(_ id: Layout.PageID) {
+        pages.removeValue(forKey: id)?.destroy()
+    }
+
     public func id(of page: BDKWebContents) -> Layout.PageID? {
         pages.first { $0.value === page }?.key
     }

@@ -27,15 +27,19 @@ public final class BrowserController {
     public var windowSubtitle = ""
     /// Called after anything the status report shows may have changed.
     public var onChange: () -> Void = {}
+    /// Set when the application quits: pages that close then are not removed from the layout.
+    public var isQuitting = false
     let extensions: ExtensionPlacement
     private let states: [Layout.PageID: Data]
     private var observers: [Layout.PageID: Task<Void, Never>] = [:]
+    /// The page each adopted page was opened by, shown again if the new one closes itself.
+    private var openers: [Layout.PageID: Layout.PageID] = [:]
     let log = Logger(subsystem: "dev.bdk.examples.arc-style-browser", category: "controller")
 
     /// `session` is what the last run saved; nil starts from the initial layout.
     public init(
         runtime: BDKRuntime, session: SessionFile?, initial: Layout = .initial(),
-        extensions: ExtensionPlacement
+        extensions: ExtensionPlacement, pages: PagePlacement
     ) {
         layout = session?.layout ?? initial
         states = Dictionary(
@@ -46,6 +50,7 @@ public final class BrowserController {
         focusedWindow = layout.windows[0].id
         self.extensions = extensions
         extensions.controller = self
+        pages.controller = self
     }
 
     public var runtime: BDKRuntime { registry.runtime }
@@ -149,15 +154,21 @@ public final class BrowserController {
 
     /// Keeps the layout's record of the page (what the sidebar shows) up to date.
     private func observe(_ page: BDKWebContents, id: Layout.PageID) {
-        let events = page.events
+        // Subscribed now, not when the task first runs, so no early event is missed. The iterator
+        // only moves from the main actor to this main-actor task.
+        nonisolated(unsafe) var iterator = page.events.makeAsyncIterator()
         observers[id] = Task { @MainActor [weak self] in
-            for await event in events {
+            while let event = await iterator.next() {
                 guard let self else { return }
                 switch event {
                 case .titleChanged(let title): try? layout.update(id, title: title)
                 case .navigationCommitted:
                     try? layout.update(id, url: page.url?.absoluteString ?? "")
-                case .closed: return
+                case .closed:
+                    // The application's own close stops observing first, so this is the page
+                    // closing itself (window.close()).
+                    closedItself(id)
+                    return
                 default: break
                 }
                 refreshSidebars()
@@ -190,8 +201,66 @@ public final class BrowserController {
     public func close(_ id: Layout.PageID) async throws {
         try layout.close(id)
         observers.removeValue(forKey: id)?.cancel()
+        openers[id] = nil
         apply()
         await registry.close(id)
+    }
+
+    /// Where `adopt` puts a page.
+    public enum NewPagePlacement: Sendable {
+        /// In the focused pane of the opener's window.
+        case foreground
+        /// In the sidebar only.
+        case background
+        /// Alone in a new window of the opener's space.
+        case newWindow
+    }
+
+    /// A page the runtime made because another page (or an extension) asked: a new page of the
+    /// opener's space, or of the focused window's, placed as asked. It keeps its opener
+    /// relationship, so `window.opener` works in it.
+    @discardableResult
+    public func adopt(
+        _ page: BDKWebContents, url: URL?, openedBy opener: BDKWebContents?,
+        placement: NewPagePlacement
+    ) throws -> Layout.PageID {
+        let openerID = opener.flatMap { registry.id(of: $0) }
+        let space =
+            try openerID.flatMap { layout.spaceOf($0)?.id } ?? layout.window(focusedWindow).space
+        let address = url?.absoluteString ?? page.url?.absoluteString ?? ""
+        let id = try layout.addPage(url: address, title: page.title, to: space)
+        registry.adopt(page, as: id)
+        observe(page, id: id)
+        openers[id] = openerID
+        switch placement {
+        case .background:
+            apply()
+        case .foreground:
+            let window = openerID.flatMap { layout.windowShowing($0)?.id } ?? focusedWindow
+            setFocusedWindow(window)
+            try change { try $0.show(id, in: window) }
+        case .newWindow:
+            let window = try layout.addWindow(showing: space)
+            setFocusedWindow(window)
+            try change { try $0.showAlone(id, in: window) }
+        }
+        return id
+    }
+
+    /// The page closed itself (`window.close()`, as a sign-in page does when it is done): it leaves
+    /// the layout, and the page that opened it comes back to its pane.
+    private func closedItself(_ id: Layout.PageID) {
+        guard !isQuitting, layout.pages[id] != nil else { return }
+        let window = layout.windowShowing(id)?.id
+        let opener = openers.removeValue(forKey: id)
+        observers[id] = nil
+        try? layout.close(id)
+        if let window, let opener, layout.pages[opener] != nil {
+            try? layout.show(opener, in: window)
+        }
+        apply()
+        focusPage()
+        registry.forget(id)
     }
 
     /// Runs a layout operation, then applies it.

@@ -49,12 +49,13 @@ moves them).
 | Move and reparent | `Layout.move`, `BrowserController.apply` | A row's "Move to Work" or "Move to New Window". The page keeps its history, its renderer (a form you typed into keeps its text), its extension tab id and an extension's `activeTab` grant, because the same view moves; BDK moves its tab. |
 | Hide and restore | `Layout.switchSpace` | Switch to the other space: the first space's pages leave the window, report hidden and keep running (a timer or a media page keeps going) as background tabs of that window. Switching back shows them as they were, without a reload. On Chromium 158 the pane that had focus, and a page never shown, still report visible (T-ADP-11). |
 | Session restoration | `SessionFile`, `PageRegistry` | Quit and relaunch: the spaces, pinned pages, windows, splits and each page's history come back from `session.json`, which the application writes on quit. Chromium restores nothing by itself. |
+| New pages from links | `PagePlacement`, `BrowserController.adopt` | A `target="_blank"` link, "Open link in new page", `window.open` without features or an extension's options page: the new page joins the opener's space in the sidebar and takes the opener's pane (a middle click leaves it in the sidebar, Shift-click opens a window). It keeps `window.opener`. A page that closes itself (`window.close()`) leaves the sidebar and its opener comes back to the pane. A popup (`window.open` with features, as sign-in pages use) opens in BDK's own window, which closes with it. |
 | Extensions in the layout | `ExtensionPlacement` | File > Install Unpacked Extension… (BDK's install prompt asks). The extension's action appears at the bottom of the sidebar. Its popup opens in a popover beside that button, and `chrome.sidePanel.open` puts its panel on the window's trailing edge with a Close button; both are BDK's secure views in containers the application chose. |
 | Internal pages | `Pages/Settings`, `bdk.toml` | File > Settings (⌘,) opens `arc://settings` with the grants `settings.read` and `settings.write`. It shows its route and capabilities and a "Do Not Track" box that writes `privacy.doNotTrack`. |
 | Automation | `Automation/spaces.ts`, `AutomationRunner` | Tools > Run Automation over Two Spaces runs the bundled script with a session scoped to one page of each space and the two profiles; it lists, reads and scripts just those pages. Its result is in the status report. Sign in to a site in one space only, and the script reports `signedIn` for that page alone. |
 
 The extension fixtures in `tests/extensions/fixtures` (`ui-action-popup`, `panel-sidepanel`, `ui-action-click`)
-are ready to install for the popup, side-panel and `activeTab` checks.
+are ready to install for the popup, side-panel and `activeTab` checks. Extensions also install from the Chrome Web Store (`stores = ["chrome-web-store"]` in `bdk.toml`, decision D4), whose button reads "Add to Arc-style Browser".
 
 ## Layout
 
@@ -87,6 +88,7 @@ whether it is on screen, the runtime's visibility, entries, the settings URL and
 | Hide and restore | `ScenarioTests.hideAndRestore` | `engine_arc_a_page_in_a_hidden_space_keeps_running_and_comes_back` | `launchSmoke` |
 | Session restoration | `ScenarioTests.sessionRestoration` | `engine_arc_after_a_relaunch_chromium_restores_nothing_and_the_application_does` | `relaunch` |
 | Extensions in the layout | `ScenarioTests.extensionsInTheLayout` | the M5 popup and side-panel scenarios (`tests_engine_ext_ui.c`, `tests_engine_ext_panels.c`) | |
+| New pages from links | `ScenarioTests.linksOpenNewPages`, `ScenarioTests.pageClosesItself` | `engine_a_defaulted_new_window_opens_in_the_default_presenter` (BDK's popup window) | |
 | Internal pages | `ScenarioTests.settingsPage` | `tests_engine_pages.c` | `settings` (real runtime) |
 | Automation | `ScenarioTests.automation` | `engine_arc_a_script_drives_pages_in_two_spaces_one_signed_in` | `automation` (real runtime) |
 

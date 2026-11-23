@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var runtime: BDKRuntime?
     private var controller: BrowserController?
     private let extensions = ExtensionPlacement()
+    private let pages = PagePlacement()
     private var phase = AppStatus.Phase.launching
     private var actionsDone = false
     private var errors: [String] = []
@@ -39,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 configuration.launch.userDataDirectory = directory.appendingPathComponent("Engine")
             }
             try extensions.install(in: configuration)
+            try pages.install(in: configuration)
             runtime = try RuntimeSource.start(configuration)
         } catch {
             let alert = NSAlert()
@@ -65,7 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func launch() async throws {
         guard let runtime else { return }
         let controller = BrowserController(
-            runtime: runtime, session: loadSession(), extensions: extensions)
+            runtime: runtime, session: loadSession(), extensions: extensions, pages: pages)
         controller.onChange = { [weak self] in self?.report() }
         controller.showsWindowsInBackground = options.background
         controller.windowSubtitle = RuntimeSource.notice
@@ -175,6 +177,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Called twice: once to shut the runtime down, then again with the runtime stopped.
         if BDKRuntime.isRunning {
             saveSession()
+            controller?.isQuitting = true
             phase = .terminating
             report()
         }
