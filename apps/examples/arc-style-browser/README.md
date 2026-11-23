@@ -32,7 +32,11 @@ open apps/examples/arc-style-browser/.build/ArcStyleBrowser.app
 ```
 
 `scripts/bundle.sh` copies (an APFS clone) that framework into the bundle and re-signs it as this application,
-so the bundle keeps working after the build directory changes. The session and, on the real runtime, the
+so the bundle keeps working after the build directory changes. The signature is ad hoc unless `BDK_SIGN_IDENTITY`
+names a signing identity (`security find-identity -v -p codesigning`; `BDK_SIGN_TEAM` is its team). An ad hoc
+build is a new code identity each time, so the Keychain asks again for Chromium's storage key after every rebuild
+and Always Allow lasts only until the next one; with a real identity it lasts. A request the Keychain refuses
+leaves Chromium without that key, and pages then stay at `about:blank`. The session and, on the real runtime, the
 engine's data are in `~/Library/Application Support/dev.bdk.examples.arc-style-browser` (`--support-dir`
 moves them).
 
