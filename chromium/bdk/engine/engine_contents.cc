@@ -309,6 +309,11 @@ void EngineContents::Attach(
         .Parking(ProfileOf(*core()))
         .Add(std::move(web_contents));
   }
+  TakeContents(fresh);
+  // `old` goes after the host view shows the new page.
+}
+
+void EngineContents::TakeContents(content::WebContents* fresh) {
   web_contents_ = fresh;
   // The Browser took the delegate with the tab.
   web_contents_->SetDelegate(this);
@@ -340,7 +345,18 @@ void EngineContents::Attach(
   // Prompts and find follow the page's WebContents.
   InstallPermissionPrompts(*this, web_contents_);
   find_->Attach(web_contents_);
-  // `old` goes after the host view shows the new page.
+}
+
+void EngineContents::AdoptDiscardReplacement(content::WebContents* fresh) {
+  // Chromium's own discard (TabLifecycleUnit, under memory pressure) swapped
+  // a WebContents with no renderer into the page's tab and is about to
+  // destroy the old one: the page follows its tab, as after a discard of
+  // BDK's own, and loads again when it is shown or focused.
+  dialogs_->CancelDialogs(web_contents_, /*reset_state=*/true);
+  find_->OnNavigated();
+  web_contents_->SetDelegate(nullptr);
+  TakeContents(fresh);
+  discarded_ = true;
 }
 
 void EngineContents::MoveTo(HostContext& context) {
@@ -468,6 +484,9 @@ void EngineContents::Discard() {
 void EngineContents::LoadIfDiscarded() {
   if (discarded_) {
     discarded_ = false;
+    // Chromium's discard leaves "needs reload" unset (TabLifecycleUnit::Load
+    // sets it the same way); BDK's own restores entries that already need it.
+    web_contents_->GetController().SetNeedsReload();
     web_contents_->GetController().LoadIfNecessary();
   }
 }

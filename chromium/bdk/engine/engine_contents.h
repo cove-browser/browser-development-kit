@@ -157,6 +157,9 @@ class EngineContents : public bdkcore::BackendData,
   // Between Close() and Chromium's CloseContents().
   bool closing() const { return closing_; }
   void LoadIfDiscarded();
+  // Chromium discarded the page's tab itself and put `fresh`, with no
+  // renderer, in its place (host_context.cc sees the swap).
+  void AdoptDiscardReplacement(content::WebContents* fresh);
   bool auto_discardable() const { return auto_discardable_; }
   void set_auto_discardable(bool value) { auto_discardable_ = value; }
 
@@ -227,6 +230,9 @@ class EngineContents : public bdkcore::BackendData,
   // Makes `web_contents` the page's WebContents: its first, as a tab of the
   // parking context, or a replacement in the same tab.
   void Attach(std::unique_ptr<content::WebContents> web_contents);
+  // Makes `fresh`, which a tab model already owns, the page's WebContents:
+  // the delegate, observers, helpers, host view, prompts and find.
+  void TakeContents(content::WebContents* fresh);
   // The host view moved into or out of a window; the page follows later.
   void OnHostViewWindowChanged();
   void ActivateTab();

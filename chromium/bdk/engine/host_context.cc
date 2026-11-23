@@ -6,6 +6,7 @@
 
 #include <algorithm>
 
+#include "base/auto_reset.h"
 #include "base/check.h"
 #include "base/functional/bind.h"
 #include "base/task/sequenced_task_runner.h"
@@ -137,6 +138,18 @@ void HostContext::OnTabStripModelChanged(
     TabStripModel* tab_strip_model,
     const TabStripModelChange& change,
     const TabStripSelectionChange& selection) {
+  if (change.type() == TabStripModelChange::kReplaced) {
+    // A swap BDK did not make is Chromium's own discard: the page follows its
+    // tab now, before Chromium destroys the old WebContents.
+    const TabStripModelChange::Replace* replace = change.GetReplace();
+    EngineContents* page =
+        replacing_ ? nullptr
+                   : EngineContents::FromWebContents(replace->old_contents);
+    if (page) {
+      page->AdoptDiscardReplacement(replace->new_contents);
+    }
+    return;
+  }
   if (change.type() != TabStripModelChange::kInserted) {
     return;
   }
@@ -154,6 +167,8 @@ void HostContext::OnTabStripModelChanged(
 std::unique_ptr<content::WebContents> HostContext::Replace(
     content::WebContents* old_contents,
     std::unique_ptr<content::WebContents> new_contents) {
+  // The page makes this swap itself and takes the new WebContents after it.
+  base::AutoReset<bool> own(&replacing_, true);
   return browser_->GetTabStripModel()->DiscardWebContents(
       old_contents, std::move(new_contents));
 }
