@@ -323,6 +323,16 @@ bool Run(const std::string& name,
     AskWhereToSaveForTesting(args.FindBool("on").value_or(true));
     return true;
   }
+  if (name == "downloads.replaceDelegate") {
+    // {"contents"}: BDK's download delegate is put in again on the page's
+    // profile, whose download manager exists by now.
+    EngineContents* page = PageOf(args);
+    if (!page) {
+      return false;
+    }
+    ReplaceDownloadDelegateForTesting(ProfileOf(*page->Core()));
+    return true;
+  }
   if (name == "downloads.danger") {
     ForceDangerousDownloadsForTesting(args.FindBool("on").value_or(true));
     return true;
