@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "UI Action Icon",
+  "version": "1.0",
+  "description": "An action whose default icon is a file: the action state carries it once Chromium has loaded it.",
+  "action": {
+    "default_title": "UI icon",
+    "default_icon": { "16": "icon16.png", "32": "icon32.png" }
+  }
+}
