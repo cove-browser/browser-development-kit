@@ -345,6 +345,35 @@ static void test_engine_ext_ui_actions_report_state_and_badge_changes(void) {
     stop();
 }
 
+/* An action's default icon is a file Chromium loads after the first state is read: until then the
+   state carries a transparent placeholder. The loaded icon must reach the state, not the
+   placeholder forever. The fixture's icon is opaque noise, whose PNG is far longer than a blank
+   one's. */
+static void test_engine_ext_ui_an_action_icon_arrives_once_loaded(void) {
+    start(0, 1);
+    char id[64];
+    load_fixture("ui-action-icon", id, sizeof id);
+    static big_t big;
+    static char icon[65536];
+    size_t length = 0;
+    for (int i = 0; i < 200; ++i) {
+        invoke("extensions.actions", "{}", g_profile, g_b, &big);
+        REQUIRE(!big.has_error);
+        REQUIRE(strstr(big.json, id) != NULL);
+        icon[0] = '\0';
+        if (t_json_string(big.json, "icon", icon, sizeof icon))
+            length = strlen(icon);
+        if (length > 600)
+            break;
+        pumps(5);
+    }
+    CHECK(strncmp(icon, "data:image/png;base64,", 22) == 0);
+    if (length <= 600)
+        printf("    the action icon stayed %zu characters long: %.120s\n", length, icon);
+    CHECK(length > 600);
+    stop();
+}
+
 static void test_engine_ext_ui_activation_without_a_gesture_fails(void) {
     start(0, 1);
     char id[64], result[256];
@@ -806,6 +835,8 @@ static void test_engine_ext_ui_a_declared_command_fires_oncommand_for_the_page(v
 const t_test_t t_engine_extension_ui_tests[] = {
     {"engine_ext_ui_actions_report_state_and_badge_changes",
      test_engine_ext_ui_actions_report_state_and_badge_changes},
+    {"engine_ext_ui_an_action_icon_arrives_once_loaded",
+     test_engine_ext_ui_an_action_icon_arrives_once_loaded},
     {"engine_ext_ui_activation_without_a_gesture_fails",
      test_engine_ext_ui_activation_without_a_gesture_fails},
     {"engine_ext_ui_activation_targets_the_focused_page",
