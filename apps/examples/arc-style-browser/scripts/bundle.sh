@@ -34,8 +34,10 @@ bdk build config --project "$project"
 framework="${BDK_RUNTIME_FRAMEWORKS:-$root/.bdk/runtime/Chromium.app/Contents/Frameworks}/Chromium Framework.framework"
 
 cd "$project"
-swift build --configuration "$configuration"
-product="$(swift build --configuration "$configuration" --show-bin-path)/ArcStyleBrowser"
+# Package.swift picks the runtime from the environment, which SwiftPM's manifest cache does not key on: after a
+# `swift test` (stub), a build with BDK_RUNTIME_FRAMEWORKS set would reuse the stub's manifest. Evaluate it afresh.
+swift build --configuration "$configuration" --manifest-cache none
+product="$(swift build --configuration "$configuration" --manifest-cache none --show-bin-path)/ArcStyleBrowser"
 
 if [[ -d "$app" ]]; then chmod -R u+w "$app"; fi
 rm -rf "$app"
