@@ -97,6 +97,8 @@ class ExtensionPopup : public extensions::ExtensionView,
   void OnLoaded() override;
 
   // content::WebContentsObserver (the popup's page):
+  void RenderFrameHostChanged(content::RenderFrameHost* old_host,
+                              content::RenderFrameHost* new_host) override;
   void OnWebContentsFocused(
       content::RenderWidgetHost* render_widget_host) override;
   void OnWebContentsLostFocus(
@@ -113,6 +115,8 @@ class ExtensionPopup : public extensions::ExtensionView,
   // Raises the request once the page has loaded and its size is known (or has
   // not come soon).
   void RaiseRequest();
+  // Lets the renderer size the page within Chromium's popup bounds.
+  void EnableAutoResize(content::RenderFrameHost* main_frame);
   void OnRequestEnded(const UiResult& result);
   // The application's update of the open request ({"placed":true}).
   void OnApplicationUpdate(const std::string& update_json);
