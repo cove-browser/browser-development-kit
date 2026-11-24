@@ -591,14 +591,17 @@ static void test_engine_ext_ui_a_disabled_popup_surface_blocks_a_popup_only_clic
     start(0, 1);
     char id[64], result[256];
     load_fixture("ui-action-popup", id, sizeof id);
+    /* The record counts the popups of the whole process, earlier tests' too. */
+    char out[512];
+    popup_state(out, sizeof out);
+    const int opened = count_of(out, "opened");
     bdk_error_t err = 0;
     REQUIRE(activate(g_b, id, 0, result, sizeof result, &err) == BDK_OK);
     CHECK(strstr(result, "\"outcome\":\"blocked\"") != NULL);
     CHECK(strstr(result, "\"reason\":\"popupsDisabled\"") != NULL);
     pumps(5);
-    char out[512];
     popup_state(out, sizeof out);
-    CHECK(count_of(out, "opened") == 0);
+    CHECK(count_of(out, "opened") == opened);
     stop();
 }
 

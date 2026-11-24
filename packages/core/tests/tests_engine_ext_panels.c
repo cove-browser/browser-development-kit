@@ -655,6 +655,13 @@ static void test_ext_a_disabled_side_panel_surface_creates_nothing(void) {
                                         "\"side_panels\":\"disabled\"}}",
                                         register_panel_handler, &window, &w, ext, sizeof ext);
     g_plog.window = window;
+    /* The record counts the panels of the whole process, earlier tests' too. */
+    char before[1024];
+    ext_cmd("present.record", "{\"surface\":\"extension_side_panels\"}", before, sizeof before);
+    const char* shown = strstr(before, "\"shown\":");
+    REQUIRE(shown != NULL);
+    char expected[32];
+    snprintf(expected, sizeof expected, "\"shown\":%d", atoi(shown + strlen("\"shown\":")));
     open_panel_from_page(c, ext, "openWindow");
     wait_for_title(c, "ok:null");
     ext_pumps(20);
@@ -662,7 +669,7 @@ static void test_ext_a_disabled_side_panel_surface_creates_nothing(void) {
     state_of(w, out, sizeof out);
     CHECK(ext_has(out, "\"open\":false"));
     ext_cmd("present.record", "{\"surface\":\"extension_side_panels\"}", out, sizeof out);
-    CHECK(ext_has(out, "\"shown\":0"));
+    CHECK(ext_has(out, expected));
     unregister_window(w);
     bdk_ext_window_close(window);
 }

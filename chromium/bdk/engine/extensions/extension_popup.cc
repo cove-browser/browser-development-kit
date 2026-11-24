@@ -228,13 +228,33 @@ void ExtensionPopup::ResizeDueToAutoResize(content::WebContents* web_contents,
 
 void ExtensionPopup::RenderFrameCreated(
     content::RenderFrameHost* render_frame_host) {
-  // The popup sizes itself within Chromium's bounds: the renderer lays the
-  // page out and reports the size it wants (ResizeDueToAutoResize).
-  if (closed_ ||
-      render_frame_host != host_->host_contents()->GetPrimaryMainFrame()) {
+  // Only the initial main frame: one created for a navigation is speculative
+  // until it is swapped in (RenderFrameHostChanged).
+  if (render_frame_host != host_->host_contents()->GetPrimaryMainFrame()) {
     return;
   }
-  if (content::RenderWidgetHostView* view = render_frame_host->GetView()) {
+  EnableAutoResize(render_frame_host);
+}
+
+void ExtensionPopup::RenderFrameHostChanged(
+    content::RenderFrameHost* old_host,
+    content::RenderFrameHost* new_host) {
+  // The popup's page usually commits in a new main frame (a new host for
+  // every navigation), which RenderFrameCreated skipped as speculative. As
+  // views::WebView does: the initial host has no renderer frame yet.
+  if (!old_host || new_host != host_->host_contents()->GetPrimaryMainFrame()) {
+    return;
+  }
+  EnableAutoResize(new_host);
+}
+
+void ExtensionPopup::EnableAutoResize(content::RenderFrameHost* main_frame) {
+  // The popup sizes itself within Chromium's bounds: the renderer lays the
+  // page out and reports the size it wants (ResizeDueToAutoResize).
+  if (closed_ || !main_frame->IsRenderFrameLive()) {
+    return;
+  }
+  if (content::RenderWidgetHostView* view = main_frame->GetView()) {
     view->EnableAutoResize(extensions::kExtensionPopupMinSize,
                            extensions::kExtensionPopupMaxSize);
   }
