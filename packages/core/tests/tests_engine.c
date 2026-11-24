@@ -1213,6 +1213,35 @@ static void test_engine_a_download_completes_and_is_controllable(void) {
     bdk_harness_engine_download_server_stop();
 }
 
+/* The profile Chromium loads itself at startup (the last used one) has its download manager before
+   BDK puts its delegate in, and Chromium gave the first free download id to the delegate it
+   replaced: every download in that profile waited forever, a store install among them (found in
+   M8). The hook puts BDK's delegate in again once the manager exists, as at startup. */
+static void test_engine_a_download_completes_in_a_profile_whose_manager_came_first(void) {
+    int port = bdk_harness_engine_download_server_start();
+    REQUIRE(port != 0);
+    bdk_harness_engine_download_server_release();
+    t_start_frozen();
+    bdk_profile_t p = t_new_profile("Manager first");
+    bdk_contents_t c = t_new_contents(p);
+    char args[256], url[96], id[32];
+    snprintf(args, sizeof args, "{\"contents\":\"%llu\"}", (unsigned long long)c);
+    command("downloads.replaceDelegate", args, NULL, 0);
+    char dir[] = "/tmp/bdk-engine-downloads-XXXXXX";
+    REQUIRE(mkdtemp(dir) != NULL);
+    snprintf(url, sizeof url, "http://127.0.0.1:%d/big.bin", port);
+    snprintf(args, sizeof args, "{\"url\":\"%s\",\"path\":\"%s/first.bin\"}", url, dir);
+    t_capture_t cap;
+    svc("downloads.start", args, p, &cap);
+    REQUIRE(!cap.has_error);
+    REQUIRE(t_json_string(cap.json, "id", id, sizeof id));
+    CHECK(wait_for_download_state(p, id, "complete"));
+    snprintf(args, sizeof args, "%s/first.bin", dir);
+    CHECK(unlink(args) == 0);
+    rmdir(dir);
+    bdk_harness_engine_download_server_stop();
+}
+
 /* Waits for Chromium to record a visit to the page's URL, as the helper of each page does after a
    commit. */
 static int history_has(bdk_profile_t p, const char* text) {
@@ -1435,6 +1464,8 @@ const t_test_t t_engine_tests[] = {
      test_engine_bookmarks_are_imported_and_exported_as_html},
     {"engine_a_download_completes_and_is_controllable",
      test_engine_a_download_completes_and_is_controllable},
+    {"engine_a_download_completes_in_a_profile_whose_manager_came_first",
+     test_engine_a_download_completes_in_a_profile_whose_manager_came_first},
     {"engine_profiles_keep_their_data_apart_and_private_ones_record_no_history",
      test_engine_profiles_keep_their_data_apart_and_private_ones_record_no_history},
     {"engine_settings_and_permissions_round_trip_to_chromium",

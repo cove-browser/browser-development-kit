@@ -136,10 +136,12 @@ BDK_EXPORT bdk_status_t bdk_testing_tab_info(bdk_contents_t,
    operating system's authentication prompt answers ("ask" is the real prompt,
    the default); authentication.count -> {"count"}  how many times a command
    asked for it downloads.ask {"on"}  every loaded profile asks where to save,
-   as the setting does downloads.danger {"on"}  every download is held as
-   dangerous content (this build has no Safe Browsing or file-type policy to
-   flag a real one before M6) script_page {"url", "body", "contentType",
-   "headers"}  serves later navigations to url with this content
+   as the setting does downloads.replaceDelegate {"contents"}  BDK's download
+   delegate is put in again on the page's profile after its download manager
+   exists, as for the profile Chromium loads at startup downloads.danger {"on"}
+   every download is held as dangerous content (this build has no Safe Browsing
+   or file-type policy to flag a real one before M6) script_page {"url", "body",
+   "contentType", "headers"}  serves later navigations to url with this content
    reputation.list {"json"} -> {"loaded", "error"}  gives the default
    reputation provider a block list, as a download whose signature was checked
    would providers.settings -> {"componentUpdatesDisabled", "syncDisabled",
