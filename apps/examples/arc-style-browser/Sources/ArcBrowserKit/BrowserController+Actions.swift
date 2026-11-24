@@ -191,10 +191,17 @@ extension BrowserController {
     /// Fills each window's extensions area with the actions of its focused page's profile.
     public func refreshExtensionActions() async {
         for window in layout.windows {
-            guard let pageID = window.focusedPage, let page = registry.pages[pageID],
-                let actions = try? await page.profile.extensions.actions(for: page),
-                !Task.isCancelled
-            else { continue }
+            guard let pageID = window.focusedPage, let page = registry.pages[pageID] else {
+                continue
+            }
+            let actions: [BDKExtensionActionState]
+            do {
+                actions = try await page.profile.extensions.actions(for: page)
+            } catch {
+                log.error("extension actions not read: \(error)")
+                continue
+            }
+            guard !Task.isCancelled else { return }
             windows[window.id]?.sidebar.setExtensionActions(
                 actions.map { .init(id: $0.id, title: $0.title, icon: $0.iconImage) })
         }
