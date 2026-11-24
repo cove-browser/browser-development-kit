@@ -192,10 +192,39 @@ extension BrowserController {
     public func refreshExtensionActions() async {
         for window in layout.windows {
             guard let pageID = window.focusedPage, let page = registry.pages[pageID],
-                let actions = try? await page.profile.extensions.actions(for: page)
+                let actions = try? await page.profile.extensions.actions(for: page),
+                !Task.isCancelled
             else { continue }
             windows[window.id]?.sidebar.setExtensionActions(
                 actions.map { .init(id: $0.id, title: $0.title, icon: $0.iconImage) })
         }
+    }
+
+    /// Refreshes the extensions areas soon. A refresh already pending is replaced, so a burst of
+    /// changes (badge updates as a page loads) costs one, and an older answer never lands last.
+    func scheduleExtensionRefresh() {
+        extensionRefresh?.cancel()
+        extensionRefresh = Task { @MainActor [weak self] in
+            await self?.refreshExtensionActions()
+        }
+    }
+
+    /// Follows the extensions of a profile the application opened. Installs, removals and
+    /// enabling happen without the application asking (a store page's install button, the
+    /// extension's own uninstall, an update), so the extensions areas follow the events, not the
+    /// application's calls.
+    func observeExtensions(of profile: BDKProfile) {
+        // Subscribed now, not when the task first runs, so no early event is missed.
+        nonisolated(unsafe) var iterator = profile.extensions.events.makeAsyncIterator()
+        extensionObservers.append(
+            Task { @MainActor [weak self] in
+                while let event = await iterator.next() {
+                    guard let self else { return }
+                    switch event {
+                    case .loaded, .unloaded, .actionChanged: scheduleExtensionRefresh()
+                    default: break
+                    }
+                }
+            })
     }
 }

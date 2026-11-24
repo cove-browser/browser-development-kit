@@ -11,6 +11,8 @@ public final class PageRegistry {
     public let runtime: BDKRuntime
     public private(set) var pages: [Layout.PageID: BDKWebContents] = [:]
     private var profiles: [String: BDKProfile] = [:]
+    /// Called once for each profile, when it is first opened.
+    var onOpen: (BDKProfile) -> Void = { _ in }
     private let log = Logger(subsystem: "dev.bdk.examples.arc-style-browser", category: "pages")
 
     public init(runtime: BDKRuntime) {
@@ -21,7 +23,9 @@ public final class PageRegistry {
     public func profile(named name: String) async throws -> BDKProfile {
         if let profile = profiles[name] { return profile }
         let profile = try await runtime.profiles.open(name)
+        if let opened = profiles[name] { return opened }  // opened meanwhile by another caller
         profiles[name] = profile
+        onOpen(profile)
         return profile
     }
 

@@ -54,11 +54,15 @@ struct BrowserFixture {
 }
 
 /// Starts the application, runs `body`, then closes its windows and shuts the runtime down.
+/// `configure` adds what a test needs to the application's configuration, such as a handler for
+/// a surface the application leaves to BDK.
 @MainActor
 func withBrowser(
-    session: SessionFile? = nil, _ body: (BrowserFixture) async throws -> Void
+    session: SessionFile? = nil, configure: (BDKConfiguration) throws -> Void = { _ in },
+    _ body: (BrowserFixture) async throws -> Void
 ) async throws {
     let configuration = BDKConfiguration(resolvedJSON: try BrowserFixture.resolvedJSON)
+    try configure(configuration)
     let placement = ExtensionPlacement()
     try placement.install(in: configuration)
     let pages = PagePlacement()

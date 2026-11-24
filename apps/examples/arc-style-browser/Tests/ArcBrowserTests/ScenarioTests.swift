@@ -201,6 +201,53 @@ struct ScenarioTests {
 
     /// The stub serves no bundled page, so the page commits only on the engine (the end-to-end
     /// test and tests_engine_pages.c); here the application asks for the branded URL and shows it.
+    @Test("an extension installed without the application's asking appears in its space's sidebar")
+    func extensionsAreaFollowsInstalls() async throws {
+        // Grants the install prompt that BDK shows the person in the application.
+        let grant: (BDKConfiguration) throws -> Void = { configuration in
+            try configuration.ui.extensionInstalls.setHandler { request in
+                if let click = NSEvent.mouseEvent(
+                    with: .leftMouseUp, location: .zero, modifierFlags: [], timestamp: 1,
+                    windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 0)
+                {
+                    try? request.accept(confirmedBy: click)
+                }
+                return .handled
+            }
+        }
+        try await withBrowser(configure: grant) { browser in
+            let controller = browser.controller
+            let directory = "/tmp/arc-browser-tests-extension"
+            try browser.runtime.stub.registerExtensionPackage(
+                kind: "unpacked", key: directory,
+                manifestJSON: #"""
+                    {"manifest_version":3,"name":"Blocker","version":"1.0",
+                    "action":{"default_title":"Blocker"}}
+                    """#)
+            let area = try #require(controller.windows[controller.focusedWindow]).sidebar
+                .extensionsArea
+            await controller.extensionRefresh?.value  // the one that start() asked for
+            #expect(area.arrangedSubviews.isEmpty)
+
+            // As a store page's install button does: in the profile, not through the controller.
+            let page = try browser.page(try controller.focusedPage())
+            let info = try await page.profile.extensions.install(
+                .unpacked(URL(fileURLWithPath: directory)))
+            try await waitUntil("the action in the sidebar") { area.arrangedSubviews.count == 1 }
+            #expect(area.arrangedSubviews.first?.identifier?.rawValue == info.id)
+
+            // Work's profile has no extensions; Personal's come back with its space.
+            try await controller.perform(.switchSpace("Work"))
+            try await waitUntil("Work's empty area") { area.arrangedSubviews.isEmpty }
+            try await controller.perform(.switchSpace("Personal"))
+            try await waitUntil("Personal's action") { area.arrangedSubviews.count == 1 }
+
+            // Disabled (here without a prompt, unlike an uninstall), it leaves the area.
+            try await page.profile.extensions.setEnabled(info.id, enabled: false)
+            try await waitUntil("the action to go") { area.arrangedSubviews.isEmpty }
+        }
+    }
+
     @Test("the bundled settings page is opened at its branded URL from bdk.toml")
     func settingsPage() async throws {
         try await withBrowser { browser in

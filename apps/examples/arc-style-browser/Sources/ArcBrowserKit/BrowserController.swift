@@ -32,6 +32,10 @@ public final class BrowserController {
     let extensions: ExtensionPlacement
     private let states: [Layout.PageID: Data]
     private var observers: [Layout.PageID: Task<Void, Never>] = [:]
+    /// One per open profile: refreshes the extensions areas when its extensions change.
+    var extensionObservers: [Task<Void, Never>] = []
+    /// The pending refresh of the extensions areas; a newer one replaces it.
+    var extensionRefresh: Task<Void, Never>?
     /// The page each adopted page was opened by, shown again if the new one closes itself.
     private var openers: [Layout.PageID: Layout.PageID] = [:]
     let log = Logger(subsystem: "dev.bdk.examples.arc-style-browser", category: "controller")
@@ -51,6 +55,7 @@ public final class BrowserController {
         self.extensions = extensions
         extensions.controller = self
         pages.controller = self
+        registry.onOpen = { [weak self] in self?.observeExtensions(of: $0) }
     }
 
     public var runtime: BDKRuntime { registry.runtime }
@@ -102,6 +107,8 @@ public final class BrowserController {
                 window.panes.compactMap { registry.pages[$0] }, focused: window.focusedPane)
             updateSidebar(of: browserWindow, for: window)
         }
+        // A window may now show a page of another profile, or another page with its own badges.
+        scheduleExtensionRefresh()
         onChange()
     }
 
