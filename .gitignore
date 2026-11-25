@@ -29,6 +29,7 @@ packages/js/internal/src/settings.ts
 packages/js/internal/src/system.ts
 packages/js/internal/src/translation.ts
 packages/js/internal/src/types.ts
+packages/js/internal/src/webApps.ts
 packages/js/automation/src/services.ts
 packages/js/automation/src/types.ts
 # CMake builds of packages/core next to build/ (engine conformance, sanitizers)

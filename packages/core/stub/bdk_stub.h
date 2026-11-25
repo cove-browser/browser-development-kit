@@ -77,6 +77,23 @@ BDK_EXPORT bdk_status_t bdk_stub_extension_package(bdk_runtime_t, bdk_string_t k
 /* How many times bdk_extension_menu_present reached the stub since start. */
 BDK_EXPORT bdk_status_t bdk_stub_menus_presented(uint32_t* out);
 
+/* Web apps (web-apps.md). Registers the manifest a page at document_url links, which is what
+   webApps.installability, webApps.install and the prompt read; relative URLs in it resolve against
+   document_url. */
+BDK_EXPORT bdk_status_t bdk_stub_web_app_manifest(bdk_runtime_t, bdk_string_t document_url,
+                                                  bdk_string_t manifest_json);
+/* Acts as the page calling prompt() on its beforeinstallprompt event: raises a web_app_installs
+   request (source "page") for the manifest of the page's URL, and installs into the page's profile
+   when it is granted. Fails, raising nothing, with webApps.disabled while web apps are off,
+   webApps.privateProfile in a private profile, webApps.gestureRequired without user_gesture and
+   webApps.notInstallable when the manifest is missing or not installable. */
+BDK_EXPORT bdk_status_t bdk_stub_web_app_prompt(bdk_contents_t, uint8_t user_gesture, bdk_error_t*);
+/* Acts as the page calling navigator.setAppBadge (badge_json {"kind":"flag"} or
+   {"kind":"count","count":n}) or clearAppBadge ("null"): sets the badge of the installed app whose
+   scope holds the page's URL and emits webApps.badgeChanged. webApps.notFound when none does. */
+BDK_EXPORT bdk_status_t bdk_stub_web_app_set_badge(bdk_contents_t, bdk_string_t badge_json,
+                                                   bdk_error_t*);
+
 /* Delivers a key event to the keyboard handler of the contents. *out_reserved is the reserve
  * callback's answer. */
 BDK_EXPORT bdk_status_t bdk_stub_simulate_key(bdk_contents_t, bdk_native_handle_t key_event,

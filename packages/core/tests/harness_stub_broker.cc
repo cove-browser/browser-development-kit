@@ -5,6 +5,7 @@
 #include "bdk_stub_broker.h"
 #include "harness_broker.h"
 #include "harness_extensions.h"
+#include "harness_web_apps.h"
 
 namespace {
 bdk_string_t text(const char* s) {
@@ -93,6 +94,25 @@ bdk_subscription_t bdk_harness_subscribe_as(bdk_runtime_t rt, bdk_harness_caller
 
 unsigned bdk_harness_service_count(bdk_runtime_t rt, unsigned which) {
     return bdk_stub_service_count(rt, which);
+}
+
+/* ---- harness_web_apps.h ---- */
+
+int bdk_harness_web_app_hooks(void) {
+    return 1;
+}
+
+bdk_status_t bdk_harness_web_app_manifest(bdk_runtime_t rt, const char* document_url,
+                                          const char* manifest) {
+    return bdk_stub_web_app_manifest(rt, text(document_url), text(manifest));
+}
+
+bdk_status_t bdk_harness_web_app_prompt(bdk_contents_t c, uint8_t user_gesture, bdk_error_t* err) {
+    return bdk_stub_web_app_prompt(c, user_gesture, err);
+}
+
+bdk_status_t bdk_harness_web_app_badge(bdk_contents_t c, const char* badge, bdk_error_t* err) {
+    return bdk_stub_web_app_set_badge(c, text(badge), err);
 }
 
 /* ---- harness_extensions.h ---- */

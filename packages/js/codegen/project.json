@@ -55,6 +55,7 @@
         "{workspaceRoot}/packages/js/internal/src/system.ts",
         "{workspaceRoot}/packages/js/internal/src/translation.ts",
         "{workspaceRoot}/packages/js/internal/src/types.ts",
+        "{workspaceRoot}/packages/js/internal/src/webApps.ts",
         "{workspaceRoot}/packages/js/automation/src/services.ts",
         "{workspaceRoot}/packages/js/automation/src/types.ts"
       ]

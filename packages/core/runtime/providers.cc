@@ -294,6 +294,8 @@ bdk_status_t providers_configure(Runtime& rt, const std::string& resolved,
             uses_google = uses_google || choice.provider == "google";
         }
     }
+    /* Push through Google's messaging service is a Google provider too (web-apps.md 7). */
+    uses_google = uses_google || rt.web_apps.push_provider == "google";
     if (!string_ok(config.google_api_key))
         return BDK_ERR_INVALID_ARGUMENT;
     std::string key = str(config.google_api_key);

@@ -246,6 +246,7 @@ static const t_test_t* const kTables[] = {
                          (tests_providers.c) */
     t_pages_tests,
     t_extension_tests, /* extensions and registered windows (tests_extensions.c) */
+    t_web_app_tests,   /* installable web apps (tests_web_apps.c) */
 #ifdef BDK_HARNESS_ENGINE_TESTS
     t_engine_tests,            /* scenarios only a real engine can run (tests_engine.c) */
     t_engine_ui_tests,         /* browser-owned surfaces on the engine (tests_engine_ui.c) */

@@ -204,6 +204,40 @@ where it was silent (2026-11-20):
    (`Backend::WindowForContents`, `WindowContents`, `WindowExtensionId`); a backend with no attachments answers 0,
    an empty list and -1.
 
+### Web apps (M9)
+
+Specification: [web-apps.md](../../../docs/planning/sdk/web-apps.md). Tasks T-PWA-02 and T-PWA-03 (stub, core, ABI, Swift);
+the engine is T-PWA-04. Decided where it was silent (2026-11-25):
+
+1. Configuration. `runtime/web_apps.cc` reads `web_apps.enabled` (default false) and `services.push.provider` (`none`, the
+   default, or `google`) into `Runtime::web_apps` at start, before the providers (a value of the wrong kind is
+   `config.resolvedInvalid`). Push through Google counts as a Google provider for the key rule of "Providers": no key is
+   `config.keyMissing`, and the key is then not `keyUnused`. This stands until T-PWA-05 finds what push really needs
+   (web-apps.md 10.6). The core adds `"webApps":{"enabled"}` and `"push":{"provider"}` to every `runtime.info` answer
+   (`CommandControl::AppendMembers`), so no backend reports them.
+2. Refusals for every runtime, before the backend (`web_apps_refuse`): every `webApps.*` command fails `webApps.disabled`
+   while web apps are off; in a private profile `list` answers `[]`, `installability` not installable, `get`
+   `webApps.notFound`, and `install`, `uninstall` and `launch` `webApps.privateProfile`.
+3. Surface. `web_app_installs` is `BDK_SURFACE_WEB_APP_INSTALLS` 37, the place it has in the ui-requests.md table after the
+   T-UIR-14 surfaces; modes default and custom; its granting completions are `grant` and `install`. Payload `{app, source,
+   screenshots}` (web-apps.md 4.1). Only `grant`/`install` installs; anything else installs nothing.
+4. Confirmed host calls. `bdk_web_app_install` and `bdk_web_app_uninstall` (`bdk_web_apps.h`) run the command as the host
+   with `BuiltinCall::confirmed` set, so the backend installs without raising the request; an event that is not an
+   `NSEvent` fails the call later with `ui.gestureRequired` (`broker_invoke_confirmed`). The engine also checks the event
+   is recent and went to a window of the application, as for every grant.
+5. Launch and scope. `webApps.launch` creates the page in the app's profile, raises a `new_windows` request of kind
+   `webApp` with no opener and `webApp` the app, and answers `{contents}`; a rejected launch destroys the page. A page
+   launched as an app reports `BDK_CONTENTS_EVENT_WEB_APP` (12), detail `{appId, isInScope}`, on each committed
+   navigation that leaves the app's scope or comes back.
+6. The stub (`stub/stub_web_apps.cc`). A registry per profile id. A page's manifest is the one a test registered for its
+   URL (`bdk_stub_web_app_manifest`); relative URLs resolve against it. It is installable with a name, an icon, a display
+   other than `browser`, and a start URL on the page's origin inside the scope; the app id is 32 letters a to p hashed
+   from the manifest id (default: the start URL). `bdk_stub_web_app_prompt` acts as the page's `prompt()` (needs a user
+   gesture; refused while off and in a private profile), `bdk_stub_web_app_set_badge` as `setAppBadge`. With no handler
+   the request defaults and installs nothing: the stub has no presenter that can ask. `hasPendingUpdate` is always false
+   and icons carry no `data`. The conformance tests are `tests/tests_web_apps.c` (`webapps.*`); the hooks are
+   `tests/harness_web_apps.h`, and a runtime without them skips the tests that need the registry.
+
 ### Named in c-abi.md and not declared (nothing states their shape)
 
 `bdk_contents_prune`, `_perform_command`, `_can_perform_command`, `_set_host_context`;

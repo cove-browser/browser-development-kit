@@ -32,6 +32,7 @@ export const PAGE_COMMANDS: readonly string[] = [
   "translation.translate",
   "translation.revert",
   "translation.present",
+  "webApps.installability",
 ];
 
 /** Namespaces whose Swift name differs from the interface name, because `BDKRuntime` has the other. */
@@ -42,6 +43,8 @@ const SERVICE_NAMES: Readonly<Record<string, { accessor: string; type: string }>
 /** `info()` on `BDKRuntime` is a property, so the command `runtime.info` is `about.info()`. Other names are kept. */
 const METHOD_NAMES: Readonly<Record<string, string>> = {
   "history.deleteUrls": "delete",
+  // swift-api.md: launch(id) answers the page; the command answers its handle (BDKWebApps+Host.swift).
+  "webApps.launch": "launchContents",
 };
 
 /**

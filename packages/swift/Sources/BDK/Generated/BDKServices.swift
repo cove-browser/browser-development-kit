@@ -1047,19 +1047,50 @@ public struct BDKRuntimeInfo: Codable, Sendable, Equatable {
     public var browserName: String
     public var internalScheme: String
     public var platform: String
+    public var webApps: BDKRuntimeWebApps
+    public var push: BDKRuntimePush
 
     public init(
         bdkVersion: String,
         chromiumVersion: String,
         browserName: String,
         internalScheme: String,
-        platform: String
+        platform: String,
+        webApps: BDKRuntimeWebApps,
+        push: BDKRuntimePush
     ) {
         self.bdkVersion = bdkVersion
         self.chromiumVersion = chromiumVersion
         self.browserName = browserName
         self.internalScheme = internalScheme
         self.platform = platform
+        self.webApps = webApps
+        self.push = push
+    }
+}
+
+public struct BDKRuntimeWebApps: Codable, Sendable, Equatable {
+    public var enabled: Bool
+
+    public init(
+        enabled: Bool
+    ) {
+        self.enabled = enabled
+    }
+}
+
+public enum BDKPushProvider: String, Codable, Sendable, Equatable, CaseIterable {
+    case none
+    case google
+}
+
+public struct BDKRuntimePush: Codable, Sendable, Equatable {
+    public var provider: BDKPushProvider
+
+    public init(
+        provider: BDKPushProvider
+    ) {
+        self.provider = provider
     }
 }
 
@@ -1391,6 +1422,154 @@ public struct BDKTranslationState: Codable, Sendable, Equatable {
         self.to = to
         self.progress = progress
         self.error = error
+    }
+}
+
+public enum BDKWebAppDisplayMode: String, Codable, Sendable, Equatable, CaseIterable {
+    case standalone
+    case minimalUi
+}
+
+public enum BDKWebAppIconPurpose: String, Codable, Sendable, Equatable, CaseIterable {
+    case any
+    case monochrome
+    case maskable
+}
+
+public struct BDKWebAppIcon: Codable, Sendable, Equatable {
+    public var url: URL
+    public var width: Int?
+    public var height: Int?
+    public var purpose: BDKWebAppIconPurpose
+    public var data: String?
+
+    public init(
+        url: URL,
+        width: Int? = nil,
+        height: Int? = nil,
+        purpose: BDKWebAppIconPurpose,
+        data: String? = nil
+    ) {
+        self.url = url
+        self.width = width
+        self.height = height
+        self.purpose = purpose
+        self.data = data
+    }
+}
+
+public struct BDKWebAppShortcut: Codable, Sendable, Equatable {
+    public var name: String
+    public var url: URL
+    public var icons: [BDKWebAppIcon]
+
+    public init(
+        name: String,
+        url: URL,
+        icons: [BDKWebAppIcon]
+    ) {
+        self.name = name
+        self.url = url
+        self.icons = icons
+    }
+}
+
+public enum BDKWebAppBadgeKind: String, Codable, Sendable, Equatable, CaseIterable {
+    case flag
+    case count
+}
+
+public struct BDKWebAppBadge: Codable, Sendable, Equatable {
+    public var kind: BDKWebAppBadgeKind
+    public var count: Int?
+
+    public init(
+        kind: BDKWebAppBadgeKind,
+        count: Int? = nil
+    ) {
+        self.kind = kind
+        self.count = count
+    }
+}
+
+public struct BDKWebAppInfo: Codable, Sendable, Equatable {
+    public var id: String
+    public var profile: String
+    public var name: String
+    public var shortName: String?
+    public var startUrl: URL
+    public var scope: URL
+    public var origin: String
+    public var displayMode: BDKWebAppDisplayMode
+    public var themeColor: String?
+    public var backgroundColor: String?
+    public var icons: [BDKWebAppIcon]
+    public var shortcuts: [BDKWebAppShortcut]
+    public var badge: BDKWebAppBadge?
+    public var installedAt: Date
+    public var hasPendingUpdate: Bool
+
+    public init(
+        id: String,
+        profile: String,
+        name: String,
+        shortName: String? = nil,
+        startUrl: URL,
+        scope: URL,
+        origin: String,
+        displayMode: BDKWebAppDisplayMode,
+        themeColor: String? = nil,
+        backgroundColor: String? = nil,
+        icons: [BDKWebAppIcon],
+        shortcuts: [BDKWebAppShortcut],
+        badge: BDKWebAppBadge? = nil,
+        installedAt: Date,
+        hasPendingUpdate: Bool
+    ) {
+        self.id = id
+        self.profile = profile
+        self.name = name
+        self.shortName = shortName
+        self.startUrl = startUrl
+        self.scope = scope
+        self.origin = origin
+        self.displayMode = displayMode
+        self.themeColor = themeColor
+        self.backgroundColor = backgroundColor
+        self.icons = icons
+        self.shortcuts = shortcuts
+        self.badge = badge
+        self.installedAt = installedAt
+        self.hasPendingUpdate = hasPendingUpdate
+    }
+}
+
+public struct BDKWebAppInstallability: Codable, Sendable, Equatable {
+    public var isInstallable: Bool
+    public var installedId: String?
+    public var manifest: BDKWebAppInfo?
+    public var errors: [String]
+
+    public init(
+        isInstallable: Bool,
+        installedId: String? = nil,
+        manifest: BDKWebAppInfo? = nil,
+        errors: [String]
+    ) {
+        self.isInstallable = isInstallable
+        self.installedId = installedId
+        self.manifest = manifest
+        self.errors = errors
+    }
+}
+
+public struct BDKWebAppLaunch: Codable, Sendable, Equatable {
+    public var contents: String
+
+    public init(
+        contents: String
+    ) {
+        self.contents = contents
     }
 }
 
@@ -3689,6 +3868,145 @@ public struct BDKTranslation {
     }
 }
 
+/// The `webApps` commands.
+@MainActor
+public struct BDKWebApps {
+    let scope: BDKServiceScope
+
+    /// `webApps.list`. Needs the capability `webApps.list` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func list() async throws -> [BDKWebAppInfo] {
+        return try await scope.call("webApps.list", BDKVoid(), as: [BDKWebAppInfo].self)
+    }
+
+    /// `webApps.get`. Needs the capability `webApps.list` from a page or a session; a call from Swift is not checked.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func get(
+        _ id: String
+    ) async throws -> BDKWebAppInfo {
+        struct Arguments: Encodable {
+            var id: String
+        }
+        return try await scope.call("webApps.get", Arguments(id: id), as: BDKWebAppInfo.self)
+    }
+
+    /// `webApps.install`. Needs the capability `webApps.manage` from a page or a session; a call from Swift is not checked.
+    /// A page must have been given a user gesture to call it; a call from Swift needs none.
+    /// Raises a UI request on the `web_app_installs` surface.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func install(
+        url: URL? = nil
+    ) async throws -> BDKWebAppInfo {
+        struct Arguments: Encodable {
+            var url: URL?
+        }
+        return try await scope.call("webApps.install", Arguments(url: url), as: BDKWebAppInfo.self)
+    }
+
+    /// `webApps.uninstall`. Needs the capability `webApps.manage` from a page or a session; a call from Swift is not checked.
+    /// A page must have been given a user gesture to call it; a call from Swift needs none.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func uninstall(
+        _ id: String,
+        clearSiteData: Bool? = nil
+    ) async throws {
+        struct Arguments: Encodable {
+            var id: String
+            var clearSiteData: Bool?
+        }
+        try await scope.run("webApps.uninstall", Arguments(id: id, clearSiteData: clearSiteData))
+    }
+
+    /// `webApps.launch`. Needs the capability `webApps.list` from a page or a session; a call from Swift is not checked.
+    /// Raises a UI request on the `new_windows` surface.
+    /// Cancelling the task cancels the call (`broker.cancelled`).
+    public func launchContents(
+        _ id: String,
+        shortcutUrl: URL? = nil
+    ) async throws -> BDKWebAppLaunch {
+        struct Arguments: Encodable {
+            var id: String
+            var shortcutUrl: URL?
+        }
+        return try await scope.call("webApps.launch", Arguments(id: id, shortcutUrl: shortcutUrl), as: BDKWebAppLaunch.self)
+    }
+
+    /// `webApps.*` events. Each is delivered with the event's payload.
+    public enum Event: Sendable, Equatable {
+        case installed(Installed)
+        case updated(Updated)
+        case uninstalled(Uninstalled)
+        case badgeChanged(BadgeChanged)
+
+        public struct Installed: Codable, Sendable, Equatable {
+            public var app: BDKWebAppInfo
+
+            public init(
+                app: BDKWebAppInfo
+            ) {
+                self.app = app
+            }
+        }
+
+        public struct Updated: Codable, Sendable, Equatable {
+            public var app: BDKWebAppInfo
+
+            public init(
+                app: BDKWebAppInfo
+            ) {
+                self.app = app
+            }
+        }
+
+        public struct Uninstalled: Codable, Sendable, Equatable {
+            public var id: String
+
+            public init(
+                id: String
+            ) {
+                self.id = id
+            }
+        }
+
+        public struct BadgeChanged: Codable, Sendable, Equatable {
+            public var id: String
+            public var badge: BDKWebAppBadge?
+
+            public init(
+                id: String,
+                badge: BDKWebAppBadge? = nil
+            ) {
+                self.id = id
+                self.badge = badge
+            }
+        }
+
+        static let names = ["webApps.installed", "webApps.updated", "webApps.uninstalled", "webApps.badgeChanged"]
+
+        /// Decodes one delivered event; nil for a name this version does not know.
+        static func decode(name: String, payload: String) throws -> Event? {
+            switch name {
+            case "webApps.installed":
+                return .installed(try BDKServiceCoding.decode(Installed.self, from: payload))
+            case "webApps.updated":
+                return .updated(try BDKServiceCoding.decode(Updated.self, from: payload))
+            case "webApps.uninstalled":
+                return .uninstalled(try BDKServiceCoding.decode(Uninstalled.self, from: payload))
+            case "webApps.badgeChanged":
+                return .badgeChanged(try BDKServiceCoding.decode(BadgeChanged.self, from: payload))
+            default:
+                return nil
+            }
+        }
+    }
+
+    /// The events of this namespace. Reading the property subscribes at once, so events that happen
+    /// after it are delivered. The stream ends when it is no longer iterated or the runtime shuts down.
+    public var events: AsyncStream<Event> {
+        scope.events(Event.names, decode: Event.decode)
+    }
+}
+
 // MARK: - Entry points
 
 extension BDKProfile {
@@ -3755,6 +4073,11 @@ extension BDKProfile {
     /// The `translation` commands in this profile.
     public var translation: BDKTranslation {
         BDKTranslation(scope: BDKServiceScope(runtime: runtime, profile: self))
+    }
+
+    /// The `webApps` commands in this profile.
+    public var webApps: BDKWebApps {
+        BDKWebApps(scope: BDKServiceScope(runtime: runtime, profile: self))
     }
 }
 

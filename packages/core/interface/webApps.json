@@ -1,0 +1,152 @@
+{
+  "namespace": "webApps",
+  "since": 1,
+  "types": {
+    "WebAppDisplayMode": {
+      "enum": ["standalone", "minimalUi"]
+    },
+    "WebAppIconPurpose": {
+      "enum": ["any", "monochrome", "maskable"]
+    },
+    "WebAppIcon": {
+      "url": "url",
+      "width": "int?",
+      "height": "int?",
+      "purpose": "WebAppIconPurpose",
+      "data": "string?"
+    },
+    "WebAppShortcut": {
+      "name": "string",
+      "url": "url",
+      "icons": "WebAppIcon[]"
+    },
+    "WebAppBadgeKind": {
+      "enum": ["flag", "count"]
+    },
+    "WebAppBadge": {
+      "kind": "WebAppBadgeKind",
+      "count": "int?"
+    },
+    "WebAppInfo": {
+      "id": "string",
+      "profile": "string",
+      "name": "string",
+      "shortName": "string?",
+      "startUrl": "url",
+      "scope": "url",
+      "origin": "string",
+      "displayMode": "WebAppDisplayMode",
+      "themeColor": "string?",
+      "backgroundColor": "string?",
+      "icons": "WebAppIcon[]",
+      "shortcuts": "WebAppShortcut[]",
+      "badge": "WebAppBadge?",
+      "installedAt": "timestamp",
+      "hasPendingUpdate": "bool"
+    },
+    "WebAppInstallability": {
+      "isInstallable": "bool",
+      "installedId": "string?",
+      "manifest": "WebAppInfo?",
+      "errors": "string[]"
+    },
+    "WebAppLaunch": {
+      "contents": "string"
+    }
+  },
+  "commands": [
+    {
+      "name": "webApps.list",
+      "capability": "webApps.list",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {},
+      "result": "WebAppInfo[]"
+    },
+    {
+      "name": "webApps.get",
+      "capability": "webApps.list",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {
+        "id": "string"
+      },
+      "result": "WebAppInfo"
+    },
+    {
+      "name": "webApps.installability",
+      "capability": "webApps.list",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "args": {},
+      "result": "WebAppInstallability"
+    },
+    {
+      "name": "webApps.install",
+      "capability": "webApps.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "requires": ["gesture"],
+      "raises": "web_app_installs",
+      "args": {
+        "url": "url?"
+      },
+      "result": "WebAppInfo"
+    },
+    {
+      "name": "webApps.uninstall",
+      "capability": "webApps.manage",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "requires": ["gesture"],
+      "args": {
+        "id": "string",
+        "clearSiteData": "bool?"
+      },
+      "result": "void"
+    },
+    {
+      "name": "webApps.launch",
+      "capability": "webApps.list",
+      "callers": ["swift", "page", "session"],
+      "profile": "required",
+      "raises": "new_windows",
+      "args": {
+        "id": "string",
+        "shortcutUrl": "url?"
+      },
+      "result": "WebAppLaunch"
+    }
+  ],
+  "events": [
+    {
+      "name": "webApps.installed",
+      "capability": "webApps.list",
+      "payload": {
+        "app": "WebAppInfo"
+      }
+    },
+    {
+      "name": "webApps.updated",
+      "capability": "webApps.list",
+      "payload": {
+        "app": "WebAppInfo"
+      }
+    },
+    {
+      "name": "webApps.uninstalled",
+      "capability": "webApps.list",
+      "payload": {
+        "id": "string"
+      }
+    },
+    {
+      "name": "webApps.badgeChanged",
+      "capability": "webApps.list",
+      "payload": {
+        "id": "string",
+        "badge": "WebAppBadge?"
+      }
+    }
+  ]
+}

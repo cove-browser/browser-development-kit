@@ -247,6 +247,13 @@ struct ExtensionConfig {
     std::vector<std::string> stores;      /* named store sources the application enabled */
 };
 
+/* [web_apps] and [services.push] of the resolved configuration (web-apps.md, runtime/web_apps.cc).
+ */
+struct WebAppConfig {
+    bool enabled = false;
+    std::string push_provider = "none";
+};
+
 /* An application setting (`app.`), declared with bdk_app_setting_register. */
 struct AppSetting {
     std::string key;
@@ -286,6 +293,7 @@ struct Runtime {
     std::vector<std::shared_ptr<Request>> requests;
     std::vector<std::shared_ptr<Window>> windows; /* registered, in order */
     ExtensionConfig extensions;
+    WebAppConfig web_apps;
     std::string browser_name; /* [browser] name, for text BDK shows */
     bdk_log_cb log_cb = nullptr;
     void* log_ctx = nullptr;
@@ -567,6 +575,11 @@ void release_window_handlers(Window&);
    [extensions.ui] modes into the surface modes. Called by bdk_runtime_start after ui_configure. */
 bdk_status_t extension_configure(Runtime&, const std::string& resolved_config,
                                  bdk_error_t* out_error);
+/* Web apps (web_apps.cc). Reads [web_apps] and [services.push] of the resolved configuration into
+   rt.web_apps. Called by bdk_runtime_start before providers_configure, which needs the push
+   provider for the Google key rule. */
+bdk_status_t web_apps_configure(Runtime&, const std::string& resolved_config,
+                                bdk_error_t* out_error);
 /* The keyboard handler of the page: the reserve answer, and the unhandled report. */
 bool reserve_key(Contents&, bdk_native_handle_t key_event);
 void report_unhandled_key(Contents&, bdk_native_handle_t key_event);
