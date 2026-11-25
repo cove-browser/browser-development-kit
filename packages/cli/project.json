@@ -8,8 +8,18 @@
     "js-vite",
     "js-internal",
     "js-automation",
-    "js-protocol"
+    "js-protocol",
+    "tooling"
   ],
+  "namedInputs": {
+    "embedded": [
+      "{workspaceRoot}/apps/templates/**/*",
+      "{workspaceRoot}/chromium/patches/**/*",
+      "{workspaceRoot}/chromium/pin.json",
+      "{workspaceRoot}/packages/core/include/bdk/bdk_base.h",
+      "{workspaceRoot}/packages/core/generated/abi-hash.txt"
+    ]
+  },
   "targets": {
     "build": {
       "executor": "nx:run-commands",
@@ -20,6 +30,10 @@
         },
         {
           "projects": ["js-vite"],
+          "target": "build"
+        },
+        {
+          "projects": ["tooling"],
           "target": "build"
         }
       ],
@@ -41,6 +55,7 @@
       },
       "inputs": [
         "default",
+        "embedded",
         "{workspaceRoot}/tests/config/**/*",
         {
           "externalDependencies": ["vitest"]
@@ -53,6 +68,14 @@
         },
         {
           "projects": ["js-codegen"],
+          "target": "build"
+        },
+        {
+          "projects": ["js-internal"],
+          "target": "build"
+        },
+        {
+          "projects": ["tooling"],
           "target": "build"
         }
       ]
@@ -77,6 +100,10 @@
         {
           "projects": ["js-codegen"],
           "target": "build"
+        },
+        {
+          "projects": ["tooling"],
+          "target": "build"
         }
       ]
     },
@@ -94,6 +121,7 @@
       },
       "inputs": [
         "default",
+        "embedded",
         "{workspaceRoot}/.node-version",
         {
           "externalDependencies": ["rolldown"]
@@ -119,6 +147,10 @@
         },
         {
           "projects": ["js-codegen"],
+          "target": "build"
+        },
+        {
+          "projects": ["tooling"],
           "target": "build"
         }
       ]

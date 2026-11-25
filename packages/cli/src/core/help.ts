@@ -3,6 +3,16 @@ export function helpText(steps: readonly string[]): string {
   return `bdk: the Browser Development Kit command line tool
 
 Usage:
+  bdk init [<directory>] [--name <display name>] [--bundle-id <identifier>] [--scheme <scheme>]
+           [--template swift-browser] [--pages none|plain|vite]
+           [--framework vanilla|react|preact] [--language ts|js] [--styling css|tailwind]
+           [--starter-pages <route>,...] [--package-manager pnpm|npm|yarn|bun] [--no-install]
+           [--automation] [--runtime prebuilt|source] [--no-git] [--bdk-package <url|path>]
+           [--yes] [--no-input] [--force]
+  bdk doctor [--bundle <App.app>]
+  bdk patch status|apply|export|check
+  bdk patch new <name>
+  bdk patch rebase <tag>
   bdk build [<step>...]
   bdk build config [--out <file>]
   bdk build codegen [--out <dir>] [--commands <file>] [--resolved <file>]
@@ -13,6 +23,15 @@ Usage:
   bdk --help | --version
 
 Commands:
+  init          Create an application project. Asks for each choice not given as a flag, only on a
+                terminal; --yes or --no-input takes the defaults, and a choice with no default must be
+                a flag. Prints the command that makes the same project with no questions
+  doctor        Check the machine, the project, compatibility and, with --bundle, a built application.
+                Exits 1 when a finding is an error
+  patch         Manage the application's Chromium patches in source mode: status, apply (BDK's series,
+                then the application's, to the managed checkout), new, export (the commits on top of
+                BDK's series into the project), check (against the pinned Chromium, no build), rebase
+                (against another tag)
   build         Run build steps. Steps: ${steps.join(", ")}.
                 With no step, runs those that apply, in that order: pages, automation and devtools need a
                 bundle (--bundle, or an Xcode build); sign needs an Xcode build or --identity
@@ -34,7 +53,7 @@ Options:
                           CODESIGNING_FOLDER_PATH, else TARGET_BUILD_DIR/WRAPPER_NAME) and the resolved
                           configuration to read (default: bdk.resolved.json next to bdk.toml; \`build codegen\`
                           reads the same file). --bundle is also the application for \`build automation\`,
-                          \`build devtools\` and \`build sign\`
+                          \`build devtools\`, \`build sign\` and \`doctor\`
   --identity, --team, --entitlements
                           For \`build sign\`. In an Xcode build they default to CODESIGNING_FOLDER_PATH,
                           EXPANDED_CODE_SIGN_IDENTITY, DEVELOPMENT_TEAM and CODE_SIGN_ENTITLEMENTS.

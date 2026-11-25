@@ -1,6 +1,8 @@
-import { readdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { type Dirent, readdirSync } from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readAbi } from "@bdk/tooling/dist/runtime/abi.js";
+import { type RuntimeRecord, readPin } from "@bdk/tooling/dist/runtime/pin.js";
 
 /** Asset names under this prefix are the built `@bdk/internal` modules (`js/internal/settings.js`). */
 export const INTERNAL_MODULES_PREFIX = "js/internal/";
@@ -69,6 +71,68 @@ export function sdkAssets(dirs: Record<string, string> = sdkDirs()): Record<stri
   for (const [name, dir] of Object.entries(dirs)) {
     for (const file of listPackageFiles(dir))
       assets[`${SDK_PREFIX}${name}/${file}`] = resolve(dir, file);
+  }
+  return Object.fromEntries(Object.entries(assets).sort(([a], [b]) => (a < b ? -1 : 1)));
+}
+
+/** The repository root, from `packages/cli/src`. */
+export function repositoryRoot(): string {
+  return resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+}
+
+/**
+ * The embedded facts about this BDK release that `bdk doctor` and `bdk patch` need: the Chromium pin,
+ * the ABI the SDK was compiled against, and the published runtime record (`null` while there is none).
+ * Written from `chromium/pin.json` and `packages/core` when packaging; computed from them unpackaged.
+ */
+export const RELEASE_ASSET = "bdk-release.json";
+
+export interface ReleaseFacts {
+  chromium: { tag: string; commit: string };
+  abi: { version: number; hash: string };
+  runtime: RuntimeRecord | null;
+}
+
+export function releaseFacts(root: string = repositoryRoot()): ReleaseFacts {
+  const pin = readPin(root);
+  return {
+    chromium: { tag: pin.tag, commit: pin.commit },
+    abi: readAbi(root),
+    runtime: pin.runtime,
+  };
+}
+
+/** Repository directories embedded under a prefix: BDK's patch series and the `bdk init` templates. */
+export const REPOSITORY_ASSET_DIRS: readonly { prefix: string; dir: string }[] = [
+  { prefix: "chromium/patches/", dir: "chromium/patches" },
+  { prefix: "templates/swift-browser/", dir: "apps/templates/swift-browser" },
+  { prefix: "templates/pages/", dir: "apps/templates/pages" },
+];
+
+/** Files at the top of those directories that describe them and are not part of what they carry. */
+const NOT_REPOSITORY_ASSETS = new Set(["README.md", "project.json"]);
+
+/** Every file of `REPOSITORY_ASSET_DIRS` as asset name to absolute path, sorted by name. */
+export function repositoryAssets(root: string = repositoryRoot()): Record<string, string> {
+  const assets: Record<string, string> = {};
+  for (const { prefix, dir } of REPOSITORY_ASSET_DIRS) {
+    const base = resolve(root, dir);
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(base, { recursive: true, withFileTypes: true });
+    } catch (error) {
+      if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT")
+        continue;
+      throw error;
+    }
+    for (const entry of entries) {
+      if (!entry.isFile() || entry.name === ".DS_Store") continue;
+      const name = relative(base, join(entry.parentPath, entry.name)).split(sep).join("/");
+      if (NOT_REPOSITORY_ASSETS.has(name)) continue;
+      // What a development build of a template leaves behind is not part of it.
+      if (/(^|\/)(node_modules|\.build|build|dist|xcuserdata)\//.test(name)) continue;
+      assets[`${prefix}${name}`] = join(base, name);
+    }
   }
   return Object.fromEntries(Object.entries(assets).sort(([a], [b]) => (a < b ? -1 : 1)));
 }

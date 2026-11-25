@@ -1,0 +1,8 @@
+{
+  "name": "{{packageName}}",
+  "private": true,
+  "description": "Written by bdk init with --automation: bdk build automation bundles the scripts in Automation/ with this Rolldown.",
+  "devDependencies": {
+    "rolldown": "1.2.18"
+  }
+}

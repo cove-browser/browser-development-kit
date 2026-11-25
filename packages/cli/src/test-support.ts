@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { Assets } from "./assets.js";
 import { loadBundler } from "./core/automation/loader.js";
 import type { Context } from "./core/context.js";
+import { run } from "./core/run.js";
 import type { WatchContext } from "./core/watch.js";
 import { genericPlatform } from "./platform/generic/index.js";
 
@@ -11,6 +12,8 @@ import { genericPlatform } from "./platform/generic/index.js";
 export interface TestContext extends Context {
   out: string[];
   err: string[];
+  /** Every program `exec` was asked to run; the fake runs none and reports success. */
+  execCalls: { command: string; args: readonly string[]; cwd: string }[];
 }
 
 export function memoryAssets(files: Record<string, string>): Assets {
@@ -30,7 +33,8 @@ export function memoryAssets(files: Record<string, string>): Assets {
 export function testContext(overrides: Partial<Context> = {}): TestContext {
   const out: string[] = [];
   const err: string[] = [];
-  return {
+  const execCalls: TestContext["execCalls"] = [];
+  const ctx: TestContext = {
     cwd: process.cwd(),
     env: {},
     stdout: (text) => out.push(text),
@@ -43,10 +47,19 @@ export function testContext(overrides: Partial<Context> = {}): TestContext {
     loadBundler,
     // A watcher that never fires, and a run that is stopped at once.
     watch: { watcher: () => ({ close() {} }), stopped: () => Promise.resolve(), debounceMs: 0 },
+    exec: (command, args, options) => {
+      execCalls.push({ command, args, cwd: options.cwd });
+      return Promise.resolve({ code: 0, stdout: "", stderr: "" });
+    },
+    // The lock is taken by the tooling's own tests; here the locked run happens in this process.
+    underCheckoutLock: (_paths, args) =>
+      run(args, { ...ctx, env: { ...ctx.env, BDK_CHECKOUT_LOCKED: "1" } }),
     ...overrides,
     out,
     err,
+    execCalls,
   };
+  return ctx;
 }
 
 /** A temporary directory with real paths (macOS `/var` is a link to `/private/var`). */

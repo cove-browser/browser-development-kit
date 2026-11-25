@@ -8,10 +8,10 @@ This document is about the `bdk` tool that a browser developer uses. The `pnpm` 
 
 | Command | Who runs it | Purpose | Status |
 |---|---|---|---|
-| `bdk init` | A developer, once | Create an application project | Plan, M9, T-CLI-02 |
-| `bdk doctor` | A developer; CI | Check the machine, the project and the built application | Plan, M9, T-CLI-01 |
+| `bdk init` | A developer, once | Create an application project | Plan, M9, T-CLI-02; built 2026-11-25 (section 4.5) |
+| `bdk doctor` | A developer; CI | Check the machine, the project and the built application | Plan, M9, T-CLI-01; built 2026-11-25 except `--fix` (section 6.1) |
 | `bdk build` | The Xcode build; occasionally a developer | Resolve configuration, generate code, build pages and scripts, resolve or build the runtime, sign | Added (S8); the work is T-CLI-04 |
-| `bdk patch` | A developer in source mode | Manage the application's Chromium patches | Plan, M9, T-CLI-03 |
+| `bdk patch` | A developer in source mode | Manage the application's Chromium patches | Plan, M9, T-CLI-03; built 2026-11-25 (section 7.1) |
 
 The spec proposes three commands and asks for the CLI to stay lean. `bdk build` is a fourth because the Xcode build needs one stable entry point for work the spec already assigns to the build. It adds no new capability. There is no `bdk run`, `bdk test`, `bdk publish`, `bdk update` or `bdk config`: Xcode runs and tests, the application ships its own updates, and BDK never updates itself.
 
@@ -236,6 +236,26 @@ Asked in this order. A question is skipped when its flag was given or when an ea
 | Defaults | Every browser-owned surface in default mode; extensions on; no search engine; automation off |
 | Non-empty directory | Refused unless `--force`, which never overwrites an existing file |
 
+### 4.5 As built (2026-11-25)
+
+`packages/cli/src/core/init/`, templates in `apps/templates/swift-browser` and `apps/templates/pages`; details in
+`packages/cli/README.md` ("Init"). Where it departs from 4.1 to 4.4:
+
+| Planned | Built | Why |
+|---|---|---|
+| Questions in the order of 4.2 | The same, except that "Automation host" is asked before "Package manager", and the package manager and "Install packages now" are asked for Vite pages or automation | `bdk build automation` loads Rolldown from the project (the executable cannot carry its native binding), so `--automation` writes a `package.json` that pins it and installs it |
+| `--search-engine` | Not offered | `[search]` (S1) is not accepted, so the schema rejects the table |
+| `[storage]` written explicitly | Not written | `[storage]` (S2) is not accepted |
+| `Package.resolved` pinning BDK | Not written; the Xcode project references the package at the CLI's exact version (`--bdk-package <url\|path>` for another URL or a local checkout), and Xcode writes `Package.resolved` | No BDK version is published to resolve, and a resolved file without a revision is invalid |
+| Frameworks vanilla, react, vue, svelte, solid, preact, lit | vanilla, react, preact | The internal-page policy allows no Trusted Types policy (`chromium/bdk/engine/pages/bundled_page_source.cc`); the others assign template strings to `innerHTML`. Their run-time behaviour in Chromium is unverified for all three (no runtime can be embedded yet). |
+| A directory per combination of framework, language and styling | Composed: shared starter loaders, a component per framework and language, a stylesheet per styling, versions in one `versions.json` | 12 combinations times 5 pages would repeat the same loaders |
+| The result runs from Xcode with the runtime | It builds and runs on the stub runtime: the application links `BDKTestSupport`, because `bdk build runtime` and `embed` are not built (T-CLI-04). The sign phase skips when no runtime is embedded. | `RuntimeSource.swift` is the one file to change when they are |
+| Phases with input and output file lists | Every phase runs on every build (each step is incremental by digest) | `DERIVED_FILE_DIR` is per target, so `BDKRuntime`'s lists are not where the application target looks |
+| An empty `AppIcon` set | Kept; `CFBundleURLTypes` for http and https and camera, microphone and location usage strings are in `Info.plist` | |
+
+Verified: every combination generated in tests (56), and one generated project built and tested with
+`xcodebuild` (`template-swift-browser:build`). Not verified: Run from the Xcode GUI.
+
 ## 5. `bdk build`
 
 Added (S8). Called by Xcode. Each step can also be run alone. Built so far: `config`, `codegen` and `pages` (M4, T-CLI-04), `automation` and `devtools` (M7) and `sign` (M2); `runtime` and `embed` are not built. With no step, `pages`, `automation` and `devtools` run only with a bundle (`--bundle`, or an Xcode build). `--out` is the resolved file for `config`, `automation` and `devtools` and a directory for `codegen`, so one run cannot give it to `codegen` and another of them. `--watch` is built for `automation` only (T-AUT-07); `pages --watch` is not built (T-CLI-06, M5). Run from the packaged executable with no Node on the path; not run from an Xcode build.
@@ -335,6 +355,21 @@ Reports findings in four groups. It reports toolchain, compatibility and signatu
 
 Each finding has a fixture and a message (task T-CLI-01).
 
+### 6.1 As built (2026-11-25)
+
+`packages/cli/src/core/doctor/`; every code is listed in `packages/cli/README.md` ("Doctor"). The project group is
+every diagnostic the configuration resolver reports, so a diagnostic added there (`web_apps.push_unconfigured`,
+`services.push_google`, T-PWA-02) appears with no change to `doctor`. Outside Xcode it reads the template's
+`Resources/Info.plist` and `Resources/App.entitlements`. Requirements: macOS 14 (or the resolved runtime's
+`min_os`), Xcode 26, Swift 6, arm64.
+
+Not built: `--fix`; whether the pin is behind the newest BDK release (there is no release feed to read);
+feature overrides "outside the tested configuration" (`[chromium.features]`, S9, is not accepted); in source mode,
+that the source-built runtime reports the prebuilt one's ABI hash (no prebuilt runtime is published); with
+`--bundle`, page and script digests and the framework's files against the runtime manifest; a template-pinned
+dependency the Vite preset no longer supports. A runtime or signature mismatch is an error, exit 1, as the table
+above says, not exit 4.
+
 ## 7. Source mode and `bdk patch`
 
 Source mode is for applications that need to change Chromium: `runtime.mode = "source"` in `bdk.toml`. The application's patches are applied on top of BDK's own series, and the result is a runtime with its own source key.
@@ -378,6 +413,19 @@ Rules:
 | Deny list | GN arguments and patches cannot be checked for intent, but arguments on the deny list in [configuration.md](configuration.md) 3.4.1 are refused, and the runtime manifest records the digest of the application's patches so a release can be audited. |
 | Support | A source-built runtime is the application's responsibility to rebuild for each security release. `bdk doctor` warns when the pin is behind. |
 | Time and space | A first checkout and build are of the order of 100 GB and hours. Unmeasured; task T-CHR-05. |
+
+### 7.1 `bdk patch` as built (2026-11-25)
+
+`packages/cli/src/core/patch/`, on the tooling's patch code (`tooling/src/chromium/`); details in
+`packages/cli/README.md` ("Patch"). BDK's series and the pin are embedded in the executable. `[chromium] patches`
+may be a directory with `series` or a list of files; `export` needs the directory form. `apply`, `new` and `export`
+take the managed checkout's lock.
+
+| Planned | Built | Why |
+|---|---|---|
+| `new <name>` records the checkout state as the base | `new` applies both series (or finds them applied) and says where to commit; `export` takes the commit after BDK's series as the base, checked by patch id | The base is always "the pin plus BDK's series", which can be computed; a recorded ref could go stale |
+| `status` says which patches apply cleanly to the pin | `status` lists the patches, their files and the checkout's state; `check` applies them to a sparse checkout of the pin | Telling whether a patch applies needs the pinned files, which `check` fetches |
+| A runtime whose manifest records the application's patches | The identity and the manifest record `application.patches` and `patches_digest` (`tooling/src/runtime/`); `chromium:build` and `chromium:package` take `--app-patches` | `bdk build runtime` is not built (T-CLI-04); no source build with an application patch has been run |
 
 ## 8. Xcode integration
 

@@ -1,14 +1,20 @@
 import { join, relative } from "node:path";
-import { type ParsedArgs, parseCliArgs, STEP_FLAGS } from "./args.js";
+import { FLAG_COMMANDS, givenFlags, type ParsedArgs, parseCliArgs, STEP_FLAGS } from "./args.js";
 import type { Context } from "./context.js";
 import type { Diagnostic } from "./diagnostics.js";
 import { type DiagnosticFormat, formatDiagnostics } from "./diagnostics-format.js";
+import { doctorSummary, runDoctor } from "./doctor/doctor.js";
 import { CliError, ExitCode, type ExitCodeValue, usageError } from "./exit-codes.js";
 import { helpText } from "./help.js";
+import { runInit } from "./init/init.js";
+import { runPatch } from "./patch/patch.js";
 import { findProject, type Project } from "./project.js";
 import { BUILD_STEPS } from "./steps/index.js";
 import type { Step } from "./steps/step.js";
 import { watchLoop } from "./watch.js";
+
+/** The commands that exist (sdk/cli.md section 1). */
+export const COMMANDS = ["build", "doctor", "init", "patch"] as const;
 
 function diagnosticFormat(ctx: Context, args: ParsedArgs | undefined): DiagnosticFormat {
   if (args?.diagnostics !== undefined) return args.diagnostics;
@@ -184,10 +190,34 @@ export async function run(argv: readonly string[], ctx: Context): Promise<number
     const name = args.positionals[0];
     if (name === undefined) {
       ctx.stderr(helpText(BUILD_STEPS.map((s) => s.name)));
-      throw usageError("No command given. Commands: build.");
+      throw usageError(`No command given. Commands: ${COMMANDS.join(", ")}.`);
     }
-    if (name !== "build") throw usageError(`Unknown command "${name}". Commands: build.`);
-    command = "build";
+    if (!(COMMANDS as readonly string[]).includes(name)) {
+      throw usageError(`Unknown command "${name}". Commands: ${COMMANDS.join(", ")}.`);
+    }
+    command = name;
+    for (const flag of givenFlags(args)) {
+      const owners = FLAG_COMMANDS[flag] ?? [];
+      if (!owners.includes(name)) {
+        throw usageError(`--${flag} applies to \`bdk ${owners.join("`, `bdk ")}\` only.`);
+      }
+    }
+    if (name === "init") return report(ctx, args, json, { command, ...(await runInit(ctx, args)) });
+    if (name === "doctor") {
+      if (args.positionals.length > 1) throw usageError("bdk doctor takes no arguments.");
+      const result = await runDoctor(ctx, args, await findProject(ctx.cwd, args.project));
+      if (!json) ctx.stdout(doctorSummary(result.data));
+      return report(ctx, args, json, { command, ...result });
+    }
+    if (name === "patch") {
+      const outcome = await runPatch(ctx, args, await findProject(ctx.cwd, args.project), argv);
+      if (outcome.kind === "delegated") return outcome.exitCode;
+      const { kind: _kind, ...result } = outcome;
+      return report(ctx, args, json, {
+        command: `patch ${args.positionals[1] ?? ""}`.trim(),
+        ...result,
+      });
+    }
     const steps = selectSteps(ctx, args);
     const project = await findProject(ctx.cwd, args.project);
     const first = report(ctx, args, json, await runBuild(ctx, args, steps, project));

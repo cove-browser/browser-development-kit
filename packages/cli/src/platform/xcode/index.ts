@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import type { BundleFacts } from "../../core/config/index.js";
 import { CliError, ExitCode } from "../../core/exit-codes.js";
 import type { BuildLocations, FileList, Platform } from "../platform.js";
+import { hostToolchain, inspectSignature } from "./doctor.js";
 import { signBundle } from "./sign.js";
 import { runTool, type ToolRunner } from "./tools.js";
 
@@ -102,6 +103,8 @@ export function createXcodePlatform(
     name: "xcode",
     isIdeBuild: (env) => env.XCODE_VERSION_ACTUAL !== undefined,
     sign: (request) => signBundle(request, runner),
+    toolchain: () => hostToolchain(runner),
+    inspectSignature: (appPath) => inspectSignature(runner, appPath),
     buildLocations: xcodeLocations,
     async writeFileLists(env, lists: readonly FileList[]) {
       const dir = xcodeLocations(env)?.fileListDir;
