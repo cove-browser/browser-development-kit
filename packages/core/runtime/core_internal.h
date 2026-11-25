@@ -344,12 +344,8 @@ class Backend {
        this start will use and the engine's version ("158.0.8127.37"). Called before Start; when
        either is empty the policy is not applied. The Chromium engine does not supply them yet
        (T-PKG-05). */
-    virtual std::string ProfileDataDirectory(const bdk_start_config_t&, const std::string&) {
-        return "";
-    }
-    virtual std::string EngineVersion() {
-        return "";
-    }
+    virtual std::string ProfileDataDirectory(const bdk_start_config_t&, const std::string&);
+    virtual std::string EngineVersion();
 
     /* Profiles. The core keeps the list and the names; the backend keeps what is on disk. */
     virtual void ProfilesChanged(Runtime& rt) = 0;

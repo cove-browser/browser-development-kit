@@ -11,6 +11,16 @@
 #include "core_internal.h"
 
 namespace bdkcore {
+
+/* Defined here, not in core_internal.h: Chromium's style plugin refuses virtual methods with
+   inline bodies. */
+std::string Backend::ProfileDataDirectory(const bdk_start_config_t&, const std::string&) {
+    return "";
+}
+std::string Backend::EngineVersion() {
+    return "";
+}
+
 namespace {
 
 namespace fs = std::filesystem;
