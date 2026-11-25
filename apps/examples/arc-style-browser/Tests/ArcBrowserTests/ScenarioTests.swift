@@ -15,7 +15,7 @@ import Testing
 @MainActor
 struct ScenarioTests {
     // The stub's surface numbers (bdk_ids.h), which this package cannot import.
-    private static let extensionPopups: UInt32 = 26
+    static let extensionPopups: UInt32 = 26
     private static let extensionSidePanels: UInt32 = 27
 
     @Test("sidebar, pinned pages and two spaces, each with a profile of its own")

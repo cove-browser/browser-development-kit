@@ -97,4 +97,20 @@ extension ScenarioTests {
             #expect(browser.placement.popups.first?.extensionID == info.id)
         }
     }
+
+    @Test("a popup whose clicked button the extensions area replaced still opens in the window")
+    func popupAfterTheAreaWasRebuilt() async throws {
+        try await withBrowser { browser in
+            let controller = browser.controller
+            let page = try browser.page(try controller.focusedPage())
+            // The button clicked, then replaced by a refresh before the popup arrived: no longer
+            // in any window, where NSPopover refuses to point.
+            browser.placement.noteAnchor(NSButton(), in: controller.focusedWindow)
+            try browser.runtime.stub.raiseUIRequest(
+                surface: Self.extensionPopups, on: page,
+                payloadJSON: #"{"extensionId":"abc","trigger":"userClick"}"#)
+            try await waitUntil("the popup") { !browser.placement.popups.isEmpty }
+            #expect(browser.placement.popups.first?.isShown == true)
+        }
+    }
 }

@@ -48,7 +48,6 @@ public final class ExtensionPlacement {
     func place(_ request: ExtensionPopupRequest) -> BDKUIResponse {
         guard let (id, browserWindow) = browserWindow(for: request), browserWindow.window.isVisible
         else { return .useDefault }
-        let anchor = anchors[id] ?? browserWindow.sidebar.extensionsArea
         let content = NSViewController()
         let container = NSView(
             frame: NSRect(origin: .zero, size: Self.clamp(request.preferredSize)))
@@ -72,9 +71,8 @@ public final class ExtensionPlacement {
             Popup(
                 extensionID: request.extensionID, secureView: request.secureView, window: id,
                 request: request, popover: popover, delegate: delegate))
-        // An empty extensions area (no action shown yet) has no size to point at: use the sidebar.
-        let target = anchor.bounds.isEmpty ? browserWindow.sidebar : anchor
         browserWindow.window.contentView?.layoutSubtreeIfNeeded()
+        let target = anchor(for: request.extensionID, in: id, of: browserWindow)
         popover.show(relativeTo: target.bounds, of: target, preferredEdge: .maxX)
         request.accept()
         request.closed.onFire { [weak self, weak request, weak popover] in
@@ -88,6 +86,22 @@ public final class ExtensionPlacement {
         }
         controller?.onChange()
         return .handled
+    }
+
+    /// What the popup points at: the button that was clicked, else the extension's button now,
+    /// else the extensions area, else the sidebar. A refresh of the extensions area replaces its
+    /// buttons, so the one clicked may have left the window by the time the popup arrives, and
+    /// NSPopover throws for a view outside a window. An empty area has no size to point at.
+    private func anchor(
+        for extensionID: String, in id: Layout.WindowID, of browserWindow: BrowserWindow
+    ) -> NSView {
+        let sidebar = browserWindow.sidebar
+        let candidates = [
+            anchors[id], sidebar.extensionButton(for: extensionID), sidebar.extensionsArea,
+        ]
+        return candidates.lazy.compactMap { $0 }.first {
+            $0.window === browserWindow.window && !$0.bounds.isEmpty
+        } ?? sidebar
     }
 
     private func forget(_ request: ExtensionPopupRequest) {

@@ -122,6 +122,8 @@ public final class BrowserController {
             guard let self else { return }
             try? layout.focusPane(pane, in: id)
             focusedWindow = id
+            // The actions shown are the focused page's: its badges and enabled state.
+            scheduleExtensionRefresh()
             onChange()
         }
         browserWindow.onBecameKey = { [weak self] in self?.focusedWindow = id }

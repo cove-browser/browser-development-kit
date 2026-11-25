@@ -158,6 +158,11 @@ final class SidebarView: NSStackView, NSTextFieldDelegate {
         }
     }
 
+    /// The extension's action button, while the extensions area shows one.
+    func extensionButton(for id: String) -> NSView? {
+        extensionsArea.arrangedSubviews.first { $0.identifier?.rawValue == id }
+    }
+
     @objc private func spaceSelected() {
         let index = spaces.selectedSegment
         guard spaceIDs.indices.contains(index) else { return }
