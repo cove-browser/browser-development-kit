@@ -85,6 +85,10 @@ bdk_status_t bdk_harness_page_navigate(bdk_contents_t contents, const char* url)
     return bdk_stub_page_navigate(contents, text(url));
 }
 
+bdk_status_t bdk_harness_script_redirect(bdk_runtime_t rt, const char* url, const char* to) {
+    return bdk_stub_script_redirect(rt, text(url), text(to));
+}
+
 bdk_subscription_t bdk_harness_subscribe_as(bdk_runtime_t rt, bdk_harness_caller_t caller,
                                             const char* event, bdk_event_cb cb, void* ctx,
                                             bdk_release_cb rel, bdk_error_t* out_error) {

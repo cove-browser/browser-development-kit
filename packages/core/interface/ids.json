@@ -383,6 +383,11 @@
       { "name": "ADDRESS_BAR", "id": 1 },
       { "name": "EXTENSIONS", "id": 2 },
       { "name": "DOWNLOADS", "id": 3 }
+    ],
+    "navigationDecisions": [
+      { "name": "ALLOW", "id": 1 },
+      { "name": "CANCEL", "id": 2 },
+      { "name": "REDIRECT", "id": 3 }
     ]
   }
 }

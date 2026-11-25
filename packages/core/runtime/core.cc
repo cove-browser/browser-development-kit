@@ -10,6 +10,7 @@
 #include "bdk_abi_hash.h"
 #include "broker_internal.h"
 #include "core_internal.h"
+#include "navigation_policy.h"
 #include "providers_internal.h"
 #include "routes.h"
 
@@ -640,6 +641,7 @@ BDK_EXPORT bdk_call_t bdk_runtime_shutdown(bdk_runtime_t h, bdk_result_cb cb, vo
     rt->shutting = true;
     automation_shutdown(rt);
     routes_shutdown(*rt);
+    navigation_policy_shutdown(*rt);
     auto call = new_call(rt, cb, nullptr, ctx, rel);
     call->done = true; /* completed by the task below; a cancel has no effect */
 

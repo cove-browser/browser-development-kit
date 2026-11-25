@@ -156,6 +156,12 @@ extern "C" {
 #define BDK_NATIVE_PAGE_HANDLED 1u
 #define BDK_NATIVE_PAGE_BLOCKED 2u
 
+/* bdk_navigation_policy_decide's action (swift-api.md 6.3): let the navigation go on, cancel it,
+ * or cancel it and load another URL */
+#define BDK_NAVIGATION_ALLOW 1u
+#define BDK_NAVIGATION_CANCEL 2u
+#define BDK_NAVIGATION_REDIRECT 3u
+
 /* bdk_contents_perform_command and bdk_contents_can_perform_command (swift-api.md section 9) */
 #define BDK_PAGE_COMMAND_BACK 1u
 #define BDK_PAGE_COMMAND_FORWARD 2u

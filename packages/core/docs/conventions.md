@@ -114,6 +114,29 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
     `routes.cc`, checked at the pin; packages/cli lists the same routes. Internal pages are not recorded in history,
     as in Chrome. Page subscriptions take no filter yet.
 
+16. Navigation policy (`runtime/navigation_policy.{h,cc}`, T-SWF-10, M9). The core owns the handler, the pending
+    decisions and the rules in `bdk_contents.h`; a backend only calls `ask_navigation_policy` where a navigation
+    would send its request (after its start event) and at each server redirect, waits for `done`, and carries
+    `policy_redirects` from a redirect decision to the load it starts. `ask_navigation_policy` returns null, and
+    the backend goes on at once, when there is no handler or for the start of a load a redirect decision began,
+    so with no handler nothing changes. A decision is its own handle type (`T_DECISION`), a `bdk_context_t` that
+    `bdk_release` refuses like a call context; it goes stale when it is answered, when the backend withdraws it
+    (`withdraw_navigation_policy`: stopped, superseded), when the page is destroyed (`destroy_contents`) and at
+    shutdown. The answer runs on a later task. The handler is set with `bdk_navigation_policy_set_handler` at any
+    time, like `bdk_log_set_handler`, because Swift's `runtime.navigationPolicy` is a property, not part of the
+    configuration; a handler removed before a decision is delivered lets that navigation go on. The twenty-first
+    redirect decision in a row is `kTooManyRedirects` (net error -310, the error page). The stub asks before its
+    reputation check and its route handling (a native route is asked like any other URL) and simulates server
+    redirects with `bdk_stub_script_redirect` (`bdk_harness_script_redirect`, a page hook). The engine (T-SWF-11)
+    is expected to be a throttle beside `engine/pages/pages_navigation_throttle.cc`: `WillStartRequest` and
+    `WillRedirectRequest` return `DEFER` for the outermost main frame of a page with a `bdk_contents_t`, then
+    `Resume`, or `CancelDeferredNavigation(CANCEL_AND_IGNORE)` with the page noting the reason as it does for
+    `handledNatively`, or `{CANCEL, ERR_TOO_MANY_REDIRECTS}`; a redirect posts a load as `LoadAsBrowser` does.
+    Chromium runs no throttle for a page activation (`NavigationRequest`, "Throttles will already have run the
+    first time the page was navigated"), so back/forward cache restores and prerender activations are not
+    asked; the throttle must ask for a prerender's own navigation and discard a prerender it may not keep.
+    Checked against the source at the pin, not built.
+
 ### The UI request router
 
 `runtime/ui_router.cc` (T-UIR-01) is the one place that decides what happens to a request. The backend raises it with

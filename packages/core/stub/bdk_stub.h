@@ -26,6 +26,10 @@ typedef struct bdk_stub_navigation_script {
 BDK_EXPORT bdk_status_t bdk_stub_script_navigation(bdk_runtime_t, bdk_string_t url,
                                                    const bdk_stub_navigation_script_t*);
 
+/* Scripts a server redirect: every later request for url is redirected to `to`, which is
+   requested in turn (and may be redirected again). The navigation policy is asked at each. */
+BDK_EXPORT bdk_status_t bdk_stub_script_redirect(bdk_runtime_t, bdk_string_t url, bdk_string_t to);
+
 /* Raises a UI request as Chromium would. The handler registered for the surface is called from the
  * next pump. */
 BDK_EXPORT bdk_status_t bdk_stub_raise_ui_request(bdk_runtime_t, uint32_t surface, bdk_contents_t,

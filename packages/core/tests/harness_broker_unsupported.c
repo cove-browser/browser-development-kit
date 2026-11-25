@@ -124,6 +124,11 @@ bdk_status_t bdk_harness_page_navigate(bdk_contents_t contents, const char* url)
     return BDK_ERR_INVALID_ARGUMENT;
 }
 
+bdk_status_t bdk_harness_script_redirect(bdk_runtime_t rt, const char* url, const char* to) {
+    (void)rt, (void)url, (void)to;
+    return BDK_ERR_INVALID_ARGUMENT;
+}
+
 bdk_subscription_t bdk_harness_subscribe_as(bdk_runtime_t rt, bdk_harness_caller_t caller,
                                             const char* event, bdk_event_cb cb, void* ctx,
                                             bdk_release_cb rel, bdk_error_t* out_error) {

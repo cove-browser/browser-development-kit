@@ -191,6 +191,13 @@
       "values": { "HANDLED": 1, "BLOCKED": 2 }
     },
     {
+      "group": "navigationDecisions",
+      "kind": "enum",
+      "prefix": "BDK_NAVIGATION_",
+      "comment": "bdk_navigation_policy_decide's action (swift-api.md 6.3): let the navigation go on, cancel it, or cancel it and load another URL",
+      "values": { "ALLOW": 1, "CANCEL": 2, "REDIRECT": 3 }
+    },
+    {
       "group": "pageCommands",
       "kind": "enum",
       "prefix": "BDK_PAGE_COMMAND_",

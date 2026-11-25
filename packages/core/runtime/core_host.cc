@@ -7,6 +7,7 @@
 
 #include "automation_internal.h"
 #include "broker_internal.h"
+#include "navigation_policy.h"
 
 using namespace bdkcore;
 
@@ -37,6 +38,7 @@ void close_profile(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Pro
 void destroy_contents(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Contents>& c) {
     withdraw_contents_requests(rt, c->handle);
     automation_forget_contents(rt, c->handle);
+    navigation_policy_forget_contents(*rt, c->handle);
     c->dead = true;
     for (auto& s : c->subs)
         deactivate(s);
@@ -97,6 +99,10 @@ void release_withdrawn(Request& r) {
     r.wrel = nullptr;
 }
 
+bool plausible_url(const std::string& u) {
+    return u.find(':') != std::string::npos && u.find_first_of(" \t\r\n") == std::string::npos;
+}
+
 } // namespace bdkcore
 
 namespace {
@@ -143,10 +149,6 @@ std::shared_ptr<Contents> open_contents_for(bdk_contents_t h, bdk_error_t* out_e
         return nullptr;
     }
     return c;
-}
-
-bool plausible_url(const std::string& u) {
-    return u.find(':') != std::string::npos && u.find_first_of(" \t\r\n") == std::string::npos;
 }
 
 bdk_status_t nav_to_index(const std::shared_ptr<Contents>& c, int64_t index, bdk_error_t* err) {

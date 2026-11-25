@@ -246,6 +246,11 @@ static const t_test_t* const kTables[] = {
                          (tests_providers.c) */
     t_pages_tests,
     t_extension_tests, /* extensions and registered windows (tests_extensions.c) */
+#ifndef BDK_HARNESS_ENGINE_TESTS
+    /* The navigation policy (tests_navigation_policy.c). The engine asks no policy until T-SWF-11,
+       which adds the file to the engine's suite and removes this condition. */
+    t_navigation_policy_tests,
+#endif
 #ifdef BDK_HARNESS_ENGINE_TESTS
     t_engine_tests,            /* scenarios only a real engine can run (tests_engine.c) */
     t_engine_ui_tests,         /* browser-owned surfaces on the engine (tests_engine_ui.c) */

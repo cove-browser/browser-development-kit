@@ -37,7 +37,8 @@ enum Type : uint8_t {
     T_CONTEXT,
     T_TASK,
     T_HELLO,
-    T_PROVIDER_CALL /* providers.cc */
+    T_PROVIDER_CALL, /* providers.cc */
+    T_DECISION       /* navigation_policy.cc */
 };
 
 struct Err {
@@ -55,6 +56,7 @@ struct UserScript;    /* automation_internal.h */
 class TaskPort;       /* automation_internal.h */
 struct ProviderTable; /* providers.cc */
 struct RouteTable;    /* routes.h */
+struct PolicyTable;   /* navigation_policy.h */
 
 struct Sub {
     bool active = true;
@@ -280,6 +282,7 @@ struct Runtime {
     std::shared_ptr<RouteTable> routes;                  /* routes.h */
     std::vector<std::weak_ptr<CallCtx>> native_contexts; /* native page requests not answered */
     std::shared_ptr<ProviderTable> provider_table;       /* providers_internal.h */
+    std::shared_ptr<PolicyTable> policy;                 /* navigation_policy.h */
     std::map<uint32_t, UiHandler> ui_handlers;
     std::map<uint32_t, UiMode> ui_modes; /* by surface; a surface not listed is kDefault */
     std::map<std::pair<bdk_contents_t, uint32_t>, UiQueue> ui_queues;
@@ -467,6 +470,8 @@ bdk_string_t view(const std::string&);
 bool string_ok(bdk_string_t);
 bool valid_json(const std::string&, bool* is_object = nullptr);
 std::string json_escape(const std::string&);
+/* What bdk_contents_load accepts as a URL: it has a scheme separator and no whitespace. */
+bool plausible_url(const std::string&);
 
 bdk_error_t make_error(const std::string& domain, const std::string& code,
                        const std::string& message);
