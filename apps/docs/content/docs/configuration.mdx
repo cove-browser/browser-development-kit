@@ -1,0 +1,72 @@
+---
+title: bdk.toml
+description: The application's build-time and start-up configuration, and how it is checked.
+---
+
+`bdk.toml` sits next to the Xcode project. `bdk build config` validates it against the schema and writes
+`bdk.resolved.json`, which the runtime reads at start; it is the only parser of the file. The full
+reference, every key with its status, is
+[configuration.md](https://github.com/cove-browser/browser-development-kit/blob/main/docs/planning/sdk/configuration.md).
+
+## Rules
+
+| Rule | Detail |
+| --- | --- |
+| Required | `[browser] name`. Everything else has a default. |
+| Unknown keys | A build error that names the key and the nearest valid one. No key is ignored. |
+| No `chrome://` | Pages are named logically. A value containing `chrome://`, `chrome-untrusted://` or `devtools://` is an error. |
+| No secrets | API keys and tokens come from Swift or a build setting. A value that looks like a credential is an error. |
+| Paths | Relative to `bdk.toml`, with forward slashes, and inside its directory. |
+| Source-only keys | Every `[chromium]` key is an error with `runtime.mode = "prebuilt"`. |
+
+## The tables
+
+| Table | Holds |
+| --- | --- |
+| `[browser]` | `name`, and `internal_scheme`: the branded scheme of internal pages, such as `cove://settings`. Set it explicitly; a scheme derived from the name changes when the name does. |
+| `[runtime]` | `mode` (`prebuilt` or `source`), `downgrade` and `snapshot_on_upgrade`. The BDK version is not here: it is the Swift package's. |
+| `[chromium]` | Source mode only: `revision`, `patches` (a directory with a `series`, default `Chromium/patches`, or a list of files) and `gn_args`, with a deny list. |
+| `[pages]` | `directory` (default `Pages`), `auto_discover`, `[pages.overrides]` (route to `chromium`, `native`, `disabled` or a directory), `[pages.aliases]` and `[pages.capabilities.<route>]` with the `allow` list of each page. |
+| `[ui]` | `default_browser_surfaces`, and `[ui.surfaces]`: each browser-owned surface as `default`, `custom` or `disabled`. |
+| `[extensions]` | Whether extensions are on, where they may be installed from, and what they may do. |
+| `[web_apps]` | Installable web apps, off by default. |
+| `[services]` | The provider of each service: translation, reputation, geolocation, push and the rest. A provider that talks to Google is used only when the application chooses it. |
+| `[automation]` | `enabled`, `directory` (default `Automation`), `cpu_budget_ms`, and `[automation.external]` for the local endpoint. |
+| `[devtools]` | The DevTools front end and its overlay. |
+| `[codegen]` | Code generation for `@bdk/*` declarations. |
+
+A small example, as `bdk init` writes it for a browser with two starter pages:
+
+```toml
+[browser]
+name = "Cove"
+internal_scheme = "cove"
+
+[runtime]
+mode = "prebuilt"
+
+[pages.capabilities.new-tab]
+allow = ["history.read"]
+
+[pages.capabilities.settings]
+allow = ["settings.read"]
+```
+
+## Diagnostics
+
+Every problem is a diagnostic with a stable code, the file and line, and a fix: `config.unknown_key`,
+`config.type`, `config.secret`, `browser.scheme_invalid`, `pages.capability_denied`, and the rest of [section
+9](https://github.com/cove-browser/browser-development-kit/blob/main/docs/planning/sdk/configuration.md#9-validation-errors).
+Inside an Xcode build they are printed as `file:line: error: message`, so Xcode shows them on the line.
+`bdk doctor` lists the same diagnostics, with notes and warnings that do not stop a build, such as a
+provider that sends data to Google.
+
+## Environment
+
+| Variable | Meaning |
+| --- | --- |
+| `BDK_HOME` | Root of the runtime store, the managed Chromium checkout and the compiler cache. Default `~/.bdk`. No spaces. |
+| `BDK_RUNTIME_MODE` | `prebuilt` or `source`, for one build. |
+| `BDK_SKIP_SIGNING` | `1` skips `bdk build sign`, for pipelines that sign later. |
+
+None of these is read by a shipped application.

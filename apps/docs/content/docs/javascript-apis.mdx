@@ -1,0 +1,72 @@
+---
+title: JavaScript APIs
+description: "@bdk/internal for internal pages and @bdk/automation for automation scripts."
+---
+
+BDK has two JavaScript SDKs, one per trust domain. They cannot call each other; they meet only at the
+broker that Swift also uses, so a setting a settings page writes is the value Swift reads. Ordinary web
+pages and extensions get neither. The full reference is
+[javascript-api.md](https://github.com/cove-browser/browser-development-kit/blob/main/docs/planning/sdk/javascript-api.md).
+
+| | `@bdk/internal/*` | `@bdk/automation` |
+| --- | --- | --- |
+| Runs in | A packaged internal page, in a sandboxed renderer | The automation host: a separate process with no page |
+| Authority | The capabilities `bdk.toml` grants that page | The capabilities and scope of the session Swift created |
+| Can drive other pages | No | Yes, within its scope |
+| Built with | Vite, or nothing | Rolldown, by `bdk build automation` |
+
+## Internal pages
+
+Each directory directly under `Pages/` with an `index.html` is a page. Its route is the directory name
+split on case boundaries and hyphenated: `Pages/NewTab` is `<scheme>://new-tab`. A directory with no
+`index.html`, such as `Pages/shared/`, holds shared code.
+
+```ts
+import { page } from "@bdk/internal/page";
+import { settings } from "@bdk/internal/settings";
+
+const doNotTrack = await settings.get({ key: "privacy.doNotTrack" });
+if (page.can("settings.write")) await settings.set({ key: "privacy.doNotTrack", value: true });
+```
+
+A page holds exactly the capabilities its `[pages.capabilities.<route>]` table allows; importing a module
+grants nothing, and a call without the grant is refused. A page with no build step imports the same
+modules from where the runtime serves them, `/@bdk/internal/<module>.js`.
+
+<Callout type="warn" title="The content security policy">
+  Internal pages run under Chromium's policy for its own pages: no inline script, no `eval`, no remote
+  code, and Trusted Types with no policy allowed, so no string may be assigned to `innerHTML` or a similar
+  sink. `bdk build pages` refuses HTML the policy would block. `bdk init` offers only frameworks that
+  build their DOM without HTML strings: plain JavaScript, React and Preact. Vue, Svelte, Solid and Lit
+  assign template strings to `innerHTML` and are not offered.
+</Callout>
+
+| Module | Covers |
+| --- | --- |
+| `page` | The page's route, its grants (`page.can`), the branded URL of a route, runtime information |
+| `settings`, `app-settings` | Browser settings and the application's own declared settings |
+| `history`, `bookmarks`, `downloads` | The profile's history, bookmarks and downloads |
+| `permissions`, `privacy`, `passwords`, `autofill` | Site permissions, clearing data, saved passwords and addresses |
+| `profiles`, `extensions`, `search`, `translation`, `system` | The rest of the service commands a page may be granted |
+| `commands`, `events` | The application's `app.` commands and events, typed by `bdk build codegen` |
+
+## Automation scripts
+
+With `[automation] enabled = true`, each top-level `.ts` or `.js` file in `Automation/` is a script.
+`bdk build automation` bundles it, with `@bdk/automation` inlined, into one module the host runs when
+the application, or a session it admits, starts it.
+
+```ts
+import { contents, task } from "@bdk/automation";
+
+export default async function main() {
+  const pages = await contents.list();
+  for (const [index, page] of pages.entries()) {
+    await page.waitFor({ load: "finished" }, { timeoutMs: 15000 });
+    task.progress((index + 1) / pages.length, (await page.state()).title);
+  }
+}
+```
+
+A task's script has a CPU budget, `[automation] cpu_budget_ms`; past it the host stops the script and the
+task ends with `automation.budgetExceeded`.
