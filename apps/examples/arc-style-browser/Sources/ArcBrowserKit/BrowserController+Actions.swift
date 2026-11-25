@@ -39,8 +39,8 @@ extension BrowserController {
         case .open(let text):
             guard let url = AddressInput.url(from: text) else { throw ActionFailure.noFocusedPage }
             try await open(url)
-        case .extensionAction(let id, let button):
-            try activateExtension(id, from: button, in: window)
+        case .extensionAction(let id, let button, let click):
+            try activateExtension(id, from: button, click: click, in: window)
         }
     }
 
@@ -178,9 +178,9 @@ extension BrowserController {
     /// popup or side panel it opens arrives as a request that ExtensionPlacement puts in this
     /// window.
     private func activateExtension(
-        _ id: String, from button: NSButton, in window: Layout.WindowID
+        _ id: String, from button: NSButton, click: NSEvent?, in window: Layout.WindowID
     ) throws {
-        guard let event = NSApp.currentEvent,
+        guard let event = click,
             let pageID = try layout.window(window).focusedPage,
             let page = registry.pages[pageID]
         else { return }

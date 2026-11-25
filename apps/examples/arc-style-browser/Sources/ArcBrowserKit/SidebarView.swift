@@ -22,7 +22,9 @@ final class SidebarView: NSStackView, NSTextFieldDelegate {
         case moveToNewWindow(Layout.PageID)
         case close(Layout.PageID)
         case open(String)
-        case extensionAction(id: String, button: NSButton)
+        /// `click` is the event that clicked the button, taken when it fired: the request is
+        /// handled a moment later, when `NSApp.currentEvent` may already be another one.
+        case extensionAction(id: String, button: NSButton, click: NSEvent?)
     }
 
     var onRequest: (Request) -> Void = { _ in }
@@ -185,7 +187,7 @@ final class SidebarView: NSStackView, NSTextFieldDelegate {
 
     @objc private func actionClicked(_ sender: NSButton) {
         guard let id = sender.identifier?.rawValue else { return }
-        onRequest(.extensionAction(id: id, button: sender))
+        onRequest(.extensionAction(id: id, button: sender, click: NSApp.currentEvent))
     }
 }
 
