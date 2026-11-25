@@ -360,7 +360,7 @@ Not done, each a task: the application used by hand, and its extension popups an
 | T-XPL-01 | Done: 16 findings, each resolved or recorded; the recorded ones go to T-XPL-02 (M10). | docs/release/cross-platform-review.md |
 | T-ADP-09, T-ADP-10, T-ADP-11, T-ARC-04 | Not started: each needs an engine build or a hand check. | |
 
-Not done, each a task in M9 unless said: the engine halves of T-SWF-11, T-PWA-04, T-PWA-05, T-PWA-06, T-UIR-12, T-UIR-13, T-UIR-14, T-UIR-15, T-EXT-14 and T-PKG-05; T-UIR-11; T-ADP-09, T-ADP-10, T-ADP-11 and T-ARC-04; the real release (T-PKG-06, T-PKG-04 from M2), the rehearsal (T-REL-01), the real builds of T-CHR-09 and T-CLI-03, T-REL-02's runtime notices and licence, T-REL-03 on the engine; T-CLI-07 and T-REP-09; a held manifest update (T-PWA-07, after v1); the cross-platform findings (T-XPL-02, M10). The next runtime build is a full rebuild: the GN presets changed (`generate_about_credits`, amendments 2.26).
+Not done, each a task in M9 unless said: the engine halves of T-SWF-11, T-PWA-04, T-PWA-05, T-PWA-06, T-UIR-12, T-UIR-13, T-UIR-14, T-UIR-15, T-EXT-14 and T-PKG-05; T-UIR-11; T-ADP-09, T-ADP-10, T-ADP-11 and T-ARC-04; the real release (T-PKG-06, T-PKG-04 from M2), the rehearsal (T-REL-01), the real builds of T-CHR-09 and T-CLI-03, T-REL-02's runtime notices and licence, T-REL-03 on the engine; T-CLI-07 and T-REP-09; a held manifest update (T-PWA-07, after v1); the cross-platform findings (T-XPL-02, M10). The GN presets changed (`generate_about_credits`, amendments 2.26), which changes the source key; the build stays incremental (the flag reaches one generated header and adds the credits action).
 
 ### M10 — Windows feasibility
 

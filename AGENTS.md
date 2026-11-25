@@ -52,7 +52,9 @@ A full Chromium build costs hours; an incremental one can still cost over an hou
 - Avoid edits to widely included Chromium headers and anything that changes GN args; both rebuild large parts
   of the tree.
 - Use `chromium:patch-check` (no build) to validate patches, and an experiment checkout for anything risky.
-- Do not start a Chromium build, sync or roll unless asked. Hooks and CI never build Chromium; keep it that way.
+- You may start a Chromium build (`chromium:build`) when the work needs one, without asking. Say in your
+  report what you built and how long it took. A sync or a roll still needs the user's go-ahead. Hooks and CI never
+  build Chromium; keep it that way.
 - Tests use fixtures and fakes, never a real checkout.
 
 ### Room for other platforms
