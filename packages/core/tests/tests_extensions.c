@@ -211,8 +211,9 @@ static void test_ext_handlers_accept_every_extension_surface(void) {
     bdk_error_t err = 0;
     for (uint32_t s = BDK_SURFACE_EXTENSION_ACTIONS; s <= BDK_SURFACE_EXTENSION_UNINSTALLS; ++s)
         CHECK(bdk_ui_set_handler(t_runtime, s, handler, NULL, NULL, &err) == BDK_OK);
-    CHECK(bdk_ui_set_handler(t_runtime, BDK_SURFACE_EXTENSION_UNINSTALLS + 1, handler, NULL, NULL,
-                             &err) == BDK_ERR_INVALID_ARGUMENT);
+    /* No surface has this number; surfaces after the extension ones are not extension surfaces. */
+    CHECK(bdk_ui_set_handler(t_runtime, 999u, handler, NULL, NULL, &err) ==
+          BDK_ERR_INVALID_ARGUMENT);
 }
 
 static void test_ext_disabled_extensions_disable_every_extension_surface(void) {
@@ -676,6 +677,141 @@ static void test_ext_sources_follow_the_configuration(void) {
     CHECK(failed_with(&cap, "broker", "invalidArguments"));
 }
 
+/* ---- developer_mode, blocklist and bundled extensions (S6, T-EXT-14) ---- */
+
+static void test_ext_developer_mode_off_refuses_unpacked_directories(void) {
+    NEEDS_HOOKS();
+    start_frozen_with("\"extensions\":{\"developer_mode\":\"off\"}", kInstallSurfaces, 3);
+    bdk_profile_t p = t_new_profile("Ext");
+    REQUIRE(bdk_harness_extension_package(t_runtime, "unpacked", "/fixtures/plain",
+                                          kPlainManifest) == BDK_OK);
+    t_capture_t cap;
+    call(p, "extensions.install",
+         "{\"source\":{\"kind\":\"unpacked\",\"path\":\"/fixtures/plain\"}}", &cap);
+    CHECK(failed_with(&cap, "extension", "sourceNotAllowed"));
+    CHECK(strstr(cap.message, "developer_mode") != NULL);
+    CHECK(g_calls == 0); /* refused before any prompt */
+    /* Other sources are not affected. */
+    REQUIRE(bdk_harness_extension_package(t_runtime, "updateUrl", ID_A, kPlainManifest) == BDK_OK);
+    REQUIRE(invoke(p, "extensions.install",
+                   "{\"source\":{\"kind\":\"updateUrl\",\"id\":\"" ID_A
+                   "\",\"updateUrl\":\"https://updates.example.com/plain.xml\"}}",
+                   &cap) != 0);
+    t_pump();
+    CHECK(g_calls == 1);
+    t_stop();
+    /* "on" and "user" load unpacked directories. */
+    start_frozen_with("\"extensions\":{\"developer_mode\":\"on\"}", kInstallSurfaces, 3);
+    p = t_new_profile("Ext");
+    install_unpacked(p, "/fixtures/plain", kPlainManifest, &cap);
+}
+
+static void test_ext_developer_mode_and_blocklist_are_checked_at_start(void) {
+    bdk_error_t err = 0;
+    CHECK(start_with("\"extensions\":{\"developer_mode\":\"sometimes\"}", &err) == BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "config", "resolvedInvalid"));
+    CHECK(start_with("\"extensions\":{\"install\":{\"blocklist\":[\"not-an-id\"]}}", &err) ==
+          BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "config", "resolvedInvalid"));
+    CHECK(start_with("\"extensions\":{\"bundled\":{\"x\":{\"path\":\"../Elsewhere\"}}}", &err) ==
+          BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "config", "resolvedInvalid"));
+    CHECK(start_with("\"extensions\":{\"bundled\":{\"x\":{\"path\":\"Extensions/X\",\"required\":"
+                     "\"yes\"}}}",
+                     &err) == BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "config", "resolvedInvalid"));
+    CHECK(t_runtime == 0);
+}
+
+static void test_ext_a_blocklisted_extension_never_installs(void) {
+    NEEDS_HOOKS();
+    /* Not even with allow_all: a blocklisted identifier is not a compatibility finding. */
+    start_frozen_with("\"extensions\":{\"install_policy\":\"allow_all\",\"install\":{\"blocklist\":"
+                      "[\"" ID_A "\"]}}",
+                      kInstallSurfaces, 3);
+    bdk_profile_t p = t_new_profile("Ext");
+    REQUIRE(bdk_harness_extension_package(t_runtime, "updateUrl", ID_A, kPlainManifest) == BDK_OK);
+    t_capture_t cap;
+    call(p, "extensions.install",
+         "{\"source\":{\"kind\":\"updateUrl\",\"id\":\"" ID_A
+         "\",\"updateUrl\":\"https://updates.example.com/plain.xml\"}}",
+         &cap);
+    CHECK(failed_with(&cap, "extension", "blocklisted"));
+    CHECK(strstr(cap.message, "[extensions.install] blocklist") != NULL);
+    CHECK(g_calls == 0);
+}
+
+static const char* kBundled = "\"extensions\":{\"bundled\":{"
+                              "\"reader\":{\"path\":\"Extensions/Reader\",\"required\":true},"
+                              "\"notes\":{\"path\":\"Extensions/Notes\",\"required\":false}}}";
+
+static void register_bundled(void) {
+    REQUIRE(bdk_harness_extension_package(t_runtime, "bundled", "Extensions/Reader",
+                                          kPlainManifest) == BDK_OK);
+    REQUIRE(bdk_harness_extension_package(t_runtime, "bundled", "Extensions/Notes",
+                                          kClickManifest) == BDK_OK);
+}
+
+/* The id of the bundled extension called name in an extensions.list result. */
+static void bundled_id(const char* list, const char* name, char* out, size_t n) {
+    char needle[64];
+    snprintf(needle, sizeof needle, "\"name\":\"%s\"", name);
+    const char* at = strstr(list, needle);
+    REQUIRE(at != NULL);
+    const char* start = at;
+    while (start > list && strncmp(start, "{\"id\":\"", 7) != 0)
+        --start;
+    REQUIRE(t_json_string(start, "id", out, n));
+}
+
+static void test_ext_bundled_extensions_load_with_no_prompt_and_stay(void) {
+    NEEDS_HOOKS();
+    start_frozen_with(kBundled, kInstallSurfaces, 3);
+    register_bundled();
+    bdk_profile_t p = t_new_profile("Ext");
+    t_capture_t cap;
+    call(p, "extensions.list", "{}", &cap);
+    CHECK(!cap.has_error && g_calls == 0); /* no prompt */
+    CHECK(strstr(cap.json, "\"name\":\"Plain\"") != NULL);
+    CHECK(strstr(cap.json, "\"name\":\"Click\"") != NULL);
+    CHECK(strstr(cap.json, "\"source\":\"bundled\"") != NULL);
+    char reader[40], notes[40], args[96];
+    bundled_id(cap.json, "Plain", reader, sizeof reader);
+    bundled_id(cap.json, "Click", notes, sizeof notes);
+
+    /* Never uninstalled by the user; disabled only when not required. */
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", reader);
+    call(p, "extensions.uninstall", args, &cap);
+    CHECK(failed_with(&cap, "extension", "notRemovable"));
+    CHECK(g_calls == 0);
+    snprintf(args, sizeof args, "{\"id\":\"%s\",\"enabled\":false}", reader);
+    call(p, "extensions.setEnabled", args, &cap);
+    CHECK(failed_with(&cap, "extension", "notRemovable"));
+    CHECK(strstr(cap.message, "required = true") != NULL);
+    snprintf(args, sizeof args, "{\"id\":\"%s\",\"enabled\":false}", notes);
+    call(p, "extensions.setEnabled", args, &cap);
+    CHECK(!cap.has_error);
+
+    /* Every persistent profile has them. */
+    bdk_profile_t q = t_new_profile("Other");
+    call(q, "extensions.list", "{}", &cap);
+    CHECK(strstr(cap.json, reader) != NULL && strstr(cap.json, notes) != NULL);
+    t_stop();
+
+    /* A blocklisted one never loads, even bundled. */
+    char members[512];
+    snprintf(members, sizeof members,
+             "\"extensions\":{\"install\":{\"blocklist\":[\"%s\"]},\"bundled\":{"
+             "\"reader\":{\"path\":\"Extensions/Reader\",\"required\":true},"
+             "\"notes\":{\"path\":\"Extensions/Notes\",\"required\":false}}}",
+             notes);
+    start_frozen_with(members, kInstallSurfaces, 3);
+    register_bundled();
+    p = t_new_profile("Ext");
+    call(p, "extensions.list", "{}", &cap);
+    CHECK(strstr(cap.json, reader) != NULL && strstr(cap.json, notes) == NULL);
+}
+
 static void test_ext_store_source_when_enabled(void) {
     NEEDS_HOOKS();
     start_frozen_with("\"extensions\":{\"install\":{\"stores\":[\"chrome-web-store\"]}}",
@@ -1105,5 +1241,12 @@ const t_test_t t_extension_tests[] = {
     {"ext_popup_only_action_is_blocked_when_popups_are_disabled",
      test_ext_popup_only_action_is_blocked_when_popups_are_disabled},
     {"ext_options_pages", test_ext_options_pages},
+    {"ext_developer_mode_off_refuses_unpacked",
+     test_ext_developer_mode_off_refuses_unpacked_directories},
+    {"ext_developer_mode_and_blocklist_checked_at_start",
+     test_ext_developer_mode_and_blocklist_are_checked_at_start},
+    {"ext_blocklisted_extension_never_installs", test_ext_a_blocklisted_extension_never_installs},
+    {"ext_bundled_extensions_load_with_no_prompt",
+     test_ext_bundled_extensions_load_with_no_prompt_and_stay},
     {NULL, NULL},
 };

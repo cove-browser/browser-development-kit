@@ -247,6 +247,14 @@ static void test_a_provider_bdk_does_not_know_or_has_not_built_fails_the_start(v
                       "resolvedInvalid") == BDK_ERR_FAILED);
 }
 
+/* [services.webauthn] is not a provider table: one switch, phones (T-UIR-12). */
+static void test_the_webauthn_phone_switch_is_a_boolean(void) {
+    CHECK(start_fails("\"services\":{\"webauthn\":{\"phones\":\"yes\"}}", NULL, "config",
+                      "resolvedInvalid") == BDK_ERR_FAILED);
+    bdk_error_t err = 0;
+    CHECK(start_with("\"services\":{\"webauthn\":{\"phones\":true}}", NULL, &err) == BDK_OK);
+}
+
 static void test_only_the_default_reputation_lists_take_an_endpoint(void) {
     CHECK(start_fails("\"services\":{\"geolocation\":{\"provider\":\"system\",\"endpoint\":"
                       "\"https://geo.example.com\"}}",
@@ -1005,6 +1013,7 @@ const t_test_t t_provider_tests[] = {
      test_default_providers_need_nothing_registered},
     {"providers.unknown_or_unbuilt_provider_fails_start",
      test_a_provider_bdk_does_not_know_or_has_not_built_fails_the_start},
+    {"providers.webauthn_phone_switch_is_a_boolean", test_the_webauthn_phone_switch_is_a_boolean},
     {"providers.only_default_reputation_takes_an_endpoint",
      test_only_the_default_reputation_lists_take_an_endpoint},
     {"providers.google_key_only_with_a_google_provider",

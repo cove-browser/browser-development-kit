@@ -13,6 +13,7 @@ struct ProviderCall;
 struct ProviderTable {
     ProviderChoice choices[kServiceCount];
     std::string google_key;
+    bool webauthn_phones = false;
     struct Registered {
         bool present = false;
         bdk_provider_vtable_t vtable{};
@@ -228,6 +229,7 @@ bdk_status_t providers_configure(Runtime& rt, const std::string& resolved,
     ProviderTable& t = table_of(rt);
     for (int i = 0; i < kServiceCount; ++i)
         t.choices[i].provider = rules_of(static_cast<Service>(i)).defaults;
+    t.webauthn_phones = false;
     JsonValue root;
     if (!json_parse(resolved, &root) || root.type != JsonValue::Type::kObject)
         return fail(out_error, BDK_DOMAIN_CONFIG, BDK_CODE_RESOLVED_INVALID,
@@ -245,6 +247,16 @@ bdk_status_t providers_configure(Runtime& rt, const std::string& resolved,
             if (provider && provider->type != JsonValue::Type::kString)
                 return fail(out_error, BDK_DOMAIN_CONFIG, BDK_CODE_RESOLVED_INVALID,
                             "services." + name + ".provider is not a string");
+            if (name == "webauthn") {
+                /* Not a provider table: one switch (T-UIR-12). */
+                if (const JsonValue* phones = table.find("phones")) {
+                    if (phones->type != JsonValue::Type::kBool)
+                        return fail(out_error, BDK_DOMAIN_CONFIG, BDK_CODE_RESOLVED_INVALID,
+                                    "services.webauthn.phones is not a boolean");
+                    t.webauthn_phones = phones->boolean;
+                }
+                continue;
+            }
             Service s;
             if (!service_from_name(name, &s)) {
                 /* credentials (S14) and leak_check (S16) are proposals: only their defaults run. */
@@ -336,6 +348,10 @@ bool provider_is_app(const Runtime& rt, Service s) {
 
 const std::string& provider_google_key(const Runtime& rt) {
     return table_of(rt).google_key;
+}
+
+bool webauthn_phones_allowed(const Runtime& rt) {
+    return table_of(rt).webauthn_phones;
 }
 
 std::string provider_descriptor(const Runtime& rt, Service s) {

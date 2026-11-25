@@ -202,9 +202,12 @@ std::string source_refusal(const ExtensionConfig& config, Source source,
     case Source::kBundled:
         return "";
     case Source::kUnpacked:
-        return config.unpacked
-                   ? ""
-                   : "unpacked extensions are not allowed ([extensions.install] unpacked = false)";
+        if (!config.unpacked)
+            return "unpacked extensions are not allowed ([extensions.install] unpacked = false)";
+        if (config.developer_mode == ExtensionConfig::DeveloperMode::kOff)
+            return "loading unpacked extensions is unavailable ([extensions] developer_mode = "
+                   "\"off\")";
+        return "";
     case Source::kCrx:
         return config.crx ? "" : "CRX files are not allowed ([extensions.install] crx = false)";
     case Source::kUpdateUrl:
@@ -224,6 +227,18 @@ std::string source_refusal(const ExtensionConfig& config, Source source,
         return "";
     }
     return "";
+}
+
+bool blocklisted(const ExtensionConfig& config, const std::string& id) {
+    return contains(config.blocklist, id);
+}
+
+std::string blocklist_refusal(const std::string& id) {
+    return "the extension " + id + " is in [extensions.install] blocklist";
+}
+
+std::string bundled_directory(const Runtime& rt, const ExtensionConfig::Bundled& bundled) {
+    return rt.bundle_path + "/Contents/Resources/" + bundled.path;
 }
 
 std::string Report::verdict() const {
@@ -451,6 +466,33 @@ bdk_status_t extension_configure(Runtime& rt, const std::string& resolved, bdk_e
             return config_error(err, "\"extensions.allow_in_private\" is not user or never");
         c.private_never = in_private->text == "never";
     }
+    if (const JsonValue* mode = ext->find("developer_mode")) {
+        if (mode->type != JsonValue::Type::kString ||
+            (mode->text != "user" && mode->text != "on" && mode->text != "off"))
+            return config_error(err, "\"extensions.developer_mode\" is not user, on or off");
+        c.developer_mode = mode->text == "on"    ? ExtensionConfig::DeveloperMode::kOn
+                           : mode->text == "off" ? ExtensionConfig::DeveloperMode::kOff
+                                                 : ExtensionConfig::DeveloperMode::kUser;
+    }
+    if (const JsonValue* bundled = ext->find("bundled")) {
+        if (bundled->type != JsonValue::Type::kObject)
+            return config_error(err, "\"extensions.bundled\" is not an object");
+        for (const auto& [name, entry] : bundled->members) {
+            const JsonValue* path = entry.find("path");
+            if (entry.type != JsonValue::Type::kObject || !path ||
+                path->type != JsonValue::Type::kString || path->text.empty() ||
+                path->text.front() == '/' || path->text.find("..") != std::string::npos)
+                return config_error(err, "\"extensions.bundled." + name +
+                                             "\" has no path inside the bundle");
+            ExtensionConfig::Bundled b;
+            b.name = name;
+            b.path = path->text;
+            if (bdk_status_t s = read_bool(entry, "required", &b.required, err,
+                                           "extensions.bundled." + name + "."))
+                return s;
+            c.bundled.push_back(std::move(b));
+        }
+    }
     const JsonValue* install = ext->find("install");
     if (!install)
         return BDK_OK;
@@ -482,6 +524,19 @@ bdk_status_t extension_configure(Runtime& rt, const std::string& resolved, bdk_e
                 return fail(err, BDK_DOMAIN_CONFIG, BDK_CODE_RESOLVED_INVALID,
                             "\"extensions.install.stores\" names a store BDK does not ship");
             c.stores.push_back(st.text);
+        }
+    }
+    if (const JsonValue* blocklist = install->find("blocklist")) {
+        if (blocklist->type != JsonValue::Type::kArray)
+            return config_error(err, "\"extensions.install.blocklist\" is not a list");
+        for (const JsonValue& id : blocklist->items) {
+            const bool valid = id.type == JsonValue::Type::kString && id.text.size() == 32 &&
+                               std::all_of(id.text.begin(), id.text.end(),
+                                           [](char ch) { return ch >= 'a' && ch <= 'p'; });
+            if (!valid)
+                return config_error(err, "\"extensions.install.blocklist\" has an entry that is "
+                                         "not an extension identifier");
+            c.blocklist.push_back(id.text);
         }
     }
     return BDK_OK;

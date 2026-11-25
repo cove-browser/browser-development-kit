@@ -418,6 +418,7 @@ static const char* const k_bad_modes[] = {
     "{\"exclusive_access\":\"disabled\"}",
     "{\"certificate_errors\":\"disabled\"}",
     "{\"reputation_warnings\":\"disabled\"}",
+    "{\"page_health\":\"disabled\"}",
 };
 
 static void test_a_disallowed_surface_mode_fails_the_start(void) {
@@ -443,8 +444,7 @@ static void test_unknown_surfaces_and_modes_fail_the_start(void) {
 }
 
 static void test_every_surface_name_is_accepted(void) {
-    /* The resolved configuration names every surface of the schema; the S3 surfaces are known too.
-     */
+    /* The resolved configuration names every surface of the schema, the S3 surfaces included. */
     const char* names[] = {"permissions",
                            "javascript_dialogs",
                            "http_auth",
@@ -468,7 +468,8 @@ static void test_every_surface_name_is_accepted(void) {
                            "device_choosers",
                            "screen_capture",
                            "webauthn",
-                           "external_protocols"};
+                           "external_protocols",
+                           "page_health"};
     char surfaces[1024] = "{";
     for (size_t i = 0; i < sizeof names / sizeof names[0]; ++i) {
         size_t n = strlen(surfaces);
@@ -631,22 +632,30 @@ static void test_proceeding_needs_a_gesture_and_an_overridable_request(void) {
     CHECK(o.kind == BDK_HARNESS_UI_COMPLETED && strcmp(o.completion, "proceed") == 0);
 }
 
-/* Each surface's granting completion needs the gesture; its other completions do not. */
+/* Each surface's granting completion needs the gesture; its other completions do not. Surfaces
+   that check what a completion names get a payload that offers it. */
+static const char* const k_one_suggestion = "{\"suggestions\":[{\"id\":\"0\",\"label\":\"Ada\"}]}";
+static const char* const k_one_popup =
+    "{\"kind\":\"blockedPopups\",\"popups\":[{\"id\":\"3\",\"url\":\"https://p.test/\"}]}";
 static const struct {
     uint32_t surface;
     const char* grants;
     const char* harmless;
+    const char* payload;   /* NULL: {} */
+    const char* arguments; /* of the granting completion; NULL: {} */
 } k_grant_rows[] = {
-    {BDK_SURFACE_PERMISSIONS, "grant", "deny"},
-    {BDK_SURFACE_DOWNLOADS, "keep", "proceed"},
-    {BDK_SURFACE_PASSWORDS, "save", "never"},
-    {BDK_SURFACE_AUTOFILL, "save", "dismiss"},
-    {BDK_SURFACE_AUTOFILL_SUGGESTIONS, "accept", "preview"},
-    {BDK_SURFACE_DEVICE_CHOOSERS, "select", "cancel"},
-    {BDK_SURFACE_SCREEN_CAPTURE, "share", "cancel"},
-    {BDK_SURFACE_EXTERNAL_PROTOCOLS, "open", "cancel"},
-    {BDK_SURFACE_JAVASCRIPT_DIALOGS, "grant", "accept"}, /* "grant" grants on every surface */
-    {BDK_SURFACE_NEW_WINDOWS, "grant", "accept"},
+    {BDK_SURFACE_PERMISSIONS, "grant", "deny", NULL, NULL},
+    {BDK_SURFACE_DOWNLOADS, "keep", "proceed", NULL, NULL},
+    {BDK_SURFACE_PASSWORDS, "save", "never", NULL, NULL},
+    {BDK_SURFACE_AUTOFILL, "save", "dismiss", NULL, NULL},
+    {BDK_SURFACE_AUTOFILL_SUGGESTIONS, "accept", "deny", k_one_suggestion,
+     "{\"suggestion\":\"0\"}"},
+    {BDK_SURFACE_DEVICE_CHOOSERS, "select", "cancel", NULL, NULL},
+    {BDK_SURFACE_SCREEN_CAPTURE, "share", "cancel", NULL, NULL},
+    {BDK_SURFACE_EXTERNAL_PROTOCOLS, "open", "cancel", NULL, NULL},
+    {BDK_SURFACE_PAGE_HEALTH, "grant", "deny", k_one_popup, "{\"popup\":\"3\"}"},
+    {BDK_SURFACE_JAVASCRIPT_DIALOGS, "grant", "accept", NULL, NULL}, /* "grant" grants everywhere */
+    {BDK_SURFACE_NEW_WINDOWS, "grant", "accept", NULL, NULL},
 };
 
 static void test_granting_completions_need_a_gesture_on_every_surface(void) {
@@ -660,14 +669,16 @@ static void test_granting_completions_need_a_gesture_on_every_surface(void) {
     bdk_contents_t c = t_new_contents(t_new_profile("UI"));
     for (size_t i = 0; i < sizeof k_grant_rows / sizeof k_grant_rows[0]; ++i) {
         uint32_t surface = k_grant_rows[i].surface;
-        REQUIRE(bdk_harness_raise_ui_request(t_runtime, surface, c, "{}") == BDK_OK);
+        const char* payload = k_grant_rows[i].payload ? k_grant_rows[i].payload : "{}";
+        const char* args = k_grant_rows[i].arguments ? k_grant_rows[i].arguments : "{}";
+        REQUIRE(bdk_harness_raise_ui_request(t_runtime, surface, c, payload) == BDK_OK);
         t_pump();
         REQUIRE(g_request != 0);
-        CHECK(bdk_ui_complete(g_request, S(k_grant_rows[i].grants), S("{}"), no_gesture(), &err) ==
+        CHECK(bdk_ui_complete(g_request, S(k_grant_rows[i].grants), S(args), no_gesture(), &err) ==
               BDK_ERR_FAILED);
         CHECK(t_error_is(err, "ui", "gestureRequired"));
         /* An event of another kind is not a user gesture either. */
-        CHECK(bdk_ui_complete(g_request, S(k_grant_rows[i].grants), S("{}"),
+        CHECK(bdk_ui_complete(g_request, S(k_grant_rows[i].grants), S(args),
                               gesture_of_kind(BDK_NATIVE_NSVIEW), &err) == BDK_ERR_FAILED);
         CHECK(t_error_is(err, "ui", "gestureRequired"));
         CHECK(last_outcome().kind == BDK_HARNESS_UI_NONE);
@@ -675,9 +686,9 @@ static void test_granting_completions_need_a_gesture_on_every_surface(void) {
                               &err) == BDK_OK);
         CHECK(strcmp(last_outcome().completion, k_grant_rows[i].harmless) == 0);
         /* With the gesture, a fresh request is granted. */
-        REQUIRE(bdk_harness_raise_ui_request(t_runtime, surface, c, "{}") == BDK_OK);
+        REQUIRE(bdk_harness_raise_ui_request(t_runtime, surface, c, payload) == BDK_OK);
         t_pump();
-        CHECK(bdk_ui_complete(g_request, S(k_grant_rows[i].grants), S("{}"), gesture(), &err) ==
+        CHECK(bdk_ui_complete(g_request, S(k_grant_rows[i].grants), S(args), gesture(), &err) ==
               BDK_OK);
         CHECK(strcmp(last_outcome().completion, k_grant_rows[i].grants) == 0);
     }
@@ -811,6 +822,257 @@ static void test_a_disabled_webauthn_surface_asks_no_one(void) {
     t_pump();
     CHECK(g_handler_calls == 0);
     CHECK(last_outcome().kind == BDK_HARNESS_UI_DISABLED);
+}
+
+/* ---- Autofill suggestions, exclusive access and page health (T-UIR-15) ----------------------- */
+
+static bdk_status_t complete_raised(uint32_t surface, bdk_contents_t c, const char* payload,
+                                    const char* completion, const char* arguments,
+                                    bdk_native_handle_t g, bdk_error_t* err) {
+    REQUIRE(bdk_harness_raise_ui_request(t_runtime, surface, c, payload) == BDK_OK);
+    t_pump();
+    REQUIRE(g_request != 0);
+    bdk_status_t st = bdk_ui_complete(g_request, S(completion), S(arguments), g, err);
+    if (st != BDK_OK)
+        bdk_ui_request_release(g_request); /* the next one starts afresh */
+    return st;
+}
+
+static void test_a_suggestion_list_fills_only_a_suggestion_it_offers(void) {
+    bdk_contents_t c = setup(BDK_SURFACE_AUTOFILL_SUGGESTIONS, BDK_UI_HANDLED);
+    const uint32_t s = BDK_SURFACE_AUTOFILL_SUGGESTIONS;
+    bdk_error_t err = 0;
+    CHECK(complete_raised(s, c, k_one_suggestion, "grant", "{\"suggestion\":\"9\"}", gesture(),
+                          &err) == BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "ui", "widensRequest"));
+    CHECK(complete_raised(s, c, k_one_suggestion, "grant", "{}", gesture(), &err) ==
+          BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "ui", "widensRequest"));
+    CHECK(complete_raised(s, c, k_one_suggestion, "grant", "{\"suggestion\":0}", gesture(), &err) ==
+          BDK_ERR_INVALID_ARGUMENT);
+    CHECK(complete_raised(s, c, k_one_suggestion, "proceed", "{}", gesture(), &err) ==
+          BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "ui", "completionNotAllowed"));
+    CHECK(complete_raised(s, c, k_one_suggestion, "grant", "{\"suggestion\":\"0\"}", gesture(),
+                          &err) == BDK_OK);
+    bdk_harness_ui_outcome_t o = last_outcome();
+    CHECK(o.kind == BDK_HARNESS_UI_COMPLETED && strcmp(o.completion, "grant") == 0);
+    CHECK(strcmp(o.arguments_json, "{\"suggestion\":\"0\"}") == 0);
+}
+
+static void test_a_suggestion_list_previews_only_a_suggestion_it_offers(void) {
+    bdk_contents_t c = setup(BDK_SURFACE_AUTOFILL_SUGGESTIONS, BDK_UI_HANDLED);
+    REQUIRE(bdk_harness_raise_ui_request(t_runtime, BDK_SURFACE_AUTOFILL_SUGGESTIONS, c,
+                                         k_one_suggestion) == BDK_OK);
+    t_pump();
+    REQUIRE(g_request != 0);
+    bdk_error_t err = 0;
+    CHECK(bdk_ui_update(g_request, S("{\"preview\":\"0\"}"), &err) == BDK_OK);
+    CHECK(bdk_ui_update(g_request, S("{\"preview\":null}"), &err) == BDK_OK);
+    t_pump();
+    CHECK(bdk_ui_update(g_request, S("{\"preview\":\"5\"}"), &err) == BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "ui", "widensRequest"));
+    CHECK(bdk_ui_update(g_request, S("{\"placed\":true}"), &err) == BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "ui", "widensRequest"));
+    CHECK(bdk_ui_update(g_request, S("{\"preview\":1}"), &err) == BDK_ERR_INVALID_ARGUMENT);
+    /* A preview fills nothing: the list is still open. */
+    CHECK(last_outcome().kind == BDK_HARNESS_UI_NONE);
+}
+
+static const char* const k_pointer_lock =
+    "{\"kind\":\"pointerLock\",\"origin\":\"https://g.test\",\"exitInstruction\":\"Press Esc\"}";
+
+static void test_an_exclusive_access_notice_is_acknowledged_only(void) {
+    bdk_contents_t c = setup(BDK_SURFACE_EXCLUSIVE_ACCESS, BDK_UI_HANDLED);
+    bdk_error_t err = 0;
+    CHECK(complete_raised(BDK_SURFACE_EXCLUSIVE_ACCESS, c, k_pointer_lock, "deny", "{}",
+                          no_gesture(), &err) == BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "ui", "completionNotAllowed"));
+    CHECK(complete_raised(BDK_SURFACE_EXCLUSIVE_ACCESS, c, k_pointer_lock, "accept", "{}",
+                          no_gesture(), &err) == BDK_OK);
+    CHECK(strcmp(last_outcome().completion, "accept") == 0);
+}
+
+static void test_an_exclusive_access_notice_cannot_be_suppressed(void) {
+    /* The exit instruction must be shown: a rejected or dropped notice goes to the default. */
+    bdk_contents_t c = setup(BDK_SURFACE_EXCLUSIVE_ACCESS, BDK_UI_REJECT);
+    REQUIRE(bdk_harness_raise_ui_request(t_runtime, BDK_SURFACE_EXCLUSIVE_ACCESS, c,
+                                         k_pointer_lock) == BDK_OK);
+    t_pump();
+    CHECK(g_handler_calls == 1);
+    CHECK(last_outcome().kind == BDK_HARNESS_UI_DEFAULTED);
+    g_answer = BDK_UI_HANDLED;
+    REQUIRE(bdk_harness_raise_ui_request(t_runtime, BDK_SURFACE_EXCLUSIVE_ACCESS, c,
+                                         k_pointer_lock) == BDK_OK);
+    t_pump();
+    bdk_ui_request_release(g_request);
+    t_pump();
+    CHECK(last_outcome().kind == BDK_HARNESS_UI_DEFAULTED);
+}
+
+static const char* const k_unresponsive =
+    "{\"kind\":\"unresponsive\",\"origin\":\"https://slow.test\",\"pageTitle\":\"Slow\"}";
+
+static void test_an_unresponsive_page_is_waited_for_or_terminated(void) {
+    bdk_contents_t c = setup(BDK_SURFACE_PAGE_HEALTH, BDK_UI_HANDLED);
+    const uint32_t s = BDK_SURFACE_PAGE_HEALTH;
+    bdk_error_t err = 0;
+    CHECK(complete_raised(s, c, k_unresponsive, "accept", "{\"action\":\"terminate\"}",
+                          no_gesture(), &err) == BDK_OK);
+    CHECK(strcmp(last_outcome().arguments_json, "{\"action\":\"terminate\"}") == 0);
+    CHECK(complete_raised(s, c, k_unresponsive, "accept", "{\"action\":\"wait\"}", no_gesture(),
+                          &err) == BDK_OK);
+    CHECK(complete_raised(s, c, k_unresponsive, "deny", "{}", no_gesture(), &err) == BDK_OK);
+    CHECK(complete_raised(s, c, k_unresponsive, "accept", "{\"action\":\"reload\"}", no_gesture(),
+                          &err) == BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "ui", "widensRequest"));
+    CHECK(complete_raised(s, c, k_unresponsive, "accept", "{}", no_gesture(), &err) ==
+          BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "ui", "widensRequest"));
+    CHECK(complete_raised(s, c, k_unresponsive, "accept", "{\"action\":1}", no_gesture(), &err) ==
+          BDK_ERR_INVALID_ARGUMENT);
+    CHECK(complete_raised(s, c, k_unresponsive, "grant", "{\"action\":\"wait\"}", gesture(),
+                          &err) == BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "ui", "completionNotAllowed"));
+}
+
+static void test_blocked_popups_open_only_what_the_notice_lists(void) {
+    bdk_contents_t c = setup(BDK_SURFACE_PAGE_HEALTH, BDK_UI_HANDLED);
+    const uint32_t s = BDK_SURFACE_PAGE_HEALTH;
+    bdk_error_t err = 0;
+    CHECK(complete_raised(s, c, k_one_popup, "grant", "{\"popup\":\"4\"}", gesture(), &err) ==
+          BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "ui", "widensRequest"));
+    CHECK(complete_raised(s, c, k_one_popup, "grant", "{}", gesture(), &err) == BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "ui", "widensRequest"));
+    CHECK(complete_raised(s, c, k_one_popup, "grant", "{\"popup\":\"3\",\"always\":true}",
+                          gesture(), &err) == BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "ui", "widensRequest"));
+    CHECK(complete_raised(s, c, k_one_popup, "grant", "{\"always\":\"yes\"}", gesture(), &err) ==
+          BDK_ERR_INVALID_ARGUMENT);
+    CHECK(complete_raised(s, c, k_one_popup, "accept", "{\"popup\":\"3\"}", no_gesture(), &err) ==
+          BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "ui", "completionNotAllowed"));
+    /* Always allowing the site is a grant too, so it needs the gesture. */
+    CHECK(complete_raised(s, c, k_one_popup, "grant", "{\"always\":true}", no_gesture(), &err) ==
+          BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "ui", "gestureRequired"));
+    CHECK(complete_raised(s, c, k_one_popup, "grant", "{\"always\":true}", gesture(), &err) ==
+          BDK_OK);
+    CHECK(strcmp(last_outcome().arguments_json, "{\"always\":true}") == 0);
+    CHECK(complete_raised(s, c, k_one_popup, "deny", "{}", no_gesture(), &err) == BDK_OK);
+    /* A rejected or dropped notice opens nothing. */
+    g_answer = BDK_UI_REJECT;
+    REQUIRE(bdk_harness_raise_ui_request(t_runtime, s, c, k_one_popup) == BDK_OK);
+    t_pump();
+    CHECK(last_outcome().kind == BDK_HARNESS_UI_REJECTED);
+}
+
+static void test_page_health_with_no_handler_uses_the_default_presenter(void) {
+    bdk_contents_t c = setup(BDK_SURFACE_FIND, BDK_UI_HANDLED); /* no page_health handler */
+    REQUIRE(bdk_harness_raise_ui_request(t_runtime, BDK_SURFACE_PAGE_HEALTH, c, k_unresponsive) ==
+            BDK_OK);
+    t_pump();
+    CHECK(g_handler_calls == 0);
+    bdk_harness_ui_outcome_t o = last_outcome();
+    CHECK(o.kind == BDK_HARNESS_UI_DEFAULTED);
+    REQUIRE(bdk_harness_raise_ui_request(t_runtime, BDK_SURFACE_PAGE_HEALTH, c, k_one_popup) ==
+            BDK_OK);
+    t_pump();
+    CHECK(last_outcome().kind == BDK_HARNESS_UI_DEFAULTED);
+}
+
+static void test_a_custom_page_health_surface_needs_a_handler(void) {
+    bdk_error_t err = 0;
+    REQUIRE(start_with_surfaces("{\"page_health\":\"custom\"}", &err) == BDK_OK);
+    CHECK(bdk_runtime_freeze_registrations(t_runtime, &err) == BDK_ERR_FAILED);
+    CHECK(t_error_is(err, "config", "handlerMissing"));
+    REQUIRE(bdk_ui_set_handler(t_runtime, BDK_SURFACE_PAGE_HEALTH, ui_handler, NULL, NULL, &err) ==
+            BDK_OK);
+    CHECK(bdk_runtime_freeze_registrations(t_runtime, &err) == BDK_OK);
+}
+
+/* The runtime raising page health itself, through the harness's page hooks. */
+static int page_health_hooks(bdk_contents_t c) {
+    uint8_t blocked = 0;
+    return bdk_harness_block_popup(c, "https://p.test/a", &blocked) != BDK_ERR_INVALID_ARGUMENT;
+}
+
+static void test_a_hung_page_asks_once_and_terminating_ends_its_renderer(void) {
+    bdk_contents_t c = setup(BDK_SURFACE_PAGE_HEALTH, BDK_UI_HANDLED);
+    if (bdk_harness_page_unresponsive(c) == BDK_ERR_INVALID_ARGUMENT)
+        return; /* the runtime has no hook; the engine scenarios cover it */
+    REQUIRE(bdk_harness_page_unresponsive(c) == BDK_OK); /* still hung: no second question */
+    t_pump();
+    CHECK(g_handler_calls == 1);
+    CHECK(strstr(g_payload, "\"kind\":\"unresponsive\"") != NULL);
+    /* The renderer answers again: the question is withdrawn. */
+    REQUIRE(bdk_harness_page_responsive(c) == BDK_OK);
+    t_pump();
+    CHECK(last_outcome().kind == BDK_HARNESS_UI_WITHDRAWN);
+    bdk_ui_request_release(g_request);
+    REQUIRE(bdk_harness_page_unresponsive(c) == BDK_OK);
+    t_pump();
+    CHECK(g_handler_calls == 2);
+    t_events_t ev;
+    t_ev_init(&ev);
+    REQUIRE(bdk_contents_subscribe(c, t_on_contents_event, &ev, t_on_event_release) != 0);
+    bdk_error_t err = 0;
+    CHECK(bdk_ui_complete(g_request, S("accept"), S("{\"action\":\"terminate\"}"), no_gesture(),
+                          &err) == BDK_OK);
+    t_pump();
+    CHECK(last_outcome().kind == BDK_HARNESS_UI_COMPLETED);
+    int gone = 0;
+    for (int i = 0; i < ev.count; ++i)
+        gone |= ev.kind[i] == BDK_CONTENTS_EVENT_RENDERER_GONE && strstr(ev.detail[i], "killed");
+    CHECK(gone); /* the page reports its renderer gone */
+}
+
+static void test_blocked_popups_collect_in_one_notice_and_a_grant_opens_one(void) {
+    reset_counters(BDK_UI_HANDLED);
+    t_start();
+    bdk_error_t err = 0;
+    REQUIRE(bdk_ui_set_handler(t_runtime, BDK_SURFACE_PAGE_HEALTH, ui_handler, NULL, NULL, &err) ==
+            BDK_OK);
+    REQUIRE(bdk_ui_set_handler(t_runtime, BDK_SURFACE_NEW_WINDOWS, ui_handler, NULL, NULL, &err) ==
+            BDK_OK);
+    t_freeze();
+    bdk_contents_t c = t_new_contents(t_new_profile("UI"));
+    if (!page_health_hooks(c))
+        return;
+    t_pump();
+    REQUIRE(g_seen_surface == BDK_SURFACE_PAGE_HEALTH && g_handler_calls == 1);
+    const bdk_request_t first = g_request;
+    uint8_t blocked = 0;
+    REQUIRE(bdk_harness_block_popup(c, "https://p.test/b", &blocked) == BDK_OK);
+    CHECK(blocked == 1);
+    t_pump();
+    /* The second popup withdraws the first notice and raises one listing both. */
+    CHECK(g_handler_calls == 2 && g_request != first);
+    CHECK(strstr(g_payload, "p.test/a") != NULL);
+    bdk_ui_request_release(first);
+    char args[32];
+    snprintf(args, sizeof args, "{\"popup\":\"2\"}");
+    CHECK(bdk_ui_complete(g_request, S("grant"), S(args), gesture(), &err) == BDK_OK);
+    t_pump();
+    /* The popup opens as a new-window request. */
+    CHECK(g_handler_calls == 3 && g_seen_surface == BDK_SURFACE_NEW_WINDOWS);
+}
+
+static void test_always_allowing_a_site_lets_its_later_popups_open(void) {
+    bdk_contents_t c = setup(BDK_SURFACE_PAGE_HEALTH, BDK_UI_HANDLED);
+    if (!page_health_hooks(c))
+        return;
+    t_pump();
+    bdk_error_t err = 0;
+    CHECK(bdk_ui_complete(g_request, S("grant"), S("{\"always\":true}"), gesture(), &err) ==
+          BDK_OK);
+    t_pump();
+    uint8_t blocked = 1;
+    REQUIRE(bdk_harness_block_popup(c, "https://p.test/c", &blocked) == BDK_OK);
+    CHECK(blocked == 0);
+    t_pump();
+    CHECK(g_handler_calls == 1); /* no second notice */
 }
 
 static void test_a_dropped_request_is_cancelled_never_granted(void) {
@@ -977,6 +1239,27 @@ const t_test_t t_ui_tests[] = {
     {"ui.webauthn_step_accepts_only_what_it_offers",
      test_a_webauthn_step_accepts_only_what_it_offers},
     {"ui.webauthn_disabled_asks_no_one", test_a_disabled_webauthn_surface_asks_no_one},
+    {"ui.autofill_suggestions_fill_only_what_is_offered",
+     test_a_suggestion_list_fills_only_a_suggestion_it_offers},
+    {"ui.autofill_suggestions_preview_only_what_is_offered",
+     test_a_suggestion_list_previews_only_a_suggestion_it_offers},
+    {"ui.exclusive_access_is_acknowledged_only",
+     test_an_exclusive_access_notice_is_acknowledged_only},
+    {"ui.exclusive_access_cannot_be_suppressed",
+     test_an_exclusive_access_notice_cannot_be_suppressed},
+    {"ui.page_health_unresponsive_waits_or_terminates",
+     test_an_unresponsive_page_is_waited_for_or_terminated},
+    {"ui.page_health_blocked_popups_open_what_is_listed",
+     test_blocked_popups_open_only_what_the_notice_lists},
+    {"ui.page_health_default_presenter_without_handler",
+     test_page_health_with_no_handler_uses_the_default_presenter},
+    {"ui.page_health_custom_needs_a_handler", test_a_custom_page_health_surface_needs_a_handler},
+    {"ui.page_health_hung_page_asks_once_and_terminates",
+     test_a_hung_page_asks_once_and_terminating_ends_its_renderer},
+    {"ui.page_health_blocked_popups_collect_and_open",
+     test_blocked_popups_collect_in_one_notice_and_a_grant_opens_one},
+    {"ui.page_health_always_allow_lets_popups_open",
+     test_always_allowing_a_site_lets_its_later_popups_open},
     {"ui.dropped_request_is_cancelled_never_granted",
      test_a_dropped_request_is_cancelled_never_granted},
     {"ui.find_present_raises_a_find_request",

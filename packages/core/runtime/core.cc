@@ -601,6 +601,8 @@ BDK_EXPORT bdk_status_t bdk_runtime_start(const bdk_start_config_t* config, bdk_
     }
 
     auto rt = std::make_shared<Runtime>();
+    if (string_ok(c.bundle_path))
+        rt->bundle_path = str(c.bundle_path);
     if (bdk_status_t s = ui_configure(*rt, resolved, out_error))
         return s;
     if (bdk_status_t s = ui_configure_extensions(*rt, resolved, out_error))

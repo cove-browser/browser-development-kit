@@ -61,6 +61,15 @@ typedef struct bdk_harness_ui_outcome {
 
 bdk_status_t bdk_harness_last_ui_outcome(bdk_runtime_t, bdk_harness_ui_outcome_t* out);
 
+/* Page health (ui-requests.md 5.19). Acts as Chromium finding the page's renderer hung, the
+   renderer answering again, and the popup blocker stopping a popup the page opened without a
+   gesture (*out_blocked is 0 when the site's popups are allowed and the popup opened). A runtime
+   that cannot act so answers BDK_ERR_INVALID_ARGUMENT, and the tests that need it are skipped; the
+   engine's own scenarios use real pages. */
+bdk_status_t bdk_harness_page_unresponsive(bdk_contents_t);
+bdk_status_t bdk_harness_page_responsive(bdk_contents_t);
+bdk_status_t bdk_harness_block_popup(bdk_contents_t, const char* url, uint8_t* out_blocked);
+
 /* Acts as the native view delivering a key event to the contents' keyboard handler. */
 bdk_status_t bdk_harness_simulate_key(bdk_contents_t, uint8_t* out_reserved);
 

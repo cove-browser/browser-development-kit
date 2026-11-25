@@ -48,6 +48,10 @@ const ProviderChoice& provider_choice(const Runtime&, Service);
 bool provider_is_app(const Runtime&, Service);
 /* The Google key from the start configuration; empty unless a service uses provider = "google". */
 const std::string& provider_google_key(const Runtime&);
+/* [services.webauthn] phones (configuration.md 3.8, T-UIR-12): whether a WebAuthn ceremony may
+   offer a passkey on a phone and so contact the phone's tunnel host. False unless the resolved
+   configuration says true; a backend offers no phone and contacts no tunnel host while it is. */
+bool webauthn_phones_allowed(const Runtime&);
 /* The descriptor of the service's provider, as JSON: the registered one for "app", BDK's own for
    the others (services.md 5.12, ProviderDescriptor). The default reputation provider's says
    "reduced protection". */

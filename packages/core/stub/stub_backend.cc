@@ -8,6 +8,7 @@
 #include <deque>
 #include <map>
 #include <mutex>
+#include <set>
 
 #include "../runtime/automation_internal.h"
 #include "../runtime/core_internal.h"
@@ -46,6 +47,12 @@ struct StubContents : BackendData {
     std::shared_ptr<Nav> nav;
     /* The broker callers bound for the page (bdk_stub_page_bind): revoked when it navigates. */
     std::vector<std::shared_ptr<Caller>> callers;
+    /* Page health (bdk_stub_page_unresponsive, bdk_stub_block_popup): whether an unresponsive
+       request is open, and the popups blocked since the last notice was answered, by id. */
+    bool unresponsive = false;
+    std::vector<std::pair<std::string, std::string>> blocked_popups;
+    std::weak_ptr<Request> blocked_notice;
+    uint32_t next_popup_id = 1;
 };
 
 StubContents& data_of(const Contents& c) {
@@ -95,6 +102,9 @@ struct StubState {
     int32_t next_window_id = 1;
     uint32_t window_answer = 0;   /* the last answer to bdk_stub_window_request, 0 for none */
     uint32_t menus_presented = 0; /* bdk_extension_menu_present calls that reached the stub */
+    /* Sites whose popups are always allowed, as "<profile id> <origin>": the popup content
+       setting a blocked-popup grant {"always":true} writes. */
+    std::set<std::string> popups_allowed;
 };
 
 StubState& S() {
@@ -402,6 +412,7 @@ class StubBackend final : public Backend {
         S().next_window_id = 1;
         S().window_answer = 0;
         S().menus_presented = 0;
+        S().popups_allowed.clear();
         {
             std::lock_guard<std::mutex> lock(S().mutex);
             S().delayed.clear();
@@ -905,6 +916,100 @@ void page_renderer_gone(const std::shared_ptr<Contents>& c, const char* reason) 
 
 } // namespace bdkstub
 
+namespace {
+
+/* scheme://host[:port] of a URL, or the URL itself when it has no authority. */
+std::string origin_of(const std::string& url) {
+    const size_t start = url.find("://");
+    if (start == std::string::npos)
+        return url;
+    return url.substr(0, url.find_first_of("/?#", start + 3));
+}
+
+std::string page_origin(const Contents& c) {
+    return origin_of(bdkstub::page_committed_url(c));
+}
+
+std::string popup_site(const Contents& c) {
+    auto profile = c.profile;
+    return (profile ? profile->id : std::string()) + " " + page_origin(c);
+}
+
+/* A page health request the stub raises for the page (ui-requests.md 5.19), reporting its outcome
+   like the requests a test raises. */
+std::shared_ptr<Request> raise_page_health(
+    const std::shared_ptr<Contents>& c, const std::string& payload,
+    std::function<void(UiOutcome, const std::string&, const std::string&)> on_finish) {
+    auto rt = c->rt.lock();
+    if (!rt)
+        return nullptr;
+    auto r = std::make_shared<Request>();
+    r->surface = BDK_SURFACE_PAGE_HEALTH;
+    r->contents = c->handle;
+    r->payload = payload;
+    r->on_finish = std::move(on_finish);
+    bdkstub::track_request(r);
+    raise_ui_request(rt, r);
+    return r;
+}
+
+/* The page opens a blocked popup: a new-window request, as a popup the blocker let through. */
+void open_popup(const std::shared_ptr<Contents>& opener, const std::string& url) {
+    auto rt = opener->rt.lock();
+    if (!rt)
+        return;
+    auto r = std::make_shared<Request>();
+    r->surface = BDK_SURFACE_NEW_WINDOWS;
+    r->contents = opener->handle;
+    r->payload = "{\"kind\":\"popup\",\"disposition\":\"popup\",\"targetURL\":\"" +
+                 json_escape(url) + "\",\"opener\":\"" + std::to_string(opener->handle) +
+                 "\",\"userGesture\":true}";
+    bdkstub::track_request(r);
+    raise_ui_request(rt, r);
+}
+
+/* Raises the blocked-popup notice for the page's list, withdrawing the one it replaces. */
+void raise_blocked_notice(const std::shared_ptr<Contents>& c) {
+    StubContents& d = data_of(*c);
+    if (auto open = d.blocked_notice.lock())
+        withdraw_ui_request(*open);
+    std::string popups;
+    for (const auto& [id, url] : d.blocked_popups)
+        popups += std::string(popups.empty() ? "" : ",") + "{\"id\":\"" + id + "\",\"url\":\"" +
+                  json_escape(url) + "\"}";
+    std::weak_ptr<Contents> weak = c;
+    d.blocked_notice = raise_page_health(
+        c,
+        "{\"kind\":\"blockedPopups\",\"origin\":\"" + json_escape(page_origin(*c)) +
+            "\",\"popups\":[" + popups + "]}",
+        [weak](UiOutcome outcome, const std::string& completion, const std::string& args) {
+            auto page = weak.lock();
+            if (!page || outcome == UiOutcome::kWithdrawn)
+                return;
+            StubContents& pd = data_of(*page);
+            if (outcome == UiOutcome::kCompleted && completion == "grant") {
+                if (args.find("\"always\":true") != std::string::npos) {
+                    S().popups_allowed.insert(popup_site(*page));
+                    return;
+                }
+                for (auto it = pd.blocked_popups.begin(); it != pd.blocked_popups.end(); ++it) {
+                    if (args.find("\"popup\":\"" + it->first + "\"") != std::string::npos) {
+                        const std::string url = it->second;
+                        pd.blocked_popups.erase(it);
+                        open_popup(page, url);
+                        return;
+                    }
+                }
+                return;
+            }
+            /* Dismissed, rejected, dropped or shown by the default presenter: the list is
+               answered, and the next blocked popup starts a new one. */
+            pd.blocked_popups.clear();
+        });
+}
+
+} // namespace
+
 namespace bdkcore {
 
 Backend& backend() {
@@ -971,6 +1076,76 @@ BDK_EXPORT bdk_status_t bdk_stub_raise_ui_request(bdk_runtime_t h, uint32_t surf
     r->payload = str(payload);
     bdkstub::track_request(r);
     raise_ui_request(rt, r);
+    return BDK_OK;
+}
+
+BDK_EXPORT bdk_status_t bdk_stub_page_unresponsive(bdk_contents_t h) {
+    if (bdk_status_t s = check_thread())
+        return s;
+    auto c = contents_of(h);
+    if (!c)
+        return BDK_ERR_STALE_HANDLE;
+    StubContents& d = data_of(*c);
+    if (d.unresponsive)
+        return BDK_OK; /* one question per hang */
+    d.unresponsive = true;
+    std::string title;
+    if (d.current >= 0)
+        title = d.entries[static_cast<size_t>(d.current)].title;
+    std::weak_ptr<Contents> weak = c;
+    raise_page_health(
+        c,
+        "{\"kind\":\"unresponsive\",\"origin\":\"" + json_escape(page_origin(*c)) +
+            "\",\"pageTitle\":\"" + json_escape(title) + "\"}",
+        [weak](UiOutcome outcome, const std::string& completion, const std::string& args) {
+            auto page = weak.lock();
+            if (!page)
+                return;
+            data_of(*page).unresponsive = false;
+            if (outcome == UiOutcome::kCompleted && completion == "accept" &&
+                args.find("\"terminate\"") != std::string::npos)
+                bdkstub::page_renderer_gone(page, "killed");
+        });
+    return BDK_OK;
+}
+
+BDK_EXPORT bdk_status_t bdk_stub_page_responsive(bdk_contents_t h) {
+    if (bdk_status_t s = check_thread())
+        return s;
+    auto c = contents_of(h);
+    if (!c)
+        return BDK_ERR_STALE_HANDLE;
+    auto rt = c->rt.lock();
+    if (!rt)
+        return BDK_ERR_STALE_HANDLE;
+    for (auto& r : std::vector<std::shared_ptr<Request>>(rt->requests)) {
+        if (r->contents != h || r->surface != BDK_SURFACE_PAGE_HEALTH || r->finished)
+            continue;
+        if (r->payload.find("\"kind\":\"unresponsive\"") != std::string::npos)
+            withdraw_ui_request(*r);
+    }
+    data_of(*c).unresponsive = false;
+    return BDK_OK;
+}
+
+BDK_EXPORT bdk_status_t bdk_stub_block_popup(bdk_contents_t h, bdk_string_t url,
+                                             uint8_t* out_blocked) {
+    if (bdk_status_t s = check_thread())
+        return s;
+    auto c = contents_of(h);
+    if (!c)
+        return BDK_ERR_STALE_HANDLE;
+    if (!string_ok(url) || url.length == 0 || !out_blocked)
+        return BDK_ERR_INVALID_ARGUMENT;
+    if (S().popups_allowed.count(popup_site(*c))) {
+        *out_blocked = 0;
+        open_popup(c, str(url));
+        return BDK_OK;
+    }
+    *out_blocked = 1;
+    StubContents& d = data_of(*c);
+    d.blocked_popups.emplace_back(std::to_string(d.next_popup_id++), str(url));
+    raise_blocked_notice(c);
     return BDK_OK;
 }
 
