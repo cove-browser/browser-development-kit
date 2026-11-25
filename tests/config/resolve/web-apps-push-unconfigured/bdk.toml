@@ -1,0 +1,5 @@
+[browser]
+name = "Harbour"
+
+[web_apps]
+enabled = true

@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "bdk_version": "0.0.0",
-  "config_digest": "sha256:175cc84db1971027d3d7409fe7bb7b9d1387890965be0e7e67e5934891813978",
+  "config_digest": "sha256:00ff386e8947ce0cb0badd488aa77ed3f6e71633e9680b4e40c4c3d240d0f81b",
   "browser": {
     "name": "Cove",
     "internal_scheme": "cove",
@@ -65,7 +65,8 @@
     "screen_capture": "default",
     "webauthn": "default",
     "external_protocols": "default",
-    "page_health": "default"
+    "page_health": "default",
+    "web_app_installs": "default"
   },
   "extensions": {
     "enabled": true,
@@ -89,6 +90,9 @@
     },
     "bundled": {}
   },
+  "web_apps": {
+    "enabled": false
+  },
   "services": {
     "translation": {
       "provider": "default",
@@ -109,6 +113,9 @@
       "provider": "chromium"
     },
     "leak_check": {
+      "provider": "none"
+    },
+    "push": {
       "provider": "none"
     }
   },

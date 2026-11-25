@@ -41,6 +41,9 @@ public final class BDKWebContents: Identifiable {
 
     /// True once the page was closed, by `close()` or by the page itself.
     public private(set) var isClosed = false
+    /// Set only on a page launched as an installed web app: the app, and whether the page is in its
+    /// scope. Navigating an ordinary page to an app's start URL does not set it (web-apps.md 4.2).
+    public private(set) var webApp: BDKWebAppPageState?
 
     package private(set) var handle: bdk_contents_t
     let broadcaster = EventBroadcaster<Event>()
@@ -152,6 +155,17 @@ public final class BDKWebContents: Identifiable {
             isClosed = true
             profile.runtime.pageClosed(self)
         }
+        if case .webAppScope(let appID, let isInScope) = event, let state = webApp,
+            state.app.id == appID
+        {
+            webApp = BDKWebAppPageState(app: state.app, isInScope: isInScope)
+        }
+    }
+
+    /// The page was launched as this installed app (a `.webApp` new-window request, or
+    /// `profile.webApps.launch`). It starts in the app's scope.
+    func noteWebApp(_ app: BDKWebAppInfo) {
+        if webApp?.app.id != app.id { webApp = BDKWebAppPageState(app: app, isInScope: true) }
     }
 
     // MARK: State

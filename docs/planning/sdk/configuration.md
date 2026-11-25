@@ -230,7 +230,7 @@ required = true
 
 The name is a lower-case letter followed by letters, digits, `_` or `-`. The path is relative to the directory of `bdk.toml`, and the build copies the directory to the same path under `Contents/Resources`. The resolver checks that it is a directory inside the project with a `manifest.json` that has `name`, `version` and a numeric `manifest_version` (`extensions.bundled_invalid` otherwise) and writes the long form with the directory's digest: `"bundled": {"reader": {"path": "Extensions/Reader", "required": true, "digest": "sha256:…"}}`. Not built (T-EXT-14): the copy into the bundle, and the engine loading it.
 
-### 3.7A `[web_apps]` (product owner, 2026-11-25; built in T-PWA-02 to T-PWA-04, M9)
+### 3.7A `[web_apps]` (product owner, 2026-11-25; built in T-PWA-02 to T-PWA-04, M9; key, resolver, core and stub built 2026-11-25)
 
 Installable web apps. The whole design is in [web-apps.md](web-apps.md).
 
@@ -240,7 +240,9 @@ Installable web apps. The whole design is in [web-apps.md](web-apps.md).
 
 Enabling web apps needs no key and contacts no service. Push messages are separate: `[services.push]` in 3.8. With `enabled = true` and no push provider, `bdk build` and `bdk doctor` print the note `web_apps.push_unconfigured` (section 9).
 
-No key registers an installed app with the operating system (Dock icon, file and protocol handlers). That is not built in v1 ([web-apps.md](web-apps.md) section 8).
+No key registers an installed app with the operating system (Dock icon, file and protocol handlers). That is not built in v1 ([web-apps.md](web-apps.md) section 8); `os_integration` is an unknown key until it is.
+
+Built (T-PWA-02): the schema, the resolver (`"web_apps": {"enabled"}` after `extensions` in `bdk.resolved.json`, and `"push": {"provider"}` last in `services`), the runtime core reading both at start and `runtime.info` reporting them. The engine does not act on them yet (T-PWA-04, T-PWA-05). The surface key `web_app_installs` is in `[ui.surfaces]`, modes `default` and `custom`.
 
 ### 3.8 `[services]`
 
@@ -282,7 +284,7 @@ Not a provider table: WebAuthn has no provider to choose.
 
 The resolved file always has `services.webauthn.phones`. The runtime core reads it at start (a value that is not a boolean is `config.resolvedInvalid`) and offers it to the engine; `BDKWebAuthnSupport.current.phones` lists the requirement `.configuration("[services.webauthn] phones = true")` while it is off. The engine still offers phones whenever `Info.plist` allows them: making it offer none and contact no tunnel host while the switch is off is not built (T-UIR-12, M9).
 
-#### `[services.push]` (product owner, 2026-11-25; built in T-PWA-02 and T-PWA-05, M9)
+#### `[services.push]` (product owner, 2026-11-25; built in T-PWA-02 and T-PWA-05, M9; the key built 2026-11-25)
 
 Web Push, for any site that subscribes, installed as a web app or not ([web-apps.md](web-apps.md) section 7).
 
@@ -290,7 +292,7 @@ Web Push, for any site that subscribes, installed as a web app or not ([web-apps
 |---|---|---|---|
 | `provider` | `"none"` or `"google"` | `"none"` | Who delivers push messages. `none`: `PushManager.subscribe()` rejects and the runtime contacts no messaging host. `google`: Chromium's own client for Google's messaging service (GCM/FCM), with the application's credentials supplied from Swift before start; missing credentials are a start error, as for the other named providers. |
 
-**`provider = "google"` requires the developer's own project in Google's console.** BDK ships no key (invariant 9), Google sees every subscription, and Google's terms and quotas apply to the developer. `bdk build` and `bdk doctor` print the warning `services.push_google` whenever this value is set (section 9). What must be created in the console is not verified; T-PWA-05 records it here. Messages arrive only while the browser is running. There is no `endpoint` key and no `"app"` value in v1.
+**`provider = "google"` requires the developer's own project in Google's console.** BDK ships no key (invariant 9), Google sees every subscription, and Google's terms and quotas apply to the developer. `bdk build` and `bdk doctor` print the warning `services.push_google` whenever this value is set (section 9). What must be created in the console is not verified; T-PWA-05 records it here. Read at the pin for T-PWA-01, Chromium's push client uses no Google API key ([web-apps.md](web-apps.md) 10.6), so until T-PWA-05 settles it the runtime treats push like the other Google providers: `provider = "google"` needs the application's Google key at start (`config.keyMissing` without it). Messages arrive only while the browser is running. There is no `endpoint` key and no `"app"` value in v1; another value is `services.provider_unknown`.
 
 #### `[services.credentials]` (Added, S14)
 
@@ -598,11 +600,13 @@ Written by `bdk build config` into `Contents/Resources`. The Swift SDK loads it 
                   "ui": { "actions": "custom", "popups": "custom", "side_panels": "custom",
                           "context_menus": "default", "options_pages": "default", "devtools": "default" },
                   "bundled": {} },
+  "web_apps": { "enabled": false },
   "services": { "translation": { "provider": "default", "models": "on-demand" },
                 "reputation": { "provider": "default", "update_interval": "1h" },
                 "geolocation": { "provider": "system" },
                 "credentials": { "provider": "chromium" },
-                "leak_check": { "provider": "none" } },
+                "leak_check": { "provider": "none" },
+                "push": { "provider": "none" } },
   "search": { "default": "duckduckgo", "suggestions": false, "engines": { "duckduckgo": { "…": "…" } } },
   "settings_defaults": { "privacy.cookies.thirdParty": "block", "security.httpsOnly": true },
   "automation": { "enabled": true, "scripts": { "summarise": { "path": "Automation/summarise.js", "digest": "sha256:…" } },
@@ -684,8 +688,8 @@ Each has a stable code, used by fixtures in `tests/config/`. Messages name the f
 | `plist.min_os` | The deployment target is below the runtime's minimum |
 | `plist.app_sandbox` | The App Sandbox entitlement is set |
 | `plist.passkeys_phone` | A note, only with `[services.webauthn] phones = true` (T-UIR-12): Info.plist has no `NSBluetoothAlwaysUsageDescription`, or the entitlements lack `com.apple.security.device.bluetooth`, so passkeys on a phone are not offered (T-UIR-09) |
-| `web_apps.push_unconfigured` | A note: `[web_apps] enabled = true` with `[services.push] provider = "none"`, so installed web apps receive no push messages (T-PWA-02) |
-| `services.push_google` | A warning: `[services.push] provider = "google"`, which requires the developer's own project in Google's console and sends every subscription to Google (T-PWA-02) |
+| `web_apps.push_unconfigured` | A note: `[web_apps] enabled = true` with `[services.push] provider = "none"`, so installed web apps receive no push messages (T-PWA-02; at the line of `enabled`) |
+| `services.push_google` | A warning: `[services.push] provider = "google"`, which requires the developer's own project in Google's console and sends every subscription to Google (T-PWA-02; at the line of `provider`). Both come from `bdk build config` (the resolver, `checkWebAppsAndPush` in `packages/cli/src/core/config/resolve.ts`, exported for `bdk doctor`) |
 
 ### Decisions made in T-CFG-01/02
 

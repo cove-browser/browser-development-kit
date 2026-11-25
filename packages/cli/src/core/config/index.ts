@@ -82,4 +82,6 @@ export function serialiseResolved(resolved: Record<string, unknown>): string {
   return serialise(resolved);
 }
 
+/** The web app and push diagnostics alone, for `bdk doctor` (T-CLI-01). */
+export { checkWebAppsAndPush } from "./resolve.js";
 export { validateConfigText } from "./validate.js";

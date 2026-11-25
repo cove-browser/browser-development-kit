@@ -13,6 +13,7 @@
     "pages": { "$ref": "#/$defs/pages" },
     "ui": { "$ref": "#/$defs/ui" },
     "extensions": { "$ref": "#/$defs/extensions" },
+    "web_apps": { "$ref": "#/$defs/web_apps" },
     "services": { "$ref": "#/$defs/services" },
     "automation": { "$ref": "#/$defs/automation" },
     "devtools": { "$ref": "#/$defs/devtools" },
@@ -274,8 +275,24 @@
             "page_health": {
               "$ref": "#/$defs/surfaceModeDefaultCustom",
               "description": "An unresponsive page; blocked popups. Cannot be disabled."
+            },
+            "web_app_installs": {
+              "$ref": "#/$defs/surfaceModeDefaultCustom",
+              "description": "The install prompt of an installable web app. Turn installs off with [web_apps] enabled = false, not here."
             }
           }
+        }
+      }
+    },
+    "web_apps": {
+      "type": "object",
+      "description": "Installable web apps. See web-apps.md.",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether a page may offer itself for installation and the webApps commands work. Push messages are [services.push]."
         }
       }
     },
@@ -472,6 +489,18 @@
               "type": "boolean",
               "default": false,
               "description": "Whether a passkey on a phone (QR code, Bluetooth, the phone's tunnel service) is offered. Off by default because an Android phone's tunnel service is a Google host; on also needs NSBluetoothAlwaysUsageDescription."
+            }
+          }
+        },
+        "push": {
+          "type": "object",
+          "description": "Web Push, for any site that subscribes, installed as a web app or not.",
+          "additionalProperties": false,
+          "properties": {
+            "provider": {
+              "enum": ["none", "google"],
+              "default": "none",
+              "description": "none: PushManager.subscribe() rejects and no messaging host is contacted. google: Google's messaging service, with your own project in Google's console and its credentials supplied from Swift before start."
             }
           }
         }

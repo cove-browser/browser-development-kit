@@ -15,6 +15,7 @@ export const NAMESPACES = [
   "search",
   "passwords",
   "autofill",
+  "webApps",
 ] as const;
 
 export type NamespaceName = (typeof NAMESPACES)[number];

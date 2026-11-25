@@ -382,6 +382,7 @@ void commit_nav(const std::shared_ptr<Contents>& c, const std::shared_ptr<Nav>& 
         const std::string display = shown(*c, url);
         emit_contents_event_now(c, BDK_CONTENTS_EVENT_NAVIGATION_COMMITTED, display, "{}", 0,
                                 flags);
+        bdkstub::web_apps_committed(c, url);
         if (title_changed) {
             emit_contents_event_now(c, BDK_CONTENTS_EVENT_TITLE_CHANGED, display,
                                     "{\"title\":\"" + json_escape(title) + "\"}", 0, kMainFrame);

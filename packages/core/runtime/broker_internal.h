@@ -93,11 +93,15 @@ class CommandControl {
     void OnCancel(std::function<void()> stop);
     /* The core's side of OnCancel: runs the stop function, if there is one. */
     void Stop();
+    /* The core's: members (JSON text, no braces) added to an object result, for what the core
+       reports in every runtime's answer (runtime.info). */
+    void AppendMembers(std::string members);
 
   private:
     std::shared_ptr<Call> call_;
     bool progress_;
     std::function<void()> stop_;
+    std::string append_;
 };
 
 /* One built-in command call, as handed to Backend::ExecuteCommand. */
@@ -110,6 +114,9 @@ struct BuiltinCall {
     std::shared_ptr<Contents> contents; /* null unless the caller named a page */
     std::shared_ptr<Caller> caller;
     std::shared_ptr<CommandControl> control;
+    /* The host confirmed it with its user's gesture (bdk_web_app_install): the service acts
+       without raising the request it would otherwise raise. */
+    bool confirmed = false;
 };
 
 /* A command is named or numbered. */
@@ -129,6 +136,19 @@ bdk_invoke_options_t read_invoke_options(const bdk_invoke_options_t*);
 bdk_call_t broker_invoke_abi(bdk_runtime_t h, const std::string* name, uint32_t id,
                              bdk_string_t arguments, const bdk_invoke_options_t* options,
                              bdk_result_cb cb, bdk_progress_cb prog, void* ctx, bdk_release_cb rel);
+
+/* bdk_web_app_install and _uninstall: the host's call of the named command, confirmed by the
+   gesture (BuiltinCall::confirmed). A gesture that is not an NSEvent fails the call later with
+   ui.gestureRequired. Returns 0 for a synchronous rejection. */
+bdk_call_t broker_invoke_confirmed(bdk_runtime_t h, const std::string& name, bdk_string_t arguments,
+                                   const bdk_invoke_options_t* options, bdk_native_handle_t gesture,
+                                   bdk_result_cb cb, void* ctx, bdk_release_cb rel);
+
+/* runtime/web_apps.cc. The members the core adds to every runtime.info answer, and the refusals
+   it makes for every runtime before a webApps.* command reaches the backend (disabled, or a private
+   profile): true when it answered the call. */
+std::string web_apps_runtime_info(const Runtime& rt);
+bool web_apps_refuse(const Runtime& rt, const std::shared_ptr<BuiltinCall>& call);
 
 /* Answers a call with a JSON value: checks that it is JSON and within kMaxPayloadBytes first. */
 void resolve_call(const std::shared_ptr<Call>& call, const std::string& result_json);

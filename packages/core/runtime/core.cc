@@ -613,6 +613,8 @@ BDK_EXPORT bdk_status_t bdk_runtime_start(const bdk_start_config_t* config, bdk_
         return s;
     if (bdk_status_t s = automation_configure(*rt, resolved, out_error))
         return s;
+    if (bdk_status_t s = web_apps_configure(*rt, resolved, out_error))
+        return s;
     if (bdk_status_t s = providers_configure(*rt, resolved, c, out_error))
         return s;
     if (bdk_status_t s = routes_configure(*rt, resolved, out_error))

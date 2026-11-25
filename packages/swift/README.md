@@ -51,6 +51,7 @@ session (a logged-in Mac or the hosted macOS runner).
 | UI requests | `BDKUIHandlers` (`config.ui`, `runtime.ui`): one `Surface<Request>` per surface with `setHandler(_:)` and `mode`; `BDKUIResponse` (`.handled`, `.useDefault`, `.reject`); `BDKUIRequest` and a typed subclass per surface (see below) | T-SWF-04 |
 | Windows | `runtime.windows.register(_:_:)` (public; a page view entering an unregistered window registers it as `.normal`), `BDKWindow` (`nsWindow`, `kind`, `pages`, `activePage`, `extensionWindowID`, `anchors`, `delegate`), `BDKWindowDelegate`, `WindowRequest`, `BDKWebContents.window` | T-SWF-08 |
 | Extensions | `profile.extensions` (the generated `BDKExtensions` plus `Sources/BDK/BDKExtensions+Host.swift`: install sources, `actions(for:)`, `actionChanges`, `activateAction`, `performCommand`, `presentDefaultMenu`), `ExtensionPopupRequest`, `ExtensionSidePanelRequest`, `ExtensionInstallRequest`, `ExtensionUninstallRequest` | T-EXT-02 to T-EXT-06 |
+| Web apps | `profile.webApps` (the generated `BDKWebApps` plus `Sources/BDK/BDKWebApps+Host.swift`: `installability(of:)`, `install(_:confirmedBy:)`, `uninstall(_:clearSiteData:confirmedBy:)`, `launch(_:shortcut:)`), `BDKWebAppInstallSource`, `BDKWebAppPageState`, `page.webApp`, `WebAppInstallRequest`, `NewWindowRequest.webApp` | T-PWA-03 |
 | Settings | `BDKSettingKey`, `BDKSettingRegistry` (`config.settings`), typed `settings.get`, `set`, `reset`, `describe` on `BDKSettings`, `config.declarations` | T-SVC-08 |
 | Providers | `config.services` (`BDKServiceRegistry`), the provider protocols, `page.translation`, `TranslationRequest` (see below) | T-PRV-01, T-PRV-03, T-PRV-09 |
 | Navigation policy | `runtime.navigationPolicy` (`BDKRuntime.NavigationPolicy`, set at any time), `BDKWebContents.NavigationAction`, `BDKWebContents.NavigationDecision` (`.allow`, `.cancel`, `.redirect`); `load` throws `navigation.cancelledByPolicy` or returns the redirect's commit. The stub only until T-SWF-11; `BDKTestSupport` adds `scriptRedirect(from:to:)` and `navigateAsPage(_:to:)` | T-SWF-10 |
@@ -337,6 +338,15 @@ so a test can start a load and act on it (supersede it, stop it) before the stub
   `register` returns the existing `BDKWindow` unchanged (kind included) for a window already registered. The
   provider and request handler are installed at registration, so setting `anchors` or `delegate` later needs no ABI
   call.
+* Web apps (T-PWA-03): `profile.webApps` is the generated struct, so values are `BDKWebAppInfo`, `BDKWebAppIcon` and
+  the other generated types, not the doc's `WebAppInfo`. `webApps.installability` is a page command (listed in
+  `PAGE_COMMANDS` in `packages/js/codegen/src/swift.ts`), written as `installability(of:)`. The command
+  `webApps.launch` is generated as `launchContents(_:shortcutUrl:)` (it answers a handle); `launch(_:shortcut:)`
+  adopts the page and sets `page.webApp`. `install(_:confirmedBy:)` and `uninstall(_:clearSiteData:confirmedBy:)`
+  call `bdk_web_app_install` and `_uninstall` with the event; the generated `install(url:)` and `uninstall(_:)` are
+  the commands. `page.webApp` follows `BDKWebContents.Event.webAppScope` (`BDK_CONTENTS_EVENT_WEB_APP`).
+  `WebAppInstallRequest.install(confirmedBy:)` completes `grant`, `cancel()` `deny`. The stub hooks are
+  `runtime.stub.registerWebAppManifest`, `promptWebAppInstall` and `setWebAppBadge` (`BDKStub+WebApps.swift`).
 * Extensions (T-EXT-02 to T-EXT-06): `profile.extensions` is the generated struct, so values are the generated
   `BDKExtensionInfo`, `BDKExtensionActionState`, `BDKExtensionCommand` and `BDKCompatibilityReport`, not the doc's
   `ExtensionInfo` and `ActionState`; icons are `data:` URL strings with `iconImage` (`NSImage?`) and `badgeNSColor`

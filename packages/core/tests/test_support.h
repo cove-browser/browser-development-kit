@@ -29,6 +29,7 @@ extern const t_test_t t_pages_tests[];
 extern const t_test_t t_navigation_policy_tests[];
 extern const t_test_t t_profile_version_tests[];
 extern const t_test_t t_robustness_tests[];
+extern const t_test_t t_web_app_tests[];
 #ifdef BDK_HARNESS_ENGINE_TESTS
 extern const t_test_t t_engine_tests[];
 extern const t_test_t t_engine_ui_tests[];

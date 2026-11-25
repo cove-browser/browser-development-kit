@@ -109,6 +109,10 @@
     "./types": {
       "types": "./dist/types.d.ts",
       "default": "./dist/types.js"
+    },
+    "./webApps": {
+      "types": "./dist/webApps.d.ts",
+      "default": "./dist/webApps.js"
     }
   },
   "description": "The SDK internal pages import. Served to bundled pages unbundled at /@bdk/internal/<module>.js; nothing is published to npm."

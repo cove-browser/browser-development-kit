@@ -46,6 +46,7 @@ source_set("core") {
     "core/runtime/routes.h",
     "core/runtime/translation.cc",
     "core/runtime/ui_router.cc",
+    "core/runtime/web_apps.cc",
   ]
   public_configs = [ ":core_config" ]
   configs -= [

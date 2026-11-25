@@ -7,7 +7,18 @@
       "chromiumVersion": "string",
       "browserName": "string",
       "internalScheme": "string",
-      "platform": "string"
+      "platform": "string",
+      "webApps": "RuntimeWebApps",
+      "push": "RuntimePush"
+    },
+    "RuntimeWebApps": {
+      "enabled": "bool"
+    },
+    "PushProvider": {
+      "enum": ["none", "google"]
+    },
+    "RuntimePush": {
+      "provider": "PushProvider"
     },
     "CallerKind": {
       "enum": ["swift", "page", "session"]

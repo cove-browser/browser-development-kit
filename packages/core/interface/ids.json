@@ -158,7 +158,13 @@
     { "name": "extensions.clearErrors", "id": 156 },
     { "name": "extensions.commands", "id": 157 },
     { "name": "extensions.setCommandShortcut", "id": 158 },
-    { "name": "extensions.actions", "id": 159 }
+    { "name": "extensions.actions", "id": 159 },
+    { "name": "webApps.list", "id": 160 },
+    { "name": "webApps.get", "id": 161 },
+    { "name": "webApps.installability", "id": 162 },
+    { "name": "webApps.install", "id": 163 },
+    { "name": "webApps.uninstall", "id": 164 },
+    { "name": "webApps.launch", "id": 165 }
   ],
   "events": [
     { "name": "autofill.changed", "id": 1 },
@@ -208,7 +214,11 @@
     { "name": "extensions.loaded", "id": 45 },
     { "name": "extensions.unloaded", "id": 46 },
     { "name": "extensions.errorAdded", "id": 47 },
-    { "name": "extensions.actionChanged", "id": 48 }
+    { "name": "extensions.actionChanged", "id": 48 },
+    { "name": "webApps.installed", "id": 49 },
+    { "name": "webApps.updated", "id": 50 },
+    { "name": "webApps.uninstalled", "id": 51 },
+    { "name": "webApps.badgeChanged", "id": 52 }
   ],
   "constants": {
     "domains": [
@@ -225,7 +235,8 @@
       { "name": "AUTOMATION", "id": "automation" },
       { "name": "PLATFORM", "id": "platform" },
       { "name": "DEVTOOLS", "id": "devtools" },
-      { "name": "EXTENSION", "id": "extension" }
+      { "name": "EXTENSION", "id": "extension" },
+      { "name": "WEB_APPS", "id": "webApps" }
     ],
     "codes": [
       { "name": "VERSION_MISMATCH", "id": "versionMismatch" },
@@ -270,7 +281,9 @@
       { "name": "MANIFEST_INVALID", "id": "manifestInvalid" },
       { "name": "NOT_UNPACKED", "id": "notUnpacked" },
       { "name": "PRIVATE_NOT_ALLOWED", "id": "privateNotAllowed" },
-      { "name": "BUDGET_EXCEEDED", "id": "budgetExceeded" }
+      { "name": "BUDGET_EXCEEDED", "id": "budgetExceeded" },
+      { "name": "PRIVATE_PROFILE", "id": "privateProfile" },
+      { "name": "NOT_INSTALLABLE", "id": "notInstallable" }
     ],
     "runtimeEvents": [
       { "name": "REGISTRATIONS_FROZEN", "id": 1 },
@@ -289,7 +302,8 @@
       { "name": "RENDERER_GONE", "id": 8 },
       { "name": "VISIBILITY_CHANGED", "id": 9 },
       { "name": "FIND_RESULT", "id": 10 },
-      { "name": "TRANSLATION", "id": 11 }
+      { "name": "TRANSLATION", "id": 11 },
+      { "name": "WEB_APP", "id": 12 }
     ],
     "eventFlags": [
       { "name": "MAIN_FRAME", "id": 1 },
@@ -338,7 +352,8 @@
       { "name": "EXTENSION_DEVTOOLS", "id": 30 },
       { "name": "EXTENSION_INSTALLS", "id": 31 },
       { "name": "EXTENSION_UNINSTALLS", "id": 32 },
-      { "name": "PAGE_HEALTH", "id": 33 }
+      { "name": "PAGE_HEALTH", "id": 33 },
+      { "name": "WEB_APP_INSTALLS", "id": 37 }
     ],
     "pageModes": [
       { "name": "CHROMIUM", "id": 1 },

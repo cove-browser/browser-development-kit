@@ -21,7 +21,8 @@
         "AUTOMATION": "automation",
         "PLATFORM": "platform",
         "EXTENSION": "extension",
-        "DEVTOOLS": "devtools"
+        "DEVTOOLS": "devtools",
+        "WEB_APPS": "webApps"
       }
     },
     {
@@ -71,7 +72,9 @@
         "MANIFEST_INVALID": "manifestInvalid",
         "NOT_UNPACKED": "notUnpacked",
         "PRIVATE_NOT_ALLOWED": "privateNotAllowed",
-        "BUDGET_EXCEEDED": "budgetExceeded"
+        "BUDGET_EXCEEDED": "budgetExceeded",
+        "PRIVATE_PROFILE": "privateProfile",
+        "NOT_INSTALLABLE": "notInstallable"
       }
     },
     {
@@ -102,7 +105,8 @@
         "RENDERER_GONE": 8,
         "VISIBILITY_CHANGED": 9,
         "FIND_RESULT": 10,
-        "TRANSLATION": 11
+        "TRANSLATION": 11,
+        "WEB_APP": 12
       }
     },
     {
@@ -176,7 +180,8 @@
         "EXTENSION_DEVTOOLS": 30,
         "EXTENSION_INSTALLS": 31,
         "EXTENSION_UNINSTALLS": 32,
-        "PAGE_HEALTH": 33
+        "PAGE_HEALTH": 33,
+        "WEB_APP_INSTALLS": 37
       }
     },
     {

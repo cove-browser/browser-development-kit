@@ -86,8 +86,8 @@ A capability is a name. A page gets a list of them in `bdk.toml`; a session gets
 | `autofill.manage` | Add, change, remove | Yes | Yes |
 | `extensions.list` | List extensions and their state | Yes | Yes |
 | `extensions.manage` | Install, remove, enable, disable, change site access | Yes | Yes |
-| `webApps.list` | List installed web apps; check a page's installability; launch one (not built: T-PWA-03, M9) | Yes | Yes |
-| `webApps.manage` | Install and uninstall (not built: T-PWA-03, M9) | Yes | Yes |
+| `webApps.list` | List installed web apps; check a page's installability; launch one (stub built, T-PWA-03; engine T-PWA-04) | Yes | Yes |
+| `webApps.manage` | Install and uninstall (stub built, T-PWA-03; engine T-PWA-04) | Yes | Yes |
 | `translation.read` | Languages, preferences, model state | Yes | Yes |
 | `translation.manage` | Change preferences; download and remove models | Yes | Yes |
 | `search.read` | List engines; classify input; get suggestions | Yes | Yes |
@@ -115,7 +115,7 @@ Every command is available to Swift. "Capability" is what a page or session need
 
 | Command | Capability | Does |
 |---|---|---|
-| `runtime.info` | `runtime.read` | BDK version, Chromium version, browser name, internal scheme, platform |
+| `runtime.info` | `runtime.read` | BDK version, Chromium version, browser name, internal scheme, platform; `webApps {enabled}` and `push {provider}` from the configuration (T-PWA-02, added by the core) |
 | `runtime.caller` | none | Who the caller is: logical page or session name, profile, and its capability list. Lets a page hide controls it cannot use. |
 
 ### 5.2 `profiles` (Plan, M3)
@@ -286,9 +286,9 @@ Built (M3, T-SVC-04; `autofill_service.cc`). Addresses map `AddressFields` onto 
 
 The commands are in [extensions.md](extensions.md) section 3. Capabilities: `extensions.list` and `extensions.manage`.
 
-### 5.11A `webApps` (product owner, 2026-11-25; not built, T-PWA-03, M9)
+### 5.11A `webApps` (product owner, 2026-11-25; defined and built on the stub, T-PWA-03; engine T-PWA-04, M9)
 
-The commands are in [web-apps.md](web-apps.md) section 3. Capabilities: `webApps.list` and `webApps.manage`. Every command fails with `webApps.disabled` unless `[web_apps] enabled = true`.
+The commands are in [web-apps.md](web-apps.md) section 3 and `packages/core/interface/webApps.json`. Capabilities: `webApps.list` and `webApps.manage`. Every command fails with `webApps.disabled` unless `[web_apps] enabled = true`; the core refuses it for every runtime. Sessions reach the namespace through `@bdk/automation` (`webApps`), pages through `@bdk/internal/webApps`.
 
 ### 5.12 `translation` (Plan, M6, T-PRV-03)
 

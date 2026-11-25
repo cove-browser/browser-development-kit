@@ -35,6 +35,7 @@ public enum BDKUISurface: UInt32, Sendable, CaseIterable {
     case extensionInstalls = 31
     case extensionUninstalls = 32
     case pageHealth = 33
+    case webAppInstalls = 37
 
     /// The key under `[ui.surfaces]` in `bdk.toml` and in `bdk.resolved.json`.
     public var configurationKey: String {
@@ -72,6 +73,7 @@ public enum BDKUISurface: UInt32, Sendable, CaseIterable {
         case .extensionInstalls: "extension_installs"
         case .extensionUninstalls: "extension_uninstalls"
         case .pageHealth: "page_health"
+        case .webAppInstalls: "web_app_installs"
         }
     }
 

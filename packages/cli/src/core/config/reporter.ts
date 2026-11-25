@@ -42,6 +42,11 @@ export class Reporter {
     this.add("warning", code, message, path, fix);
   }
 
+  /** Information that needs no action, about a key. */
+  note(code: string, message: string, path: KeyPath, fix?: string): void {
+    this.add("note", code, message, path, fix);
+  }
+
   /** A finding about a file or directory in the project rather than a key. */
   errorAt(code: string, message: string, file: string, fix?: string): void {
     this.diagnostics.push({ code, severity: "error", message, file, ...(fix ? { fix } : {}) });
@@ -52,7 +57,7 @@ export class Reporter {
   }
 
   private add(
-    severity: "error" | "warning",
+    severity: Diagnostic["severity"],
     code: string,
     message: string,
     path: KeyPath,

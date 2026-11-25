@@ -1,0 +1,18 @@
+{
+  "diagnostics": [
+    {
+      "code": "config.unknown_key",
+      "severity": "error",
+      "message": "Unknown key \"web_apps.os_integration\".",
+      "file": "bdk.toml",
+      "line": 6
+    },
+    {
+      "code": "services.provider_unknown",
+      "severity": "error",
+      "message": "\"services.push.provider\" names a provider BDK does not ship: \"apns\". Valid providers are \"none\", \"google\".",
+      "file": "bdk.toml",
+      "line": 9
+    }
+  ]
+}

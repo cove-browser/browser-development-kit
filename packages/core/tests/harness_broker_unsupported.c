@@ -61,6 +61,28 @@ unsigned bdk_harness_service_count(bdk_runtime_t rt, unsigned which) {
     return 0;
 }
 
+/* ---- harness_web_apps.h: none of the stub's web app hooks ---- */
+
+int bdk_harness_web_app_hooks(void) {
+    return 0;
+}
+
+bdk_status_t bdk_harness_web_app_manifest(bdk_runtime_t rt, const char* document_url,
+                                          const char* manifest) {
+    (void)rt, (void)document_url, (void)manifest;
+    return BDK_ERR_INVALID_ARGUMENT;
+}
+
+bdk_status_t bdk_harness_web_app_prompt(bdk_contents_t c, uint8_t user_gesture, bdk_error_t* err) {
+    (void)c, (void)user_gesture, (void)err;
+    return BDK_ERR_INVALID_ARGUMENT;
+}
+
+bdk_status_t bdk_harness_web_app_badge(bdk_contents_t c, const char* badge, bdk_error_t* err) {
+    (void)c, (void)badge, (void)err;
+    return BDK_ERR_INVALID_ARGUMENT;
+}
+
 /* ---- harness_extensions.h: none of the stub's extension hooks ---- */
 
 int bdk_harness_extension_hooks(void) {

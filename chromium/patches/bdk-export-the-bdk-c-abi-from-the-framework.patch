@@ -19,15 +19,15 @@ build.
 
 Used by: the BDK engine (//bdk/engine) and the Swift SDK.
 ---
- chrome/app/framework.exports | 115 +++++++++++++++++++++++++++++++++++
- chrome/app/framework.order   | 115 +++++++++++++++++++++++++++++++++++
- 2 files changed, 230 insertions(+)
+ chrome/app/framework.exports | 117 +++++++++++++++++++++++++++++++++++
+ chrome/app/framework.order   | 117 +++++++++++++++++++++++++++++++++++
+ 2 files changed, 234 insertions(+)
 
 diff --git a/chrome/app/framework.exports b/chrome/app/framework.exports
 index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..4bd5da8156a0eee1f23254158d1ae82c96e93a1a 100644
 --- a/chrome/app/framework.exports
 +++ b/chrome/app/framework.exports
-@@ -20,3 +20,118 @@ _ChromeAppModeStart_v8
+@@ -20,3 +20,120 @@ _ChromeAppModeStart_v8
  _ChromeMain
  _ChromeWebAppShortcutCopierMain
  _bdk_overlay_marker
@@ -136,6 +136,8 @@ index 3ad0d19a0c1debfe3cc7180c8d02a2a7930b7dcd..4bd5da8156a0eee1f23254158d1ae82c
 +_bdk_ui_update
 +_bdk_ui_use_default
 +_bdk_unsubscribe
++_bdk_web_app_install
++_bdk_web_app_uninstall
 +_bdk_window_active_contents
 +_bdk_window_contents
 +_bdk_window_extension_id
@@ -150,7 +152,7 @@ diff --git a/chrome/app/framework.order b/chrome/app/framework.order
 index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..3ddaf19e46c03c2549f5db7dd63ece5d1b935986 100644
 --- a/chrome/app/framework.order
 +++ b/chrome/app/framework.order
-@@ -33,5 +33,120 @@ _ChromeWebAppShortcutCopierMain
+@@ -33,5 +33,122 @@ _ChromeWebAppShortcutCopierMain
  # repository.
  _bdk_overlay_marker
  
@@ -256,6 +258,8 @@ index f7ebdaf6e88cba8b8073c5dd0002da7450ffd5d3..3ddaf19e46c03c2549f5db7dd63ece5d
 +_bdk_ui_update
 +_bdk_ui_use_default
 +_bdk_unsubscribe
++_bdk_web_app_install
++_bdk_web_app_uninstall
 +_bdk_window_active_contents
 +_bdk_window_contents
 +_bdk_window_extension_id

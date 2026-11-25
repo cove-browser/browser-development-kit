@@ -37,10 +37,11 @@ let package = Package(
                 "runtime/local_socket_posix.cc",
                 "runtime/providers.cc", "runtime/translation.cc", "runtime/reputation_lists.cc",
                 "runtime/routes.cc", "runtime/navigation_policy.cc", "runtime/profile_versions.cc",
+                "runtime/web_apps.cc",
                 "stub/stub_backend.cc", "stub/stub_services.cc", "stub/stub_extensions.cc",
                 "stub/stub_broker.cc",
                 "stub/stub_automation.cc",
-                "stub/stub_providers.cc",
+                "stub/stub_providers.cc", "stub/stub_web_apps.cc",
             ],
             publicHeadersPath: "stub",
             cxxSettings: [.headerSearchPath("runtime"), .headerSearchPath("generated")]

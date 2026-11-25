@@ -13,7 +13,7 @@ import type { HistoryEntry } from "./types.js";
 describe("the service namespaces", () => {
   it("are exactly the namespaces the generated declarations name", () => {
     expectTypeOf<keyof Services>().toEqualTypeOf<NamespaceName>();
-    expect(NAMESPACES).toHaveLength(12);
+    expect(NAMESPACES).toHaveLength(13);
   });
 
   it("take the arguments of their command, and refuse a wrong argument name", async () => {
