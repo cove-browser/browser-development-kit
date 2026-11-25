@@ -99,7 +99,7 @@ The key is what goes in `[ui.surfaces]`. "Modes" lists what the surface allows: 
 | `payments` (name settled in T-UIR-14) | Payment Request sheet and Secure Payment Confirmation | D C X | Planned (product owner, 2026-11-25); off at start until built (8.2) | T-UIR-14, M9 |
 | `identity` (name settled in T-UIR-14) | FedCM account chooser | D C X | Planned (product owner, 2026-11-25); off at start until built (8.2) | T-UIR-14, M9 |
 | `digital_credentials` (name settled in T-UIR-14) | Digital Credentials API dialogs | D C X | Planned (product owner, 2026-11-25); off at start until built (8.2) | T-UIR-14, M9 |
-| `web_app_installs` | The install prompt of an installable web app | D C | Planned (product owner, 2026-11-25); raised only with `[web_apps] enabled = true`, which is how it is turned off ([web-apps.md](web-apps.md) 4.1) | T-PWA-03, T-PWA-04, M9 |
+| `web_app_installs` | The install prompt of an installable web app | D C | Planned (product owner, 2026-11-25); raised only with `[web_apps] enabled = true`, which is how it is turned off ([web-apps.md](web-apps.md) 4.1). Surface 37; stub, core and Swift built 2026-11-25 (T-PWA-03), engine T-PWA-04 | T-PWA-03, T-PWA-04, M9 |
 | Extension surfaces | Actions, popups, side panels, menus, options, install prompts | See [extensions.md](extensions.md) | Plan | M5: surfaces 25 to 32 (`extension_actions` … `extension_uninstalls`), configured under `[extensions.ui]`; see `packages/core/docs/conventions.md`, "Extensions (M5)" |
 
 `[ui] default_browser_surfaces = false` sets every key above to `custom`, which means the application must register a handler for each before start.
@@ -243,7 +243,7 @@ public final class NewWindowRequest: BDKUIRequest {
     public let features: WindowFeatures          // requested size and position, from window.open
     public let isUserGesture: Bool
     public let initiatorExtensionID: String?     // the extension that asked (an options page, a link in its popup)
-    public let webApp: WebAppInfo?               // kind .webApp only: the installed app being launched (not built: T-PWA-03, M9)
+    public let webApp: WebAppInfo?               // kind .webApp only: the installed app being launched (stub and Swift built, T-PWA-03; engine T-PWA-04)
     public let newContents: BDKWebContents       // already created; has an opener relationship where the web requires one
     public func accept()                         // the application has placed newContents.view, or will
     public func reject()                         // destroys newContents
@@ -258,7 +258,7 @@ public final class NewWindowRequest: BDKUIRequest {
 | `.pictureInPicture` | Document picture-in-picture |
 | `.extensionWindow` | `chrome.windows.create` |
 | `.application` | Chromium's own code asking for a page, such as a link in a built-in settings page |
-| `.webApp` | An installed web app being launched, or opening another window inside its scope ([web-apps.md](web-apps.md) 4.2). Not built: T-PWA-03, T-PWA-04, M9 |
+| `.webApp` | An installed web app being launched, or opening another window inside its scope ([web-apps.md](web-apps.md) 4.2). Built on the stub and in Swift (T-PWA-03, launch only); the engine, and a window opened from an app page, are T-PWA-04 |
 
 | | |
 |---|---|
@@ -618,9 +618,9 @@ Default presenters: a dialog offering to wait or stop the page; a small notice a
 
 Action state, popups, side panels, extension context-menu items, options pages, install and permission prompts, and the default extensions menu are in [extensions.md](extensions.md) section 4. They follow sections 1 to 3 of this document without exception.
 
-### 5.21 Web app installs (product owner, 2026-11-25; not built, T-PWA-03 and T-PWA-04, M9)
+### 5.21 Web app installs (product owner, 2026-11-25; stub, core and Swift built, T-PWA-03; engine T-PWA-04, M9)
 
-The install prompt of an installable web app, and the window it is launched in, are in [web-apps.md](web-apps.md) section 4. They follow sections 1 to 3 of this document without exception: `install` is a granting completion.
+The install prompt of an installable web app, and the window it is launched in, are in [web-apps.md](web-apps.md) section 4. They follow sections 1 to 3 of this document without exception: `install` is a granting completion (the ABI's `grant`; `install` is accepted as the same).
 
 ## 6. Default presenters
 
@@ -694,6 +694,7 @@ reading the source, not from a test.
 | FedCM account chooser | `navigator.credentials.get({identity})` | Off (`FedCm`): `IdentityCredential` is absent |
 | Digital Credentials dialogs | `navigator.credentials.get({digital})` | Off (`WebIdentityDigitalCredentials`, `...Creation`) |
 | Web application install dialogs | `beforeinstallprompt`'s `prompt()` | Off: `profile.web_app.install_by_user_enabled` defaults to false, so no page offers itself for installation. From M9 that is the behaviour of `[web_apps] enabled = false`, the default; with `true` the dialog becomes a `web_app_installs` request (T-PWA-04, [web-apps.md](web-apps.md)) |
+| Web Install API dialogs (found by T-PWA-01, 2026-11-25; not in the T-UIR-10 list) | `navigator.install()`, the `<install>` element | Not handled yet: both are on at the pin, and with installs off `navigator.install()` reaches the views "not supported" dialog, the kind of dialog that ended the application before T-UIR-10. T-PWA-04 turns off `WebAppInstallation` and `InstallElement` at start ([web-apps.md](web-apps.md) 10.2). Read, not run |
 | JavaScript dialogs, HTTP authentication, permission prompts, file pickers and folder upload, password and autofill save bubbles, printing, WebAuthn, extension install and uninstall prompts, Chrome's `TabModalConfirmDialog` from the `Browser`'s delegate | Pages | Already BDK's (5.1 to 5.18, extensions.md): no views dialog is reached |
 | Bookmarks editor, application info, shortcuts, web application uninstall, update review and launch, tab groups, the window name prompt, site data, certificate viewer, caret browsing, "downloads in progress", relaunch and update notices, search engine choice, profiles, sync and sign-in | Chrome's own windows, menus and accelerators | Not reachable: a BDK application has none of them, and sign-in is off |
 | Autofill payments (server cards, OTP, BNPL, save and fill, payments WebAuthn), password change, the leaked-password dialog, tailored security, password reuse, Lens, Glic, the actor, skills, Save to Drive, dictation onboarding, feature first run | Google services | Not reachable: off at start or with no Google key (providers/README.md); the leaked-password warning is S16 |

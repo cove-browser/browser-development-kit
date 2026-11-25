@@ -94,6 +94,7 @@ public final class BDKUIHandlers {
     public var extensionUninstalls: Surface<ExtensionUninstallRequest> {
         surface(.extensionUninstalls)
     }
+    public var webAppInstalls: Surface<WebAppInstallRequest> { surface(.webAppInstalls) }
 
     private func surface<Request: BDKUIRequest>(_ kind: BDKUISurface) -> Surface<Request> {
         Surface(owner: self, kind: kind)
@@ -247,6 +248,7 @@ extension BDKUIRequest {
         .extensionSidePanels: { ExtensionSidePanelRequest($0, runtime: $1) },
         .extensionInstalls: { ExtensionInstallRequest($0, runtime: $1) },
         .extensionUninstalls: { ExtensionUninstallRequest($0, runtime: $1) },
+        .webAppInstalls: { WebAppInstallRequest($0, runtime: $1) },
     ]
 
     /// The typed request for a delivery. Surfaces without a typed request (device

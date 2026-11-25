@@ -70,6 +70,9 @@ extension BDKWebContents {
         case findResult(FindSession.Result)
         /// The page's translation changed phase or progress.
         case translation(BDKTranslationState)
+        /// A page launched as an installed web app left its app's scope or came back into it
+        /// (`webApp.isInScope`).
+        case webAppScope(appID: String, isInScope: Bool)
         /// A kind this version does not know, from a newer runtime.
         case unknown(kind: UInt32)
     }
@@ -132,6 +135,9 @@ extension BDKWebContents.Event {
                 try? BDKServiceCoding.decode(BDKTranslationState.self, from: $0.jsonString)
             }
             .map { .translation($0) } ?? .unknown(kind: kind)
+        case BDK_CONTENTS_EVENT_WEB_APP:
+            .webAppScope(
+                appID: detail?.string("appId") ?? "", isInScope: detail?.bool("isInScope") ?? true)
         default:
             .unknown(kind: kind)
         }
