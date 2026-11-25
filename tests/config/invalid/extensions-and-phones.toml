@@ -1,0 +1,19 @@
+[browser]
+name = "Cove"
+
+[extensions]
+developer_mode = "sometimes"
+
+[extensions.install]
+blocklist = ["not-an-extension-id"]
+
+[extensions.bundled]
+Reader = "Extensions/Reader"
+outside = "../Elsewhere"
+
+[extensions.bundled.notes]
+path = "Extensions/Notes"
+update_url = "https://updates.example.test/notes.xml"
+
+[services.webauthn]
+phones = "yes"

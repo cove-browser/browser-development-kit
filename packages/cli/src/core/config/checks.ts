@@ -150,6 +150,11 @@ function checkPaths(doc: Record<string, unknown>, reporter: Reporter): void {
       checkPath(value, ["pages", "overrides", route], reporter);
     }
   }
+  for (const [name, value] of Object.entries(table(table(doc, "extensions"), "bundled"))) {
+    if (typeof value === "string") checkPath(value, ["extensions", "bundled", name], reporter);
+    else if (isRecord(value))
+      checkPath(value.path, ["extensions", "bundled", name, "path"], reporter);
+  }
 }
 
 function isRouteMode(value: string): boolean {

@@ -50,9 +50,6 @@ validator rejects them with the ordinary `config.unknown_key` error.
 | `[storage]` | Added (S2) |
 | `[chromium.features]` | Added (S9) |
 | `[pages] diagnostics` | Added, no S number |
-| `[ui.surfaces]` entries `client_certificates`, `autofill_suggestions`, `exclusive_access`, `device_choosers`, `screen_capture`, `webauthn`, `external_protocols`, `page_health` | Added (S3) |
-| `[extensions] developer_mode`, `[extensions.install] blocklist` | Added |
-| `[extensions.bundled]` | Added (S6) |
 | `[services.credentials]` | Added (S14) |
 | `[services.leak_check]` | Added (S16) |
 | `[services.components]` | Conditional (D5) |
@@ -62,7 +59,14 @@ validator rejects them with the ordinary `config.unknown_key` error.
 | `[runtime] locales`, `[chromium] modules` | Later |
 | `[services.translation] model_source` | Open |
 
-The error codes `browser.logo_invalid`, `extensions.bundled_invalid`, `search.default_missing`,
+Accepted on 2026-11-25 (amendments 2.23) and now in the schema: the eight S3 `[ui.surfaces]` keys, with the modes
+of ui-requests.md section 4 (the special case that reported them as `config.unknown_key` is gone, T-UIR-15);
+`[extensions] developer_mode`, `[extensions.install] blocklist` and `[extensions.bundled]` (T-EXT-14); and
+`[services.webauthn] phones` (T-UIR-12). The resolver writes each. A bundled extension is checked on disk
+(`extensions.bundled_invalid`, `config.path_escape`) and written in the long form with its directory's digest. The
+note `plist.passkeys_phone` is raised only with `phones = true`.
+
+The error codes `browser.logo_invalid`, `search.default_missing`,
 `search.url_invalid`, `settings.key_unknown` and `settings.locked` are unreachable until their keys are
 accepted. `plist.min_os` and `plist.conflict` need facts the build does not pass yet (the runtime manifest
 and the Xcode project).
@@ -72,7 +76,7 @@ and the Xcode project).
 `bdk.resolved.json` has the shape of configuration.md section 7. For the sections whose keys are not
 accepted, the resolver writes the documented default, so the file's shape does not change when they are:
 `browser.logo = "app-icon"`, `storage` from the name, `services.credentials`, `services.leak_check`,
-`settings_defaults = {}`, `diagnostics`, `chromium_features`, `extensions.bundled = {}`. `browser.user_agent`
+`settings_defaults = {}`, `diagnostics`, `chromium_features`. `browser.user_agent`
 holds `brand_version` from `CFBundleShortVersionString` when `bundleFacts` has it. `search` is omitted
 because no default engine exists.
 

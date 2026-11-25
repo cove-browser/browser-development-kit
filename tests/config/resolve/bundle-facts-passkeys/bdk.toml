@@ -1,2 +1,5 @@
 [browser]
 name = "Cove"
+
+[services.webauthn]
+phones = true

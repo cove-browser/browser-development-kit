@@ -8,25 +8,18 @@
       "line": 5
     },
     {
-      "code": "config.unknown_key",
+      "code": "ui.surface_unknown",
       "severity": "error",
-      "message": "Unknown key \"ui.surfaces.webauthn\".",
+      "message": "Unknown surface \"telepathy\" in [ui.surfaces].",
       "file": "bdk.toml",
       "line": 6
     },
     {
       "code": "ui.surface_unknown",
       "severity": "error",
-      "message": "Unknown surface \"telepathy\" in [ui.surfaces].",
-      "file": "bdk.toml",
-      "line": 7
-    },
-    {
-      "code": "ui.surface_unknown",
-      "severity": "error",
       "message": "Unknown surface \"popup\" in [extensions.ui]. Did you mean \"extensions.ui.popups\"?",
       "file": "bdk.toml",
-      "line": 10
+      "line": 9
     }
   ]
 }

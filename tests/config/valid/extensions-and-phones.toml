@@ -1,0 +1,19 @@
+# The S6 extension keys and the phone passkey switch, accepted on 2026-11-25 (amendments 2.23).
+[browser]
+name = "Cove"
+
+[extensions]
+developer_mode = "off"
+
+[extensions.install]
+blocklist = ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]
+
+[extensions.bundled]
+notes = "Extensions/Notes"
+
+[extensions.bundled.reader]
+path = "Extensions/Reader"
+required = true
+
+[services.webauthn]
+phones = true

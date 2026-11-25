@@ -1,0 +1,46 @@
+{
+  "diagnostics": [
+    {
+      "code": "config.type",
+      "severity": "error",
+      "message": "\"extensions.developer_mode\" must be one of \"user\", \"on\", \"off\", found \"sometimes\".",
+      "file": "bdk.toml",
+      "line": 5
+    },
+    {
+      "code": "config.type",
+      "severity": "error",
+      "message": "\"extensions.install.blocklist.0\" has an invalid value: \"not-an-extension-id\". Write an extension identifier: 32 letters from a to p.",
+      "file": "bdk.toml",
+      "line": 8
+    },
+    {
+      "code": "config.type",
+      "severity": "error",
+      "message": "\"extensions.bundled\" has an invalid value: \"Reader\". Name a bundled extension with a lower-case letter, then letters, digits, \"_\" or \"-\".",
+      "file": "bdk.toml",
+      "line": 10
+    },
+    {
+      "code": "config.path_escape",
+      "severity": "error",
+      "message": "\"extensions.bundled.outside\" is not a path inside the project: \"../Elsewhere\". It leaves the directory of bdk.toml.",
+      "file": "bdk.toml",
+      "line": 12
+    },
+    {
+      "code": "config.unknown_key",
+      "severity": "error",
+      "message": "Unknown key \"extensions.bundled.notes.update_url\".",
+      "file": "bdk.toml",
+      "line": 16
+    },
+    {
+      "code": "config.type",
+      "severity": "error",
+      "message": "\"services.webauthn.phones\" must be a boolean, found string.",
+      "file": "bdk.toml",
+      "line": 19
+    }
+  ]
+}
