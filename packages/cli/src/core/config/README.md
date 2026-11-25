@@ -67,6 +67,14 @@ The error codes `browser.logo_invalid`, `extensions.bundled_invalid`, `search.de
 accepted. `plist.min_os` and `plist.conflict` need facts the build does not pass yet (the runtime manifest
 and the Xcode project).
 
+## Web apps and push (T-PWA-02)
+
+`[web_apps] enabled` and `[services.push] provider` are in the schema, and `web_app_installs` in `[ui.surfaces]`.
+The resolver writes `web_apps` and `services.push` with their defaults, and reports the note
+`web_apps.push_unconfigured` and the warning `services.push_google` (`checkWebAppsAndPush` in `resolve.ts`, which
+`index.ts` exports so that `bdk doctor` can list the same findings). A push provider outside the enum is
+`services.provider_unknown`, as for the other providers.
+
 ## Defaults for keys that are not accepted
 
 `bdk.resolved.json` has the shape of configuration.md section 7. For the sections whose keys are not

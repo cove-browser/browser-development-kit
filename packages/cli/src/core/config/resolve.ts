@@ -183,6 +183,33 @@ function checkPasskeyFacts(
   }
 }
 
+/**
+ * What `bdk build` and `bdk doctor` say about web apps and push (web-apps.md section 7): a warning
+ * whenever push goes through Google, and a note when web apps are on with no push provider.
+ */
+export function checkWebAppsAndPush(
+  webAppsEnabled: boolean,
+  pushProvider: string,
+  reporter: Reporter,
+): void {
+  if (pushProvider === "google") {
+    reporter.warning(
+      "services.push_google",
+      "[services.push] provider = \"google\" sends every push subscription through Google's messaging service (FCM). It needs your own project in Google's console, under your account and Google's terms and quotas, and its credentials supplied from Swift before start; BDK ships none. Messages arrive only while the browser runs.",
+      ["services", "push", "provider"],
+      'See docs/planning/sdk/web-apps.md section 7. To send nothing to Google, use provider = "none".',
+    );
+  }
+  if (webAppsEnabled && pushProvider === "none") {
+    reporter.note(
+      "web_apps.push_unconfigured",
+      'Installable web apps are on and [services.push] provider is "none": installed apps work, and receive no push messages.',
+      ["web_apps", "enabled"],
+      'To deliver push messages, set [services.push] provider = "google" (see docs/planning/sdk/web-apps.md section 7).',
+    );
+  }
+}
+
 export interface AssembleInput {
   doc: Doc;
   projectDir: string;
@@ -230,6 +257,9 @@ export function assemble(input: AssembleInput): Record<string, unknown> | undefi
   const reputation = table(services, "reputation");
   const geolocation = table(services, "geolocation");
   const frontend = pick(devtools.frontend, "default");
+  const webAppsEnabled = pick(table(doc, "web_apps").enabled, false);
+  const pushProvider = pick(table(services, "push").provider, "none");
+  checkWebAppsAndPush(webAppsEnabled, pushProvider, reporter);
 
   return {
     schema: RESOLVED_SCHEMA_VERSION,
@@ -272,6 +302,7 @@ export function assemble(input: AssembleInput): Record<string, unknown> | undefi
       ),
       bundled: {},
     },
+    web_apps: { enabled: webAppsEnabled },
     services: {
       translation: {
         provider: pick(translation.provider, "default"),
@@ -290,6 +321,7 @@ export function assemble(input: AssembleInput): Record<string, unknown> | undefi
       },
       credentials: { provider: "chromium" },
       leak_check: { provider: "none" },
+      push: { provider: pushProvider },
     },
     settings_defaults: {},
     automation: {

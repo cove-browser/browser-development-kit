@@ -1,0 +1,109 @@
+{
+  "schema": 1,
+  "bdk_version": "0.0.0",
+  "config_digest": "sha256:69f881abea2ee640b0f417cc7c88e3d515a255026526c6192c3ebb8256f8b15b",
+  "browser": {
+    "name": "Harbour",
+    "internal_scheme": "harbour",
+    "logo": "app-icon",
+    "user_agent": {}
+  },
+  "storage": {
+    "directory": "Harbour",
+    "keychain_item": "Harbour Safe Storage"
+  },
+  "runtime": {
+    "mode": "prebuilt",
+    "downgrade": "refuse",
+    "snapshot_on_upgrade": true
+  },
+  "routes": {},
+  "aliases": {},
+  "surfaces": {
+    "permissions": "default",
+    "javascript_dialogs": "default",
+    "http_auth": "default",
+    "file_pickers": "default",
+    "context_menus": "default",
+    "new_windows": "default",
+    "downloads": "default",
+    "passwords": "default",
+    "autofill": "default",
+    "printing": "default",
+    "translation": "default",
+    "find": "default",
+    "fullscreen": "default",
+    "notifications": "default",
+    "certificate_errors": "default",
+    "reputation_warnings": "default",
+    "devtools": "default",
+    "web_app_installs": "default"
+  },
+  "extensions": {
+    "enabled": true,
+    "install_policy": "reject_known_incompatible",
+    "allow_in_private": "user",
+    "install": {
+      "unpacked": true,
+      "crx": true,
+      "update_urls": "any",
+      "stores": []
+    },
+    "ui": {
+      "actions": "default",
+      "popups": "default",
+      "side_panels": "default",
+      "context_menus": "default",
+      "options_pages": "default",
+      "devtools": "default"
+    },
+    "bundled": {}
+  },
+  "web_apps": {
+    "enabled": true
+  },
+  "services": {
+    "translation": {
+      "provider": "default",
+      "models": "on-demand",
+      "bundled_languages": []
+    },
+    "reputation": {
+      "provider": "default",
+      "update_interval": "1h"
+    },
+    "geolocation": {
+      "provider": "system"
+    },
+    "credentials": {
+      "provider": "chromium"
+    },
+    "leak_check": {
+      "provider": "none"
+    },
+    "push": {
+      "provider": "none"
+    }
+  },
+  "settings_defaults": {},
+  "automation": {
+    "enabled": false,
+    "scripts": {},
+    "cpu_budget_ms": 60000,
+    "external": {
+      "enabled": false
+    }
+  },
+  "devtools": {
+    "frontend": "default",
+    "protocol": true
+  },
+  "diagnostics": {
+    "crash_reports": "local",
+    "log_level": "warning"
+  },
+  "chromium_features": {
+    "enable": [],
+    "disable": []
+  }
+}

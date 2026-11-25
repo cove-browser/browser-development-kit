@@ -1,0 +1,11 @@
+[browser]
+name = "Harbour"
+
+[web_apps]
+enabled = "yes"
+
+[services.push]
+provider = 1
+
+[ui.surfaces]
+web_app_installs = "disabled"

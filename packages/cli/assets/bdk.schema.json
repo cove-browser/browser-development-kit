@@ -13,6 +13,7 @@
     "pages": { "$ref": "#/$defs/pages" },
     "ui": { "$ref": "#/$defs/ui" },
     "extensions": { "$ref": "#/$defs/extensions" },
+    "web_apps": { "$ref": "#/$defs/web_apps" },
     "services": { "$ref": "#/$defs/services" },
     "automation": { "$ref": "#/$defs/automation" },
     "devtools": { "$ref": "#/$defs/devtools" },
@@ -242,8 +243,24 @@
             "devtools": {
               "$ref": "#/$defs/surfaceModeAny",
               "description": "The DevTools front end."
+            },
+            "web_app_installs": {
+              "$ref": "#/$defs/surfaceModeDefaultCustom",
+              "description": "The install prompt of an installable web app. Turn installs off with [web_apps] enabled = false, not here."
             }
           }
+        }
+      }
+    },
+    "web_apps": {
+      "type": "object",
+      "description": "Installable web apps. See web-apps.md.",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether a page may offer itself for installation and the webApps commands work. Push messages are [services.push]."
         }
       }
     },
@@ -394,6 +411,18 @@
               "description": "system is the operating system's provider, app is a Swift registration."
             },
             "endpoint": { "$ref": "#/$defs/endpoint" }
+          }
+        },
+        "push": {
+          "type": "object",
+          "description": "Web Push, for any site that subscribes, installed as a web app or not.",
+          "additionalProperties": false,
+          "properties": {
+            "provider": {
+              "enum": ["none", "google"],
+              "default": "none",
+              "description": "none: PushManager.subscribe() rejects and no messaging host is contacted. google: Google's messaging service, with your own project in Google's console and its credentials supplied from Swift before start."
+            }
           }
         }
       }

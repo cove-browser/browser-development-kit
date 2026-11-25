@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "bdk_version": "0.0.0",
-  "config_digest": "sha256:3a7ce9ba88275daad6561e37cbd353086e6aacde37d7bc29ab0435a5c20d4140",
+  "config_digest": "sha256:a477566dd1ba2c9064bdbc6cfccbcf039f678b670ebe02163ca34ea6e5e05629",
   "browser": {
     "name": "Tide",
     "internal_scheme": "tide",
@@ -36,7 +36,8 @@
     "notifications": "default",
     "certificate_errors": "default",
     "reputation_warnings": "default",
-    "devtools": "default"
+    "devtools": "default",
+    "web_app_installs": "default"
   },
   "extensions": {
     "enabled": true,
@@ -58,6 +59,9 @@
     },
     "bundled": {}
   },
+  "web_apps": {
+    "enabled": false
+  },
   "services": {
     "translation": {
       "provider": "default",
@@ -75,6 +79,9 @@
       "provider": "chromium"
     },
     "leak_check": {
+      "provider": "none"
+    },
+    "push": {
       "provider": "none"
     }
   },

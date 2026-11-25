@@ -1,0 +1,9 @@
+[browser]
+name = "Harbour"
+
+[web_apps]
+enabled = true
+os_integration = true
+
+[services.push]
+provider = "apns"
