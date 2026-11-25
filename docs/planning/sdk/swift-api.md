@@ -210,6 +210,7 @@ public final class BDKProfile: Identifiable {
     public let passwords: BDKPasswords
     public let autofill: BDKAutofill
     public let extensions: BDKExtensions        // extensions.md
+    public let webApps: BDKWebApps              // web-apps.md; not built: T-PWA-03, M9
     public let translation: BDKTranslationPreferences
     public let search: BDKSearch
     public let favicons: BDKFavicons

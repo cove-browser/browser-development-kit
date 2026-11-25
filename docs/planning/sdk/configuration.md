@@ -209,6 +209,18 @@ path = "Extensions/Reader"
 required = true
 ```
 
+### 3.7A `[web_apps]` (product owner, 2026-11-25; built in T-PWA-02 to T-PWA-04, M9)
+
+Installable web apps. The whole design is in [web-apps.md](web-apps.md).
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | boolean | `false` | Whether a page may offer itself for installation and the `webApps.*` commands work. With `false` the runtime behaves as before M9: `beforeinstallprompt` never fires, nothing can be installed, and every `webApps` call fails with `webApps.disabled`. With `true`, an install raises a `web_app_installs` request ([ui-requests.md](ui-requests.md) section 4) and a launch raises a new-window request. |
+
+Enabling web apps needs no key and contacts no service. Push messages are separate: `[services.push]` in 3.8. With `enabled = true` and no push provider, `bdk build` and `bdk doctor` print the note `web_apps.push_unconfigured` (section 9).
+
+No key registers an installed app with the operating system (Dock icon, file and protocol handlers). That is not built in v1 ([web-apps.md](web-apps.md) section 8).
+
 ### 3.8 `[services]`
 
 One table per service. All three accept the same three ways of choosing a provider (`architecture.md` 11.1).
@@ -246,6 +258,16 @@ Not a provider table: WebAuthn has no provider to choose.
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `phones` | boolean | `false` | Whether a passkey on a phone (hybrid: QR code, Bluetooth, the phone's tunnel service) is offered. With `false` the engine offers no phone and contacts no tunnel host. With `true` it also needs `NSBluetoothAlwaysUsageDescription` (section 6), and the tunnel host is contacted only after the person chooses a phone. Off by default because Android phones use a Google-run tunnel host, which invariant 9 allows only when the application asks for it (`architecture.md` 16). `true` without the usage string is the note `plist.passkeys_phone`. |
+
+#### `[services.push]` (product owner, 2026-11-25; built in T-PWA-02 and T-PWA-05, M9)
+
+Web Push, for any site that subscribes, installed as a web app or not ([web-apps.md](web-apps.md) section 7).
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `provider` | `"none"` or `"google"` | `"none"` | Who delivers push messages. `none`: `PushManager.subscribe()` rejects and the runtime contacts no messaging host. `google`: Chromium's own client for Google's messaging service (GCM/FCM), with the application's credentials supplied from Swift before start; missing credentials are a start error, as for the other named providers. |
+
+**`provider = "google"` requires the developer's own project in Google's console.** BDK ships no key (invariant 9), Google sees every subscription, and Google's terms and quotas apply to the developer. `bdk build` and `bdk doctor` print the warning `services.push_google` whenever this value is set (section 9). What must be created in the console is not verified; T-PWA-05 records it here. Messages arrive only while the browser is running. There is no `endpoint` key and no `"app"` value in v1.
 
 #### `[services.credentials]` (Added, S14)
 
@@ -639,6 +661,8 @@ Each has a stable code, used by fixtures in `tests/config/`. Messages name the f
 | `plist.min_os` | The deployment target is below the runtime's minimum |
 | `plist.app_sandbox` | The App Sandbox entitlement is set |
 | `plist.passkeys_phone` | A note: Info.plist has no `NSBluetoothAlwaysUsageDescription`, or the entitlements lack `com.apple.security.device.bluetooth`, so passkeys on a phone are not offered (T-UIR-09) |
+| `web_apps.push_unconfigured` | A note: `[web_apps] enabled = true` with `[services.push] provider = "none"`, so installed web apps receive no push messages (T-PWA-02) |
+| `services.push_google` | A warning: `[services.push] provider = "google"`, which requires the developer's own project in Google's console and sends every subscription to Google (T-PWA-02) |
 
 ### Decisions made in T-CFG-01/02
 

@@ -57,7 +57,7 @@ From `architecture.md` section 7 and invariant 6.
 | Rule | How it is enforced |
 |---|---|
 | A security interstitial cannot be disabled, auto-dismissed or skipped | The interstitial surfaces accept `default` and `custom` only; the runtime refuses a configuration that says otherwise (`ui.surfaceMode`). They are completed by `go_back` or `proceed` and nothing else. `proceed` needs a gesture and a request whose `isOverridable` is true, and a request that does not say is not overridable (`ui.notOverridable`). `.reject`, a dropped request and a released one all complete as `go_back`. |
-| A permission, an extension install, a credential fill or a dangerous download cannot be granted without a user gesture | The granting completion takes the `NSEvent` that confirmed it. The core refuses a granting completion with no `NSEvent` (`ui.gestureRequired`); the engine also checks that it is a recent mouse-up or key-down delivered to a window of this application. The granting completion of each surface is named in section 5 (`grant`, `keep`, `save`, `accept` for suggestions, `proceed`, `select`, `share`, `open`). |
+| A permission, an extension install, a credential fill or a dangerous download cannot be granted without a user gesture | The granting completion takes the `NSEvent` that confirmed it. The core refuses a granting completion with no `NSEvent` (`ui.gestureRequired`); the engine also checks that it is a recent mouse-up or key-down delivered to a window of this application. The granting completion of each surface is named in section 5 (`grant`, `keep`, `save`, `accept` for suggestions, `proceed`, `select`, `share`, `open`, and `install` for a web app). |
 | A custom presenter is given the same facts the default shows | Requests carry the origin, the permission text, the risk text and the extension's permission warnings. A grant from a presenter that did not read them is still a grant, so review handlers accordingly. |
 | `disabled` never means allowed | A disabled surface denies. The request finishes as disabled with no handler called, and the web or extension API behind the surface reports itself unavailable. |
 | A handler cannot widen what was asked | Completions accept a subset of what the request asked for. A permission `grant` that names a kind the request did not ask for fails with `ui.widensRequest` and leaves the request open. |
@@ -99,6 +99,7 @@ The key is what goes in `[ui.surfaces]`. "Modes" lists what the surface allows: 
 | `payments` (name settled in T-UIR-14) | Payment Request sheet and Secure Payment Confirmation | D C X | Planned (product owner, 2026-11-25); off at start until built (8.2) | T-UIR-14, M9 |
 | `identity` (name settled in T-UIR-14) | FedCM account chooser | D C X | Planned (product owner, 2026-11-25); off at start until built (8.2) | T-UIR-14, M9 |
 | `digital_credentials` (name settled in T-UIR-14) | Digital Credentials API dialogs | D C X | Planned (product owner, 2026-11-25); off at start until built (8.2) | T-UIR-14, M9 |
+| `web_app_installs` | The install prompt of an installable web app | D C | Planned (product owner, 2026-11-25); raised only with `[web_apps] enabled = true`, which is how it is turned off ([web-apps.md](web-apps.md) 4.1) | T-PWA-03, T-PWA-04, M9 |
 | Extension surfaces | Actions, popups, side panels, menus, options, install prompts | See [extensions.md](extensions.md) | Plan | M5: surfaces 25 to 32 (`extension_actions` … `extension_uninstalls`), configured under `[extensions.ui]`; see `packages/core/docs/conventions.md`, "Extensions (M5)" |
 
 `[ui] default_browser_surfaces = false` sets every key above to `custom`, which means the application must register a handler for each before start.
@@ -235,13 +236,14 @@ Everything that would have made Chromium open a window or a tab.
 
 ```swift
 public final class NewWindowRequest: BDKUIRequest {
-    public let kind: Kind                        // .popup, .newPage, .devTools, .pictureInPicture, .extensionWindow, .application
+    public let kind: Kind                        // .popup, .newPage, .devTools, .pictureInPicture, .extensionWindow, .application, .webApp
     public let disposition: Disposition          // .foreground, .background, .newWindow, .popup, .privateWindow
     public let targetURL: URL?
     public let opener: BDKWebContents?
     public let features: WindowFeatures          // requested size and position, from window.open
     public let isUserGesture: Bool
     public let initiatorExtensionID: String?     // the extension that asked (an options page, a link in its popup)
+    public let webApp: WebAppInfo?               // kind .webApp only: the installed app being launched (not built: T-PWA-03, M9)
     public let newContents: BDKWebContents       // already created; has an opener relationship where the web requires one
     public func accept()                         // the application has placed newContents.view, or will
     public func reject()                         // destroys newContents
@@ -256,6 +258,7 @@ public final class NewWindowRequest: BDKUIRequest {
 | `.pictureInPicture` | Document picture-in-picture |
 | `.extensionWindow` | `chrome.windows.create` |
 | `.application` | Chromium's own code asking for a page, such as a link in a built-in settings page |
+| `.webApp` | An installed web app being launched, or opening another window inside its scope ([web-apps.md](web-apps.md) 4.2). Not built: T-PWA-03, T-PWA-04, M9 |
 
 | | |
 |---|---|
@@ -615,6 +618,10 @@ Default presenters: a dialog offering to wait or stop the page; a small notice a
 
 Action state, popups, side panels, extension context-menu items, options pages, install and permission prompts, and the default extensions menu are in [extensions.md](extensions.md) section 4. They follow sections 1 to 3 of this document without exception.
 
+### 5.21 Web app installs (product owner, 2026-11-25; not built, T-PWA-03 and T-PWA-04, M9)
+
+The install prompt of an installable web app, and the window it is launched in, are in [web-apps.md](web-apps.md) section 4. They follow sections 1 to 3 of this document without exception: `install` is a granting completion.
+
 ## 6. Default presenters
 
 | Question | Answer |
@@ -686,7 +693,7 @@ reading the source, not from a test.
 | Payment Request sheet, Secure Payment Confirmation | `new PaymentRequest(...).show()` | Off (`WebPayments`, `SecurePaymentConfirmation`): `PaymentRequest` is absent |
 | FedCM account chooser | `navigator.credentials.get({identity})` | Off (`FedCm`): `IdentityCredential` is absent |
 | Digital Credentials dialogs | `navigator.credentials.get({digital})` | Off (`WebIdentityDigitalCredentials`, `...Creation`) |
-| Web application install dialogs | `beforeinstallprompt`'s `prompt()` | Off: `profile.web_app.install_by_user_enabled` defaults to false, so no page offers itself for installation |
+| Web application install dialogs | `beforeinstallprompt`'s `prompt()` | Off: `profile.web_app.install_by_user_enabled` defaults to false, so no page offers itself for installation. From M9 that is the behaviour of `[web_apps] enabled = false`, the default; with `true` the dialog becomes a `web_app_installs` request (T-PWA-04, [web-apps.md](web-apps.md)) |
 | JavaScript dialogs, HTTP authentication, permission prompts, file pickers and folder upload, password and autofill save bubbles, printing, WebAuthn, extension install and uninstall prompts, Chrome's `TabModalConfirmDialog` from the `Browser`'s delegate | Pages | Already BDK's (5.1 to 5.18, extensions.md): no views dialog is reached |
 | Bookmarks editor, application info, shortcuts, web application uninstall, update review and launch, tab groups, the window name prompt, site data, certificate viewer, caret browsing, "downloads in progress", relaunch and update notices, search engine choice, profiles, sync and sign-in | Chrome's own windows, menus and accelerators | Not reachable: a BDK application has none of them, and sign-in is off |
 | Autofill payments (server cards, OTP, BNPL, save and fill, payments WebAuthn), password change, the leaked-password dialog, tailored security, password reuse, Lens, Glic, the actor, skills, Save to Drive, dictation onboarding, feature first run | Google services | Not reachable: off at start or with no Google key (providers/README.md); the leaked-password warning is S16 |
@@ -694,8 +701,9 @@ reading the source, not from a test.
 | Platform-app choosers, media galleries, kiosk file system, `chrome.desktopCapture.chooseDesktopMedia` | Extension and platform-app APIs | Platform apps cannot run. An installed extension can still open the desktop-capture picker: T-UIR-13, M9 |
 
 **Decided by the product owner, 2026-11-25** ([../amendments.md](../amendments.md) 2.23): every row above that is
-refused, off or a fixed sheet becomes a routed request in M9, except the web application install dialogs, which stay
-off while the product owner investigates them. T-UIR-13 routes the device choosers (with Web Bluetooth on), screen
+refused, off or a fixed sheet becomes a routed request in M9. The web application install dialogs were left out of
+that decision and decided separately the same day (amendments 2.24): they stay off by default and are routed when
+the application sets `[web_apps] enabled = true` (T-PWA-04). T-UIR-13 routes the device choosers (with Web Bluetooth on), screen
 capture, client certificates, external protocols, the File System Access pickers through `file_pickers`, and
 `chrome.desktopCapture.chooseDesktopMedia` through `screen_capture`. T-UIR-14 turns on and routes Payment Request,
 Secure Payment Confirmation, FedCM and the Digital Credentials API, each with a default presenter of BDK's own.

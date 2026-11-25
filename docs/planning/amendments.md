@@ -460,7 +460,7 @@ when it was recorded.
 |---|---|---|
 | S3, the Added browser-owned surfaces ([sdk/README.md](sdk/README.md) section 6) | **Accepted, all of them.** | The eight `[ui.surfaces]` keys (`client_certificates`, `autofill_suggestions`, `exclusive_access`, `device_choosers`, `screen_capture`, `webauthn`, `external_protocols`, `page_health`) move from Added to Plan: the schema accepts them and drops `UNACCEPTED_SURFACES` (`packages/cli/src/core/config/schema-check.ts`), and the core, Swift and the engine honour each mode. Every surface is a routed request with a default presenter (T-UIR-13, T-UIR-15). |
 | What T-UIR-10 refused or turned off ([sdk/ui-requests.md](sdk/ui-requests.md) 8.2) | **Routed, all of it, except web application installs.** | Device choosers (WebUSB, WebHID, Web Serial, and Web Bluetooth, turned on), screen capture, client certificates and external protocols become requests instead of refusals or BDK's fixed sheets; the File System Access pickers go through `file_pickers`; an extension's `chrome.desktopCapture.chooseDesktopMedia` goes through `screen_capture` (T-UIR-13). Payment Request, Secure Payment Confirmation, FedCM and the Digital Credentials API are turned on and routed through new surfaces (T-UIR-14). |
-| Page-initiated web application installs | **Not decided.** The product owner is investigating; they stay off. | Nothing in M9. The scope statement that installable web apps are not in v1 ([sdk/README.md](sdk/README.md) section 6) stands until then. |
+| Page-initiated web application installs | **Not decided** when this was recorded; decided later the same day (2.24). | Nothing under this section; see 2.24. The scope statement that installable web apps are not in v1 ([sdk/README.md](sdk/README.md) section 6) stands until then. |
 | S6, extensions shipped in the bundle, and the other Added extension keys | **Accepted.** | `[extensions] developer_mode`, `[extensions.install] blocklist` and `[extensions.bundled]` move to Plan (T-EXT-14). |
 | Contacting a phone's tunnel service for a passkey on a phone (T-UIR-12) | **A configuration switch, off by default.** | `[services.webauthn] phones` ([sdk/configuration.md](sdk/configuration.md) 3.8). With it off, the engine offers no phone and contacts no tunnel host, whatever `Info.plist` says; with it on and the Bluetooth usage string present, phones are offered and the tunnel host is contacted only after the person chooses a phone. Off by default because the tunnel service is a Google-run host for Android phones, which invariant 9 allows only when the application asks for it (architecture 16). |
 | Widevine (decision D7) | **Not in v1.** | Nothing. DRM streaming does not play. Nothing may rule out adding it as an application opt-in later ([risks.md](risks.md) D7). |
@@ -470,8 +470,36 @@ Changed: [sdk/README.md](sdk/README.md) section 6 (S3, S6), [sdk/ui-requests.md]
 rows of [roadmap.md](roadmap.md), and tasks T-UIR-12, T-UIR-13, T-EXT-14, with T-UIR-14 and T-UIR-15 new. The task
 list is 148.
 
-Still waiting for the product owner: S1, S12 and S16 (roadmap section 6), web application installs, and the other
+Still waiting for the product owner: S1, S12 and S16 (roadmap section 6), and the other
 Added items and scope statements in [sdk/README.md](sdk/README.md) section 6.
+
+### 2.24 Installable web apps in M9 (2026-11-25)
+
+The product owner decided the item 2.23 left open. Installable web apps (PWAs) move from "not in v1" to M9. Nothing
+here was built when it was recorded, and none of it was checked against the Chromium source beyond what T-UIR-10
+found; the design is [sdk/web-apps.md](sdk/web-apps.md).
+
+| Topic | Decision | What M9 does |
+|---|---|---|
+| Whether BDK supports installable web apps | **Yes, as an opt-in.** `[web_apps] enabled`, `false` by default. | With `false` the runtime behaves as today. With `true` a page may offer itself for installation and the `webApps.*` commands work (T-PWA-02 to T-PWA-04). |
+| Which profile an app runs in | **The application can choose.** An app is installed in one profile and always launches there. | `profile.webApps`: a page's own install goes to the page's profile; the application can install from a URL into another. Private profiles refuse installs (T-PWA-03, T-PWA-04). |
+| The install prompt and the app's window | **The application's to customise, with BDK defaults.** | The install prompt is a new surface, `web_app_installs`, with a gesture-gated `install`. A launch is a new-window request of a new kind, `.webApp`. Each has a default presenter of BDK's own, because Chromium's are views (T-PWA-03, T-PWA-04). |
+| Push messages | **A separate provider switch, off by default, with a warning.** `[services.push] provider`, `"none"` or `"google"`. | Chromium delivers push through Google's messaging service, which invariant 9 allows only when the application asks for it. `"google"` needs the developer's own project in Google's console; `bdk build` and `bdk doctor` say so with the warning `services.push_google`, and print the note `web_apps.push_unconfigured` when web apps are on with no push provider (T-PWA-02, T-PWA-05). |
+| Registration with the operating system: a Dock icon per app, file and protocol handlers, run at login | **Not in M9 and not in v1**, as proposed with the design; to be confirmed by the product owner. | Nothing. Chromium does this on macOS with a signed app shim per installed app. An application shows its installed apps in its own UI instead ([sdk/web-apps.md](sdk/web-apps.md) section 8). |
+
+Order: T-PWA-01 reads Chromium's web-app system at the pin before anything is built, because the largest unknown is
+whether a page launched as an app works in a BDK host context without Chromium's app-type `Browser` (risk R32). The
+configuration, the stub, the core and the Swift API (T-PWA-02, T-PWA-03) need no Chromium build.
+
+This adds XL engine work to a milestone that was release hardening. If it threatens the v1 gates, the fallback in
+R32 is to ship the install request and the registry and leave app windows for a later release.
+
+Changed: [sdk/web-apps.md](sdk/web-apps.md) (new), [sdk/README.md](sdk/README.md) sections 1, 6 and 8,
+[sdk/configuration.md](sdk/configuration.md) 3.7A (new), 3.8 and 9, [sdk/ui-requests.md](sdk/ui-requests.md)
+sections 3, 4, 5.6, 5.21 (new) and 8.2, [sdk/services.md](sdk/services.md) 4 and 5.11A (new),
+[sdk/swift-api.md](sdk/swift-api.md) 5, [sdk/cli.md](sdk/cli.md) 6, [sdk/production-browser.md](sdk/production-browser.md),
+[risks.md](risks.md) R32 and section 4, the M9 rows of [roadmap.md](roadmap.md), and task T-UIR-13, with T-PWA-01
+to T-PWA-05 new. The task list is 153.
 
 ## 3. Tasks and workflows
 
@@ -501,6 +529,8 @@ Added items and scope statements in [sdk/README.md](sdk/README.md) section 6.
 | T-UIR-12, T-UIR-13, T-EXT-14 | Decided (2026-11-25, 2.23): the phone tunnel is behind `[services.webauthn] phones`; everything T-UIR-10 refused is routed except web application installs; S6 is accepted. |
 | T-UIR-14 | New, M9 (2026-11-25): Payment Request, Secure Payment Confirmation, FedCM and the Digital Credentials API turned on and routed (2.23). |
 | T-UIR-15 | New, M9 (2026-11-25): the S3 `[ui.surfaces]` keys accepted, and the three S3 surfaces with no task (`autofill_suggestions`, `exclusive_access`, `page_health`) finished (2.23). |
+| T-PWA-01 to T-PWA-05 | New, M9 (2026-11-25): installable web apps and push (2.24). |
+| T-UIR-13 | Changed (2026-11-25, 2.24): its scenario that a page-initiated install stays off now holds for the default, `[web_apps] enabled = false`. |
 
 The task list goes from 103 to 106 tasks. The README said 100 before, which was already wrong; it now says 106. With T-CLI-05 on 2026-11-16 it is 107.
 
@@ -524,6 +554,9 @@ The task list goes from 103 to 106 tasks. The README said 100 before, which was 
 | A Chromium-based runtime launches and renders on a hosted macOS runner with no real GPU. If not, integration tests move to the local pass. | T-REP-04 |
 | Every build-time figure: about 90 minutes for a full build is a 2023 report | T-CHR-05 |
 | ~~SwiftPM expects `Package.swift` at the repository root, and the package lives in `packages/swift`~~ Settled in M2 (T-SWF-01): the manifest is the root `Package.swift`; sources stay in `packages/swift`. T-PKG-04 still tests binary-target resolution from a clean machine. | T-PKG-04 |
+| A page launched as an installed web app works in a BDK host context without Chromium's app-type `Browser` (2.24) | T-PWA-01 |
+| Chromium's web-app install can be confirmed from a request, and can install from a URL into a chosen profile (2.24) | T-PWA-01 |
+| What Chromium's push client needs from the developer's Google project, and that it is silent with no provider (2.24) | T-PWA-05 |
 
 ## 5. Where to look
 
@@ -538,5 +571,6 @@ The task list goes from 103 to 106 tasks. The README said 100 before, which was 
 | [sdk/](sdk/README.md) | New. The index and all nine documents. |
 | [README.md](README.md) | One row for `sdk/` |
 | For 2.20 | [sdk/ui-requests.md](sdk/ui-requests.md) 4, 5.3, 5.14, 5.16, 5.17, 8.2; [tasks.md](tasks.md) T-UIR-09, T-UIR-10, T-UIR-13; [roadmap.md](roadmap.md) M4, M9; `chromium/bdk/README.md`; `chromium/bdk/engine/bdk_testing.h`; `apps/examples/minimal-browser/README.md` |
+| For 2.24 | [sdk/web-apps.md](sdk/web-apps.md) (new); [sdk/README.md](sdk/README.md) 1, 6, 8; [sdk/configuration.md](sdk/configuration.md) 3.7A, 3.8, 9; [sdk/ui-requests.md](sdk/ui-requests.md) 3, 4, 5.6, 5.21, 8.2; [sdk/services.md](sdk/services.md) 4, 5.11A; [tasks.md](tasks.md) T-PWA-01 to T-PWA-05, T-UIR-13; [roadmap.md](roadmap.md) M9; [risks.md](risks.md) R32 |
 | For 2.19 | [sdk/ui-requests.md](sdk/ui-requests.md) 4, 5.18, 8, 8.1; [sdk/README.md](sdk/README.md) S3; [sdk/production-browser.md](sdk/production-browser.md) 2.4; [sdk/configuration.md](sdk/configuration.md) 6, 9; [tasks.md](tasks.md) T-UIR-09 to T-UIR-12; [roadmap.md](roadmap.md) M4, M9; `packages/core/docs/conventions.md` (the router); `chromium/bdk/README.md` |
 | For 2.10 | [sdk/cli.md](sdk/cli.md) section 2; [repository-and-tooling.md](repository-and-tooling.md) 1, 2, 3, 4, 10, 10.1, 10.2, 12; [tasks.md](tasks.md) T-CLI-05; [risks.md](risks.md) R31; [roadmap.md](roadmap.md) M2 |

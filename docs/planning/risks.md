@@ -46,6 +46,7 @@ Severity is the effect on the product if the risk materialises. Likelihood is a 
 | R12 | Nested helper signing fails under Xcode or notarization: wrong team identifier, missing entitlements, library validation. | Medium | Feasibility 7. | BDK signing script with a test that embeds the runtime in an application with a different team and notarizes it (T-PKG-03). | Document a manual signing procedure. |
 | R13 | Licensing: Widevine, patent pools for H.264, AAC and HEVC, trademark use, feed licences, redistribution of Google-signed component data. | Medium | Unverified; needs legal review. | Decision D7: system decoders for H.264, AAC and HEVC (T-CHR-12), no bundled proprietary decoder, Widevine deferred. Legal review before M9, including whether calling the system decoder needs a licence. Ship third-party notices with every runtime. | Open codecs only; no DRM. |
 | R14 | A translation default based on Bergamot is slower, larger or lower in quality than users expect, and the engine integration is harder than estimated. | Medium | Feasibility 6. Models are 13 to 60 MB each; the renderer contract must be replaced. | Spike in M6 before committing (T-PRV-02). Download models on demand. | Apple Translation as the macOS default where the language pair is installed; cloud providers with the application's key. |
+| R32 | Installable web apps (amendments 2.24): Chromium's web-app code assumes an app-type `Browser` with a views frame for an app's window, so a page launched as an app in a BDK host context may lose its display mode, scope tracking or launch path, or need a large patch. Added to M9, which was release hardening. | Medium | Unverified; nothing was read at the pin. T-UIR-10 found the install dialog is views. | T-PWA-01 reads the source before anything is built. Stub, core and Swift work (T-PWA-02, T-PWA-03) does not depend on the answer. | Ship the install request and the per-profile registry in v1 and open an installed app as an ordinary page; app windows follow in a later release. |
 
 ### Medium
 
@@ -108,3 +109,5 @@ Each is tied to the task that settles it.
 | Siso and GN state tolerate a cloned source tree | T-CHR-07 |
 | Bergamot integrates as a renderer-side translation engine with acceptable speed | T-PRV-02 |
 | H.264, AAC and HEVC can be decoded through the system's decoders with Chromium's bundled proprietary decoders left out, including the build-flag combination that needs | T-CHR-12 |
+| A page launched as an installed web app works in a BDK host context; installs can be confirmed from a request and made into a chosen profile | T-PWA-01 |
+| Chromium's push client takes the application's Google credentials at start and is silent with no provider | T-PWA-05 |

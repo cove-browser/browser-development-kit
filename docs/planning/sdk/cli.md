@@ -328,7 +328,7 @@ Reports findings in four groups. It reports toolchain, compatibility and signatu
 | Level | Meaning | Exit code |
 |---|---|---|
 | Error | The application will not build or will not start | 1 |
-| Warning | It will run, with a risk the developer should know about: an old engine, feature overrides, a remote provider with no privacy URL | 0 |
+| Warning | It will run, with a risk the developer should know about: an old engine, feature overrides, a remote provider with no privacy URL, push through Google (`services.push_google`, [web-apps.md](web-apps.md) section 7) | 0 |
 | Note | Information | 0 |
 
 `--fix` applies only changes that are mechanical and local: refreshing generated links, re-resolving the runtime. It never edits `bdk.toml`, the Xcode project or signing settings.

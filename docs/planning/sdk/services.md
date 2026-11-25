@@ -86,6 +86,8 @@ A capability is a name. A page gets a list of them in `bdk.toml`; a session gets
 | `autofill.manage` | Add, change, remove | Yes | Yes |
 | `extensions.list` | List extensions and their state | Yes | Yes |
 | `extensions.manage` | Install, remove, enable, disable, change site access | Yes | Yes |
+| `webApps.list` | List installed web apps; check a page's installability; launch one (not built: T-PWA-03, M9) | Yes | Yes |
+| `webApps.manage` | Install and uninstall (not built: T-PWA-03, M9) | Yes | Yes |
 | `translation.read` | Languages, preferences, model state | Yes | Yes |
 | `translation.manage` | Change preferences; download and remove models | Yes | Yes |
 | `search.read` | List engines; classify input; get suggestions | Yes | Yes |
@@ -283,6 +285,10 @@ Built (M3, T-SVC-04; `autofill_service.cc`). Addresses map `AddressFields` onto 
 ### 5.11 `extensions`
 
 The commands are in [extensions.md](extensions.md) section 3. Capabilities: `extensions.list` and `extensions.manage`.
+
+### 5.11A `webApps` (product owner, 2026-11-25; not built, T-PWA-03, M9)
+
+The commands are in [web-apps.md](web-apps.md) section 3. Capabilities: `webApps.list` and `webApps.manage`. Every command fails with `webApps.disabled` unless `[web_apps] enabled = true`.
 
 ### 5.12 `translation` (Plan, M6, T-PRV-03)
 

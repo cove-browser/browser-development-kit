@@ -14,6 +14,7 @@ Every type, method, key, command and flag name is a placeholder. The spec leaves
 | [ui-requests.md](ui-requests.md) | Every browser-owned surface: request payload, completions, default presenter, modes, and the security rule that applies |
 | [services.md](services.md) | The broker: call semantics, the capability list, every service command and event, the settings catalogue |
 | [extensions.md](extensions.md) | Extension management, UI surfaces, installation sources, and how each extension API that needs host UI is satisfied |
+| [web-apps.md](web-apps.md) | Installable web apps: the per-profile API, the install prompt and app window, what an installed app can do, push. Added 2026-11-25; M9 |
 | [javascript-api.md](javascript-api.md) | `Pages/` conventions, `@bdk/internal/*`, the automation host and `@bdk/automation`, DevTools customisation, code generation |
 | [c-abi.md](c-abi.md) | Header layout, types, handle and ownership rules, the function families, the interface definition format |
 | [cli.md](cli.md) | `bdk init`, `bdk doctor`, `bdk patch`, the build integration, exit codes, the application project layout |
@@ -122,7 +123,8 @@ Scope statements this document proposes, also for confirmation:
 
 | Topic | Proposal |
 |---|---|
-| Installable web apps (PWAs), `chrome.tabGroups`, reading list, side-search, Chrome's own new-tab page | Not in v1. The APIs report themselves unavailable. BDK ships a minimal default new-tab page of its own. Page-initiated installs stay off; the product owner is investigating them (2026-11-25, [../amendments.md](../amendments.md) 2.23). |
+| Installable web apps (PWAs) | **Replaced by a product-owner decision, 2026-11-25** ([../amendments.md](../amendments.md) 2.24): in v1, built in M9 (T-PWA-01 to T-PWA-05), off unless the application sets `[web_apps] enabled = true`. Installed apps run in application-owned windows; registration with the operating system (Dock icons, file and protocol handlers) is not in v1. See [web-apps.md](web-apps.md). |
+| `chrome.tabGroups`, reading list, side-search, Chrome's own new-tab page | Not in v1. The APIs report themselves unavailable. BDK ships a minimal default new-tab page of its own. |
 | Importing bookmarks, history and passwords from other browsers | Later. HTML bookmark import and export are in v1 because they are small. |
 | Enterprise policy | Not planned. `[settings.defaults]` is not a policy mechanism; users can change the values. |
 | Page capabilities for driving other pages (`contents.*`) | Never grantable to an internal page. Only Swift and automation sessions can hold them. A page that needs "open this URL" calls an `app.` command. |
@@ -163,5 +165,8 @@ In addition to the list in [../risks.md](../risks.md) section 4. Each line is so
 | An application store can stand behind Chromium's password manager as a `PasswordStoreBackend` without the built-in login database | S14 |
 | Chromium's `LeakDetectionCheckFactory` can be replaced with one that asks the application's provider, for the sign-in check and the bulk check, with no signed-in account; and the flags it stores work without Google's check-up service | S16 |
 | A BDK page handle survives a discard, whether Chromium keeps the WebContents or replaces it, and discard eligibility behaves sensibly for pages in the parking context | S15 |
+| A page launched as an installed web app works in a BDK host context without Chromium's app-type `Browser`: display mode, scope and the registry behave as in Chrome | [web-apps.md](web-apps.md) 4.2; T-PWA-01 |
+| Chromium's web-app install can be confirmed from a request instead of its views dialog, and can install from a URL into a chosen profile with no visible tab | [web-apps.md](web-apps.md) 4.1, 5; T-PWA-01 |
+| Chromium's push client works with credentials the application supplies at start, and makes no contact with Google's messaging hosts when no provider is configured | [web-apps.md](web-apps.md) 7; T-PWA-05 |
 | Each offered framework's Vite output runs under the internal-page content security policy, Trusted Types included | `cli.md` 4.3 |
 | A Node single executable works from a Swift package artifact bundle and an Xcode run-script phase, starts fast enough to run three times per build, reads its embedded templates, and can load a project's Vite with its embedded runtime | `cli.md` 2.3 |

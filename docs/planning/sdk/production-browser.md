@@ -114,7 +114,7 @@ With no application UI code beyond a window and an address field, the result mus
 | Spell checking | Expected to use the operating system's on macOS | None | Unverified |
 | H.264, AAC, HEVC | Through the operating system's decoders, if the spike holds; no bundled proprietary decoder | None expected; legal review pending | Decision D7, T-CHR-12 |
 | DRM video (Widevine) | Not available | Nothing it can do in v1 as planned | Deferred, decision D7 |
-| Installable web apps | Not in v1 | — | Scope statement |
+| Installable web apps | `profile.webApps`, `WebAppInstallRequest`, a `.webApp` new-window request ([web-apps.md](web-apps.md)) | `[web_apps] enabled = true`; for push, `[services.push]` and a project in Google's console | Product owner, 2026-11-25; not built, T-PWA-01 to T-PWA-05, M9. No Dock icon per app in v1 |
 
 ### 2.7 Extensions
 

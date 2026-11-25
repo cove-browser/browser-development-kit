@@ -195,6 +195,7 @@ Nothing here can change what `bdk.toml` decided about capabilities, surfaces or 
 | `passwords` | `BDKPasswords` | 11.1 |
 | `autofill` | `BDKAutofill` | 11.1 |
 | `extensions` | `BDKExtensions` | [extensions.md](extensions.md) |
+| `webApps` | `BDKWebApps` | [web-apps.md](web-apps.md); not built: T-PWA-03, M9 |
 | `translation` | `BDKTranslationPreferences` | 11.1 |
 | `search` | `BDKSearch` | 11.1 (Added, S1) |
 | `favicons` | `BDKFavicons` | 11.1 |
