@@ -91,7 +91,12 @@ function missingMessage(
   return lines.join("\n");
 }
 
-async function fetchRuntime(
+/**
+ * Downloads the archive `record` names, checks its SHA-256, unpacks it, verifies every file against the
+ * manifest, and checks the manifest digest and ABI hash against `record`, then installs it in `paths`.
+ * The release check (tooling/src/release) calls it with a scratch store.
+ */
+export async function fetchRuntime(
   key: string,
   record: RuntimeRecord,
   paths: BdkPaths,
