@@ -202,7 +202,7 @@ public final class NewWindowRequest: BDKUIRequest {
     /// the web requires one. Nil when the runtime named no page.
     public var newContents: BDKWebContents? {
         if adoptedContents == nil, let newContentsHandle, let owner = profile ?? opener?.profile {
-            adoptedContents = BDKWebContents.adopt(handle: newContentsHandle, in: owner)
+            adoptedContents = adoptPage(handle: newContentsHandle, in: owner)
         }
         return adoptedContents
     }
@@ -243,7 +243,7 @@ public final class DevToolsRequest: BDKUIRequest {
     /// The DevTools front end, as a page.
     public var frontend: BDKWebContents? {
         if adoptedFrontend == nil, let frontendHandle, let owner = profile ?? inspected?.profile {
-            adoptedFrontend = BDKWebContents.adopt(handle: frontendHandle, in: owner)
+            adoptedFrontend = adoptPage(handle: frontendHandle, in: owner)
         }
         return adoptedFrontend
     }
@@ -275,7 +275,7 @@ public final class PrintRequest: BDKUIRequest {
     /// Chromium's print preview, as a page the application may host.
     public var previewContents: BDKWebContents? {
         if adoptedPreview == nil, let previewHandle, let owner = profile ?? contents?.profile {
-            adoptedPreview = BDKWebContents.adopt(handle: previewHandle, in: owner)
+            adoptedPreview = adoptPage(handle: previewHandle, in: owner)
         }
         return adoptedPreview
     }

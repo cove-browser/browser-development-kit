@@ -186,7 +186,10 @@ offer, or several files for a single-file picker throw a `ui.*` error before the
 
 Payload fields are the camelCase names in ui-requests.md; a missing or malformed field takes a default, so a
 handler always sees the request. Handles inside a payload (`opener`, `newContents`, `previewContents`, `inspected`,
-`frontend`) are decimal strings, since handles exceed 2^53.
+`frontend`) are decimal strings, since handles exceed 2^53. A page such a field carries (`newContents`, `frontend`,
+`previewContents`) is the application's once it reads the field, like a page it created, and a page the application
+releases is destroyed. A request handed to the default presenter is the exception: the runtime then holds the page
+until it closes, so the default window stays open without the application keeping a reference.
 
 ### Commands and events
 

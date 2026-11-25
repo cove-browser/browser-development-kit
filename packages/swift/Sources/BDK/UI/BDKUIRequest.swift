@@ -117,6 +117,10 @@ public class BDKUIRequest {
     private(set) var state = State.open
     private var handle: bdk_request_t
     let runtime: BDKRuntime
+    /// The pages the runtime created for the request that the application was handed. A default
+    /// presenter shows them, and the application may keep no reference to one, so once the request
+    /// goes to it the runtime holds them while they are open.
+    private var adoptedPages: [BDKWebContents] = []
 
     /// True once the request was completed, handed to the default presenter, rejected or withdrawn.
     public var isCompleted: Bool {
@@ -155,7 +159,7 @@ public class BDKUIRequest {
     public func useDefaultPresenter() {
         guard state == .open, handle != 0 else { return }
         try? abiCall(.request) { bdk_ui_use_default(handle, $0) }
-        state = .defaulted
+        handedToDefaultPresenter()
         releaseHandle()
     }
 
@@ -255,13 +259,27 @@ public class BDKUIRequest {
     func finishedByResponse(_ response: BDKUIResponse) {
         guard state == .open else { return }
         switch response {
-        case .useDefault: state = .defaulted
+        case .useDefault: handedToDefaultPresenter()
         case .reject: state = .rejected
         case .handled: return
         }
         DispatchQueue.main.async {
             MainActor.assumeIsolated { self.releaseHandle() }
         }
+    }
+
+    /// Wraps a page the runtime created for the request (a new window, a DevTools front end, a print
+    /// preview).
+    func adoptPage(handle: UInt64, in profile: BDKProfile) -> BDKWebContents {
+        let page = BDKWebContents.adopt(handle: handle, in: profile)
+        adoptedPages.append(page)
+        if state == .defaulted { runtime.keepWhileOpen(page) }
+        return page
+    }
+
+    private func handedToDefaultPresenter() {
+        state = .defaulted
+        for page in adoptedPages { runtime.keepWhileOpen(page) }
     }
 
     func markWithdrawn() {

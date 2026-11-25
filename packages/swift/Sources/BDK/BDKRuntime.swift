@@ -74,6 +74,9 @@ public final class BDKRuntime {
     /// The shutdown in progress, which every later caller waits for.
     private var shutdownTask: Task<Void, Never>?
     private var liveContents: [UInt64: WeakBox<BDKWebContents>] = [:]
+    /// Pages a default presenter shows, held until they close: a released page is destroyed, and
+    /// the application may keep no reference to one.
+    private var defaultPresented: [UInt64: BDKWebContents] = [:]
     private let broadcaster = EventBroadcaster<Event>()
 
     public var events: BDKEventSequence<Event> {
@@ -288,6 +291,18 @@ public final class BDKRuntime {
 
     func unregister(_ contents: BDKWebContents) {
         liveContents[contents.id.rawValue] = nil
+        defaultPresented[contents.id.rawValue] = nil
+    }
+
+    /// Holds a page a default presenter shows until it closes or is destroyed.
+    func keepWhileOpen(_ contents: BDKWebContents) {
+        guard contents.isAlive, !contents.isClosed else { return }
+        defaultPresented[contents.id.rawValue] = contents
+    }
+
+    /// The page closed: the runtime stops holding it, and it goes when the application lets go.
+    func pageClosed(_ contents: BDKWebContents) {
+        defaultPresented[contents.id.rawValue] = nil
     }
 
     /// Every live page, in creation order of their handles.

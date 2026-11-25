@@ -62,8 +62,11 @@ public final class BDKWebContents: Identifiable {
 
     isolated deinit {
         guard handle != 0 else { return }
-        Logger(subsystem: "BDK", category: "lifecycle")
-            .warning("page \(self.id.rawValue) was released without close(); destroying it")
+        // A page that closed itself (a default-presented one the runtime held, say) needs no close.
+        if !isClosed {
+            Logger(subsystem: "BDK", category: "lifecycle")
+                .warning("page \(self.id.rawValue) was released without close(); destroying it")
+        }
         _ = bdk_contents_destroy(handle)
         EventLoop.kick()
     }
@@ -98,7 +101,8 @@ public final class BDKWebContents: Identifiable {
     }
 
     /// Wraps a page the engine created for a request (a new window, a print preview). The page is
-    /// the application's from here on, as one made with `create`.
+    /// the application's from here on, as one made with `create`, unless the request goes to the
+    /// default presenter: then the runtime holds it until it closes (`BDKUIRequest.adoptPage`).
     static func adopt(handle: bdk_contents_t, in profile: BDKProfile) -> BDKWebContents {
         if let existing = profile.runtime.webContents(handle: handle) { return existing }
         let contents = BDKWebContents(profile: profile, handle: handle)
@@ -144,7 +148,10 @@ public final class BDKWebContents: Identifiable {
     }
 
     func noteEvent(_ event: Event) {
-        if case .closed = event { isClosed = true }
+        if case .closed = event {
+            isClosed = true
+            profile.runtime.pageClosed(self)
+        }
     }
 
     // MARK: State
