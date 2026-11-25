@@ -15,6 +15,7 @@ and if the two disagree, the doc wins and this file should be fixed.
 | Public SDK surface (Swift, C ABI, JS, CLI, `bdk.toml`) | [docs/planning/sdk/](docs/planning/sdk/README.md) |
 | `packages/core` (C ABI, stub, conformance suite) | [packages/core/docs/conventions.md](packages/core/docs/conventions.md) |
 | `tooling/` and the `chromium:*` commands | [tooling/README.md](tooling/README.md) |
+| Releasing, security patches, notices and licences | [docs/release/README.md](docs/release/README.md) |
 | `chromium/` (pin, overlay, patches, GN) | [chromium/README.md](chromium/README.md) and the README in each subdirectory |
 | The original product spec | [docs/BDK-Design-Spec-v0.7.pdf](docs/BDK-Design-Spec-v0.7.pdf) |
 
