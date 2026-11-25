@@ -501,6 +501,21 @@ sections 3, 4, 5.6, 5.21 (new) and 8.2, [sdk/services.md](sdk/services.md) 4 and
 [risks.md](risks.md) R32 and section 4, the M9 rows of [roadmap.md](roadmap.md), and task T-UIR-13, with T-PWA-01
 to T-PWA-05 new. The task list is 153.
 
+### 2.25 Navigation policy hook in M9 (2026-11-25)
+
+The product owner moved the navigation policy hook from "not in v1" to M9. Nothing was built when this was recorded.
+
+| Topic | Before | Decision |
+|---|---|---|
+| Cancelling or redirecting a navigation before it starts | "Later", on the grounds that new-window requests cover the common case. An application could only call `stop()` after the start, route its own internal URLs natively, or ship an extension with blocking rules. | In v1, built in M9: allow, cancel or redirect ([sdk/swift-api.md](sdk/swift-api.md) 6.3). With no handler nothing changes. |
+
+T-SWF-10 (stub, core, C ABI, Swift; no Chromium build) settles the API before T-SWF-11 (engine). The engine side is
+expected to be a navigation throttle in the overlay with no patch; unverified.
+
+Changed: [sdk/swift-api.md](sdk/swift-api.md) 6.3, [sdk/swift-api-reference.md](sdk/swift-api-reference.md) 6.3,
+[sdk/production-browser.md](sdk/production-browser.md) 2.2, the M9 rows of [roadmap.md](roadmap.md), with T-SWF-10 and
+T-SWF-11 new. The task list is 155.
+
 ## 3. Tasks and workflows
 
 | Task | Change |
@@ -530,6 +545,7 @@ to T-PWA-05 new. The task list is 153.
 | T-UIR-14 | New, M9 (2026-11-25): Payment Request, Secure Payment Confirmation, FedCM and the Digital Credentials API turned on and routed (2.23). |
 | T-UIR-15 | New, M9 (2026-11-25): the S3 `[ui.surfaces]` keys accepted, and the three S3 surfaces with no task (`autofill_suggestions`, `exclusive_access`, `page_health`) finished (2.23). |
 | T-PWA-01 to T-PWA-05 | New, M9 (2026-11-25): installable web apps and push (2.24). |
+| T-SWF-10, T-SWF-11 | New, M9 (2026-11-25): the navigation policy hook (2.25). |
 | T-UIR-13 | Changed (2026-11-25, 2.24): its scenario that a page-initiated install stays off now holds for the default, `[web_apps] enabled = false`. |
 
 The task list goes from 103 to 106 tasks. The README said 100 before, which was already wrong; it now says 106. With T-CLI-05 on 2026-11-16 it is 107.

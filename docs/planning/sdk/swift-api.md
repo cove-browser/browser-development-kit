@@ -324,7 +324,22 @@ public struct LoadOptions {
 - The application may navigate to any branded internal URL. A web page may not, exactly as with `chrome://` today.
 - A navigation to a route in `native` mode calls the registered handler and throws `navigation.handledNatively`.
 
-Later: a navigation policy hook that lets the application cancel or redirect a navigation before it starts. Not in v1; new-window requests cover the common case.
+**Navigation policy** (product owner, 2026-11-25; [../amendments.md](../amendments.md) 2.25; not built, T-SWF-10 and T-SWF-11, M9). The application can cancel or redirect a navigation before it starts. The shape below is a proposal that T-SWF-10 settles.
+
+```swift
+public enum NavigationDecision: Sendable {
+    case allow
+    case cancel                // no request is sent; the page stays where it is
+    case redirect(URL)         // cancel, then load this URL in the same page
+}
+
+runtime.navigationPolicy = { page, navigation async -> NavigationDecision in .allow }
+```
+
+- With no handler every navigation is allowed, as today.
+- The handler belongs to the runtime, not to a page, so that it also covers the first navigation of a page the web opened.
+- The navigation waits for the answer.
+- Open, for T-SWF-10: whether subframe navigations are asked; how server redirects are reported; what happens to a form submission's body on `redirect`; the error a cancelled `navigate(to:)` throws; whether a decision that never arrives times out; how a handler avoids redirecting in a loop.
 
 ### 6.4 Events
 
