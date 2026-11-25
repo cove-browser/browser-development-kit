@@ -95,6 +95,12 @@ class AutomationHostLauncher::Task : public mojom::AutomationTaskClient {
     }
   }
 
+  void BudgetExceeded(const std::string& message) override {
+    if (launcher_) {
+      launcher_->StopTaskOverBudget(port_->id(), message);
+    }
+  }
+
   const std::shared_ptr<bdkcore::TaskPort>& port() const { return port_; }
 
   // Pipes: the host gets `host_task` and the client with StartTask; Deliver
@@ -242,23 +248,39 @@ void AutomationHostLauncher::StartOnHostIfReady(Task& task) {
   }
   task.started = true;
   host_->StartTask(task.port()->id(), *task.source, task.start_frame,
-                   std::move(task.host_task),
+                   task.port()->cpu_budget_ms(), std::move(task.host_task),
                    task.client_.BindNewPipeAndPassRemote());
   task.source.reset();
   task.start_frame.clear();
 }
 
-void AutomationHostLauncher::FailTask(const std::string& task_id,
-                                      const std::string& message) {
+std::shared_ptr<bdkcore::TaskPort> AutomationHostLauncher::TakeTask(
+    const std::string& task_id) {
   auto it = tasks_.find(task_id);
   if (it == tasks_.end()) {
-    return;
+    return nullptr;
   }
-  // Erase first: ScriptFailed may call EndTask for this very task.
+  // Erased before the port finishes the task, which may call EndTask for this
+  // very task.
   std::shared_ptr<bdkcore::TaskPort> port = it->second->port();
   tasks_.erase(it);
-  port->ScriptFailed(message);
-  StopHostIfIdle();
+  return port;
+}
+
+void AutomationHostLauncher::FailTask(const std::string& task_id,
+                                      const std::string& message) {
+  if (std::shared_ptr<bdkcore::TaskPort> port = TakeTask(task_id)) {
+    port->ScriptFailed(message);
+    StopHostIfIdle();
+  }
+}
+
+void AutomationHostLauncher::StopTaskOverBudget(const std::string& task_id,
+                                                const std::string& message) {
+  if (std::shared_ptr<bdkcore::TaskPort> port = TakeTask(task_id)) {
+    port->BudgetExceeded(message);
+    StopHostIfIdle();
+  }
 }
 
 void AutomationHostLauncher::FailLater(std::shared_ptr<bdkcore::TaskPort> port,

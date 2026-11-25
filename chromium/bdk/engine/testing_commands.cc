@@ -54,6 +54,7 @@
 #include "chrome/browser/after_startup_task_utils.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/resource_coordinator/tab_lifecycle_unit_external.h"
 #include "chrome/browser/ui/dialogs/browser_dialogs.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/heavy_ad_intervention/heavy_ad_features.h"
@@ -282,6 +283,21 @@ bool Run(const std::string& name,
     Capture(*page, *format == "pdf", *path);
     return true;
   }
+  if (name == "tab.chromiumDiscard") {
+    // Chromium's own discard of the page's tab, as under memory pressure: it
+    // swaps a WebContents with no renderer into the tab.
+    EngineContents* page = PageOf(args);
+    auto* unit =
+        page ? resource_coordinator::TabLifecycleUnitExternal::FromWebContents(
+                   page->web_contents())
+             : nullptr;
+    if (!unit) {
+      return false;
+    }
+    result.Set("discarded",
+               unit->DiscardTab(::mojom::LifecycleUnitDiscardReason::URGENT));
+    return true;
+  }
   if (name == "capture.state") {
     result.Set("state", g_capture_state);
     return true;
@@ -305,6 +321,16 @@ bool Run(const std::string& name,
   if (name == "downloads.ask") {
     // Makes every loaded profile ask where to save, as the setting does.
     AskWhereToSaveForTesting(args.FindBool("on").value_or(true));
+    return true;
+  }
+  if (name == "downloads.replaceDelegate") {
+    // {"contents"}: BDK's download delegate is put in again on the page's
+    // profile, whose download manager exists by now.
+    EngineContents* page = PageOf(args);
+    if (!page) {
+      return false;
+    }
+    ReplaceDownloadDelegateForTesting(ProfileOf(*page->Core()));
     return true;
   }
   if (name == "downloads.danger") {

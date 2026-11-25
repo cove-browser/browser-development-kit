@@ -303,6 +303,7 @@ Keys that would weaken a security invariant cannot be defaulted off. The schema 
 |---|---|---|---|---|
 | `enabled` | boolean | `false` | Plan, M7; built, engine pending (T-AUT-06) | Whether the automation host exists in this application. `bdk_session_run` fails with `automation.disabled` when false; sessions and the external endpoint do not depend on it. |
 | `directory` | string | `"Automation"` | Plan | Where application-authored scripts live. Each top-level `.ts` or `.js` file is one script, bundled with Rolldown. |
+| `cpu_budget_ms` | integer, 100 to 3600000 | `60000` | Plan, M8; built (T-AUT-07) | The CPU time, in milliseconds, one task's script may use before the automation host stops it. CPU time, not wall-clock time: a script waiting on a command or a timer costs nothing. Always written to the resolved file as `automation.cpu_budget_ms`, with the default when absent. |
 
 #### `[automation.external]`
 
@@ -552,7 +553,7 @@ Written by `bdk build config` into `Contents/Resources`. The Swift SDK loads it 
   "search": { "default": "duckduckgo", "suggestions": false, "engines": { "duckduckgo": { "…": "…" } } },
   "settings_defaults": { "privacy.cookies.thirdParty": "block", "security.httpsOnly": true },
   "automation": { "enabled": true, "scripts": { "summarise": { "path": "Automation/summarise.js", "digest": "sha256:…" } },
-                  "external": { "enabled": false } },
+                  "cpu_budget_ms": 60000, "external": { "enabled": false } },
   "devtools": { "frontend": "default", "protocol": true },
   "diagnostics": { "crash_reports": "app", "log_level": "warning" },
   "chromium_features": { "enable": [], "disable": [] }

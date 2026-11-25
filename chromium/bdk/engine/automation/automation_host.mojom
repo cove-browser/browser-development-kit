@@ -22,9 +22,14 @@ interface AutomationHost {
   // frame, which carries the task's arguments) and calls the module's default
   // export. Closing `task` ends the task and disposes its context. A script
   // that cannot be compiled or evaluated is reported through `client.Failed`.
+  //
+  // `cpu_budget_ms` is the CPU time the script may use ([automation]
+  // cpu_budget_ms); a script that uses it is stopped and reported through
+  // `client.BudgetExceeded`. Zero sets no budget.
   StartTask(string task_id,
             string script_source,
             string start_frame,
+            uint32 cpu_budget_ms,
             pending_receiver<AutomationTask> task,
             pending_remote<AutomationTaskClient> client);
 };
@@ -45,4 +50,8 @@ interface AutomationTaskClient {
   // function. The task is over; a script that merely throws is reported with a
   // `failed` frame instead.
   Failed(string message);
+
+  // The host stopped the script because it used its CPU budget. The task is
+  // over.
+  BudgetExceeded(string message);
 };

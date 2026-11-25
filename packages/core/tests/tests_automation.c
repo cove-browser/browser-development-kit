@@ -417,6 +417,61 @@ static void a_host_crash_ends_every_task(void) {
     CHECK(c.count == 0);
 }
 
+#define AUTOMATION_BUDGET                                                                          \
+    "\"automation\":{\"enabled\":true,\"cpu_budget_ms\":500,\"scripts\":{\"echo\":{\"path\":"      \
+    "\"Automation/echo.ts\",\"digest\":\"sha256:0\"}}}"
+
+/* T-AUT-07: the host is given each task's CPU budget and stops a script that uses it; the task
+   finishes with automation.budgetExceeded, which a script cannot claim for itself. */
+static void a_script_that_uses_its_cpu_budget_is_stopped(void) {
+    NEED_HOST();
+    start_with(AUTOMATION_ON);
+    static t_script_t script;
+    define_echo(&script);
+    bdk_session_t s = session("{\"name\":\"agent\"}");
+    static t_task_log_t defaulted;
+    (void)run(s, "echo", "null", &defaulted);
+    CHECK(bdk_harness_script_budget(script.task) == 60000);
+    t_stop();
+
+    start_with(AUTOMATION_BUDGET);
+    define_echo(&script);
+    s = session("{\"name\":\"agent\"}");
+    static t_task_log_t busy;
+    (void)run(s, "echo", "null", &busy);
+    CHECK(bdk_harness_script_budget(script.task) == 500);
+    REQUIRE(bdk_harness_script_exhaust_budget(script.task) == BDK_OK);
+    t_pump();
+    REQUIRE(busy.count == 1);
+    CHECK(strstr(busy.detail[0], "\"code\":\"budgetExceeded\"") != NULL);
+    CHECK(strstr(busy.detail[0], "500 ms") != NULL);
+    CHECK(bdk_harness_script_budget(script.task) == 0);
+    /* A failed frame naming the code is still a script failure. */
+    static t_task_log_t forged;
+    (void)run(s, "echo", "null", &forged);
+    script_send(&script, "{\"type\":\"failed\",\"error\":{\"code\":\"budgetExceeded\","
+                         "\"message\":\"x\"}}");
+    REQUIRE(forged.count == 1);
+    CHECK(strstr(forged.detail[0], "\"code\":\"scriptFailed\"") != NULL);
+}
+
+static void a_cpu_budget_that_is_not_whole_milliseconds_is_refused(void) {
+    static const char* const bad[] = {"0", "1.5", "\"60s\"", "3600001"};
+    for (size_t i = 0; i < sizeof bad / sizeof bad[0]; ++i) {
+        char extra[256];
+        snprintf(extra, sizeof extra,
+                 "\"automation\":{\"enabled\":true,\"cpu_budget_ms\":%s,\"scripts\":{}}", bad[i]);
+        t_config_extra = extra;
+        bdk_start_config_t c;
+        t_fill_start_config(&c);
+        bdk_runtime_t rt = 0;
+        bdk_error_t err = 0;
+        CHECK(bdk_runtime_start(&c, &rt, &err) != BDK_OK);
+        CHECK(t_error_is(err, "config", "resolvedInvalid"));
+        CHECK(rt == 0);
+    }
+}
+
 static void a_failing_script_finishes_with_its_message(void) {
     NEED_HOST();
     start_with(AUTOMATION_ON);
@@ -915,6 +970,10 @@ const t_test_t t_automation_tests[] = {
     {"automation.a_host_crash_ends_every_task", a_host_crash_ends_every_task},
     {"automation.a_failing_script_finishes_with_its_message",
      a_failing_script_finishes_with_its_message},
+    {"automation.a_script_that_uses_its_cpu_budget_is_stopped",
+     a_script_that_uses_its_cpu_budget_is_stopped},
+    {"automation.a_cpu_budget_that_is_not_whole_milliseconds_is_refused",
+     a_cpu_budget_that_is_not_whole_milliseconds_is_refused},
     {"automation.pages_a_session_creates_are_in_its_scope",
      pages_a_session_creates_are_in_its_scope},
     {"automation.session_events_follow_its_scope", session_events_follow_its_scope},

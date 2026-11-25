@@ -39,6 +39,10 @@ extension BDKWebContents {
             case "aborted":
                 BDKError(
                     domain: .navigation, code: "aborted", message: "the navigation was stopped")
+            case "handledNatively":
+                BDKError(
+                    domain: .navigation, code: "handledNatively",
+                    message: "the route's native handler showed the page")
             default:
                 BDKError(
                     domain: .navigation, code: "netError",

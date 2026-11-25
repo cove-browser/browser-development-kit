@@ -1,12 +1,14 @@
+import { join, relative } from "node:path";
 import { type ParsedArgs, parseCliArgs, STEP_FLAGS } from "./args.js";
 import type { Context } from "./context.js";
 import type { Diagnostic } from "./diagnostics.js";
 import { type DiagnosticFormat, formatDiagnostics } from "./diagnostics-format.js";
 import { CliError, ExitCode, type ExitCodeValue, usageError } from "./exit-codes.js";
 import { helpText } from "./help.js";
-import { findProject } from "./project.js";
+import { findProject, type Project } from "./project.js";
 import { BUILD_STEPS } from "./steps/index.js";
 import type { Step } from "./steps/step.js";
+import { watchLoop } from "./watch.js";
 
 function diagnosticFormat(ctx: Context, args: ParsedArgs | undefined): DiagnosticFormat {
   if (args?.diagnostics !== undefined) return args.diagnostics;
@@ -77,12 +79,28 @@ function selectSteps(ctx: Context, args: ParsedArgs): Step[] {
       "Run `bdk build codegen` separately, with its own --out.",
     );
   }
+  if (args.watch) {
+    // One step at a time: a loop watches one directory (pages joins automation in T-CLI-06).
+    const only = chosen.length === 1 ? chosen[0] : undefined;
+    if (only?.watchDirectory === undefined) {
+      const watchable = BUILD_STEPS.filter((s) => s.watchDirectory !== undefined).map(
+        (s) => s.name,
+      );
+      throw usageError(
+        `--watch applies to \`bdk build ${watchable.join("`, `bdk build ")}\` only, one step at a time.`,
+        "Name the step, for example `bdk build automation --bundle <App.app> --watch`.",
+      );
+    }
+  }
   return chosen;
 }
 
-async function runBuild(ctx: Context, args: ParsedArgs): Promise<Report> {
-  const steps = selectSteps(ctx, args);
-  const project = await findProject(ctx.cwd, args.project);
+async function runBuild(
+  ctx: Context,
+  args: ParsedArgs,
+  steps: readonly Step[],
+  project: Project,
+): Promise<Report> {
   const diagnostics: Diagnostic[] = [];
   const data: Record<string, unknown> = {};
   let exitCode: ExitCodeValue = ExitCode.Success;
@@ -96,6 +114,55 @@ async function runBuild(ctx: Context, args: ParsedArgs): Promise<Report> {
     }
   }
   return { command: `build ${steps.map((s) => s.name).join(" ")}`, exitCode, diagnostics, data };
+}
+
+/** The report for an error that stopped the command: its own exit code if it is a `CliError`, else an environment failure. */
+function failureReport(command: string, error: unknown): Report {
+  return error instanceof CliError
+    ? { command, exitCode: error.exitCode, diagnostics: [error.diagnostic] }
+    : {
+        command,
+        exitCode: ExitCode.Environment,
+        diagnostics: [
+          {
+            code: "cli.internal",
+            severity: "error",
+            message: error instanceof Error ? error.message : String(error),
+            fix: "Report this as a bug in bdk.",
+          },
+        ],
+      };
+}
+
+/**
+ * `--watch`: the first build has run; rebuild the one chosen step whenever its directory changes, until
+ * the user stops it. A failed rebuild is reported and watching goes on. Stopping is success.
+ */
+async function watchBuild(
+  ctx: Context,
+  args: ParsedArgs,
+  steps: readonly Step[],
+  project: Project,
+): Promise<number> {
+  const [step] = steps;
+  const directory = join(project.dir, (await step?.watchDirectory?.(project)) ?? "");
+  if (!args.json) {
+    ctx.stdout(
+      `bdk build ${step?.name}: watching ${relative(ctx.cwd, directory) || "."} (Ctrl-C to stop).\n`,
+    );
+  }
+  await watchLoop({
+    watch: ctx.watch,
+    directory,
+    rebuild: async () => {
+      try {
+        report(ctx, args, args.json, await runBuild(ctx, args, steps, project));
+      } catch (error) {
+        report(ctx, args, args.json, failureReport("build", error));
+      }
+    },
+  });
+  return ExitCode.Success;
 }
 
 /** Runs the CLI with `argv` (without the executable and script) and returns the exit code. */
@@ -121,23 +188,11 @@ export async function run(argv: readonly string[], ctx: Context): Promise<number
     }
     if (name !== "build") throw usageError(`Unknown command "${name}". Commands: build.`);
     command = "build";
-    return report(ctx, args, json, await runBuild(ctx, args));
+    const steps = selectSteps(ctx, args);
+    const project = await findProject(ctx.cwd, args.project);
+    const first = report(ctx, args, json, await runBuild(ctx, args, steps, project));
+    return args.watch ? await watchBuild(ctx, args, steps, project) : first;
   } catch (error) {
-    const failure: Report =
-      error instanceof CliError
-        ? { command, exitCode: error.exitCode, diagnostics: [error.diagnostic] }
-        : {
-            command,
-            exitCode: ExitCode.Environment,
-            diagnostics: [
-              {
-                code: "cli.internal",
-                severity: "error",
-                message: error instanceof Error ? error.message : String(error),
-                fix: "Report this as a bug in bdk.",
-              },
-            ],
-          };
-    return report(ctx, args, json, failure);
+    return report(ctx, args, json, failureReport(command, error));
   }
 }

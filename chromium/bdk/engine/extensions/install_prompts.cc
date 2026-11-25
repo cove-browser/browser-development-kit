@@ -12,6 +12,7 @@
 
 #include "base/functional/bind.h"
 #include "base/memory/raw_ptr.h"
+#include "base/strings/string_split.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/values.h"
@@ -196,9 +197,16 @@ void ShowInstallRequest(Profile* profile,
   for (const std::u16string& warning : permissions.permissions) {
     warnings.push_back(Utf8(warning));
   }
+  // Chromium's details run parallel to the permissions: one string per
+  // permission, empty for most, the host lines of the others joined by
+  // newlines. hostWarnings is the flat list of those lines.
   std::vector<std::string> host_warnings;
   for (const std::u16string& detail : permissions.details) {
-    host_warnings.push_back(Utf8(detail));
+    for (const std::string& line :
+         base::SplitString(Utf8(detail), "\n", base::TRIM_WHITESPACE,
+                           base::SPLIT_WANT_NONEMPTY)) {
+      host_warnings.push_back(line);
+    }
   }
   base::ListValue warning_list;
   for (const std::string& warning : warnings) {

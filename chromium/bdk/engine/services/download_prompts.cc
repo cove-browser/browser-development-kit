@@ -22,12 +22,15 @@
 #include "chrome/browser/download/download_core_service.h"
 #include "chrome/browser/download/download_core_service_factory.h"
 #include "chrome/browser/download/download_prefs.h"
+#include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/common/pref_names.h"
 #include "components/download/public/common/download_danger_type.h"
 #include "components/download/public/common/download_item.h"
 #include "components/download/public/common/download_target_info.h"
+#include "components/history/core/browser/history_service.h"
+#include "components/keyed_service/core/service_access_type.h"
 #include "components/prefs/pref_service.h"
 #include "content/public/browser/download_item_utils.h"
 #include "content/public/browser/download_manager.h"
@@ -346,6 +349,34 @@ class ManagerWatch : public content::DownloadManager::Observer {
   raw_ptr<content::DownloadManager> manager_;
 };
 
+// Puts BDK's delegate in place of the one the profile has. Chromium asks
+// history for the first free download id when it creates a profile's download
+// manager, and gives the answer to the delegate of that moment; until a
+// delegate has it, every download waits. The profile Chromium loads itself at
+// startup (the last used one) gets its manager during that load, before BDK
+// sees the profile, so the answer goes to the delegate this replaces: ask
+// again for the new one. A manager the swap creates asks for the new one
+// itself, and asking twice could hand out an id twice.
+void ReplaceDelegate(DownloadCoreService* service, Profile* profile) {
+  const bool had_manager = service->HasCreatedDownloadManager();
+  auto delegate = std::make_unique<BdkDownloadManagerDelegate>(profile);
+  content::DownloadIdCallback receive_id =
+      delegate->GetDownloadIdReceiverCallback();
+  service->SetDownloadManagerDelegateForTesting(std::move(delegate));
+  // Off the record, ids come from the original profile's manager.
+  if (!had_manager || profile->IsOffTheRecord()) {
+    return;
+  }
+  history::HistoryService* history = HistoryServiceFactory::GetForProfile(
+      profile, ServiceAccessType::EXPLICIT_ACCESS);
+  if (!history) {
+    // No database: ids count from the first, as Chromium's do then.
+    std::move(receive_id).Run(DownloadItem::kInvalidId);
+    return;
+  }
+  history->GetNextDownloadId(std::move(receive_id));
+}
+
 }  // namespace
 
 void InstallDownloadPrompts(Profile* profile) {
@@ -361,9 +392,17 @@ void InstallDownloadPrompts(Profile* profile) {
   if (!service) {
     return;
   }
-  service->SetDownloadManagerDelegateForTesting(
-      std::make_unique<BdkDownloadManagerDelegate>(profile));
+  ReplaceDelegate(service, profile);
   new ManagerWatch(profile->GetDownloadManager());
+}
+
+void ReplaceDownloadDelegateForTesting(Profile* profile) {
+  DownloadCoreService* service =
+      DownloadCoreServiceFactory::GetForBrowserContext(profile);
+  if (service) {
+    profile->GetDownloadManager();  // the manager first, as at startup
+    ReplaceDelegate(service, profile);
+  }
 }
 
 void ForceDangerousDownloadsForTesting(bool on) {

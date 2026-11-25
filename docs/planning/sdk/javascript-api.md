@@ -224,7 +224,7 @@ A new-tab page with no table in `bdk.toml` has no capability. It is still an iso
 
 ## 5. The automation host
 
-Plan, M7; written in M7; passes on the stub, engine build and test pending (T-AUT-06). The runtime choice was the spike T-AUT-01 ([../feasibility.md](../feasibility.md) section 12): bundled scripts run in V8 in a sandboxed utility process, external tools on the local channel, one protocol for both. Scripts have no Node APIs (risk R21); they have the protocol, `setTimeout`, `clearTimeout`, `console`, `queueMicrotask` and `AbortController`. `@bdk/automation` is built (`packages/js/automation`); its service namespaces are loosely typed until the declarations are generated (T-JS-06, M8), and `Page.translate` calls `translation.*`, which T-PRV-03 (M6) defines.
+Plan, M7; written in M7; passes on the stub, engine build and test pending (T-AUT-06). The runtime choice was the spike T-AUT-01 ([../feasibility.md](../feasibility.md) section 12): bundled scripts run in V8 in a sandboxed utility process, external tools on the local channel, one protocol for both. Scripts have no Node APIs (risk R21); they have the protocol, `setTimeout`, `clearTimeout`, `console`, `queueMicrotask` and `AbortController`. `@bdk/automation` is built (`packages/js/automation`); its service namespaces, `commands.execute` and `events.on` are typed from the generated declarations (T-JS-06, M8), and `Page.translate` calls `translation.*`, which T-PRV-03 (M6) defines.
 
 ### 5.1 Layout and build
 
@@ -272,7 +272,7 @@ Swift starts it with `session.run("summarise", arguments: […])` ([swift-api.md
 | `task` | The running task | `progress`, `log`, `signal` (aborted when Swift cancels or the session is revoked) |
 | `contents` | `contents.*` | `list`, `get`, `create`; each returns a `Page` |
 | `Page` | `contents.*`, `translation.*`, `debug.*` for one page | Methods below |
-| `profiles`, `history`, `bookmarks`, `downloads`, `settings`, `permissions`, `cookies`, `privacy`, `extensions`, `search`, `passwords`, `autofill` | The service namespaces | Same shapes as the `@bdk/internal` modules, so code can be shared |
+| `profiles`, `history`, `bookmarks`, `downloads`, `settings`, `permissions`, `cookies`, `privacy`, `extensions`, `search`, `passwords`, `autofill` | The service namespaces | The same commands and argument types as the `@bdk/internal` modules, typed from the same definitions (only the commands a session may call). A call resolves with the command's result as BDK sends it: a one-field result stays an object (`{ items }`), and a paginated command returns one page (`{ items, nextCursor }`), not an iterator |
 | `scripts` | `scripts.*` | Persistent user scripts |
 
 ```ts
@@ -302,7 +302,7 @@ interface Page {
 }
 ```
 
-`@bdk/commands` exports `commands.execute` for `app.` commands. `@bdk/events` exports `events.on` for browser and `app.` events. Both are typed from the same generated declarations as their `@bdk/internal` counterparts.
+`@bdk/commands` exports `commands.execute` for `app.` commands. `@bdk/events` exports `events.on` for browser and `app.` events. Both are typed from the same generated declarations as their `@bdk/internal` counterparts: `commands.execute` takes any command a session may call, or an `app.` command the application declared, with that command's arguments and result; `events.on` takes any event or declared `app.` event and gives the listener its payload. Until the application declares any, `app.` names are accepted with `unknown` results and payloads. A wrong name, a wrong argument name or a wrong payload fails `tsc`.
 
 ### 5.4 Rules
 
@@ -316,7 +316,7 @@ interface Page {
 | Lifetime | A task ends when its function returns, when Swift cancels it, or when its session is revoked. Whether tasks survive all windows closing is the application's choice: the host lives as long as the runtime. |
 | Crash | If the host process dies, every session ends with `automation.hostGone`. The application may create new sessions; BDK restarts the host on demand. |
 | Audit | Every command a session invokes is reported to Swift as an event, with the session name, command and target |
-| Resource limits | CPU and memory budgets for the host are open in the spec and set in task T-AUT-02 |
+| Resource limits | Memory: a 512 MiB V8 heap for the host (M7); a host that reaches it dies and its tasks end with `automation.hostGone`. CPU: each task's script may use `[automation] cpu_budget_ms` of CPU time (default 60 s; M8, T-AUT-07); a script that uses it is stopped and its task ends with `automation.budgetExceeded`. Waiting on a command or a timer costs nothing |
 
 ### 5.5 External tools
 
@@ -345,7 +345,7 @@ Rules: front-end resources are packaged in the signed bundle, never loaded from 
 
 ## 7. Code generation
 
-Built in M4 (T-JS-01, T-JS-02, T-CLI-04): `bdk build codegen` writes `@bdk/internal`, `@bdk/protocol`, `@bdk/vite` and the generated `@bdk/internal/app.d.ts` and `@bdk/env.d.ts`, and links `node_modules/@bdk`. Not built: the extractor that writes `bdk.commands.json` in an Xcode build (T-CLI-06, M5). Nothing is published to npm. Everything is generated on the developer's machine during the build.
+Built in M4 (T-JS-01, T-JS-02, T-CLI-04): `bdk build codegen` writes `@bdk/internal`, `@bdk/protocol`, `@bdk/vite`, `@bdk/automation` (with `@bdk/commands` and `@bdk/events`, which re-export its `commands` and `events` entries) and the generated `@bdk/internal/app.d.ts`, `@bdk/automation/app.d.ts` and `@bdk/env.d.ts`, and links `node_modules/@bdk`. A script's `tsconfig.json` includes `node_modules/@bdk/automation/app.d.ts` to see the application's commands and events (T-JS-06). `@bdk/automation`'s service types (`services.ts`, `types.ts`) are generated into its source by `js-codegen:codegen`, git-ignored like `@bdk/internal`'s modules. Not built: the extractor that writes `bdk.commands.json` in an Xcode build (T-CLI-06, M5). Nothing is published to npm. Everything is generated on the developer's machine during the build.
 
 ```text
 packages/core/interface/*.json  ─────────────┐   shipped inside the BDK package

@@ -2,7 +2,14 @@
   "name": "cli",
   "root": "packages/cli",
   "projectType": "library",
-  "implicitDependencies": ["core", "js-codegen", "js-vite", "js-internal", "js-protocol"],
+  "implicitDependencies": [
+    "core",
+    "js-codegen",
+    "js-vite",
+    "js-internal",
+    "js-automation",
+    "js-protocol"
+  ],
   "targets": {
     "build": {
       "executor": "nx:run-commands",
@@ -100,6 +107,10 @@
         },
         {
           "projects": ["js-internal"],
+          "target": "build"
+        },
+        {
+          "projects": ["js-automation"],
           "target": "build"
         },
         {

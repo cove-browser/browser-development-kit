@@ -36,6 +36,7 @@ export const SDK_PREFIX = "js/sdk/";
 
 /** The packages of `packages/js` that `bdk build codegen` writes into `<out>/@bdk/`: npm name and directory. */
 export const SDK_PACKAGES: readonly { name: string; directory: string }[] = [
+  { name: "@bdk/automation", directory: "automation" },
   { name: "@bdk/internal", directory: "internal" },
   { name: "@bdk/protocol", directory: "protocol" },
   { name: "@bdk/vite", directory: "vite" },

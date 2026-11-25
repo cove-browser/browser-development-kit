@@ -37,8 +37,20 @@ bdk_status_t bdk_harness_script_send(uint64_t task, const char* frame) {
     return bdk_stub_script_send(task, bdk_string_t{frame, strlen(frame)});
 }
 
+unsigned bdk_harness_script_budget(uint64_t task) {
+    return bdk_stub_script_budget(task);
+}
+
+bdk_status_t bdk_harness_script_exhaust_budget(uint64_t task) {
+    return bdk_stub_script_exhaust_budget(task);
+}
+
 bdk_status_t bdk_harness_automation_host_crash(bdk_runtime_t rt) {
     return bdk_stub_automation_host_crash(rt);
+}
+
+bdk_status_t bdk_harness_endpoint_limits(bdk_runtime_t rt, size_t soft_bytes, size_t hard_bytes) {
+    return bdk_stub_endpoint_limits(rt, soft_bytes, hard_bytes);
 }
 
 unsigned bdk_harness_automation_count(bdk_runtime_t rt, unsigned which) {

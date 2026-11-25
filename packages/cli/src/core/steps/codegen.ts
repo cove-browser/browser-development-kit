@@ -11,6 +11,7 @@ import {
 import { SDK_PREFIX } from "../../asset-sources.js";
 import { linkScope } from "../codegen/links.js";
 import {
+  aliasFiles,
   outputPath,
   packageJson,
   SCOPE_DIRECTORY,
@@ -146,6 +147,7 @@ export const codegenStep: Step = {
         ExitCode.Environment,
       );
     }
+    const aliases = aliasFiles(packages, ctx.version);
     const files = new Map(names.map((name) => [name, ctx.assets.readText(name)]));
     const digest = sdkDigest(files);
 
@@ -189,6 +191,7 @@ export const codegenStep: Step = {
         );
       }
       for (const [path, text] of Object.entries(generated)) await write(path, text);
+      for (const [path, text] of aliases) await write(path, text);
       await write(SDK_DIGEST_FILE, digest);
     }
 
@@ -209,7 +212,12 @@ export const codegenStep: Step = {
         generated: !upToDate,
         out,
         declarations: commandsText === undefined ? null : commandsFile,
-        packages: packages.map((p) => p.name),
+        packages: [
+          ...packages.map((p) => p.name),
+          ...[...aliases.keys()]
+            .filter((path) => path.endsWith("package.json"))
+            .map((path) => dirname(path)),
+        ],
         links,
       },
     };

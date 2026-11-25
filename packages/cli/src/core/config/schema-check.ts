@@ -196,6 +196,16 @@ function check(error: ErrorObject, path: string[], reporter: Reporter): void {
         path,
       );
       return;
+    case "minimum":
+    case "maximum": {
+      const { minimum, maximum } = error.parentSchema ?? {};
+      reporter.error(
+        "config.type",
+        `"${name}" must be between ${String(minimum)} and ${String(maximum)}, found ${String(data)}.`,
+        path,
+      );
+      return;
+    }
     case "minLength":
       reporter.error("config.type", `"${name}" must not be empty.`, path);
       return;

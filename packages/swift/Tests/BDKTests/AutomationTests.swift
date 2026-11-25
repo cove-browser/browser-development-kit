@@ -248,5 +248,30 @@ extension BDKStubTests {
                 #expect(own.isAlive)
             }
         }
+
+        @Test func aPageASessionCreatesIsAlsoARuntimeEvent() async throws {
+            try await withStubRuntime(automationConfiguration()) { runtime in
+                let profile = try await runtime.profiles.open("Test")
+                let script = try runtime.stub.defineScript("echo")
+                let session = try runtime.automation.makeSession(
+                    .init(name: "agent", capabilities: ["contents.control"]))
+                let events = EventReader(runtime.events)
+                _ = try session.run("echo")
+                try await waitUntil("the start frame") { !script.frames.isEmpty }
+                try script.send(
+                    """
+                    {"type":"call","id":1,"command":"contents.create","args":{},\
+                    "profile":"\(profile.id.rawValue)"}
+                    """)
+                let created = try await events.next {
+                    if case .webContentsCreated = $0 { true } else { false }
+                }
+                guard case .webContentsCreated(let page, let creator) = created else { return }
+                #expect(creator == .automation(session: "agent"))
+                #expect(page.profile === profile && page.isAlive)
+                #expect(created == .webContentsCreated(page, by: .automation(session: "agent")))
+                #expect(created != .webContentsCreated(page, by: .application))
+            }
+        }
     }
 }

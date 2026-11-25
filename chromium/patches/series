@@ -22,3 +22,4 @@ bdk-let-an-embedder-present-the-webauthn-request-dialog.patch
 bdk-let-an-embedder-present-the-external-protocol-dialog.patch
 bdk-let-an-embedder-present-tab-modal-dialog-models.patch
 bdk-let-an-embedder-present-the-credential-manager-prompts.patch
+bdk-let-an-embedder-have-permission-prompts-follow-page-visibility.patch

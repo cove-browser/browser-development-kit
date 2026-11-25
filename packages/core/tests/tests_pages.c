@@ -226,6 +226,10 @@ static void test_a_native_route_calls_its_handler_and_loads_nothing(void) {
     CHECK(g_native.source == c);
     CHECK(g_native.profile == p);
     CHECK(find_event(&ev, BDK_CONTENTS_EVENT_NAVIGATION_COMMITTED) < 0);
+    /* The navigation ends with a reason, so a caller waiting for it returns (T-SWF-09). */
+    int failed = find_event(&ev, BDK_CONTENTS_EVENT_NAVIGATION_FAILED);
+    REQUIRE(failed >= 0);
+    CHECK(str_has(S(ev.detail[failed]), "\"code\":\"handledNatively\""));
     char url[128];
     current_url(c, url, sizeof url);
     CHECK(strcmp(url, "about:blank") == 0);

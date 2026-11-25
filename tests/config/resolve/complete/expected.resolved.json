@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "bdk_version": "0.0.0",
-  "config_digest": "sha256:1b522d43f06c87d5f72e4d7effd2b406d023f3bdf5dc13df3cff6811eb7234b0",
+  "config_digest": "sha256:5c28bdb8e3003f5f27cd2a4cbeaaff5a36727d5b7b4c6459e398b14adef55d8f",
   "browser": {
     "name": "Cove",
     "internal_scheme": "cove",
@@ -130,6 +130,7 @@
         "digest": "sha256:8a9c72d90197ded71015ecc8eeccb3e1be6ac678c137a3728bba051b0f1e3b98"
       }
     },
+    "cpu_budget_ms": 30000,
     "external": {
       "enabled": false
     }

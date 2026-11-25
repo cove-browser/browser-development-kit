@@ -2,38 +2,110 @@
   "name": "arc-style-browser",
   "root": "apps/examples/arc-style-browser",
   "projectType": "application",
-  "implicitDependencies": ["swift", "chromium", "cli", "js-internal"],
+  "implicitDependencies": ["swift", "chromium", "cli", "js-internal", "js-automation"],
   "targets": {
     "build": {
       "executor": "nx:run-commands",
       "cache": false,
+      "dependsOn": [
+        {
+          "projects": ["js-internal", "js-vite", "js-automation"],
+          "target": "build"
+        }
+      ],
       "inputs": [
         "default",
-        { "dependentTasksOutputFiles": "**/runtime.json", "transitive": false },
-        { "fileset": "{workspaceRoot}/.bdk/runtime.json" }
+        "nativeToolchain",
+        "{workspaceRoot}/Package.swift",
+        "{workspaceRoot}/packages/swift/Sources/**/*",
+        "{workspaceRoot}/packages/core/include/**/*",
+        "{workspaceRoot}/packages/core/stub/**/*",
+        "{workspaceRoot}/packages/core/runtime/**/*",
+        "{workspaceRoot}/packages/core/generated/**/*",
+        {
+          "dependentTasksOutputFiles": "**/runtime.json",
+          "transitive": false
+        },
+        {
+          "fileset": "{workspaceRoot}/.bdk/runtime.json"
+        }
       ],
       "options": {
-        "command": "echo 'arc-style-browser:build: not implemented until M8'"
+        "command": "apps/examples/arc-style-browser/scripts/bundle.sh",
+        "cwd": "{workspaceRoot}"
       }
     },
     "dev": {
       "executor": "nx:run-commands",
       "cache": false,
+      "dependsOn": ["build"],
       "options": {
-        "command": "echo 'arc-style-browser:dev: not implemented until M8'"
+        "command": "apps/examples/arc-style-browser/.build/ArcStyleBrowser.app/Contents/MacOS/ArcStyleBrowser",
+        "cwd": "{workspaceRoot}"
       }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "commands": [
+          "pnpm exec tsx packages/cli/src/main.ts build config --project apps/examples/arc-style-browser",
+          "cd apps/examples/arc-style-browser && swift test --filter ArcBrowserTests"
+        ],
+        "parallel": false,
+        "cwd": "{workspaceRoot}"
+      },
+      "inputs": [
+        "default",
+        "nativeToolchain",
+        "{workspaceRoot}/Package.swift",
+        "{workspaceRoot}/packages/swift/Sources/**/*",
+        "{workspaceRoot}/packages/core/include/**/*",
+        "{workspaceRoot}/packages/core/stub/**/*",
+        "{workspaceRoot}/packages/core/runtime/**/*",
+        "{workspaceRoot}/packages/core/generated/**/*",
+        {
+          "dependentTasksOutputFiles": "**/runtime.json",
+          "transitive": false
+        },
+        {
+          "fileset": "{workspaceRoot}/.bdk/runtime.json"
+        }
+      ]
     },
     "test-e2e": {
       "executor": "nx:run-commands",
       "cache": false,
+      "dependsOn": ["build"],
       "options": {
-        "command": "echo 'arc-style-browser:test-e2e: not implemented until M8'"
+        "command": "swift test --filter ArcBrowserE2ETests",
+        "cwd": "{projectRoot}"
       }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "swift format lint --strict --recursive apps/examples/arc-style-browser/Sources apps/examples/arc-style-browser/Tests apps/examples/arc-style-browser/Package.swift",
+          "swiftlint lint --strict --config .swiftlint.yml apps/examples/arc-style-browser",
+          "shellcheck apps/examples/arc-style-browser/scripts/bundle.sh",
+          "shfmt -d apps/examples/arc-style-browser/scripts/bundle.sh"
+        ],
+        "parallel": false,
+        "cwd": "{workspaceRoot}"
+      },
+      "inputs": ["default", "lintConfig", "nativeToolchain", "{workspaceRoot}/Package.swift"]
     },
     "format": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm exec biome format --write {projectRoot}"
+        "commands": [
+          "swift format --in-place --recursive apps/examples/arc-style-browser/Sources apps/examples/arc-style-browser/Tests apps/examples/arc-style-browser/Package.swift",
+          "shfmt -w apps/examples/arc-style-browser/scripts/bundle.sh",
+          "pnpm exec biome format --write apps/examples/arc-style-browser"
+        ],
+        "parallel": false,
+        "cwd": "{workspaceRoot}"
       }
     }
   }

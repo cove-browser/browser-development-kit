@@ -68,6 +68,12 @@ class AutomationHostLauncher {
   // Ends the task and reports `message` through ScriptFailed. Never called
   // while the core is inside StartTask (see FailLater).
   void FailTask(const std::string& task_id, const std::string& message);
+  // The same for a script the host stopped at its CPU budget: BudgetExceeded.
+  void StopTaskOverBudget(const std::string& task_id,
+                          const std::string& message);
+  // Forgets the task and returns its port, or null for a task it no longer
+  // has.
+  std::shared_ptr<bdkcore::TaskPort> TakeTask(const std::string& task_id);
   void FailLater(std::shared_ptr<bdkcore::TaskPort> port,
                  const std::string& message);
   void StopHostIfIdle();

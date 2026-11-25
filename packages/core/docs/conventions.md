@@ -351,7 +351,17 @@ taken where the specification was silent (2026-11-20):
    subscription after the end gets FINISHED alone. `bdk_task_cancel` and releasing a running task's handle send
    `abort` and finish it with `broker.cancelled`; a `failed` frame or a host that could not load the script is
    `automation.scriptFailed`; a host crash `automation.hostGone`. `Backend::EndTask` tears the script down after any
-   end. A `done` result is capped at 4 MiB like any result.
+   end. A `done` result is capped at 4 MiB like any result. Each task carries `[automation] cpu_budget_ms` (resolved
+   `automation.cpu_budget_ms`, default 60000, a whole number from 1 to 3600000, else `config.resolvedInvalid`) in
+   `TaskPort::cpu_budget_ms`; a host that stops the script at it calls `TaskPort::BudgetExceeded` and the task
+   finishes with `automation.budgetExceeded` (M8, T-AUT-07). A `failed` frame is always `scriptFailed`, so a script
+   cannot claim the code. The engine's host counts the CPU time of each entry into the script (its start, a frame,
+   a timer) with `base::ThreadTicks` and arms a watchdog thread with the budget left. When that much wall-clock time
+   has passed (the earliest the budget can be used up), the watchdog interrupts the run, reads the host thread's CPU
+   time inside the interrupt, and terminates the run only if it has used the budget; otherwise it waits again for
+   what is left. The stub's
+   host reports the budget (`bdk_stub_script_budget`) and can be told the script used it
+   (`bdk_stub_script_exhaust_budget`).
 5. Audit: every call a session makes emits `automation.commandInvoked {session, task?, command, profile?, contents?,
    error?}` when it ends, refused calls included (also those the connection refuses before the broker: arguments
    that are not an object, an unknown profile, a stale page); `automation.sessionCreated` and `automation.sessionRevoked` frame a
@@ -369,9 +379,23 @@ taken where the specification was silent (2026-11-20):
    socket of the process listens on anything but a Unix-domain address. The first frame must be `hello`; the
    application gets it through its callback with a `bdk_context_t` and answers once, now or later, with
    `bdk_automation_hello_accept` (a live session) or `_refuse` (a `closed` frame with `capability.denied` and its
-   message). At most 64 connections at a time; one that falls 64 MiB behind is closed (`automation.overloaded`)
-   instead of having events coalesced. A transport thread (`std::thread`, `poll`) moves bytes; everything else is
-   on the UI thread. `local_socket_posix.cc` is the core's one platform file; Windows replaces it.
+   message). At most 64 connections at a time. A transport thread (`std::thread`, `poll`) moves bytes; everything
+   else is on the UI thread. `local_socket_posix.cc` is the core's one platform file; Windows replaces it.
+
+   A client that does not read keeps its connection (T-AUT-07). The transport queues each connection's frames
+   (under the one mutex the UI thread and the transport thread share) and takes them from the queue 256 KiB at a
+   time to write. Once more than 4 MiB (the soft limit) is waiting, a *state event* replaces the one still queued
+   for the same subscription, event name, profile and page, and is queued after everything queued so far: the
+   frames that are kept never change their relative order, and a coalesced event is never delivered before a frame
+   sent earlier. State events are those whose payload is the whole current state of one page, so only the latest
+   matters: `contents.loadingChanged` and `contents.titleChanged` (the list is `is_state_event` in `automation.cc`;
+   an event joins it only if its payload says everything about its page and the core passes that page to
+   `DeliverEvent`). Everything else is history, a change or a reply and is never dropped or reordered: results,
+   errors, progress, `closed`, and events such as `contents.navigated`, `downloads.*`, `automation.commandInvoked`.
+   Frames the transport has already taken to write are not taken back. A connection that would have more than
+   64 MiB (the hard limit) waiting, state events included, is closed (`automation.overloaded`, with no `closed`
+   frame, since it cannot be written). The conformance suite lowers both limits through the harness
+   (`bdk_harness_endpoint_limits`) so it need not queue megabytes.
 8. The core answers, on the Backend's page operations so every runtime behaves the same, `contents.list`, `get`,
    `create` (the page belongs to the application, which gets `contents.created` with `createdBy` and destroys it like
    any other), `close`, `navigate` (resolves `{url, errorPage}` at commit, or at load with `waitUntil: "finished"`; a

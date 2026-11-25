@@ -58,7 +58,7 @@ extension BDKStubTests {
                 let payload = """
                     {"kind":"popup","disposition":"popup","targetURL":"https://p.test/",\
                     "opener":"\(fixture.page.id.rawValue)","newContents":"\(created.id.rawValue)",\
-                    "features":{"width":300,"height":200},"isUserGesture":true}
+                    "features":{"width":300,"height":200},"userGesture":true}
                     """
                 var request = try fixture.deliver(
                     NewWindowRequest.self, BDK_SURFACE_NEW_WINDOWS, payload)
@@ -72,8 +72,66 @@ extension BDKStubTests {
 
                 request = try fixture.deliver(NewWindowRequest.self, BDK_SURFACE_NEW_WINDOWS)
                 #expect(request.kind == .newPage && request.newContents == nil)
+                #expect(request.initiatorExtensionID == nil)
                 request.reject()
                 try fixture.expectOutcome(.completed, "deny", "{}")
+            }
+        }
+
+        @Test func aPageAnExtensionOpensIsAnnounced() async throws {
+            try await withUIFixture { fixture in
+                let events = EventReader(fixture.runtime.events)
+                let created = try fixture.profile.webContents.create()
+                let request = try fixture.deliver(
+                    NewWindowRequest.self, BDK_SURFACE_NEW_WINDOWS,
+                    """
+                    {"kind":"newPage","disposition":"foreground","newContents":"\(created.id.rawValue)",\
+                    "initiator":{"extensionId":"abcdefghijklmnopabcdefghijklmnop"}}
+                    """)
+                #expect(request.initiatorExtensionID == "abcdefghijklmnopabcdefghijklmnop")
+                let event = try await events.next {
+                    if case .webContentsCreated = $0 { true } else { false }
+                }
+                #expect(
+                    event
+                        == .webContentsCreated(
+                            created, by: .extension("abcdefghijklmnopabcdefghijklmnop")))
+                request.accept()
+            }
+        }
+
+        @Test func aDefaultPresentedPageOutlivesItsRequest() async throws {
+            try await withUIFixture { fixture in
+                // A page the engine made for the request, which the application has no wrapper
+                // for, as for a link an extension's popup opens.
+                var handle: bdk_contents_t = 0
+                let runtime = try fixture.runtime.liveHandle()
+                let profile = try fixture.profile.liveHandle()
+                try abiCall(.contents) { error in
+                    var options = bdk_contents_options_t()
+                    options.struct_size = MemoryLayout<bdk_contents_options_t>.size
+                    options.profile = profile
+                    return bdk_contents_create(runtime, &options, &handle, error)
+                }
+                fixture.box.response = .useDefault
+                // The request reads newContents itself, to announce the extension's page.
+                _ = try fixture.deliver(
+                    NewWindowRequest.self, BDK_SURFACE_NEW_WINDOWS,
+                    """
+                    {"kind":"newPage","disposition":"foreground","newContents":"\(handle)",\
+                    "initiator":{"extensionId":"abcdefghijklmnopabcdefghijklmnop"}}
+                    """)
+                fixture.box.request = nil
+                // The request releases its handle on the next turn of the main queue, and itself
+                // with it.
+                await withCheckedContinuation { done in DispatchQueue.main.async { done.resume() } }
+                fixture.runtime.stub.pump()
+                // The application holds neither the request nor the page: the runtime keeps the
+                // default window's page until it closes.
+                weak let page = fixture.runtime.webContents(handle: handle)
+                #expect(page?.isAlive == true)
+                try await page?.close()
+                #expect(page == nil)
             }
         }
 

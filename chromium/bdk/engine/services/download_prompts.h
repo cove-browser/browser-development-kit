@@ -25,6 +25,11 @@ namespace bdk {
 // Call once per profile, as soon as it is loaded and before it can download.
 void InstallDownloadPrompts(Profile* profile);
 
+// For tests (bdk_testing_command "downloads.replaceDelegate"): puts a new BDK
+// delegate in place of the profile's after its download manager exists, as
+// happens to the profile Chromium loads at startup.
+void ReplaceDownloadDelegateForTesting(Profile* profile);
+
 // For tests (bdk_testing_command "downloads.ask"): makes every loaded profile
 // ask where to save, as the setting does.
 void AskWhereToSaveForTesting(bool ask);

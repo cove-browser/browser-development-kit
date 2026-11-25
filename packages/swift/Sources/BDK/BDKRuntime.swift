@@ -11,11 +11,28 @@ public final class BDKRuntime {
         public let abiHash: String
     }
 
+    /// Who created a page the application did not create itself.
+    public enum Creator: Sendable, Equatable {
+        /// The application. Not emitted: a page the application creates is already in its hands.
+        case application
+        /// An automation session, by its name (a session reached through the external endpoint has no
+        /// `BDKAutomationSession` object in the application).
+        case automation(session: String)
+        /// A browser extension, by id: a page it opened (its options page, a link in its popup), when
+        /// the new-window request reaches a handler.
+        case `extension`(String)
+    }
+
     public enum Event: Sendable, Equatable {
         case registrationsFrozen
         case profileOpened(BDKProfile.ID)
         case profileClosed(BDKProfile.ID)
         case shutdownStarted
+        /// A page someone else created: by an automation session, which also arrives as
+        /// `runtime.automation.events` `.contentsCreated` and is kept by the runtime until it closes;
+        /// or by an extension, which also arrives as the `NewWindowRequest` that places it. It is not
+        /// on screen until the application puts it there.
+        case webContentsCreated(BDKWebContents, by: Creator)
         /// A kind this version does not know, from a newer runtime.
         case unknown(kind: UInt32, detailJSON: String)
     }
@@ -57,10 +74,18 @@ public final class BDKRuntime {
     /// The shutdown in progress, which every later caller waits for.
     private var shutdownTask: Task<Void, Never>?
     private var liveContents: [UInt64: WeakBox<BDKWebContents>] = [:]
+    /// Pages a default presenter shows, held until they close: a released page is destroyed, and
+    /// the application may keep no reference to one.
+    private var defaultPresented: [UInt64: BDKWebContents] = [:]
     private let broadcaster = EventBroadcaster<Event>()
 
     public var events: BDKEventSequence<Event> {
         BDKEventSequence(broadcaster)
+    }
+
+    /// Delivers an event the Swift layer raises itself (one with no ABI runtime event behind it).
+    func publish(_ event: Event) {
+        broadcaster.send(event)
     }
 
     private init(handle: bdk_runtime_t, info: Info) {
@@ -266,6 +291,18 @@ public final class BDKRuntime {
 
     func unregister(_ contents: BDKWebContents) {
         liveContents[contents.id.rawValue] = nil
+        defaultPresented[contents.id.rawValue] = nil
+    }
+
+    /// Holds a page a default presenter shows until it closes or is destroyed.
+    func keepWhileOpen(_ contents: BDKWebContents) {
+        guard contents.isAlive, !contents.isClosed else { return }
+        defaultPresented[contents.id.rawValue] = contents
+    }
+
+    /// The page closed: the runtime stops holding it, and it goes when the application lets go.
+    func pageClosed(_ contents: BDKWebContents) {
+        defaultPresented[contents.id.rawValue] = nil
     }
 
     /// Every live page, in creation order of their handles.
@@ -288,6 +325,23 @@ public final class BDKRuntime {
 }
 
 extension BDKRuntime.Event {
+    /// Pages compare by identity.
+    public static func == (lhs: Self, rhs: Self) -> Bool {
+        switch (lhs, rhs) {
+        case (.registrationsFrozen, .registrationsFrozen), (.shutdownStarted, .shutdownStarted):
+            true
+        case (.profileOpened(let left), .profileOpened(let right)),
+            (.profileClosed(let left), .profileClosed(let right)):
+            left == right
+        case (.webContentsCreated(let left, let by), .webContentsCreated(let right, let other)):
+            left === right && by == other
+        case (.unknown(let kind, let detail), .unknown(let otherKind, let otherDetail)):
+            kind == otherKind && detail == otherDetail
+        default:
+            false
+        }
+    }
+
     fileprivate init(kind: UInt32, detailJSON: String) {
         let identifier: BDKProfile.ID? = {
             guard case .object(let object) = BDKJSValue(jsonString: detailJSON),

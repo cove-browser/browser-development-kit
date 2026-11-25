@@ -102,8 +102,9 @@ jobs:
           NX_BASE: ${{ github.event.pull_request.base.sha }}
           NX_HEAD: ${{ github.event.pull_request.head.sha }}
         # chromium:build compiles Chromium and must never run here, so chromium is excluded.
-        # swift and minimal-browser need Xcode and AppKit and run in the swift-macos job, so they are excluded here too.
-        run: pnpm exec nx affected -t lint test build --exclude=chromium,swift,minimal-browser
+        # swift and the example applications need Xcode and AppKit and run in the swift-macos job, so they are excluded
+        # here too.
+        run: pnpm exec nx affected -t lint test build --exclude=chromium,swift,minimal-browser,arc-style-browser
 
       # The matrix page is generated from matrix.json. The affected run above does not run this target, so a stale
       # page would pass it; check the page on every pull request.
@@ -242,9 +243,9 @@ jobs:
         env:
           NX_BASE: ${{ github.event.pull_request.base.sha }}
           NX_HEAD: ${{ github.event.pull_request.head.sha }}
-        # Only swift, core and minimal-browser run here. `*,!swift,!core,!minimal-browser` is the nx exclude
-        # pattern for "everything else".
-        run: pnpm exec nx affected -t build test lint --exclude='*,!swift,!core,!minimal-browser'
+        # Only swift, core and the two example applications run here. `*,!swift,!core,!minimal-browser,...` is the
+        # nx exclude pattern for "everything else".
+        run: pnpm exec nx affected -t build test lint --exclude='*,!swift,!core,!minimal-browser,!arc-style-browser'
 
   cli-smoke:
     name: cli-smoke (${{ matrix.os }})

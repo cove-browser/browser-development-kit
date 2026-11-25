@@ -15,6 +15,10 @@ describe("parseCliArgs", () => {
     });
   });
 
+  it("reads --watch", () => {
+    expect(parseCliArgs(["build", "automation", "--watch"]).watch).toBe(true);
+  });
+
   it("accepts --version and -V", () => {
     expect(parseCliArgs(["--version"]).version).toBe(true);
     expect(parseCliArgs(["-V"]).version).toBe(true);
@@ -27,6 +31,7 @@ describe("parseCliArgs", () => {
       version: false,
       json: false,
       offline: false,
+      watch: false,
       positionals: [],
     });
   });

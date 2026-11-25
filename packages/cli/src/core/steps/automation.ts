@@ -15,6 +15,7 @@ import { configDigest } from "../config/resolve.js";
 import type { Diagnostic } from "../diagnostics.js";
 import { hasErrors } from "../diagnostics-format.js";
 import { CliError, ExitCode, usageError } from "../exit-codes.js";
+import { automationDirectory } from "../pages/routes.js";
 import { RESOLVED_FILE } from "./config.js";
 import type { Step, StepInput, StepResult } from "./step.js";
 
@@ -31,6 +32,7 @@ type Entry = Record<string, unknown> & { path: string; digest: string };
 export const automationStep: Step = {
   name: "automation",
   flags: ["bundle", "out"],
+  watchDirectory: (project) => automationDirectory(project.configFile),
   // Without a bundle there is nothing to write into: a plain `bdk build` leaves the step out.
   applies: ({ ctx, args }) => (args.bundle ?? ctx.env.CODESIGNING_FOLDER_PATH) !== undefined,
   async run({ project, ctx, args }): Promise<StepResult> {

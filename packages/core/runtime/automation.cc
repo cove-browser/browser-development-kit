@@ -52,12 +52,14 @@ class Connection : public std::enable_shared_from_this<Connection> {
     void SetTask(std::weak_ptr<AutomationTask> task) {
         task_ = std::move(task);
     }
-    void SetTransport(std::function<bool(const std::string&)> send, std::function<void()> close) {
+    /* send takes a frame and the key under which a newer frame may replace it (empty: none). */
+    using SendFn = std::function<bool(const std::string&, const std::string&)>;
+    void SetTransport(SendFn send, std::function<void()> close) {
         send_ = std::move(send);
         close_ = std::move(close);
     }
 
-    void Send(const std::string& frame);
+    void Send(const std::string& frame, const std::string& key = std::string());
     void Receive(const std::string& frame);
     /* Ends the connection: cancels its calls, ends its subscriptions and, when domain is not null,
        sends a `closed` frame first. */
@@ -83,7 +85,7 @@ class Connection : public std::enable_shared_from_this<Connection> {
     std::weak_ptr<Runtime> rt_;
     std::shared_ptr<Session> session_;
     std::weak_ptr<AutomationTask> task_;
-    std::function<bool(const std::string&)> send_;
+    SendFn send_;
     std::function<void()> close_;
     bool closed_ = false, hello_pending_ = false;
     std::map<int64_t, bdk_call_t> calls_;
@@ -95,6 +97,14 @@ namespace {
 std::map<const Runtime*, std::unique_ptr<AutomationState>>& states() {
     static auto* m = new std::map<const Runtime*, std::unique_ptr<AutomationState>>;
     return *m;
+}
+
+/* The events whose payload is the whole current state of a page, so only the latest matters to a
+   client that falls behind (conventions.md, Automation, rule 7). DeliverEvent keys each by the
+   page it concerns. History (contents.navigated), changes (downloads.*), audit
+   (automation.commandInvoked) and every other event are never in this list. */
+bool is_state_event(const std::string& name) {
+    return name == "contents.loadingChanged" || name == "contents.titleChanged";
 }
 
 std::string quoted(const std::string& s) {
@@ -322,10 +332,10 @@ void on_wire_release(void* ctx) {
 
 /* ---- Connection ---- */
 
-void Connection::Send(const std::string& frame) {
+void Connection::Send(const std::string& frame, const std::string& key) {
     if (closed_ || !send_)
         return;
-    if (frame.size() > kMaxFrameBytes || !send_(frame))
+    if (frame.size() > kMaxFrameBytes || !send_(frame, key))
         Close(BDK_DOMAIN_AUTOMATION, BDK_CODE_OVERLOADED,
               "the other side does not read its frames fast enough");
 }
@@ -340,7 +350,8 @@ void Connection::Close(const char* domain, const char* code, const std::string& 
     if (closed_)
         return;
     if (domain && send_ && !(code && std::strcmp(code, BDK_CODE_OVERLOADED) == 0))
-        send_("{\"type\":\"closed\",\"error\":" + error_json(domain, code, message) + "}");
+        send_("{\"type\":\"closed\",\"error\":" + error_json(domain, code, message) + "}",
+              std::string());
     closed_ = true;
     auto calls = std::move(calls_);
     calls_.clear();
@@ -564,9 +575,17 @@ void Connection::DeliverEvent(const std::string& name, uint32_t id, bdk_profile_
             continue;
         matches.push_back(kv.first);
     }
+    const bool state = is_state_event(name);
     for (int64_t sub : matches) {
+        /* Per subscription, so each one gets the latest state of each page. */
+        std::string key;
+        if (state) {
+            key = std::to_string(sub) + ":" + name + ":";
+            key += std::to_string(profile) + ":" + std::to_string(contents);
+        }
         Send("{\"type\":\"event\",\"id\":" + std::to_string(sub) + ",\"name\":" + quoted(name) +
-             ",\"payload\":" + payload + "}");
+                 ",\"payload\":" + payload + "}",
+             key);
     }
 }
 
@@ -628,6 +647,10 @@ const std::string& TaskPort::arguments_json() const {
     auto t = task_.lock();
     return t ? t->arguments_json : empty_;
 }
+uint32_t TaskPort::cpu_budget_ms() const {
+    auto t = task_.lock();
+    return t ? t->cpu_budget_ms : 0;
+}
 
 void TaskPort::FromScript(const std::string& frame) {
     auto t = task_.lock();
@@ -643,6 +666,11 @@ void TaskPort::HostGone(const std::string& message) {
 void TaskPort::ScriptFailed(const std::string& message) {
     if (auto t = task_.lock())
         task_fail(t, BDK_DOMAIN_AUTOMATION, BDK_CODE_SCRIPT_FAILED, message);
+}
+
+void TaskPort::BudgetExceeded(const std::string& message) {
+    if (auto t = task_.lock())
+        task_fail(t, BDK_DOMAIN_AUTOMATION, BDK_CODE_BUDGET_EXCEEDED, message);
 }
 
 /* ---- Backend defaults ---- */
@@ -777,6 +805,14 @@ bdk_status_t automation_configure(Runtime& rt, const std::string& resolved,
                 st.scripts[m.first] = json_serialize(m.second);
             }
         }
+        if (const JsonValue* budget = a->find("cpu_budget_ms")) {
+            /* The CLI keeps it between 100 ms and an hour. */
+            if (budget->type != JsonValue::Type::kNumber || !budget->integral ||
+                budget->number < 1 || budget->number > 3600000)
+                return fail(out_error, BDK_DOMAIN_CONFIG, BDK_CODE_RESOLVED_INVALID,
+                            "automation.cpu_budget_ms must be a whole number of milliseconds");
+            st.cpu_budget_ms = static_cast<uint32_t>(budget->number);
+        }
         if (const JsonValue* ext = field(*a, "external", JsonValue::Type::kObject)) {
             const JsonValue* on = ext->find("enabled");
             st.external_enabled = on && on->type == JsonValue::Type::kBool && on->boolean;
@@ -892,6 +928,15 @@ void automation_deliver_event(const std::shared_ptr<Runtime>& rt, const std::str
                 c->DeliverEvent(name, id, profile, contents, payload);
         }
     }
+}
+
+void automation_set_endpoint_limits(const std::shared_ptr<Runtime>& rt, size_t soft_bytes,
+                                    size_t hard_bytes) {
+    AutomationState& st = automation_state(*rt);
+    st.endpoint_soft_limit = soft_bytes;
+    st.endpoint_hard_limit = hard_bytes;
+    if (st.server)
+        st.server->SetLimits(soft_bytes, hard_bytes);
 }
 
 void automation_forget_contents(const std::shared_ptr<Runtime>& rt, bdk_contents_t contents) {
@@ -1152,6 +1197,7 @@ BDK_EXPORT bdk_status_t bdk_session_run(bdk_session_t h, bdk_string_t script,
     task->script = name;
     task->entry_json = entry->second;
     task->arguments_json = args;
+    task->cpu_budget_ms = st.cpu_budget_ms;
     task->rt = rt;
     task->session = s;
     task->port = std::make_shared<TaskPort>(task);
@@ -1160,7 +1206,7 @@ BDK_EXPORT bdk_status_t bdk_session_run(bdk_session_t h, bdk_string_t script,
     task->connection->SetTask(task);
     std::weak_ptr<TaskPort> port = task->port;
     task->connection->SetTransport(
-        [port](const std::string& frame) {
+        [port](const std::string& frame, const std::string&) {
             auto p = port.lock();
             if (p && p->to_script)
                 p->to_script(frame);
@@ -1260,8 +1306,11 @@ BDK_EXPORT bdk_status_t bdk_automation_endpoint_open(bdk_runtime_t h, bdk_string
         AutomationState& s = automation_state(*r);
         auto c = std::make_shared<Connection>(Connection::Kind::kExternal, r);
         LocalServer* server = s.server.get();
-        c->SetTransport([server, id](const std::string& frame) { return server->Send(id, frame); },
-                        [server, id] { server->Disconnect(id); });
+        c->SetTransport(
+            [server, id](const std::string& frame, const std::string& key) {
+                return server->Send(id, frame, key);
+            },
+            [server, id] { server->Disconnect(id); });
         s.external[id] = c;
     };
     events.on_frame = [weak](uint64_t id, const std::string& frame) {
@@ -1289,6 +1338,7 @@ BDK_EXPORT bdk_status_t bdk_automation_endpoint_open(bdk_runtime_t h, bdk_string
     st.server = LocalServer::Create(directory, std::move(events), &path, &error);
     if (!st.server)
         return fail(out_error, BDK_DOMAIN_PLATFORM, "failed", error);
+    st.server->SetLimits(st.endpoint_soft_limit, st.endpoint_hard_limit);
     st.hello_cb = cb;
     st.hello_ctx = ctx;
     st.hello_rel = rel;

@@ -6,10 +6,13 @@
 
 #include <algorithm>
 
+#include "base/auto_reset.h"
 #include "base/check.h"
 #include "base/functional/bind.h"
+#include "base/task/sequenced_task_runner.h"
 #include "bdk/core/runtime/core_internal.h"
 #include "bdk/engine/bdk_browser_window.h"
+#include "bdk/engine/engine_contents.h"
 #include "bdk/engine/host_window.h"
 #include "bdk/engine/window_registry.h"
 #include "chrome/browser/extensions/embedder_extension_window_filter.h"
@@ -126,9 +129,46 @@ std::unique_ptr<tabs::TabModel> HostContext::Release(
   return strip->DetachTabAtForInsertion(index);
 }
 
+std::unique_ptr<content::WebContents> HostContext::Take(
+    content::WebContents* contents) {
+  return tabs::TabModel::DestroyAndTakeWebContents(Release(contents));
+}
+
+void HostContext::OnTabStripModelChanged(
+    TabStripModel* tab_strip_model,
+    const TabStripModelChange& change,
+    const TabStripSelectionChange& selection) {
+  if (change.type() == TabStripModelChange::kReplaced) {
+    // A swap BDK did not make is Chromium's own discard: the page follows its
+    // tab now, before Chromium destroys the old WebContents.
+    const TabStripModelChange::Replace* replace = change.GetReplace();
+    EngineContents* page =
+        replacing_ ? nullptr
+                   : EngineContents::FromWebContents(replace->old_contents);
+    if (page) {
+      page->AdoptDiscardReplacement(replace->new_contents);
+    }
+    return;
+  }
+  if (change.type() != TabStripModelChange::kInserted) {
+    return;
+  }
+  // BDK's own insertions (a new page, a move between contexts) belong to a
+  // page by the time a posted task runs; anything else is Chromium's. Never
+  // from inside the strip's own notification.
+  for (const TabStripModelChange::ContentsWithIndex& inserted :
+       change.GetInsert()->contents) {
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(&EngineContents::AdoptForeignTab,
+                                  inserted.contents->GetWeakPtr()));
+  }
+}
+
 std::unique_ptr<content::WebContents> HostContext::Replace(
     content::WebContents* old_contents,
     std::unique_ptr<content::WebContents> new_contents) {
+  // The page makes this swap itself and takes the new WebContents after it.
+  base::AutoReset<bool> own(&replacing_, true);
   return browser_->GetTabStripModel()->DiscardWebContents(
       old_contents, std::move(new_contents));
 }
@@ -207,6 +247,8 @@ HostContext& HostContexts::Create(Profile* profile,
   }
   std::unique_ptr<HostContext> context(new HostContext(profile, window));
   context->browser_ = browser->GetWeakPtr();
+  static_cast<Browser*>(browser)->GetTabStripModel()->AddObserver(
+      context.get());
   if (window) {
     BdkBrowserWindow* browser_window = g_created_window;
     browser_window->SetHostWindow(HostWindow::Wrap(

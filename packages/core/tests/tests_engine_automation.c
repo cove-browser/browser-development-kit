@@ -18,6 +18,9 @@
 #define BDK_TEST_FAIL_DIGEST "sha256:unset"
 #define BDK_TEST_DEBUG_DIGEST "sha256:unset"
 #endif
+#ifndef BDK_TEST_BUSY_DIGEST
+#define BDK_TEST_BUSY_DIGEST "sha256:unset"
+#endif
 
 #define SCRIPT(name, digest)                                                                       \
     "\"" name "\":{\"path\":\"Automation/" name ".ts\",\"digest\":\"sha256:0\",\"bundle\":"        \
@@ -249,6 +252,34 @@ static void test_engine_a_session_without_a_capability_is_refused(void) {
     REQUIRE(wait_until(&log.finished));
     CHECK(strstr(log.finish, "\"code\":\"scriptFailed\"") != NULL);
     CHECK(strstr(log.finish, "capability.denied") != NULL);
+}
+
+/* T-AUT-07: a script that keeps the CPU busy is stopped at its task's budget
+   ([automation] cpu_budget_ms), whether it never returns to the host or uses the budget up in
+   slices between timers; the host goes on serving the next task. */
+static void test_engine_a_busy_script_is_stopped_at_its_cpu_budget(void) {
+    t_config_extra =
+        "\"automation\":{\"enabled\":true,\"cpu_budget_ms\":400,\"external\":{\"enabled\":"
+        "false},\"scripts\":{" SCRIPT("busy", BDK_TEST_BUSY_DIGEST) "," SCRIPT(
+            "fail", BDK_TEST_FAIL_DIGEST) "}}";
+    t_start_frozen();
+    bdk_session_t s = 0;
+    bdk_error_t err = 0;
+    REQUIRE(bdk_session_create(t_runtime, S("{\"name\":\"busy\"}"), &s, &err) == BDK_OK);
+    static const char* const modes[] = {"{\"mode\":\"spin\"}", "{\"mode\":\"slices\"}"};
+    for (size_t i = 0; i < sizeof modes / sizeof modes[0]; ++i) {
+        static task_log_t log;
+        (void)run(s, "busy", modes[i], &log);
+        REQUIRE(wait_until(&log.finished));
+        printf("    %s: %s\n", modes[i], log.finish);
+        CHECK(strstr(log.finish, "\"code\":\"budgetExceeded\"") != NULL);
+        CHECK(strstr(log.finish, "400 ms") != NULL);
+    }
+    /* The isolate serves the next task normally. */
+    static task_log_t next;
+    (void)run(s, "fail", "null", &next);
+    REQUIRE(wait_until(&next.finished));
+    CHECK(strstr(next.finish, "\"code\":\"scriptFailed\"") != NULL);
 }
 
 static void test_engine_cancel_and_revoke_end_a_running_script(void) {
@@ -853,6 +884,8 @@ const t_test_t t_engine_automation_tests[] = {
     {"engine_a_script_drives_two_pages", test_engine_a_script_drives_two_pages},
     {"engine_a_session_without_a_capability_is_refused",
      test_engine_a_session_without_a_capability_is_refused},
+    {"engine_a_busy_script_is_stopped_at_its_cpu_budget",
+     test_engine_a_busy_script_is_stopped_at_its_cpu_budget},
     {"engine_cancel_and_revoke_end_a_running_script",
      test_engine_cancel_and_revoke_end_a_running_script},
     {"engine_a_failing_or_tampered_script_finishes_with_why",

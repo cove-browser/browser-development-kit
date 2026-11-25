@@ -23,7 +23,11 @@
 #include "base/no_destructor.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/strings/strcat.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/synchronization/lock.h"
 #include "base/task/single_thread_task_runner.h"
+#include "base/thread_annotations.h"
+#include "base/threading/thread.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "base/values.h"
@@ -279,16 +283,127 @@ void InitializeV8() {
                                  /*disallow_v8_feature_flag_overrides=*/true);
 }
 
+// Stops a script that runs past its task's CPU budget (T-AUT-07). The isolate
+// runs one script at a time, on the host's thread. While one runs, a task on
+// the watchdog's own thread is due when the run's remaining budget has passed
+// in wall-clock time. That is only the earliest the budget can be used up:
+// the host thread may have had less CPU time meanwhile. So the watchdog then
+// interrupts the script, and on the host's thread reads the CPU time the run
+// has used: it terminates the execution when that reaches the budget, and
+// otherwise waits again for what is left.
+class BudgetWatchdog {
+ public:
+  explicit BudgetWatchdog(v8::Isolate* isolate)
+      : isolate_(isolate), thread_("BdkAutomationBudget") {
+    CHECK(thread_.Start());
+  }
+
+  BudgetWatchdog(const BudgetWatchdog&) = delete;
+  BudgetWatchdog& operator=(const BudgetWatchdog&) = delete;
+
+  // Joins the thread first: its pending task refers to this.
+  ~BudgetWatchdog() { thread_.Stop(); }
+
+  // A run starts, on the host's thread, with `remaining` budget.
+  void Arm(base::TimeDelta remaining) {
+    uint64_t run;
+    {
+      base::AutoLock lock(lock_);
+      run = ++run_;
+      armed_ = true;
+      fired_ = false;
+      remaining_ = remaining;
+      start_ = base::ThreadTicks::Now();
+    }
+    Wait(run, remaining);
+  }
+
+  // The run ended. Returns whether the watchdog stopped it.
+  bool Disarm() {
+    base::AutoLock lock(lock_);
+    armed_ = false;
+    return fired_;
+  }
+
+  // Whether the watchdog stopped the run that is going on.
+  bool Fired() {
+    base::AutoLock lock(lock_);
+    return armed_ && fired_;
+  }
+
+ private:
+  // Why an interrupt was requested: for which run.
+  struct Check {
+    raw_ptr<BudgetWatchdog> watchdog;
+    uint64_t run;
+  };
+
+  void Wait(uint64_t run, base::TimeDelta delay) {
+    thread_.task_runner()->PostDelayedTask(
+        FROM_HERE,
+        base::BindOnce(&BudgetWatchdog::Due, base::Unretained(this), run),
+        delay);
+  }
+
+  // On the watchdog's thread: the run's budget may be used up. Only the host's
+  // thread can read its own CPU time, so the script is interrupted to check.
+  void Due(uint64_t run) {
+    {
+      base::AutoLock lock(lock_);
+      if (!armed_ || run != run_) {
+        return;
+      }
+    }
+    isolate_->RequestInterrupt(&BudgetWatchdog::CheckOnHost,
+                               new Check{this, run});
+  }
+
+  // On the host's thread, between two steps of the script.
+  static void CheckOnHost(v8::Isolate* isolate, void* data) {
+    std::unique_ptr<Check> check(static_cast<Check*>(data));
+    BudgetWatchdog* watchdog = check->watchdog;
+    base::TimeDelta left;
+    {
+      base::AutoLock lock(watchdog->lock_);
+      // A run that ended since, or a later one, which has its own deadline.
+      if (!watchdog->armed_ || check->run != watchdog->run_) {
+        return;
+      }
+      left =
+          watchdog->remaining_ - (base::ThreadTicks::Now() - watchdog->start_);
+      if (!left.is_positive()) {
+        watchdog->fired_ = true;
+        isolate->TerminateExecution();
+        return;
+      }
+    }
+    watchdog->Wait(check->run, left);
+  }
+
+  const raw_ptr<v8::Isolate> isolate_;
+  base::Thread thread_;
+  base::Lock lock_;
+  uint64_t run_ GUARDED_BY(lock_) = 0;
+  bool armed_ GUARDED_BY(lock_) = false;
+  bool fired_ GUARDED_BY(lock_) = false;
+  base::TimeDelta remaining_ GUARDED_BY(lock_);
+  base::ThreadTicks start_ GUARDED_BY(lock_);
+};
+
 // One task: a context of its own in the process's isolate, running one script.
 class ScriptTask : public mojom::AutomationTask {
  public:
   ScriptTask(v8::Isolate* isolate,
+             BudgetWatchdog* watchdog,
              uint32_t serial,
+             base::TimeDelta budget,
              mojo::PendingReceiver<mojom::AutomationTask> task,
              mojo::PendingRemote<mojom::AutomationTaskClient> client,
              base::OnceClosure on_closed)
       : isolate_(isolate),
+        watchdog_(watchdog),
         serial_(serial),
+        budget_(budget),
         receiver_(this, std::move(task)),
         client_(std::move(client)),
         on_closed_(std::move(on_closed)) {
@@ -317,6 +432,7 @@ class ScriptTask : public mojom::AutomationTask {
   // default export runs.
   void Start(const std::string& source, std::string start_frame) {
     start_frame_ = std::move(start_frame);
+    ScriptRun run(this);
     v8::Isolate::Scope isolate_scope(isolate_);
     v8::HandleScope handle_scope(isolate_);
     v8::Local<v8::Context> context = v8::Context::New(isolate_);
@@ -365,6 +481,7 @@ class ScriptTask : public mojom::AutomationTask {
       pending_.push_back(frame);
       return;
     }
+    ScriptRun run(this);
     Entered entered(isolate_, context_);
     DeliverToScript(entered.context, frame);
     isolate_->PerformMicrotaskCheckpoint();
@@ -384,6 +501,41 @@ class ScriptTask : public mojom::AutomationTask {
     base::OneShotTimer timer;
     v8::Global<v8::Function> callback;
     std::vector<v8::Global<v8::Value>> arguments;
+  };
+
+  // One entry into the script (its start, a frame delivered, a timer): its
+  // CPU time counts against the task's budget, and the watchdog may stop it.
+  class ScriptRun {
+   public:
+    explicit ScriptRun(ScriptTask* task)
+        : task_(task), start_(base::ThreadTicks::Now()) {
+      if (task_->budget_.is_positive()) {
+        task_->watchdog_->Arm(
+            std::max(task_->budget_ - task_->used_, base::TimeDelta()));
+      }
+    }
+
+    ScriptRun(const ScriptRun&) = delete;
+    ScriptRun& operator=(const ScriptRun&) = delete;
+
+    ~ScriptRun() {
+      if (!task_->budget_.is_positive()) {
+        return;
+      }
+      task_->used_ += base::ThreadTicks::Now() - start_;
+      const bool stopped = task_->watchdog_->Disarm();
+      if (stopped) {
+        // The isolate serves the other tasks next.
+        task_->isolate_->CancelTerminateExecution();
+      }
+      if (stopped || task_->used_ >= task_->budget_) {
+        task_->ExceedBudget();
+      }
+    }
+
+   private:
+    const raw_ptr<ScriptTask> task_;
+    const base::ThreadTicks start_;
   };
 
   // The isolate, a handle scope and the task's context, entered.
@@ -674,6 +826,7 @@ class ScriptTask : public mojom::AutomationTask {
     std::unique_ptr<Timer> timer = std::move(it->second);
     timers_.erase(it);
 
+    ScriptRun run(this);
     Entered entered(isolate_, context_);
     v8::TryCatch try_catch(isolate_);
     std::vector<v8::Local<v8::Value>> argv;
@@ -748,14 +901,20 @@ class ScriptTask : public mojom::AutomationTask {
   }
 
   void SendFrame(std::string frame) {
-    if (!finished_) {
+    if (!finished_ && !OverBudget()) {
       client_->Send(std::move(frame));
     }
   }
 
   // The last frame of the task; nothing is delivered or sent after it, and the
   // pending timers go. The browser closes the task's pipe when it has read it.
+  // A script stopped at its budget unwinds through here with a termination
+  // error; it ends as over budget instead.
   void Conclude(std::string frame) {
+    if (OverBudget()) {
+      ExceedBudget();
+      return;
+    }
     SendFrame(std::move(frame));
     finished_ = true;
     timers_.clear();
@@ -763,6 +922,10 @@ class ScriptTask : public mojom::AutomationTask {
 
   // The script could not be loaded or started (not: the script threw).
   void Fail(const std::string& message) {
+    if (OverBudget()) {
+      ExceedBudget();
+      return;
+    }
     if (finished_) {
       return;
     }
@@ -791,6 +954,21 @@ class ScriptTask : public mojom::AutomationTask {
          DescribeError(isolate_, context, try_catch.Exception()).message);
   }
 
+  bool OverBudget() { return budget_.is_positive() && watchdog_->Fired(); }
+
+  // The script used its budget: the task ends, and only BudgetExceeded says
+  // so (a script cannot send that itself).
+  void ExceedBudget() {
+    if (finished_) {
+      return;
+    }
+    finished_ = true;
+    timers_.clear();
+    client_->BudgetExceeded(
+        base::StrCat({"the script used its CPU budget of ",
+                      base::NumberToString(budget_.InMilliseconds()), " ms"}));
+  }
+
   void OnDisconnect() {
     // The browser closed the task's pipe (or went away): this task is over.
     // Moving the callback out first keeps `this` untouched after it runs.
@@ -799,7 +977,11 @@ class ScriptTask : public mojom::AutomationTask {
   }
 
   raw_ptr<v8::Isolate> isolate_;
+  raw_ptr<BudgetWatchdog> watchdog_;
   const uint32_t serial_;
+  // Zero: no budget.
+  const base::TimeDelta budget_;
+  base::TimeDelta used_;
   mojo::Receiver<mojom::AutomationTask> receiver_;
   mojo::Remote<mojom::AutomationTaskClient> client_;
   base::OnceClosure on_closed_;
@@ -834,12 +1016,14 @@ class AutomationHostService : public mojom::AutomationHost {
       const std::string& task_id,
       const std::string& script_source,
       const std::string& start_frame,
+      uint32_t cpu_budget_ms,
       mojo::PendingReceiver<mojom::AutomationTask> task,
       mojo::PendingRemote<mojom::AutomationTaskClient> client) override {
     EnsureIsolate();
     uint32_t serial = (next_serial_++) & 0x3fffffff;
     auto script_task = std::make_unique<ScriptTask>(
-        isolate_holder_->isolate(), serial, std::move(task), std::move(client),
+        isolate_holder_->isolate(), watchdog_.get(), serial,
+        base::Milliseconds(cpu_budget_ms), std::move(task), std::move(client),
         base::BindOnce(&AutomationHostService::RemoveTask,
                        base::Unretained(this), serial));
     ScriptTask* raw_task = script_task.get();
@@ -865,6 +1049,7 @@ class AutomationHostService : public mojom::AutomationHost {
     // not whenever V8's call depth reaches zero.
     isolate_holder_->isolate()->SetMicrotasksPolicy(
         v8::MicrotasksPolicy::kExplicit);
+    watchdog_ = std::make_unique<BudgetWatchdog>(isolate_holder_->isolate());
   }
 
   void RemoveTask(uint32_t serial) { tasks_.erase(serial); }
@@ -872,6 +1057,8 @@ class AutomationHostService : public mojom::AutomationHost {
   mojo::Receiver<mojom::AutomationHost> receiver_;
   // Declared before the tasks: tasks hold V8 handles and must go first.
   std::unique_ptr<gin::IsolateHolder> isolate_holder_;
+  // Between the two: it uses the isolate, and the tasks use it.
+  std::unique_ptr<BudgetWatchdog> watchdog_;
   std::map<uint32_t, std::unique_ptr<ScriptTask>> tasks_;
   uint32_t next_serial_ = 1;
 };

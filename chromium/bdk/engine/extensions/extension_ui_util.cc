@@ -4,11 +4,11 @@
 
 #include "bdk/engine/extensions/extension_ui_util.h"
 
+#include <optional>
 #include <utility>
+#include <vector>
 
 #include "base/base64.h"
-#include "base/containers/span.h"
-#include "base/memory/ref_counted_memory.h"
 #include "base/strings/stringprintf.h"
 #include "bdk/engine/engine_contents.h"
 #include "chrome/browser/profiles/profile.h"
@@ -16,7 +16,10 @@
 #include "content/public/browser/web_contents.h"
 #include "extensions/browser/extension_registry.h"
 #include "extensions/common/extension.h"
+#include "ui/gfx/codec/png_codec.h"
 #include "ui/gfx/image/image.h"
+#include "ui/gfx/image/image_skia.h"
+#include "ui/gfx/image/image_skia_rep.h"
 
 namespace bdk {
 
@@ -35,12 +38,21 @@ std::string PngDataUrl(const gfx::Image& image) {
   if (image.IsEmpty()) {
     return std::string();
   }
-  scoped_refptr<base::RefCountedMemory> png = image.As1xPNGBytes();
-  if (!png || png->size() == 0) {
+  // Encoded from the pixels as they are now. gfx::Image::As1xPNGBytes keeps
+  // its first encoding in the image, and Chromium hands out the same image
+  // for an extension's default action icon before and after the file loads
+  // (ExtensionActionIconFactory caches it; IconImage fills its ImageSkia in
+  // place): the icon would stay the blank placeholder for good.
+  const gfx::ImageSkiaRep rep = image.AsImageSkia().GetRepresentation(1.0f);
+  if (rep.is_null() || rep.scale() != 1.0f) {
     return std::string();
   }
-  return "data:image/png;base64," +
-         base::Base64Encode(base::span<const uint8_t>(*png));
+  std::optional<std::vector<uint8_t>> png = gfx::PNGCodec::EncodeBGRASkBitmap(
+      rep.GetBitmap(), /*discard_transparency=*/false);
+  if (!png || png->empty()) {
+    return std::string();
+  }
+  return "data:image/png;base64," + base::Base64Encode(*png);
 }
 
 std::string ColorHex(SkColor color) {

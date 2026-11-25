@@ -25,6 +25,7 @@ bdk_window_t bdk_harness_engine_window_handle(int window);
 void bdk_harness_engine_window_attach(int window, bdk_contents_t contents);
 void bdk_harness_engine_window_close(int window);
 void bdk_harness_engine_place_view(int window, bdk_native_handle_t view, double w, double h);
+void bdk_harness_engine_view_size(bdk_native_handle_t view, double* w, double* h);
 bdk_native_handle_t bdk_harness_engine_gesture(bdk_contents_t contents, int kind);
 int bdk_harness_engine_window_is_key(bdk_contents_t contents);
 extern const char* bdk_harness_engine_extensions;
@@ -345,6 +346,35 @@ static void test_engine_ext_ui_actions_report_state_and_badge_changes(void) {
     stop();
 }
 
+/* An action's default icon is a file Chromium loads after the first state is read: until then the
+   state carries a transparent placeholder. The loaded icon must reach the state, not the
+   placeholder forever. The fixture's icon is opaque noise, whose PNG is far longer than a blank
+   one's. */
+static void test_engine_ext_ui_an_action_icon_arrives_once_loaded(void) {
+    start(0, 1);
+    char id[64];
+    load_fixture("ui-action-icon", id, sizeof id);
+    static big_t big;
+    static char icon[65536];
+    size_t length = 0;
+    for (int i = 0; i < 200; ++i) {
+        invoke("extensions.actions", "{}", g_profile, g_b, &big);
+        REQUIRE(!big.has_error);
+        REQUIRE(strstr(big.json, id) != NULL);
+        icon[0] = '\0';
+        if (t_json_string(big.json, "icon", icon, sizeof icon))
+            length = strlen(icon);
+        if (length > 600)
+            break;
+        pumps(5);
+    }
+    CHECK(strncmp(icon, "data:image/png;base64,", 22) == 0);
+    if (length <= 600)
+        printf("    the action icon stayed %zu characters long: %.120s\n", length, icon);
+    CHECK(length > 600);
+    stop();
+}
+
 static void test_engine_ext_ui_activation_without_a_gesture_fails(void) {
     start(0, 1);
     char id[64], result[256];
@@ -482,6 +512,11 @@ static void test_engine_ext_ui_popup_with_a_handler_gets_the_secure_view_and_siz
     CHECK(grown);
     for (int u = 0; u < g_update_count && u < 16; ++u)
         CHECK(strstr(g_updates[u], "\"preferredSize\"") != NULL);
+    /* The application placed the view at 300x200 and has not resized it: the new size is its to
+       grant, so the view keeps the container's size instead of outgrowing it. */
+    double width = 0, height = 0;
+    bdk_harness_engine_view_size(g_popups.secure_view, &width, &height);
+    CHECK(width == 300 && height == 200);
     popup_state(out, sizeof out);
     CHECK(count_of(out, "shown") >= 1);
     CHECK(g_withdrawn == 0);
@@ -562,14 +597,17 @@ static void test_engine_ext_ui_a_disabled_popup_surface_blocks_a_popup_only_clic
     start(0, 1);
     char id[64], result[256];
     load_fixture("ui-action-popup", id, sizeof id);
+    /* The record counts the popups of the whole process, earlier tests' too. */
+    char out[512];
+    popup_state(out, sizeof out);
+    const int opened = count_of(out, "opened");
     bdk_error_t err = 0;
     REQUIRE(activate(g_b, id, 0, result, sizeof result, &err) == BDK_OK);
     CHECK(strstr(result, "\"outcome\":\"blocked\"") != NULL);
     CHECK(strstr(result, "\"reason\":\"popupsDisabled\"") != NULL);
     pumps(5);
-    char out[512];
     popup_state(out, sizeof out);
-    CHECK(count_of(out, "opened") == 0);
+    CHECK(count_of(out, "opened") == opened);
     stop();
 }
 
@@ -806,6 +844,8 @@ static void test_engine_ext_ui_a_declared_command_fires_oncommand_for_the_page(v
 const t_test_t t_engine_extension_ui_tests[] = {
     {"engine_ext_ui_actions_report_state_and_badge_changes",
      test_engine_ext_ui_actions_report_state_and_badge_changes},
+    {"engine_ext_ui_an_action_icon_arrives_once_loaded",
+     test_engine_ext_ui_an_action_icon_arrives_once_loaded},
     {"engine_ext_ui_activation_without_a_gesture_fails",
      test_engine_ext_ui_activation_without_a_gesture_fails},
     {"engine_ext_ui_activation_targets_the_focused_page",

@@ -267,7 +267,8 @@
       { "name": "SURFACE_DISABLED", "id": "surfaceDisabled" },
       { "name": "MANIFEST_INVALID", "id": "manifestInvalid" },
       { "name": "NOT_UNPACKED", "id": "notUnpacked" },
-      { "name": "PRIVATE_NOT_ALLOWED", "id": "privateNotAllowed" }
+      { "name": "PRIVATE_NOT_ALLOWED", "id": "privateNotAllowed" },
+      { "name": "BUDGET_EXCEEDED", "id": "budgetExceeded" }
     ],
     "runtimeEvents": [
       { "name": "REGISTRATIONS_FROZEN", "id": 1 },

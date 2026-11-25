@@ -67,6 +67,7 @@ extern "C" {
 #define BDK_CODE_MANIFEST_INVALID "manifestInvalid"
 #define BDK_CODE_NOT_UNPACKED "notUnpacked"
 #define BDK_CODE_PRIVATE_NOT_ALLOWED "privateNotAllowed"
+#define BDK_CODE_BUDGET_EXCEEDED "budgetExceeded"
 
 /* Runtime event kinds (bdk_runtime_event_cb). Provisional: c-abi.md names the callback but not
  * its kinds. */

@@ -238,6 +238,7 @@ public final class NewWindowRequest: BDKUIRequest {
     public let opener: BDKWebContents?
     public let features: WindowFeatures          // requested size and position, from window.open
     public let isUserGesture: Bool
+    public let initiatorExtensionID: String?     // the extension that asked (an options page, a link in its popup)
     public let newContents: BDKWebContents       // already created; has an opener relationship where the web requires one
     public func accept()                         // the application has placed newContents.view, or will
     public func reject()                         // destroys newContents
@@ -255,7 +256,7 @@ public final class NewWindowRequest: BDKUIRequest {
 
 | | |
 |---|---|
-| Default presenter | A plain `NSWindow` holding the new page's view, sized from the requested features |
+| Default presenter | A plain `NSWindow` holding the new page's view, sized from the requested features. No application owns the page: closing the window, or `window.close()` in the page, destroys it |
 | Why the page already exists | `window.open` returns a window object synchronously, with an opener link the web depends on. BDK cannot defer creation. Until the application attaches its view, the new page lives in the parking context. |
 | Popup blocking | Chromium's popup blocker runs first. A blocked popup is a `page_health` request (5.19), not a new-window request. |
 | No `disabled` | Rejecting every request breaks sign-in flows and payment pages. An application that wants that writes a handler that rejects. |

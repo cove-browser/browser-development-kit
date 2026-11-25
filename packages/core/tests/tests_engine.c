@@ -174,6 +174,36 @@ static void test_engine_a_rejected_new_window_is_destroyed(void) {
     CHECK(bdk_contents_destroy(popup) == BDK_ERR_STALE_HANDLE);
 }
 
+/* Left to BDK (no handler, or use-default), the new page is shown by the default presenter in a
+   window of BDK's own, at the size window.open asked for, instead of being dropped (T-EXT-12). */
+static void test_engine_a_defaulted_new_window_opens_in_the_default_presenter(void) {
+    reset_logs();
+    g_new_windows.response = BDK_UI_USE_DEFAULT;
+    bdk_contents_t c = start_with_page();
+    char record[512];
+    REQUIRE(bdk_testing_command(t_runtime, S("present.script"),
+                                S("{\"surface\":\"new_windows\",\"answer\":{\"none\":true}}"), NULL,
+                                0) == BDK_OK);
+    run_script(c, "window.open('https://bdk.test/defaulted', '_blank', 'width=320,height=240')", 1);
+    REQUIRE(g_new_windows.calls == 1);
+    bdk_contents_t popup = new_contents_of(g_new_windows.payload);
+    for (int i = 0; i < 10; ++i)
+        t_pump();
+    REQUIRE(bdk_testing_command(t_runtime, S("present.record"), S("{\"surface\":\"new_windows\"}"),
+                                record, sizeof record) == BDK_OK);
+    CHECK(strstr(record, "\"shown\":1") != NULL);
+    /* The payload is a JSON string inside the record, so its quotes are escaped. */
+    CHECK(strstr(record, "\\\"width\\\":320") != NULL);
+    CHECK(strstr(record, "\\\"height\\\":240") != NULL);
+    CHECK(wait_for_title(popup, "https://bdk.test/defaulted"));
+    /* Nobody owns a page in BDK's window: window.close() closes it and destroys the page. */
+    run_script(popup, "window.close()", 1);
+    for (int i = 0; i < 20; ++i)
+        t_pump();
+    CHECK(bdk_contents_destroy(popup) == BDK_ERR_STALE_HANDLE);
+    bdk_testing_command(t_runtime, S("present.clear"), S("{}"), NULL, 0);
+}
+
 /* ---- context menus (T-MAC-05) ---- */
 
 static void test_engine_a_right_click_on_a_link_raises_a_context_menu_with_link_items(void) {
@@ -333,6 +363,27 @@ static void test_engine_a_crashed_renderer_reports_renderer_gone(void) {
     /* The page recovers when the application reloads it. */
     REQUIRE(bdk_contents_reload(c, 0, &err) == BDK_OK);
     CHECK(wait_for_title(c, OPENER));
+}
+
+/* Chromium's own discard (memory pressure) swaps a WebContents with no renderer into a hidden
+   page's tab. The page follows its tab and loads again when it is shown, instead of keeping the
+   destroyed WebContents (found in M8: a page left hidden for hours came back blank). */
+static void test_engine_a_page_chromium_discards_loads_again_when_shown(void) {
+    reset_logs();
+    bdk_contents_t c = start_with_page();
+    char out[128];
+    char args[96];
+    snprintf(args, sizeof args, "{\"contents\":\"%llu\"}", (unsigned long long)c);
+    REQUIRE(bdk_testing_command(t_runtime, S("tab.chromiumDiscard"), S(args), out, sizeof out) ==
+            BDK_OK);
+    CHECK(strstr(out, "\"discarded\":true") != NULL);
+    t_pump();
+    bdk_harness_engine_show(c, 1);
+    for (int i = 0; i < 40; ++i)
+        t_pump();
+    run_script(c, "document.title = 'back'", 0);
+    CHECK(wait_for_title(c, "back"));
+    bdk_harness_engine_show(c, 0);
 }
 
 static void test_engine_showing_and_hiding_the_view_changes_visibility(void) {
@@ -1162,6 +1213,35 @@ static void test_engine_a_download_completes_and_is_controllable(void) {
     bdk_harness_engine_download_server_stop();
 }
 
+/* The profile Chromium loads itself at startup (the last used one) has its download manager before
+   BDK puts its delegate in, and Chromium gave the first free download id to the delegate it
+   replaced: every download in that profile waited forever, a store install among them (found in
+   M8). The hook puts BDK's delegate in again once the manager exists, as at startup. */
+static void test_engine_a_download_completes_in_a_profile_whose_manager_came_first(void) {
+    int port = bdk_harness_engine_download_server_start();
+    REQUIRE(port != 0);
+    bdk_harness_engine_download_server_release();
+    t_start_frozen();
+    bdk_profile_t p = t_new_profile("Manager first");
+    bdk_contents_t c = t_new_contents(p);
+    char args[256], url[96], id[32];
+    snprintf(args, sizeof args, "{\"contents\":\"%llu\"}", (unsigned long long)c);
+    command("downloads.replaceDelegate", args, NULL, 0);
+    char dir[] = "/tmp/bdk-engine-downloads-XXXXXX";
+    REQUIRE(mkdtemp(dir) != NULL);
+    snprintf(url, sizeof url, "http://127.0.0.1:%d/big.bin", port);
+    snprintf(args, sizeof args, "{\"url\":\"%s\",\"path\":\"%s/first.bin\"}", url, dir);
+    t_capture_t cap;
+    svc("downloads.start", args, p, &cap);
+    REQUIRE(!cap.has_error);
+    REQUIRE(t_json_string(cap.json, "id", id, sizeof id));
+    CHECK(wait_for_download_state(p, id, "complete"));
+    snprintf(args, sizeof args, "%s/first.bin", dir);
+    CHECK(unlink(args) == 0);
+    rmdir(dir);
+    bdk_harness_engine_download_server_stop();
+}
+
 /* Waits for Chromium to record a visit to the page's URL, as the helper of each page does after a
    commit. */
 static int history_has(bdk_profile_t p, const char* text) {
@@ -1329,6 +1409,8 @@ const t_test_t t_engine_tests[] = {
     {"engine_window_open_without_features_raises_a_new_page_request",
      test_engine_window_open_without_features_raises_a_new_page_request},
     {"engine_a_rejected_new_window_is_destroyed", test_engine_a_rejected_new_window_is_destroyed},
+    {"engine_a_defaulted_new_window_opens_in_the_default_presenter",
+     test_engine_a_defaulted_new_window_opens_in_the_default_presenter},
     {"engine_a_right_click_on_a_link_raises_a_context_menu_with_link_items",
      test_engine_a_right_click_on_a_link_raises_a_context_menu_with_link_items},
     {"engine_a_right_click_on_the_page_offers_navigation_items",
@@ -1341,6 +1423,8 @@ const t_test_t t_engine_tests[] = {
      test_engine_a_denied_page_ends_up_not_fullscreen},
     {"engine_a_crashed_renderer_reports_renderer_gone",
      test_engine_a_crashed_renderer_reports_renderer_gone},
+    {"engine_a_page_chromium_discards_loads_again_when_shown",
+     test_engine_a_page_chromium_discards_loads_again_when_shown},
     {"engine_showing_and_hiding_the_view_changes_visibility",
      test_engine_showing_and_hiding_the_view_changes_visibility},
     {"engine_keys_the_page_leaves_reach_the_application",
@@ -1380,6 +1464,8 @@ const t_test_t t_engine_tests[] = {
      test_engine_bookmarks_are_imported_and_exported_as_html},
     {"engine_a_download_completes_and_is_controllable",
      test_engine_a_download_completes_and_is_controllable},
+    {"engine_a_download_completes_in_a_profile_whose_manager_came_first",
+     test_engine_a_download_completes_in_a_profile_whose_manager_came_first},
     {"engine_profiles_keep_their_data_apart_and_private_ones_record_no_history",
      test_engine_profiles_keep_their_data_apart_and_private_ones_record_no_history},
     {"engine_settings_and_permissions_round_trip_to_chromium",

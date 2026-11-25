@@ -27,6 +27,7 @@
     "chromium:publish": "nx run chromium:publish",
     "test:release": "nx run-many -t test test-integration test-extensions test-e2e test-release",
     "dev:example": "nx run minimal-browser:dev",
+    "dev:arc": "nx run arc-style-browser:dev",
     "docs:build": "nx run docs-site:build"
   },
   "devDependencies": {

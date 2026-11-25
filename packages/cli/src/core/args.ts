@@ -7,6 +7,8 @@ export interface ParsedArgs {
   version: boolean;
   json: boolean;
   offline: boolean;
+  /** `--watch`: rebuild when the step's sources change, until interrupted. */
+  watch: boolean;
   project?: string;
   /** Forced diagnostics form; undefined means detect from the environment. */
   diagnostics?: DiagnosticFormat;
@@ -32,6 +34,7 @@ const OPTIONS = {
   version: { type: "boolean", short: "V" },
   json: { type: "boolean" },
   offline: { type: "boolean" },
+  watch: { type: "boolean" },
   project: { type: "string" },
   diagnostics: { type: "string" },
   out: { type: "string" },
@@ -74,6 +77,7 @@ export function parseCliArgs(argv: readonly string[]): ParsedArgs {
     version: values.version === true,
     json: values.json === true,
     offline: values.offline === true,
+    watch: values.watch === true,
     positionals,
   };
   if (values.project !== undefined) parsed.project = values.project;

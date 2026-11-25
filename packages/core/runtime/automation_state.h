@@ -35,6 +35,7 @@ struct Session {
 struct AutomationTask : std::enable_shared_from_this<AutomationTask> {
     bdk_task_t handle = 0;
     std::string id, script, entry_json, arguments_json;
+    uint32_t cpu_budget_ms = 0; /* the CPU time its script may use */
     std::weak_ptr<Runtime> rt;
     std::shared_ptr<Session> session;
     std::shared_ptr<Connection> connection; /* its protocol connection to the script */
@@ -68,6 +69,7 @@ struct Hello {
 struct AutomationState {
     bool enabled = false;                       /* [automation] enabled */
     bool external_enabled = false;              /* [automation.external] enabled */
+    uint32_t cpu_budget_ms = 60000;             /* [automation] cpu_budget_ms */
     bool protocol = true;                       /* [devtools] protocol */
     bool frontend_disabled = false;             /* [devtools] frontend = "disabled" */
     std::map<std::string, std::string> scripts; /* name -> resolved entry, as JSON */
@@ -77,6 +79,7 @@ struct AutomationState {
     std::vector<std::shared_ptr<ContentsWaiter>> waiters;
     /* The endpoint. */
     std::unique_ptr<LocalServer> server;
+    size_t endpoint_soft_limit = 0, endpoint_hard_limit = 0; /* test hook; 0: the default */
     std::map<uint64_t, std::shared_ptr<Connection>> external;
     bdk_automation_hello_cb hello_cb = nullptr;
     void* hello_ctx = nullptr;

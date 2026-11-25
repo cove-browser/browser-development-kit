@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { Assets } from "./assets.js";
 import { loadBundler } from "./core/automation/loader.js";
 import type { Context } from "./core/context.js";
+import type { WatchContext } from "./core/watch.js";
 import { genericPlatform } from "./platform/generic/index.js";
 
 /** A `Context` that records output, with fakes for everything outside the process. */
@@ -40,6 +41,8 @@ export function testContext(overrides: Partial<Context> = {}): TestContext {
     platform: genericPlatform,
     resolveConfig: () => Promise.resolve({ diagnostics: [], resolved: { ok: true } }),
     loadBundler,
+    // A watcher that never fires, and a run that is stopped at once.
+    watch: { watcher: () => ({ close() {} }), stopped: () => Promise.resolve(), debounceMs: 0 },
     ...overrides,
     out,
     err,
@@ -61,4 +64,43 @@ export async function tempProject(nested?: string): Promise<{ dir: string; start
   const start = nested === undefined ? dir : join(dir, nested);
   await mkdir(start, { recursive: true });
   return { dir, start };
+}
+
+/** A `--watch` context driven by hand: `change()` is a file change, `stop()` is Ctrl-C. */
+export interface FakeWatch {
+  watch: WatchContext;
+  /** The directories being watched now. */
+  watched: string[];
+  change(): void;
+  stop(): void;
+}
+
+export function fakeWatch(): FakeWatch {
+  const watched: string[] = [];
+  const listeners = new Set<() => void>();
+  let stop: () => void = () => {};
+  const stopped = new Promise<void>((resolve) => {
+    stop = resolve;
+  });
+  return {
+    watched,
+    change: () => {
+      for (const listener of listeners) listener();
+    },
+    stop,
+    watch: {
+      debounceMs: 0,
+      stopped: () => stopped,
+      watcher: (directory, onChange) => {
+        watched.push(directory);
+        listeners.add(onChange);
+        return {
+          close: () => {
+            watched.splice(watched.indexOf(directory), 1);
+            listeners.delete(onChange);
+          },
+        };
+      },
+    },
+  };
 }

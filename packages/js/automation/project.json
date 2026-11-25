@@ -6,19 +6,26 @@
   "targets": {
     "build": {
       "executor": "nx:run-commands",
-      "dependsOn": [{ "projects": ["js-protocol", "js-codegen"], "target": "build" }],
+      "dependsOn": [
+        { "projects": ["js-protocol", "js-codegen"], "target": "build" },
+        { "projects": ["js-codegen"], "target": "codegen" }
+      ],
       "options": { "command": "pnpm exec tsc -p {projectRoot}/tsconfig.build.json" },
       "inputs": ["default", { "externalDependencies": ["typescript"] }],
       "outputs": ["{projectRoot}/dist"]
     },
     "test": {
       "executor": "nx:run-commands",
-      "dependsOn": [{ "projects": ["core"], "target": "build" }],
+      "dependsOn": [
+        { "projects": ["core"], "target": "build" },
+        { "projects": ["js-codegen"], "target": "codegen" }
+      ],
       "options": { "command": "pnpm exec vitest run --root {projectRoot}" },
       "inputs": ["default", { "externalDependencies": ["vitest"] }]
     },
     "lint": {
       "executor": "nx:run-commands",
+      "dependsOn": [{ "projects": ["js-codegen"], "target": "codegen" }],
       "options": {
         "commands": [
           "pnpm exec biome check {projectRoot}",

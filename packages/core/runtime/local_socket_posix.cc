@@ -17,6 +17,7 @@
 #include <map>
 #include <mutex>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #include "automation_internal.h"
@@ -82,11 +83,40 @@ bool private_directory(const std::string& path, std::string* why) {
     return true;
 }
 
+/* One frame waiting its turn, length prefix included. */
+struct Queued {
+    std::string bytes;
+    std::string key; /* what a newer frame replaces it under; empty: never */
+};
+
 struct Client {
     int fd = -1;
     std::string in;  /* bytes read and not yet framed */
-    std::string out; /* bytes queued and not yet written */
+    std::string out; /* bytes the transport thread took and has not finished writing */
+    std::map<uint64_t, Queued> queue;                /* frames not taken yet, in order */
+    std::unordered_map<std::string, uint64_t> keyed; /* a key's newest frame in queue */
+    size_t queued = 0;                               /* bytes in queue */
+    uint64_t next = 0;
     bool closing = false;
+
+    size_t Backlog() const {
+        return out.size() + queued;
+    }
+    bool HasOutput() const {
+        return !out.empty() || !queue.empty();
+    }
+    /* Appends frames from the front of the queue to bytes until it holds limit bytes. */
+    void Take(std::string* bytes, size_t limit) {
+        while (!queue.empty() && bytes->size() < limit) {
+            auto front = queue.begin();
+            auto k = keyed.find(front->second.key);
+            if (k != keyed.end() && k->second == front->first)
+                keyed.erase(k);
+            queued -= front->second.bytes.size();
+            *bytes += front->second.bytes;
+            queue.erase(front);
+        }
+    }
 };
 
 /* Whether a poll() event word has a flag (POSIX declares both as signed). */
@@ -118,21 +148,45 @@ class PosixServer final : public LocalServer {
         alive_.reset(); /* events already posted find nothing to call */
     }
 
-    bool Send(uint64_t id, const std::string& frame) override {
+    bool Send(uint64_t id, const std::string& frame, const std::string& key) override {
         std::lock_guard<std::mutex> lock(mutex_);
         auto it = clients_.find(id);
         if (it == clients_.end() || it->second.closing)
             return false;
-        if (it->second.out.size() + frame.size() + 4 > kMaxQueuedBytes)
+        Client& c = it->second;
+        /* A newer state replaces the older one that still waits, and goes behind everything sent
+           since, so that no frame is delivered before one that was sent earlier. */
+        if (!key.empty() && c.Backlog() > soft_) {
+            auto k = c.keyed.find(key);
+            if (k != c.keyed.end()) {
+                auto old = c.queue.find(k->second);
+                c.queued -= old->second.bytes.size();
+                c.queue.erase(old);
+                c.keyed.erase(k);
+            }
+        }
+        if (c.Backlog() + frame.size() + 4 > hard_)
             return false;
         const auto n = static_cast<uint32_t>(frame.size());
         const char prefix[4] = {static_cast<char>((n >> 24U) & 0xffU),
                                 static_cast<char>((n >> 16U) & 0xffU),
                                 static_cast<char>((n >> 8U) & 0xffU), static_cast<char>(n & 0xffU)};
-        it->second.out.append(prefix, 4);
-        it->second.out += frame;
+        Queued q;
+        q.bytes.append(prefix, 4);
+        q.bytes += frame;
+        q.key = key;
+        c.queued += q.bytes.size();
+        if (!key.empty())
+            c.keyed[key] = c.next;
+        c.queue.emplace(c.next++, std::move(q));
         Wake();
         return true;
+    }
+
+    void SetLimits(size_t soft_bytes, size_t hard_bytes) override {
+        std::lock_guard<std::mutex> lock(mutex_);
+        soft_ = soft_bytes ? soft_bytes : kSoftQueuedBytes;
+        hard_ = hard_bytes ? hard_bytes : kMaxQueuedBytes;
     }
 
     void Disconnect(uint64_t id) override {
@@ -190,7 +244,7 @@ class PosixServer final : public LocalServer {
                 fds.push_back({listen_fd_, POLLIN, 0});
                 for (auto& kv : clients_) {
                     fds.push_back(
-                        {kv.second.fd, kv.second.out.empty() ? short{POLLIN} : kReadWrite, 0});
+                        {kv.second.fd, kv.second.HasOutput() ? kReadWrite : short{POLLIN}, 0});
                     ids.push_back(kv.first);
                 }
             }
@@ -257,14 +311,17 @@ class PosixServer final : public LocalServer {
     void Service(uint64_t id, short revents) {
         int fd = -1;
         std::string pending;
+        const bool writing = has(revents, POLLOUT);
         {
             std::lock_guard<std::mutex> lock(mutex_);
             auto it = clients_.find(id);
             if (it == clients_.end())
                 return;
             fd = it->second.fd;
-            if (has(revents, POLLOUT))
+            if (writing) {
                 pending.swap(it->second.out);
+                it->second.Take(&pending, kTakeBytes); /* the rest stays open to coalescing */
+            }
         }
         std::string left = pending.empty() ? std::string() : Flush(fd, std::move(pending));
         std::string incoming;
@@ -289,7 +346,8 @@ class PosixServer final : public LocalServer {
             if (it == clients_.end())
                 return;
             Client& c = it->second;
-            c.out = left + c.out;
+            if (writing)
+                c.out = std::move(left);
             c.in += incoming;
             while (c.in.size() >= 4) {
                 const auto* b = reinterpret_cast<const unsigned char*>(c.in.data());
@@ -330,6 +388,7 @@ class PosixServer final : public LocalServer {
             }
         }
         for (auto& [id, client] : gone) {
+            client.Take(&client.out, std::string::npos);
             (void)Flush(client.fd, std::move(client.out));
             shutdown(client.fd, SHUT_RDWR);
             close(client.fd);
@@ -337,6 +396,8 @@ class PosixServer final : public LocalServer {
         }
     }
 
+    /* How much the transport takes from a connection's queue to write at once. */
+    static constexpr size_t kTakeBytes = size_t{256} * 1024;
     static constexpr short kReadWrite =
         static_cast<short>(static_cast<unsigned>(POLLIN) | static_cast<unsigned>(POLLOUT));
 
@@ -347,6 +408,7 @@ class PosixServer final : public LocalServer {
     std::mutex mutex_;
     std::map<uint64_t, Client> clients_;
     uint64_t next_id_ = 1;
+    size_t soft_ = kSoftQueuedBytes, hard_ = kMaxQueuedBytes; /* guarded by mutex_ */
     std::atomic<bool> stop_{false};
     std::thread thread_;
 };

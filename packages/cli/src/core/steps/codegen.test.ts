@@ -5,6 +5,12 @@ import { memoryAssets, tempDir, testContext } from "../../test-support.js";
 import { run } from "../run.js";
 
 const SDK = {
+  "js/sdk/@bdk/automation/index.js": "export const session = 0;\n",
+  "js/sdk/@bdk/automation/index.d.ts": "export declare const session: number;\n",
+  "js/sdk/@bdk/automation/commands.js": "export const commands = 0;\n",
+  "js/sdk/@bdk/automation/commands.d.ts": "export declare const commands: object;\n",
+  "js/sdk/@bdk/automation/events.js": "export const events = 0;\n",
+  "js/sdk/@bdk/automation/events.d.ts": "export declare const events: object;\n",
   "js/sdk/@bdk/internal/index.js": "export const index = 1;\n",
   "js/sdk/@bdk/internal/index.d.ts": "export declare const index: number;\n",
   "js/sdk/@bdk/internal/settings.js": "export const settings = 2;\n",
@@ -60,7 +66,21 @@ describe("bdk build codegen", () => {
     const out = join(dir, ".bdk", "js");
     // `node_modules/@bdk` is a link to `@bdk`; the listing follows it.
     expect((await tree(out)).filter((f) => !f.startsWith("node_modules/@bdk/"))).toEqual([
+      "@bdk/automation/app.d.ts",
+      "@bdk/automation/commands.d.ts",
+      "@bdk/automation/commands.js",
+      "@bdk/automation/events.d.ts",
+      "@bdk/automation/events.js",
+      "@bdk/automation/index.d.ts",
+      "@bdk/automation/index.js",
+      "@bdk/automation/package.json",
+      "@bdk/commands/index.d.ts",
+      "@bdk/commands/index.js",
+      "@bdk/commands/package.json",
       "@bdk/env.d.ts",
+      "@bdk/events/index.d.ts",
+      "@bdk/events/index.js",
+      "@bdk/events/package.json",
       "@bdk/internal/app.d.ts",
       "@bdk/internal/index.d.ts",
       "@bdk/internal/index.js",
@@ -181,6 +201,63 @@ describe("bdk build codegen", () => {
       join(dir, ".bdk/js/@bdk"),
     );
     expect(await tree(join(dir, "Views"))).toEqual([]);
+  });
+
+  it("gives scripts the typed packages: @bdk/automation with its app. declarations, and @bdk/commands and @bdk/events standing for its entries", async () => {
+    const dir = await project({ "Automation/a.ts": "1", ".bdk/bdk.commands.json": COMMANDS });
+    const ctx = context(dir, {});
+    expect(await run(["build", "codegen", "--json"], ctx)).toBe(0);
+    const out = join(dir, ".bdk", "js");
+    const app = await readFile(join(out, "@bdk/automation/app.d.ts"), "utf8");
+    expect(app).toContain('declare module "@bdk/automation/commands"');
+    expect(app).toContain('"app.notes.list"');
+    expect(app).not.toContain("@bdk/internal");
+    const automation = JSON.parse(
+      await readFile(join(out, "@bdk/automation/package.json"), "utf8"),
+    );
+    expect(automation.exports).toEqual({
+      ".": { types: "./index.d.ts", default: "./index.js" },
+      "./app": { types: "./app.d.ts" },
+      "./commands": { types: "./commands.d.ts", default: "./commands.js" },
+      "./events": { types: "./events.d.ts", default: "./events.js" },
+    });
+    expect(await readFile(join(out, "@bdk/commands/index.d.ts"), "utf8")).toBe(
+      'export * from "@bdk/automation/commands";\n',
+    );
+    expect(await readFile(join(out, "@bdk/events/index.js"), "utf8")).toBe(
+      'export * from "@bdk/automation/events";\n',
+    );
+    const events = JSON.parse(await readFile(join(out, "@bdk/events/package.json"), "utf8"));
+    expect(events).toMatchObject({ name: "@bdk/events", type: "module", version: "1.2.3" });
+    // The link in the Automation directory reaches them all, `@bdk/commands` included.
+    const link = join(dir, "Automation", "node_modules", "@bdk");
+    expect(await readlink(link)).toBe(join(out, "@bdk"));
+    expect((await readdir(link)).sort()).toEqual([
+      "automation",
+      "commands",
+      "env.d.ts",
+      "events",
+      "internal",
+      "protocol",
+      "vite",
+    ]);
+    expect(JSON.parse(ctx.out.join("")).result.codegen.packages).toEqual([
+      "@bdk/automation",
+      "@bdk/internal",
+      "@bdk/protocol",
+      "@bdk/vite",
+      "@bdk/commands",
+      "@bdk/events",
+    ]);
+  });
+
+  it("writes no @bdk/commands or @bdk/events when the SDK has no @bdk/automation", async () => {
+    const dir = await project(PAGES);
+    const sdk = Object.fromEntries(
+      Object.entries(SDK).filter(([name]) => !name.includes("@bdk/automation")),
+    );
+    expect(await run(["build", "codegen"], context(dir, { assets: memoryAssets(sdk) }))).toBe(0);
+    expect(await tree(join(dir, ".bdk/js/@bdk"))).not.toContain("commands/index.js");
   });
 
   it("uses the directory named in [pages] of bdk.toml for the link", async () => {

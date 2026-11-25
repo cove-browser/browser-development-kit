@@ -171,6 +171,9 @@ public final class NewWindowRequest: BDKUIRequest {
     public let opener: BDKWebContents?
     public let features: WindowFeatures
     public let isUserGesture: Bool
+    /// The extension that asked for the page (its options page, a link in its popup), or nil when a
+    /// page asked.
+    public let initiatorExtensionID: String?
     private let newContentsHandle: UInt64?
     private var adoptedContents: BDKWebContents?
 
@@ -184,16 +187,22 @@ public final class NewWindowRequest: BDKUIRequest {
         features = WindowFeatures(
             x: size.double("x"), y: size.double("y"), width: size.double("width"),
             height: size.double("height"))
-        isUserGesture = fields.bool("isUserGesture")
+        // The payload names it "userGesture" (engine_contents.cc, tests_engine.c).
+        isUserGesture = fields.bool("userGesture")
+        initiatorExtensionID = fields.object("initiator")?.string("extensionId")
         newContentsHandle = fields.handle("newContents")
         super.init(delivery, runtime: runtime)
+        // A page an extension opened is announced as such (amendments 2.18, T-EXT-12).
+        if let initiatorExtensionID, let page = newContents {
+            runtime.publish(.webContentsCreated(page, by: .extension(initiatorExtensionID)))
+        }
     }
 
     /// The page the runtime already created for the request, which has an opener relationship where
     /// the web requires one. Nil when the runtime named no page.
     public var newContents: BDKWebContents? {
         if adoptedContents == nil, let newContentsHandle, let owner = profile ?? opener?.profile {
-            adoptedContents = BDKWebContents.adopt(handle: newContentsHandle, in: owner)
+            adoptedContents = adoptPage(handle: newContentsHandle, in: owner)
         }
         return adoptedContents
     }
@@ -234,7 +243,7 @@ public final class DevToolsRequest: BDKUIRequest {
     /// The DevTools front end, as a page.
     public var frontend: BDKWebContents? {
         if adoptedFrontend == nil, let frontendHandle, let owner = profile ?? inspected?.profile {
-            adoptedFrontend = BDKWebContents.adopt(handle: frontendHandle, in: owner)
+            adoptedFrontend = adoptPage(handle: frontendHandle, in: owner)
         }
         return adoptedFrontend
     }
@@ -266,7 +275,7 @@ public final class PrintRequest: BDKUIRequest {
     /// Chromium's print preview, as a page the application may host.
     public var previewContents: BDKWebContents? {
         if adoptedPreview == nil, let previewHandle, let owner = profile ?? contents?.profile {
-            adoptedPreview = BDKWebContents.adopt(handle: previewHandle, in: owner)
+            adoptedPreview = adoptPage(handle: previewHandle, in: owner)
         }
         return adoptedPreview
     }

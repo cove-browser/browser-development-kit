@@ -150,7 +150,7 @@ public enum RuntimeEvent: Sendable {
     case utilityProcessGone(name: String, ProcessGoneReason)
     case automationHostGone(ProcessGoneReason)     // sessions have ended with an error
     case memoryPressure(MemoryPressureLevel)
-    case webContentsCreated(BDKWebContents, by: Creator)   // .application, .automation(session), .extension(id)
+    case webContentsCreated(BDKWebContents, by: Creator)   // .application, .automation(session), .extension(id); built in M8 for sessions only (.extension: T-EXT-12)
     case webContentsDestroyed(BDKWebContents.ID)
 }
 
@@ -355,7 +355,7 @@ A renderer crash is an event, not an error and not a UI request. The application
 
 ### 6.5 Scripting
 
-Plan, M7, task T-AUT-03; written in M7; passes on the stub, engine build and test pending (T-AUT-06). The same operations are available to automation sessions as `contents.*` commands. As built (`packages/swift/README.md`): `.isolated("")` and `.isolated("page")` are refused; `.all` sends no frame except to `insertCSS`; synthesised input and `waitFor` have no Swift wrapper yet (T-AUT-07, M8) and are reachable through `runtime.commands.invoke`.
+Plan, M7, task T-AUT-03; written in M7; passes on the stub, engine build and test pending (T-AUT-06). The same operations are available to automation sessions as `contents.*` commands. As built (`packages/swift/README.md`): `.isolated("")` and `.isolated("page")` are refused; `.all` sends no frame except to `insertCSS`; `click`, `hover`, `type`, `press`, `scroll` and `waitFor` are built (T-AUT-07): input takes an `InputTarget` (`.selector`, `.point`) and `waitFor` a `WaitCondition` (`.load`, `.url`) and a `Duration`, as listed in `packages/swift/README.md`.
 
 ```swift
 public final class Scripting {
@@ -533,8 +533,7 @@ public enum WindowRequest {
 |---|---|
 | A page view becomes first responder | That page becomes the active page of its window |
 | A window becomes key | Its context becomes the most recently active one |
-| Two page views are visible in one window | BDK represents them as an upstream split, so both are foreground for translate, find and dialogs |
-| Three or more are visible | The focused one is active. The others follow the behaviour recorded for risk R2 until task T-ADP-06 lands. |
+| Two or more page views are visible in one window | The focused one is the window's active tab. Every one on screen is foreground for find, JavaScript dialogs, permission prompts and translation offers (M8, T-ADP-06; no upstream split, amendments 2.18). Extensions see the focused one as the active tab and the others as background tabs (risk R2) |
 
 No API call is involved. BDK reads focus and visibility from the views.
 
@@ -852,7 +851,7 @@ Settled in T-SVC-08 (2026-11-20):
 
 ## 13. Automation
 
-Plan, M7, tasks T-AUT-01 to T-AUT-04; written in M7; passes on the stub, engine build and test pending (T-AUT-06). As built: `session.run` throws instead of being `async`; `external.open(directory:authenticate:)` takes an async authenticator; pages a session creates arrive as `runtime.automation.events` `.contentsCreated(page, bySession:)`, not yet through `webContentsCreated(_, by:)` (T-AUT-07, M8). The host and its trust model are in `architecture.md` 9.3; the JavaScript side is in [javascript-api.md](javascript-api.md) section 5.
+Plan, M7, tasks T-AUT-01 to T-AUT-04; written in M7; passes on the stub, engine build and test pending (T-AUT-06). As built: `session.run` throws instead of being `async`; `external.open(directory:authenticate:)` takes an async authenticator; pages a session creates arrive as `runtime.automation.events` `.contentsCreated(page, bySession:)` and as `runtime.events` `.webContentsCreated(page, by: .automation(session: name))` (T-AUT-07); `.application` and `.extension` are not emitted yet. The host and its trust model are in `architecture.md` 9.3; the JavaScript side is in [javascript-api.md](javascript-api.md) section 5.
 
 ```swift
 let session = try runtime.automation.makeSession(.init(

@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { AUTOMATION_DIR, renderAutomationModules } from "./automation.js";
 import { renderHeader } from "./header.js";
 import { InterfaceError, type Issue } from "./issue.js";
 import {
@@ -36,6 +37,8 @@ export interface Outputs {
   readonly swift: string;
   /** File name (relative to `TYPESCRIPT_DIR`) to the text of each `@bdk/internal` module. */
   readonly typescript: Readonly<Record<string, string>>;
+  /** File name (relative to `AUTOMATION_DIR`) to the text of each `@bdk/automation` module. */
+  readonly automation: Readonly<Record<string, string>>;
 }
 
 function parseJson(file: string, text: string): { json: unknown; issues: Issue[] } {
@@ -88,6 +91,7 @@ export function build(inputs: Inputs): Outputs {
     table: renderCommandTable(validated.definitions, reconciled.registry, policy),
     swift: renderSwiftServices(validated.definitions),
     typescript: renderTypescriptModules(validated.definitions),
+    automation: renderAutomationModules(validated.definitions),
   };
 }
 
@@ -134,14 +138,19 @@ function committedTargets(coreDir: string, outputs: Outputs): [string, string, s
 }
 
 /**
- * The `@bdk/internal` modules as absolute path and text. They are git-ignored build outputs: only Nx targets
- * read them, and those depend on `js-codegen:codegen`.
+ * The `@bdk/internal` and `@bdk/automation` modules as absolute path and text. They are git-ignored build
+ * outputs: only Nx targets read them, and those depend on `js-codegen:codegen`.
  */
 function typescriptTargets(coreDir: string, outputs: Outputs): [string, string][] {
-  return Object.entries(outputs.typescript).map(([file, text]): [string, string] => [
-    join(coreDir, TYPESCRIPT_DIR, file),
-    text,
-  ]);
+  const modules = (directory: string, files: Readonly<Record<string, string>>) =>
+    Object.entries(files).map(([file, text]): [string, string] => [
+      join(coreDir, directory, file),
+      text,
+    ]);
+  return [
+    ...modules(TYPESCRIPT_DIR, outputs.typescript),
+    ...modules(AUTOMATION_DIR, outputs.automation),
+  ];
 }
 
 /** Writes every generated file, leaving one untouched when its content would not change. */

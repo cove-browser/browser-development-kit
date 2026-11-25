@@ -1,0 +1,33 @@
+# The Arc-style reference application (M8). It is application code over the public SDK: BDK has no
+# space, split or tab type, and gains none from this example.
+[browser]
+name = "Arc-style Browser"
+internal_scheme = "arc"
+
+# Pages/Settings is discovered and served at arc://settings with these grants.
+[pages.capabilities.settings]
+allow = ["settings.read", "settings.write"]
+
+[extensions]
+enabled = true
+
+[extensions.install]
+unpacked = true
+# The Chrome Web Store installs (decision D4): its button reads "Add to Arc-style Browser".
+stores = ["chrome-web-store"]
+
+# The application shows actions in its sidebar and places popups and side panels in its own
+# containers (ExtensionPlacement); context menus and options pages keep BDK's defaults.
+[extensions.ui]
+actions = "custom"
+popups = "custom"
+side_panels = "custom"
+
+# Pages that pages open (target="_blank", window.open, an extension's options page) go into the
+# sidebar (PagePlacement); popups keep BDK's own window.
+[ui.surfaces]
+new_windows = "custom"
+
+# Automation/spaces.ts, run from Tools > Run Automation over Two Spaces.
+[automation]
+enabled = true

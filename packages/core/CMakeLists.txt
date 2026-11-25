@@ -156,6 +156,7 @@ if(BDK_ENGINE_FRAMEWORK AND APPLE)
     tests/tests_engine_providers.c tests/tests_engine_privacy.c tests/tests_engine_pages.c
     tests/tests_engine_extensions.c tests/tests_engine_ext_ui.c tests/tests_engine_ext_panels.c
     tests/tests_engine_ext_probe.c tests/tests_engine_webauthn.c tests/tests_engine_dialogs.c
+    tests/tests_engine_arc.c
     tests/engine_ext_support.c
     tests/harness_engine.mm tests/harness_engine_ext.mm
     tests/harness_broker_unsupported.c tests/harness_automation_unsupported.c tests/harness_providers_unsupported.c)
@@ -163,7 +164,7 @@ if(BDK_ENGINE_FRAMEWORK AND APPLE)
   # The automation scripts and DevTools front ends of tests_engine_automation.c, where `bdk build` puts
   # them in an application, with the digests the resolved configuration records.
   set(BDK_FIXTURES "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
-  foreach(script acceptance wait fail debug)
+  foreach(script acceptance wait fail debug spaces busy)
     set(file "${BDK_FIXTURES}/automation/${script}.js")
     file(SHA256 "${file}" digest)
     string(TOUPPER "${script}" upper)

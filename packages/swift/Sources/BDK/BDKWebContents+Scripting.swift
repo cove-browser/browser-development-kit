@@ -33,7 +33,7 @@ public final class Scripting {
         public let root: BDKJSValue
     }
 
-    private let scope: BDKServiceScope
+    let scope: BDKServiceScope
 
     init(contents: BDKWebContents) {
         scope = BDKServiceScope(runtime: contents.profile.runtime, profile: nil, contents: contents)
@@ -147,7 +147,7 @@ extension Scripting.World {
 }
 
 extension Scripting.FrameSelector {
-    fileprivate var argument: String? {
+    var argument: String? {
         if case .frame(let id) = self { id } else { nil }
     }
 }
@@ -157,7 +157,7 @@ extension BDKFrameInfo {
 }
 
 extension BDKWebContents {
-    /// Evaluate scripts, inject CSS, query and snapshot the page.
+    /// Evaluate scripts, inject CSS, query, snapshot and drive the page.
     public var scripting: Scripting {
         Scripting(contents: self)
     }

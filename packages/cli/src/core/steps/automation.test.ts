@@ -1,9 +1,9 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createAssets } from "../../assets.js";
-import { tempDir, testContext } from "../../test-support.js";
+import { fakeWatch, tempDir, testContext } from "../../test-support.js";
 import type { Bundler } from "../automation/bundler.js";
 import { sha256 } from "../config/digest.js";
 import { resolveConfig } from "../config/index.js";
@@ -363,5 +363,101 @@ describe("bdk build automation", () => {
       command: "build automation",
       result: { automation: { built: ["hello"], unchanged: [] } },
     });
+  });
+});
+
+describe("bdk build automation --watch", () => {
+  const bundleOf = (app: string) => join(app, "Contents/Resources/BDK/Automation/hello.js");
+
+  async function recordedDigest(dir: string): Promise<string | undefined> {
+    const automation = (await resolvedOf(dir)).automation as {
+      scripts: Record<string, Record<string, string>>;
+    };
+    return automation.scripts.hello?.bundle_digest;
+  }
+
+  it("builds once, rebuilds a changed script into the same bundle, survives a build error and stops with 0", async () => {
+    const { dir, app } = await project(HELLO);
+    await build(dir);
+    const fake = fakeWatch();
+    const ctx = real(dir, { watch: fake.watch });
+    const running = run(["build", "automation", "--bundle", app, "--watch"], ctx);
+
+    // The first build has finished once the loop is watching the automation directory.
+    await vi.waitFor(() => expect(fake.watched).toEqual([join(dir, "Automation")]));
+    expect(ctx.out.join("")).toContain("watching Automation");
+    expect(await recordedDigest(dir)).toBe(sha256(await readFile(bundleOf(app))));
+
+    await write(dir, "Automation/hello.ts", "export default () => 'second';\n");
+    fake.change();
+    // The bundle is written before the resolved file records its digest: wait for both.
+    await vi.waitFor(async () => {
+      expect(await readFile(bundleOf(app), "utf8")).toContain("second");
+      expect(await recordedDigest(dir)).toBe(sha256(await readFile(bundleOf(app))));
+    });
+
+    await write(dir, "Automation/hello.ts", "export default function (( {\n");
+    fake.change();
+    await vi.waitFor(() => expect(ctx.err.join("")).toContain("automation.bundle_failed"));
+    // The last good bundle and its digest are left alone.
+    expect(await readFile(bundleOf(app), "utf8")).toContain("second");
+    expect(await recordedDigest(dir)).toBe(sha256(await readFile(bundleOf(app))));
+
+    await write(dir, "Automation/hello.ts", "export default () => 'third';\n");
+    fake.change();
+    // The bundle is written before the resolved file records its digest: wait for both.
+    await vi.waitFor(async () => {
+      expect(await readFile(bundleOf(app), "utf8")).toContain("third");
+      expect(await recordedDigest(dir)).toBe(sha256(await readFile(bundleOf(app))));
+    });
+    const { config_digest, ...body } = await resolvedOf(dir);
+    expect(config_digest).toBe(configDigest(body));
+
+    fake.stop();
+    expect(await running).toBe(0);
+    expect(fake.watched).toEqual([]);
+  });
+
+  it("watches the configured automation directory", async () => {
+    const { dir, app } = await project(HELLO);
+    await write(dir, "Scripts/hello.ts", "export default () => 'moved';\n");
+    await write(
+      dir,
+      "bdk.toml",
+      '[browser]\nname = "Demo"\n\n[automation]\nenabled = true\ndirectory = "Scripts"\n',
+    );
+    await build(dir);
+    const fake = fakeWatch();
+    const running = run(
+      ["build", "automation", "--bundle", app, "--watch"],
+      real(dir, { watch: fake.watch }),
+    );
+    await vi.waitFor(() => expect(fake.watched).toEqual([join(dir, "Scripts")]));
+    fake.stop();
+    expect(await running).toBe(0);
+  });
+
+  it("reports an error that stops a rebuild and keeps watching", async () => {
+    const { dir, app } = await project(HELLO);
+    await build(dir);
+    const fake = fakeWatch();
+    const ctx = real(dir, { watch: fake.watch });
+    const running = run(["build", "automation", "--bundle", app, "--watch"], ctx);
+    await vi.waitFor(() => expect(fake.watched).toHaveLength(1));
+
+    await rm(join(dir, "bdk.resolved.json"));
+    fake.change();
+    await vi.waitFor(() => expect(ctx.err.join("")).toContain("automation.resolved_missing"));
+    expect(fake.watched).toHaveLength(1);
+    fake.stop();
+    expect(await running).toBe(0);
+  });
+
+  it("fails without watching when the first build cannot run", async () => {
+    const { dir, app } = await project(HELLO);
+    const fake = fakeWatch();
+    const ctx = real(dir, { watch: fake.watch });
+    expect(await run(["build", "automation", "--bundle", app, "--watch"], ctx)).toBe(1);
+    expect(fake.watched).toEqual([]);
   });
 });

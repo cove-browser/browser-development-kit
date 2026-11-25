@@ -1,0 +1,6 @@
+[browser]
+name = "Cove"
+
+[automation]
+enabled = true
+cpu_budget_ms = 100

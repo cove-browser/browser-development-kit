@@ -65,6 +65,7 @@ provider = "system"
 
 [automation]
 enabled = true
+cpu_budget_ms = 30000
 
 [automation.external]
 enabled = false

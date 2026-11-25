@@ -18,11 +18,33 @@ section 2 of the M7 design contract (frames: `hello`, `call`, `cancel`, `subscri
 Source layout: `wire.ts` (frame types, framing), `transport.ts` and `connection.ts` (calls, cancellation,
 subscriptions), `host.ts` (the in-host transport over `globalThis.__bdkHost`, `session`, `task`),
 `page.ts`, `scripts.ts`, `namespaces.ts`, `commands.ts`, `events.ts`, `api.ts` (assembles them over one
-connection), `client.ts` (Node socket).
+connection), `client.ts` (Node socket), and the generated `services.ts` and `types.ts` (see Types).
 
 Outside the host, importing `@bdk/automation` does nothing and throws no error; using a host-bound API then
-throws "this API needs the BDK automation host". The service namespaces are loosely typed until code
-generation (T-JS-02) provides declarations.
+throws "this API needs the BDK automation host".
+
+## Types
+
+The service namespaces, `commands.execute` and `events.on` are typed from the interface definitions (task
+T-JS-06). `pnpm exec nx run js-codegen:codegen` writes `src/types.ts` (every named type) and `src/services.ts`
+(`CommandMap` and `EventMap` of everything a session may call or subscribe to, an interface per service
+namespace, and `Services`) from `packages/core/interface`. Both are git-ignored, and the `build`, `test` and
+`lint` targets depend on the generator, as `js-internal`'s do. They hold types only: the runtime is the one
+proxy in `namespaces.ts`, so a call is `<namespace>.<method>` or, for a group, `autofill.addresses.list`.
+`@bdk/automation/types` exports the named types.
+
+* A service call takes its command's arguments, so `history.search({ query: "x" })` does not compile; it
+  resolves with the result as BDK sends it (a paginated command returns one page, `{ items, nextCursor }`).
+* `commands.execute(name, args)` takes any command a session may call (`CommandMap`) or an `app.` command,
+  and `events.on(name, listener)` any event (`EventMap`) or `app.` event, with the payload typed by name.
+* The application's `app.` commands and events come from its `bdk.commands.json`: `bdk build codegen` writes
+  `@bdk/automation/app.d.ts`, which merges them into `AppCommands` and `AppEvents`. A script's `tsconfig.json`
+  includes it. While nothing is declared, any `app.` name is accepted and its result and payload are `unknown`.
+* Settings keys are plain strings here; `@bdk/internal` narrows them to the declared keys.
+
+`src/typing.test.ts` holds the browser-side cases (`@ts-expect-error` lines that `nx run js-automation:lint`
+compiles) and `src/application-typing.test.ts` compiles a script against the `app.d.ts` that
+`generateApplication` writes for a `bdk.commands.json` fixture, with `tsc`.
 
 ## How scripts are bundled
 
