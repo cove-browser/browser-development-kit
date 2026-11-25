@@ -22,6 +22,7 @@ Status: plan, 2026-11-14. Evidence for every "verified" claim is in [feasibility
 | Documentation site | Fumadocs | Product owner |
 | CLI | TypeScript, with a platform-neutral core and one module per host platform. Shipped as one executable per platform, built with Node's own `node --build-sea` and no wrapper package. Bun is the fallback if T-CLI-05 fails. | Product owner, 2026-11-16; [sdk/cli.md](sdk/cli.md) section 2 |
 | Node version | One Node 26 release, 26.9 or later, pinned in `.node-version` (read by fnm) and in `engines`. It builds the repository and is the runtime inside `bdk`. | Product owner, 2026-11-16 |
+| An application developed against unreleased BDK | No submodule. A `bdk-main` worktree that tracks `origin/main`; the application takes Swift, the `@bdk/*` packages and the runtime from it through local paths, and from a pinned revision elsewhere | Product owner, 2026-11-23; section 7.3 |
 
 Where this document departs from the brief or the spec, section 11 lists the difference.
 
@@ -269,6 +270,30 @@ What is verified and what is not:
 
 Leave sccache until there is a reason to share a compiler cache between machines. Its local mode allows only one server process at a time.
 
+### 7.3 Developing an application against unreleased BDK
+
+Decided 2026-11-23 for Cove, which is developed in its own repository while BDK is still changing under it. Not set up yet: the worktree, Cove's sync script and the `Package.swift` switch are created when Cove's repository starts. Nothing here builds Chromium.
+
+Cove does not vendor BDK as a Git submodule. A submodule is a second clone outside the worktrees and the hooks, every edit needs a commit inside it and a pointer bump in Cove, and SwiftPM's `Package.resolved` already pins the revision a submodule would. Instead:
+
+| Part | Local development | Elsewhere (cloud agents, CI for Cove) |
+|---|---|---|
+| BDK source | One Git worktree of this repository, `bdk-main`, next to Cove's clone. It only tracks `origin/main` and is never worked in, so commits that cloud agents push reach Cove without touching a working branch. | None |
+| Swift | `.package(path:)` to `bdk-main` when `BDK_LOCAL` is set, chosen in Cove's `Package.swift` the way the examples choose a runtime with `BDK_RUNTIME` | `.package(url:revision:)` to this repository, pinned in `Package.resolved`. Moved on purpose, not on every resolve. |
+| `@bdk/*` packages | `link:` to `bdk-main/packages/js/<name>`, through `pnpm.overrides` in Cove's `package.json` | Not yet: no package is published (below) |
+| Runtime | The `.bdk/runtime` symlink `chromium:runtime` writes in `bdk-main`, which points into `BDK_HOME` | A published runtime once one exists (below) |
+
+Cove's `bdk:sync` script runs, in `bdk-main`: `git pull --ff-only`, `pnpm install --frozen-lockfile`, `pnpm exec nx run-many -t build` for the `js-*` projects Cove imports, then `pnpm chromium:runtime`. The last step only resolves. It stops, naming the source key, when the pull changed `chromium/bdk`, a patch or the GN arguments; the runtime is then rebuilt once in the managed checkout and every worktree and Cove pick it up. Taking Swift, JavaScript and the runtime from the same commit is the point: mixing a Swift package from a newer commit with an older runtime fails at start on the ABI hash (section 8).
+
+Cove carries no Chromium of its own. The checkout, its output directories and the runtime store stay under `BDK_HOME` (sections 7 and 7.1), and `bdk-main` holds only the symlink, like any other worktree.
+
+Why not install from GitHub directly:
+
+- Swift could resolve `branch: "main"` from GitHub, because its sources are committed. It is not used for local work, because the runtime would then come from a different commit.
+- pnpm installs a subdirectory of a Git repository (`github:<owner>/<repo>#main&path:/packages/js/internal`), but the result does not work here: every `@bdk/*` package points `main` and `exports` at `dist/`, which is ignored by Git, and the packages build through Nx with dependencies on each other, which pnpm cannot run inside one fetched subdirectory. A branch of built packages that CI commits to would make it work; deferred, because it means CI pushing commits.
+
+A machine with no Chromium build gets a runtime only after one is published. `pnpm chromium:publish` runs on the developer's Mac: it uploads the archive with `gh release upload` to the release `runtime-<key>` and records it in `chromium/pin.json`, and `chromium:runtime` then downloads and verifies it for that key (T-PKG-04, M2). It uses no GitHub Actions minutes, and release assets on a public repository have no storage or bandwidth charge (each file must be under 2 GiB; a runtime is about 700 MB unpacked). Publishing is an outward action left to the product owner; nothing has been published, so `pin.json` records no runtime. The signed and notarized release is T-PKG-06, M9.
+
 ## 8. Artifact manifest and provenance
 
 Every runtime in the store and every published runtime carries `manifest.json`:
@@ -468,4 +493,5 @@ When a `dev` branch starts producing beta releases, a build machine and a build 
 | Everything above on a real Chromium checkout and build | Unverified; tasks T-CHR-01 to T-CHR-07 |
 | Nx behaviour with concurrent runs writing very large outputs | Unverified, and avoided by design |
 | Linux and Windows equivalents of `lockf` and APFS clones | Unverified; `flock` and reflink copies are the expected equivalents |
+| An application outside this repository builds against a `bdk-main` worktree through local Swift and pnpm paths and resolves its runtime from `BDK_HOME` | Unverified; set up when Cove's repository starts (section 7.3) |
 | A Node single executable of the CLI runs from a Swift package artifact bundle and an Xcode build phase | Verified for the executable, the artifact bundle under SwiftPM, no Node on `PATH` and start-up time (2026-11-18, [sdk/cli.md](sdk/cli.md) section 2.3). Not verified in an Xcode run-script phase. |

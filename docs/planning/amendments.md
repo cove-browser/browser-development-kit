@@ -1,6 +1,6 @@
 # Amendments to the BDK plan
 
-Dated 2026-11-15; section 2.10 was added on 2026-11-16, 2.12 and 2.13 on 2026-11-19, 2.14 to 2.17 on 2026-11-20, 2.18 on 2026-11-21, 2.19 to 2.21 on 2026-11-22. This lists everything that changed in the planning documents after the 2026-11-14 version, following the product owner's review. If you read the 2026-11-14 documents, reading this is enough. The other documents already contain these changes; nothing here still needs to be applied.
+Dated 2026-11-15; section 2.10 was added on 2026-11-16, 2.12 and 2.13 on 2026-11-19, 2.14 to 2.17 on 2026-11-20, 2.18 on 2026-11-21, 2.19, 2.20 and 2.22 on 2026-11-22, 2.21 on 2026-11-23. This lists everything that changed in the planning documents after the 2026-11-14 version, following the product owner's review. If you read the 2026-11-14 documents, reading this is enough. The other documents already contain these changes; nothing here still needs to be applied.
 
 ## 1. Summary
 
@@ -403,7 +403,20 @@ the network (the harness served it before HTTPS-First could upgrade it). The cli
 yet (T-UIR-10, M4). Routing what is refused or off waits for S3 (T-UIR-13, M9). The series is 24 patches; the task
 list is 144.
 
-### 2.21 The Arc-style reference application in M8 (2026-11-21, merged 2026-11-22)
+### 2.21 Developing Cove against unreleased BDK (2026-11-23)
+
+The product owner asked how Cove, in its own repository, should take BDK while both change. The answer is [repository-and-tooling.md](repository-and-tooling.md) section 7.3:
+
+| Considered | Decided | Why |
+|---|---|---|
+| BDK as a Git submodule of Cove | No submodule. A `bdk-main` worktree of this repository that only tracks `origin/main`; Cove's `bdk:sync` pulls it, builds the `js-*` packages and resolves the runtime | One BDK clone, its hooks and `BDK_HOME`; no pointer bumps; commits cloud agents push reach Cove on the next sync |
+| Swift from GitHub, JavaScript and runtime from local | Swift from `bdk-main` too, through `.package(path:)` when `BDK_LOCAL` is set; a pinned `.package(url:revision:)` otherwise | Swift, JavaScript and the runtime from one commit; a newer Swift package against an older runtime fails at start on the ABI hash |
+| `@bdk/*` installed from a GitHub link | `link:` to `bdk-main` | Their `dist/` is not committed and they build through Nx, so a Git install has no code. A CI-built branch would fix that; deferred |
+| A Chromium build per consumer | None: Cove resolves the runtime from `BDK_HOME` through `bdk-main/.bdk/runtime`; a changed patch or overlay stops the sync instead of building | The store is shared by source key (section 7.1) |
+
+Publishing a runtime (`chromium:publish`) runs locally and uses no GitHub Actions; it is still left to the product owner, and `pin.json` records none. Nothing was set up or built for this: the worktree, the script and the switch come with Cove's repository.
+
+### 2.22 The Arc-style reference application in M8 (2026-11-21, merged 2026-11-22)
 
 M8 built `apps/examples/arc-style-browser` (T-ARC-02, T-ARC-03) on the public SDK only, settled T-ADP-06, and
 finished the M7 leftovers T-AUT-07 and T-JS-06. BDK gained no space, split or tab API; the one new public
@@ -492,7 +505,7 @@ The task list goes from 103 to 106 tasks. The README said 100 before, which was 
 | Document | Sections that changed |
 |---|---|
 | [architecture.md](architecture.md) | 1 (A9), 2, 4.1, 8.2, 11.1 (new), 13, 17 |
-| [repository-and-tooling.md](repository-and-tooling.md) | 1, 2, 3, 4, 6.1 (new), 8, 8.1 (new), 9, 10, 10.1 (new), 10.2 (new) |
+| [repository-and-tooling.md](repository-and-tooling.md) | 1, 2, 3, 4, 6.1 (new), 7.3 (new, 2.21), 8, 8.1 (new), 9, 10, 10.1 (new), 10.2 (new), 12 |
 | [risks.md](risks.md) | D1, D8, R3, R4, R9, R15, R30 (new) |
 | [roadmap.md](roadmap.md) | M0.7, M1, M2, M6, M9, v1 gates, section 5; M2 status (2026-11-19, 2.12) |
 | [tasks.md](tasks.md) | The rows in section 3 above |
