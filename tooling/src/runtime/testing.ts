@@ -24,7 +24,11 @@ function put(path: string, content: string, mode?: number): void {
 export interface RepoFixture {
   readonly patch?: string;
   readonly abiHash?: string;
+  /** Declare third-party notices in runtime-files.json, as the repository does. */
+  readonly notices?: boolean;
 }
+
+export const NOTICES_FROM = "gen/components/resources/about_credits.html";
 
 /** A minimal BDK repository: pin, patches, overlay, GN preset, runtime-files, ABI sources. */
 export function makeRepo(root: string, fixture: RepoFixture = {}): string {
@@ -39,7 +43,14 @@ export function makeRepo(root: string, fixture: RepoFixture = {}): string {
   put(join(root, "chromium/gn/release.gn"), "is_debug = false\n");
   put(
     join(root, "chromium/runtime-files.json"),
-    `${JSON.stringify({ schema: 1, target: { os: "macos", min_os: "13.0" }, paths: ["Chromium.app"] })}\n`,
+    `${JSON.stringify({
+      schema: 1,
+      target: { os: "macos", min_os: "13.0" },
+      paths: ["Chromium.app"],
+      ...(fixture.notices
+        ? { notices: { from: NOTICES_FROM, to: "THIRD_PARTY_NOTICES.html" } }
+        : {}),
+    })}\n`,
   );
   put(join(root, "packages/core/include/bdk/bdk_base.h"), "#define BDK_ABI_VERSION 1\n");
   put(join(root, "packages/core/generated/abi-hash.txt"), `${fixture.abiHash ?? FAKE_ABI_HASH}\n`);
@@ -60,6 +71,7 @@ export function makeOut(outDir: string, marker = "one"): void {
     "helper\n",
     0o755,
   );
+  put(join(outDir, NOTICES_FROM), "<html><body>Credits: libfoo, MIT</body></html>\n");
   symlinkSync("158.0.8127.37", join(fw, "Versions", "Current"));
   symlinkSync("Versions/Current/Chromium Framework", join(fw, "Chromium Framework"));
   symlinkSync("Versions/Current/Resources", join(fw, "Resources"));

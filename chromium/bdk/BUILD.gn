@@ -37,6 +37,8 @@ source_set("core") {
     "core/runtime/local_socket_posix.cc",
     "core/runtime/navigation_policy.cc",
     "core/runtime/navigation_policy.h",
+    "core/runtime/profile_versions.cc",
+    "core/runtime/profile_versions.h",
     "core/runtime/providers.cc",
     "core/runtime/providers_internal.h",
     "core/runtime/reputation_lists.cc",

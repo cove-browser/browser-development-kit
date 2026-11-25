@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { bdkPaths } from "../paths.js";
 import { archiveFileName, createArchive, defaultFormat } from "./archive.js";
 import { canonicalJson } from "./canonical.js";
+import { compareManifests } from "./compare.js";
 import type { Manifest } from "./manifest.js";
 import { type PackageOptions, packageRuntime } from "./packager.js";
 import { removeTree } from "./store.js";
@@ -12,11 +13,6 @@ export interface ReproducibilityReport {
   readonly reproducible: boolean;
   readonly sourceKey: string;
   readonly differences: readonly string[];
-}
-
-/** The manifest with the one field that may differ between two packagings blanked. */
-function withoutTimestamp(m: Manifest): unknown {
-  return { ...m, builder: { ...m.builder, timestamp: "" } };
 }
 
 /**
@@ -43,13 +39,13 @@ export async function checkReproducible(
       if (i === 0) firstDir = r.runtimeDir;
     }
     const [a, b] = manifests as [Manifest, Manifest];
-    const differences: string[] = [];
-    for (const path of new Set([...Object.keys(a.files), ...Object.keys(b.files)])) {
-      if (a.files[path] !== b.files[path]) differences.push(`file differs: ${path}`);
-    }
-    if (canonicalJson(withoutTimestamp(a)) !== canonicalJson(withoutTimestamp(b))) {
+    const comparison = compareManifests(a, b, "strict");
+    const differences = [...comparison.differences];
+    // Both packagings come from one machine and one commit: the only provenance that may differ is the time.
+    const provenance = (m: Manifest) =>
+      canonicalJson([{ ...m.builder, timestamp: "" }, m.bdk.repo_commit, m.attestation]);
+    if (provenance(a) !== provenance(b))
       differences.push("manifests differ beyond builder.timestamp");
-    }
     const format = defaultFormat();
     const name = archiveFileName(a.source_key, format);
     const x = await createArchive(firstDir, join(scratch, "a1", name), format);

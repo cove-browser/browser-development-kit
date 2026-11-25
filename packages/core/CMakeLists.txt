@@ -83,6 +83,7 @@ add_library(bdk_stub STATIC runtime/core.cc runtime/core_host.cc runtime/core_wi
   runtime/extension_policy.cc runtime/app_settings.cc runtime/broker.cc runtime/routes.cc
   runtime/broker_args.cc runtime/automation.cc runtime/contents_commands.cc runtime/local_socket_posix.cc
   runtime/providers.cc runtime/translation.cc runtime/reputation_lists.cc runtime/navigation_policy.cc
+  runtime/profile_versions.cc
   stub/stub_backend.cc stub/stub_services.cc stub/stub_extensions.cc stub/stub_broker.cc stub/stub_automation.cc
   stub/stub_providers.cc)
 target_include_directories(bdk_stub
@@ -120,7 +121,7 @@ add_executable(bdk_conformance
   tests/test_support.c tests/tests_base.c tests/tests_runtime.c tests/tests_broker.c
   tests/tests_profile.c tests/tests_contents.c tests/tests_ui.c tests/tests_automation.c
   tests/tests_endpoint.c tests/tests_providers.c tests/tests_pages.c tests/tests_extensions.c
-  tests/tests_navigation_policy.c
+  tests/tests_navigation_policy.c tests/tests_profile_versions.c tests/tests_robustness.c
   ${BDK_HARNESS_SOURCES} ${BDK_BROKER_HARNESS_SOURCES})
 target_include_directories(bdk_conformance PRIVATE tests)
 target_link_libraries(bdk_conformance PRIVATE bdk_headers ${BDK_RUNTIME_LIBRARY})
@@ -153,6 +154,7 @@ if(BDK_ENGINE_FRAMEWORK AND APPLE)
     tests/test_support.c tests/tests_base.c tests/tests_runtime.c tests/tests_broker.c
     tests/tests_profile.c tests/tests_contents.c tests/tests_ui.c tests/tests_automation.c
     tests/tests_endpoint.c tests/tests_providers.c tests/tests_pages.c tests/tests_extensions.c tests/tests_engine.c
+    tests/tests_profile_versions.c tests/tests_robustness.c
     tests/tests_engine_ui.c tests/tests_engine_prompts.c tests/tests_engine_automation.c
     tests/tests_engine_providers.c tests/tests_engine_privacy.c tests/tests_engine_pages.c
     tests/tests_engine_extensions.c tests/tests_engine_ext_ui.c tests/tests_engine_ext_panels.c

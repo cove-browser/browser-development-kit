@@ -8,6 +8,7 @@ Read [docs/conventions.md](docs/conventions.md) first.
 ```sh
 pnpm exec nx run core:build      # headers as C11 and C++23, stub, suite
 pnpm exec nx run core:test       # ctest: conformance suite + ABI hash check
+pnpm exec nx run core:test-release  # the robustness suite with 50000 rounds (BDK_ROBUSTNESS_ITERATIONS), T-REL-03
 pnpm exec nx run core:test-engine  # the suite and the engine scenarios against the real runtime (.bdk/runtime)
 pnpm exec nx run core:test-engine:silent  # the same, with the test app's windows kept behind yours and never focused
 cmake -P packages/core/cmake/abi-hash.cmake   # print the ABI hash

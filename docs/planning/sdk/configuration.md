@@ -82,11 +82,30 @@ Set both explicitly before the first public release and never change them. They 
 | Key | Type | Default | Status | Meaning |
 |---|---|---|---|---|
 | `mode` | `"prebuilt"` or `"source"` | `"prebuilt"` | Plan | Prebuilt uses the published runtime for the resolved BDK version. Source builds one from the checkout with the application's patches. |
-| `downgrade` | `"refuse"` or `"fresh-profile"` | `"refuse"` | Plan, M9, T-PKG-05 | What happens when an older engine meets a profile last used by a newer one and no snapshot exists. `refuse` fails start with an error the application can show. `fresh-profile` starts with a new profile and leaves the old one untouched. |
-| `snapshot_on_upgrade` | boolean | `true` | Plan, M9 | Snapshot each profile before the first launch of a newer engine milestone. |
+| `downgrade` | `"refuse"` or `"fresh-profile"` | `"refuse"` | Plan, M9, T-PKG-05: built in the core and tested on the stub; the engine does not apply it yet (T-PKG-05) | What happens when an older engine meets a profile last used by a newer one and no snapshot exists. `refuse` fails start with an error the application can show. `fresh-profile` starts with a new profile and leaves the old one untouched. |
+| `snapshot_on_upgrade` | boolean | `true` | Plan, M9, T-PKG-05: as `downgrade` | Snapshot each profile before the first launch of a newer engine milestone. |
 | `locales` | array of strings | all shipped | Later | Locale resources to keep in the bundle. Reduces size. |
 
 The BDK version is not in `bdk.toml`. It is the version of the Swift package the application depends on.
+
+#### Upgrade and rollback (T-PKG-05)
+
+The policy works on the whole data directory (every profile, and the local state beside them), with Chromium's
+own files, so a snapshot BDK takes is one Chromium would restore:
+
+| The data directory was last used by | What start does |
+|---|---|
+| Nothing (no `Last Version`, or one that does not parse) | Records the engine's version |
+| The same version, or another version of the same milestone | Nothing (Chromium supports a change within a milestone) |
+| An older milestone | With `snapshot_on_upgrade`, copies the directory to `Snapshots/<that version>/`, leaving out caches and the process lock, and keeps the three newest snapshots |
+| A newer milestone, and a snapshot no newer than this engine exists | Restores the newest such snapshot; the newer data is removed |
+| A newer milestone and no usable snapshot | `refuse`: start fails with `runtime.downgradeRefused` and nothing is touched. `fresh-profile`: the directory is renamed to `<name>.newer-<version>` beside it, untouched, and start continues with an empty one |
+
+A failure to copy or move is `runtime.profileMigrationFailed`; a snapshot is written beside its final name and
+renamed into place, so a crash leaves no half snapshot. Swift sees both as a `BDKError` of domain `runtime`.
+Built in `packages/core/runtime/profile_versions.cc`, tested in `packages/core/tests/tests_profile_versions.c`
+on the stub. Not done (T-PKG-05): the Chromium engine reporting its data directory and version to the core,
+and an engine scenario that moves a real profile to a newer runtime and back.
 
 ### 3.4 `[chromium]`
 

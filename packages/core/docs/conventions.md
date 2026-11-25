@@ -38,7 +38,11 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
 * Contents cannot be created before the freeze (`BDK_ERR_NOT_STARTED`).
 * Errors: `bdk_status_t` plus a trailing `bdk_error_t* out_error`, set to 0 on entry and filled only with
   `BDK_ERR_FAILED`. Domains and codes are strings (`bdk_ids.h` has the ones used so far).
-* Coordinates are window coordinates in device-independent pixels, origin top-left. Paths are UTF-8 strings.
+* Coordinates are window coordinates in device-independent pixels, origin top-left. Screen coordinates (a
+  window request's `frame`, Swift's `BDKWindow` frames) are Chromium's: device-independent pixels, origin at the
+  top-left of the primary display, y downwards; only macOS converts (T-XPL-01, X8). Paths are UTF-8 strings: a
+  runtime converts them at the edge from UTF-8 (`char8_t`, `base::FilePath::FromUTF8Unsafe`), never through
+  `std::filesystem::path(std::string)`, which reads the ANSI code page on Windows (X6).
 
 ## Decisions where c-abi.md was silent or sketched (provisional)
 
@@ -136,6 +140,28 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
     first time the page was navigated"), so back/forward cache restores and prerender activations are not
     asked; the throttle must ask for a prerender's own navigation and discard a prerender it may not keep.
     Checked against the source at the pin, not built.
+
+17. Profile snapshots and the downgrade policy (`runtime/profile_versions.{h,cc}`, T-PKG-05, M9). Before the
+    backend starts, the core reads `runtime.downgrade` and `runtime.snapshot_on_upgrade`, asks the backend for
+    the data directory and the engine version (`Backend::ProfileDataDirectory`, `Backend::EngineVersion`; both
+    default to empty, which skips the policy) and applies the rule to that directory with Chromium's own files:
+    `Last Version` and `Snapshots/<version>/`, valid when it holds its own `Last Version`. A newer milestone
+    snapshots what the last version left (caches and the process singleton are left out; the three newest
+    snapshots are kept, Chromium's default retention); an older milestone restores the newest snapshot no newer
+    than the engine, and with none fails start with `runtime.downgradeRefused` (`refuse`) or renames the
+    directory to `<name>.newer-<version>` beside it and starts empty (`fresh-profile`). A change within a
+    milestone does nothing, as in Chromium. Other failures are `runtime.profileMigrationFailed`. The codes are
+    strings, not `bdk_ids.h` constants, like `noDataDirectory`. The stub applies it to `user_data_path_override`
+    as engine version `1.0.0.0`; the Chromium engine does not supply its directory and version yet (T-PKG-05).
+    `bdk_harness_own_data_directory` says whether a harness lets a start name its own data directory; the
+    engine's does not (Chromium starts once per process), so `tests_profile_versions.c` runs on the stub only.
+
+18. Robustness (`tests/tests_robustness.c`, T-REL-03). Pages opened, loaded, closed and destroyed many times;
+    the runtime shut down with pages open and started again; a renderer crashed and the page reloaded; peak
+    resident size bounded. `BDK_ROBUSTNESS_ITERATIONS` sets the rounds: 100 by default in `core:test`,
+    50000 in `core:test-release` (about three seconds on the stub), where the memory bound applies. The stub
+    treats a load of `chrome://crash` as Chromium does: the page's renderer goes (`reason` `crashed`) and
+    nothing commits.
 
 ### The UI request router
 
@@ -586,6 +612,17 @@ select tests.
 No AppKit, Win32 or toolkit type appears; native objects cross only as `bdk_native_handle_t` (kinds exist for NSView,
 NSWindow, NSApplication, NSEvent, HWND, X11 and Wayland). The stub uses only the C++23 standard library and
 pthreads, and builds on macOS and Linux.
+
+Reviewed for Windows, Linux and a .NET binding in T-XPL-01: [docs/release/cross-platform-review.md](../../../docs/release/cross-platform-review.md).
+From it:
+
+* Hosts are 64-bit only (x64 and arm64), so no calling convention is named in the headers (X4).
+* Whether a native handle is the user's confirming event is decided in one place, `is_gesture_event`
+  (`runtime/ui_router.cc`); a new platform adds its input event's kind there and nowhere else (X1, X2).
+* Functions returning `bdk_string_t` return a 16-byte struct by value: a hidden pointer on Windows x64, two
+  registers elsewhere. Blittable for .NET (X5).
+* A .NET or other managed binding calls `bdk_runtime_start` on its UI thread and receives every callback there
+  (X11).
 
 ## Running the suite against the engine
 

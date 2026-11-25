@@ -114,7 +114,7 @@ Notes:
 | `pnpm chromium:build` | `nx run chromium:build` | Applies patches, `gn gen`, `autoninja`, under the checkout lock. |
 | `pnpm chromium:package` | `nx run chromium:package` | Assembles the runtime, writes the manifest, moves it into the runtime store. |
 | `pnpm chromium:publish` | `nx run chromium:publish` | Uploads the packaged runtime as a release asset and records its source key, URL, ABI hash and manifest digest in `chromium/pin.json`. Run by a person, from a clean tree. |
-| `pnpm test:release` | `nx run-many -t test test-integration test-extensions test-e2e` | The pre-release pass, run locally against the source-built runtime (section 10.2). |
+| `pnpm test:release` | `nx run-many -t test test-integration test-extensions test-e2e test-release` | The pre-release pass, run locally against the source-built runtime (section 10.2). `test-release` adds the runtime resolver suite and the robustness suites (T-REL-03). |
 | `pnpm dev:example` | `nx run minimal-browser:dev` | Builds and launches the minimal example. |
 | `pnpm dev:arc` | `nx run arc-style-browser:dev` | Builds and launches the Arc-style reference application (M8). |
 | `pnpm docs:build` | `nx run docs-site:build` | Builds the documentation site. |
@@ -453,6 +453,9 @@ Run on a developer's Mac, from a clean tree, against the source-built runtime:
 3. `pnpm cli:package`; sign and notarize the `bdk` executable; place it in the Swift package's artifact bundle.
 4. Sign and notarize the example application under a second team identifier.
 5. `pnpm chromium:publish`, commit the pin record and the SwiftPM checksums, then tag.
+
+The full procedure, with commands and the dry run that checks a release without a build
+(`chromium:release-check`), is [docs/release/procedure.md](../release/procedure.md) (T-PKG-06).
 
 Expected time, none of it measured:
 

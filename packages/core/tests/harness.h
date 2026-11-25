@@ -28,6 +28,11 @@ const char* bdk_harness_session_format(void);
    returns its length. */
 size_t bdk_harness_newer_session_state(uint8_t* out, size_t cap);
 
+/* Non-zero when a start may name a data directory of its own in user_data_path_override. A runtime
+   that keeps one data directory per process (the engine: Chromium starts once) returns 0, and the
+   tests of the profile snapshot and downgrade policy (tests_profile_versions.c) are skipped. */
+int bdk_harness_own_data_directory(void);
+
 /* Runs every pending callback and simulated step on the calling (UI) thread until idle. Returns the
  * count. */
 size_t bdk_harness_pump(void);

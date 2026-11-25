@@ -127,7 +127,7 @@ std::shared_ptr<Contents> page_for(bdk_contents_t h, bdk_string_t id, bdk_native
         *status = fail(err, BDK_DOMAIN_CONTENTS, BDK_CODE_STALE, "the contents is closed");
         return nullptr;
     }
-    if (gesture.kind != BDK_NATIVE_NSEVENT) {
+    if (!is_gesture_event(gesture)) {
         *status = fail(err, BDK_DOMAIN_UI, BDK_CODE_GESTURE_REQUIRED,
                        "activating an extension needs the event that confirmed it");
         return nullptr;
@@ -323,7 +323,7 @@ BDK_EXPORT bdk_status_t bdk_extension_menu_present(bdk_window_t h, bdk_native_ha
     auto rt = current_runtime();
     if (!rt || rt->shutting)
         return BDK_ERR_STALE_HANDLE;
-    if (gesture.kind != BDK_NATIVE_NSEVENT)
+    if (!is_gesture_event(gesture))
         return fail(err, BDK_DOMAIN_UI, BDK_CODE_GESTURE_REQUIRED,
                     "the extensions menu opens for the event that asked for it");
     if (ui_surface_mode(*rt, BDK_SURFACE_EXTENSION_ACTIONS) != UiMode::kDefault)

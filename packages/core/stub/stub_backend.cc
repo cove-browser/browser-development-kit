@@ -23,6 +23,10 @@ using namespace bdkcore;
 
 namespace {
 
+/* The engine version the stub reports to the profile snapshot and downgrade policy: older than any
+   Chromium, so a test's "newer" and "older" versions mean the same against the engine. */
+constexpr const char* kStubEngineVersion = "1.0.0.0";
+constexpr const char* kCrashUrl = "chrome://crash";
 constexpr int32_t kErrAborted = -3;
 constexpr int32_t kErrBlocked = -20; /* net::ERR_BLOCKED_BY_CLIENT */
 constexpr uint32_t kMainFrame = BDK_EVENT_FLAG_MAIN_FRAME;
@@ -531,6 +535,17 @@ class StubBackend final : public Backend {
                std::to_string(BDK_ABI_VERSION) + ",\"abiHash\":\"" BDK_ABI_HASH "\"}";
     }
 
+    /* The stub keeps everything in memory. Given a data directory (tests, launch options), it
+       applies the snapshot and downgrade policy to it as if it were an engine of version
+       kStubEngineVersion. */
+    std::string ProfileDataDirectory(const bdk_start_config_t& config,
+                                     const std::string&) override {
+        return str(config.user_data_path_override);
+    }
+    std::string EngineVersion() override {
+        return kStubEngineVersion;
+    }
+
     void ProfilesChanged(Runtime&) override {}
 
     void OpenProfile(Runtime&, const std::shared_ptr<Profile>&, Done done) override {
@@ -583,6 +598,15 @@ class StubBackend final : public Backend {
 
     bdk_status_t Load(const std::shared_ptr<Contents>& c, const std::string& url,
                       bdk_error_t*) override {
+        /* Chromium's debug URL kills the page's renderer and commits nothing; the stub reports it
+           the same way, so a crash-recovery test runs on both (tests_robustness.c). */
+        if (url == kCrashUrl) {
+            Post([weak = std::weak_ptr<Contents>(c)] {
+                if (auto page = weak.lock())
+                    bdkstub::page_renderer_gone(page, "crashed");
+            });
+            return BDK_OK;
+        }
         begin_nav(c, url, -1);
         return BDK_OK;
     }

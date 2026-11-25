@@ -21,3 +21,11 @@ Both also set `support_external_google_api_key = true` (declared in `google_apis
 (T-PRV-09) so that one runtime serves applications with and without their own Google key. Only
 `google_apis/buildflags.h` depends on it, read by the `google_apis` target and `fuchsia_web` (not built
 here). Not yet run through `gn gen` or a build: engine build pending.
+
+Both also set `generate_about_credits = true` (declared in `components/resources/BUILD.gn`), added in M9
+(T-REL-02): the build then runs `tools/licenses/licenses.py credits` to write
+`gen/components/resources/about_credits.html`, which is `chrome://credits` and, through
+`chromium/runtime-files.json`'s `notices`, the runtime's `THIRD_PARTY_NOTICES.html`. Its default
+(`is_official_build`) copies a placeholder, which packaging refuses. Only that action, its buildflag header
+(read by `about_ui_credits_unittests.cc`, not built here) and `components_resources.pak` depend on it, so the
+rebuild is small. Not yet run through `gn gen` or a build.

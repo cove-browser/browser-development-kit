@@ -69,10 +69,12 @@ export async function directoryDigest(dir: string): Promise<string> {
   return sha256Hex(lines.join(""));
 }
 
-/** SHA-256 of the canonical runtime inventory: target and the sorted, normalised path list. */
+/** SHA-256 of the canonical runtime inventory: target, the sorted, normalised path list, and the notices. */
 export function runtimeFilesDigest(repoRoot: string): string {
   const rf = readRuntimeFiles(repoRoot);
-  return sha256Hex(canonicalJson({ target: rf.target, paths: [...new Set(rf.paths)].sort() }));
+  return sha256Hex(
+    canonicalJson({ target: rf.target, paths: [...new Set(rf.paths)].sort(), notices: rf.notices }),
+  );
 }
 
 export function gnPresetPath(repoRoot: string, config: string): string {

@@ -150,6 +150,21 @@ async function normaliseTimes(root: string): Promise<void> {
   await utimes(root, FIXED_MTIME, FIXED_MTIME);
 }
 
+/** What Chromium writes as its credits page when `generate_about_credits` is false. */
+export const SAMPLE_CREDITS_MARKER = "This is sample credits page.";
+
+/** The notices must be Chromium's generated credits, not the placeholder a default build copies. */
+async function assertRealNotices(path: string): Promise<void> {
+  const st = await lstat(path);
+  if (!st.isFile()) throw new PackagingError(`Third-party notices ${path} are not a regular file.`);
+  if ((await readFile(path, "utf8")).includes(SAMPLE_CREDITS_MARKER)) {
+    throw new PackagingError(
+      `${path} is Chromium's placeholder credits page, not the third-party notices. ` +
+        "Build with generate_about_credits = true (chromium/gn/release.gn) and package again.",
+    );
+  }
+}
+
 /**
  * Assembles `runtimes/<source-key>` from the build output: copy the declared files into a temporary
  * directory in the store, write and verify `manifest.json`, make it read-only, rename into place.
@@ -176,10 +191,11 @@ export async function packageRuntime(opts: PackageOptions): Promise<PackageResul
   }
   await (opts.verifyAbiHash ?? assertAbiHashCurrent)(repoRoot);
   const missing: string[] = [];
-  for (const rel of declared.paths) {
+  for (const rel of [...declared.paths, ...(declared.notices ? [declared.notices.from] : [])]) {
     if (!(await pathExists(join(outDir, rel)))) missing.push(rel);
   }
   if (missing.length > 0) throw new MissingFilesError(missing, outDir);
+  if (declared.notices !== undefined) await assertRealNotices(join(outDir, declared.notices.from));
   try {
     assertBuildStamp(outDir, identity);
   } catch (error) {
@@ -194,6 +210,10 @@ export async function packageRuntime(opts: PackageOptions): Promise<PackageResul
       const dest = join(tmp, rel);
       await mkdir(dirname(dest), { recursive: true });
       await copyEntry(join(outDir, rel), dest);
+    }
+    if (declared.notices !== undefined) {
+      await copyFile(join(outDir, declared.notices.from), join(tmp, declared.notices.to));
+      await chmod(join(tmp, declared.notices.to), 0o644);
     }
     await checkLinks(tmp);
     await normaliseTimes(tmp);

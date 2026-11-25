@@ -28,12 +28,15 @@ import {
   ContentMismatchError,
   DamagedStoreEntryError,
   MissingFilesError,
+  PackagingError,
   packageRuntime,
+  SAMPLE_CREDITS_MARKER,
 } from "./packager.js";
 import { parsePin, readPin, writePin } from "./pin.js";
 import { publishRuntime } from "./publisher.js";
 import { checkReproducible } from "./reproducible.js";
 import { resolveRuntime } from "./resolver.js";
+import { readRuntimeFiles } from "./runtime-files.js";
 import { BUILD_STAMP_NAME } from "./stamp.js";
 import { removeTree } from "./store.js";
 import {
@@ -41,6 +44,7 @@ import {
   FAKE_ABI_HASH,
   makeOut,
   makeSandbox,
+  NOTICES_FROM,
   packageOptions,
   stampOut,
   tempDir,
@@ -645,5 +649,47 @@ describe("pin.json schema", () => {
 
   it("the repository's own pin.json parses", () => {
     expect(() => readPin(join(import.meta.dirname, "..", "..", ".."))).not.toThrow();
+  });
+});
+
+describe("T-REL-02 third-party notices in the packaged runtime", () => {
+  it("copies Chromium's credits to THIRD_PARTY_NOTICES.html and lists it in the manifest", async () => {
+    const s = await sandbox("notices", { notices: true });
+    const r = await packageRuntime(packageOptions(s));
+    expect(r.manifest.files["THIRD_PARTY_NOTICES.html"]).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(readFileSync(join(r.runtimeDir, "THIRD_PARTY_NOTICES.html"), "utf8")).toContain(
+      "libfoo",
+    );
+    await verifyRuntimeDir(r.runtimeDir, r.sourceKey);
+  });
+
+  it("refuses Chromium's placeholder credits page", async () => {
+    const s = await sandbox("notices-sample", { notices: true });
+    writeFileSync(join(s.outDir, NOTICES_FROM), `<html>${SAMPLE_CREDITS_MARKER}</html>\n`);
+    await expect(packageRuntime(packageOptions(s))).rejects.toThrow(PackagingError);
+    await expect(packageRuntime(packageOptions(s))).rejects.toThrow(/generate_about_credits/);
+  });
+
+  it("fails naming the notices when the build wrote none", async () => {
+    const s = await sandbox("notices-missing", { notices: true });
+    rmSync(join(s.outDir, NOTICES_FROM));
+    const error = await packageRuntime(packageOptions(s)).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(MissingFilesError);
+    expect((error as MissingFilesError).missing).toEqual([NOTICES_FROM]);
+  });
+
+  it("declaring notices changes the source key; notices.to must be a top-level name", async () => {
+    const plain = await sandbox("notices-key1");
+    const noted = await sandbox("notices-key2", { notices: true });
+    expect(await keyOf(plain.repo)).not.toBe(await keyOf(noted.repo));
+    const file = join(noted.repo, "chromium/runtime-files.json");
+    const rf = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+    writeFileSync(file, JSON.stringify({ ...rf, notices: { from: NOTICES_FROM, to: "a/b.html" } }));
+    expect(() => readRuntimeFiles(noted.repo)).toThrow(/notices.to/);
+  });
+
+  it("the repository's runtime declares its notices", () => {
+    const rf = readRuntimeFiles(join(import.meta.dirname, "..", "..", ".."));
+    expect(rf.notices).toEqual({ from: NOTICES_FROM, to: "THIRD_PARTY_NOTICES.html" });
   });
 });

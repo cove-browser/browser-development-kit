@@ -251,6 +251,10 @@ static const t_test_t* const kTables[] = {
        which adds the file to the engine's suite and removes this condition. */
     t_navigation_policy_tests,
 #endif
+    t_extension_tests,       /* extensions and registered windows (tests_extensions.c) */
+    t_profile_version_tests, /* profile snapshots and the downgrade policy
+                                (tests_profile_versions.c) */
+    t_robustness_tests, /* long-run, crash recovery and memory, T-REL-03 (tests_robustness.c) */
 #ifdef BDK_HARNESS_ENGINE_TESTS
     t_engine_tests,            /* scenarios only a real engine can run (tests_engine.c) */
     t_engine_ui_tests,         /* browser-owned surfaces on the engine (tests_engine_ui.c) */
