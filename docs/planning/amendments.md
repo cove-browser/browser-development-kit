@@ -395,10 +395,13 @@ widget (feasibility section 11). None of their surfaces is routed before S3, so 
 | Tab-modal dialog models (not in the plan) | A sheet: title, paragraphs, OK and Cancel, the model's default first; a patch gives `chrome::ShowTabModal`'s model to the engine | File System Access, DevTools and extension notices use it; a model's own callbacks decide. A model with a field a sheet cannot show is closed as dismissed |
 | The Credential Management API's account chooser and auto sign-in notice (not in the plan) | Sheets of the `passwords` surface, through a patch; Chrome's controller decides | `navigator.credentials.get({password: true})` reached them |
 
-None of this has been built or run on Chromium yet (the engine build was not part of the change), so it is written
-against the source at the pin and checked by `chromium:patch-check`; the scenarios that settle it are
-`tests_engine_dialogs.c` (T-UIR-10, M4). Routing what is
-refused or off waits for S3 (T-UIR-13, M9). The series is 24 patches; the task list is 144.
+This was written against the source at the pin and first built and run on Chromium at the M8 merge (2026-11-22),
+where the 7 scenarios of `tests_engine_dialogs.c` pass after two fixes: the account chooser and auto sign-in sheets
+drop their controller before answering (Chrome's `OnCloseDialog` destroys it at once and deletes the prompt later,
+without `ControllerGone()`, so the sheet held a dangling `raw_ptr`), and the HTTPS-First scenario lets its host reach
+the network (the harness served it before HTTPS-First could upgrade it). The client-certificate sheet has no scenario
+yet (T-UIR-10, M4). Routing what is refused or off waits for S3 (T-UIR-13, M9). The series is 24 patches; the task
+list is 144.
 
 ### 2.21 Developing Cove against unreleased BDK (2026-11-23)
 

@@ -4,6 +4,8 @@
 
 #include "bdk/engine/ui_webauthn.h"
 
+#include <CoreFoundation/CoreFoundation.h>
+
 #include <cctype>
 #include <memory>
 #include <optional>
@@ -16,6 +18,8 @@
 #include "base/functional/bind.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
+#include "base/no_destructor.h"
+#include "base/process/process_info.h"
 #include "base/scoped_observation.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
@@ -32,6 +36,7 @@
 #include "chrome/browser/webauthn/authenticator_request_dialog_model.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
+#include "device/bluetooth/bluetooth_adapter_factory.h"
 #include "device/fido/discoverable_credential_metadata.h"
 #include "device/fido/public/fido_constants.h"
 #include "device/fido/public/fido_transport_protocol.h"
@@ -581,9 +586,41 @@ class BdkAuthenticatorDialog : public AuthenticatorRequestDialogViewController,
   base::WeakPtrFactory<BdkAuthenticatorDialog> weak_factory_{this};
 };
 
+// Whether the application may call Bluetooth: the responsible process's
+// Info.plist has a Bluetooth usage string. Chromium's check
+// (base::DoesResponsibleProcessHaveBluetoothMetadata) answers yes without
+// looking when the process is responsible for itself, as when it is opened from
+// the Finder, because Chrome's own Info.plist has one; a BDK application's may
+// not, so in that case its own Info.plist is read.
+bool CanCallBluetooth() {
+  if (!base::IsCurrentProcessSelfResponsible()) {
+    return base::DoesResponsibleProcessHaveBluetoothMetadata();
+  }
+  CFTypeRef usage = CFBundleGetValueForInfoDictionaryKey(
+      CFBundleGetMainBundle(), CFSTR("NSBluetoothAlwaysUsageDescription"));
+  return usage && CFGetTypeID(usage) == CFStringGetTypeID() &&
+         CFStringGetLength(static_cast<CFStringRef>(usage)) > 0;
+}
+
 }  // namespace
 
 void InstallWebAuthnDialogHook() {
+  // macOS ends a process that calls a Bluetooth API without Bluetooth metadata
+  // in the responsible application's Info.plist. Chrome checks that before its
+  // Bluetooth power manager (and there assumes its own Info.plist when the
+  // process is self-responsible), and not at all before starting the phone
+  // (hybrid) discovery or answering whether hybrid is available, which ask only
+  // IsLowEnergySupported(). Without the metadata, Bluetooth is reported as
+  // unsupported: no WebAuthn path calls it, security keys over USB still work,
+  // and passkeys on a phone are not offered (BDKWebAuthnSupport says what they
+  // need).
+  if (!CanCallBluetooth()) {
+    static base::NoDestructor<
+        std::unique_ptr<device::BluetoothAdapterFactory::GlobalOverrideValues>>
+        no_bluetooth(
+            device::BluetoothAdapterFactory::Get()->InitGlobalOverrideValues());
+    (*no_bluetooth)->SetLESupported(false);
+  }
   embedder_authenticator_dialog_factory::SetFactory(base::BindRepeating(
       [](content::WebContents* web_contents, Model* model)
           -> std::unique_ptr<AuthenticatorRequestDialogViewController> {

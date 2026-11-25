@@ -284,6 +284,7 @@ source_set("bdk") {
       "//base",
       "//bdk/engine/automation:mojom",
       "//crypto",
+      "//device/bluetooth",
       "//device/fido",
       "//chrome/app:branded_strings",
       "//chrome/browser",

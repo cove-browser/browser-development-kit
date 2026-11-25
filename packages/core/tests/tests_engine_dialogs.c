@@ -102,10 +102,12 @@ static void contents_arg(bdk_contents_t c, char* out, size_t n) {
 /* ---- Scenarios ---- */
 
 /* HTTPS-First's "ask before HTTP" dialog failed `Check failed: host` in tab_dialog_manager.cc. With
-   the dialog UI off, strict HTTPS-First asks with its interstitial page, in the page. The host is
-   not resolvable, so the HTTPS upgrade fails and Chrome falls back to asking. */
+   the dialog UI off, strict HTTPS-First asks with its interstitial page, in the page. The host goes
+   to the network (the harness would serve it before HTTPS-First could upgrade it) and does not
+   resolve (.test), so the HTTPS upgrade fails and Chrome falls back to asking. */
 static void test_https_first_asks_with_its_interstitial_page(void) {
     bdk_contents_t c = start_page(PAGE);
+    control("network.passthrough", "{\"host\":\"hfm.bdk.test\"}", NULL, 0);
     char args[256], handle[32];
     contents_arg(c, handle, sizeof handle);
     snprintf(args, sizeof args,
