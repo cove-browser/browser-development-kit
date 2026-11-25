@@ -80,6 +80,11 @@ export interface PackageOptions {
    */
   readonly checkoutBase: string;
   /**
+   * An application's patch directory (source mode). The caller verified that its series follows BDK's
+   * in the checkout; the identity, so the key and the manifest, records it (sdk/cli.md section 7).
+   */
+  readonly appPatchesDir?: string;
+  /**
    * Refuses to continue when `packages/core/generated/abi-hash.txt` is out of date. Defaults to running
    * `cmake -DMODE=check -P packages/core/cmake/abi-hash.cmake`; tests inject a no-op.
    */
@@ -162,6 +167,7 @@ export async function packageRuntime(opts: PackageOptions): Promise<PackageResul
     repoRoot,
     ...(opts.config === undefined ? {} : { config: opts.config }),
     ...(opts.target === undefined ? {} : { target: opts.target }),
+    ...(opts.appPatchesDir === undefined ? {} : { appPatchesDir: opts.appPatchesDir }),
   });
   if (identity.bdk.gn_args_digest === "absent") {
     throw new PackagingError(

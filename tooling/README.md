@@ -37,6 +37,14 @@ checkout lock, so a whole sync, patch and build sequence is one lock acquisition
   dependencies are synced, so the next build has nothing to do; `--force` and `--no-patch` reset to
   the pin instead.
 - `chromium:patch-apply [--force]`, `chromium:patch-export`, `chromium:patch-check`.
+- An application's own series (source mode, `bdk patch`, sdk/cli.md section 7) follows BDK's:
+  `loadSeriesWithApp(patchesDir, appPatchesDir)` in `common.ts` names its patches `app/<file>`, and
+  `applySeries`, `checkPatchSeries`, `verifyCheckout`, `computeSourceIdentity` and `packageRuntime` take
+  `appPatchesDir`. `chromium:build --app-patches <dir>` applies it and stamps the build with it;
+  `chromium:package --app-patches <absolute dir>` packages that build, and the identity, so the source key, and
+  the manifest carry `application: { patches_digest, patches }`. Without application patches neither changes, so
+  existing keys stay as they were. The `bdk` CLI imports `patch-apply.ts`, `patch-export.ts` and
+  `patch-check.ts` into its CommonJS executable, so those modules start their command without top-level `await`.
 - `chromium:build [--config dev|release] [--targets a,b | targets...] [--ccache-maxsize 50G] [--no-patch]
   [--no-verify] [--force]`: apply patches, mount `//bdk` (content-diff copy of `chromium/bdk`, plus `packages/core/runtime`, `include/bdk` and `generated` under `//bdk/core`), `gn gen`, `autoninja`
   (default target `chrome`) with `CCACHE_DIR=$BDK_HOME/ccache`, `CCACHE_MAXSIZE` (flag, or

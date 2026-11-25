@@ -5,6 +5,7 @@ import { git } from "../git.js";
 import {
   chromiumLayout,
   loadSeries,
+  loadSeriesWithApp,
   PatchFormatError,
   parsePatch,
   patchTouchedFiles,
@@ -170,6 +171,83 @@ describe("patch-apply", () => {
     await gitSh(src, ["commit", "-qam", "wip\n\nnot exported yet"]);
     await expect(applySeries({ srcDir: src, pinCommit: up.commit1, patchesDir })).rejects.toThrow(
       /patch-export/,
+    );
+  });
+});
+
+describe("an application's series after BDK's (T-CLI-03)", () => {
+  /** BDK's series exported from one commit, then an application's from a second commit on top. */
+  async function withApp() {
+    const { up, src, patchesDir } = await exported();
+    const base = (await git(src, ["rev-parse", "HEAD"])).trim();
+    writeFileSync(join(src, "base", "unrelated.cc"), "int unrelated() { return 1; }\n");
+    await gitSh(src, ["commit", "-qam", "app: return 1\n\nThe application needs it."]);
+    const appDir = join(tmp("app"), "patches");
+    await exportSeries({ srcDir: src, pinCommit: base, patchesDir: appDir });
+    return { up, patchesDir, appDir };
+  }
+
+  it("applies both, BDK's first, and names the application's patches app/<file>", async () => {
+    const { up, patchesDir, appDir } = await withApp();
+    expect(loadSeriesWithApp(patchesDir, appDir).patches.map((p) => p.name)).toEqual([
+      "bdk-link-bdk.patch",
+      "app/app-return-1.patch",
+    ]);
+    const src = await makeSrc(up, "1.0.0");
+    const r = await applySeries({
+      srcDir: src,
+      pinCommit: up.commit1,
+      patchesDir,
+      appPatchesDir: appDir,
+    });
+    expect(r).toMatchObject({
+      status: "applied",
+      patches: ["bdk-link-bdk.patch", "app/app-return-1.patch"],
+    });
+    expect(readFileSync(join(src, "base", "unrelated.cc"), "utf8")).toContain("return 1");
+    const again = await applySeries({
+      srcDir: src,
+      pinCommit: up.commit1,
+      patchesDir,
+      appPatchesDir: appDir,
+    });
+    expect(again.status).toBe("already-applied");
+    // BDK's series alone no longer matches: the application's commit would be dropped.
+    await expect(applySeries({ srcDir: src, pinCommit: up.commit1, patchesDir })).rejects.toThrow(
+      UnsafeCheckoutError,
+    );
+  });
+
+  it("checks both against a tag and reports a conflict in the application's patch", async () => {
+    const { up, patchesDir, appDir } = await withApp();
+    const ok = await checkPatchSeries({
+      remote: up.dir,
+      tag: "1.0.0",
+      patchesDir,
+      appPatchesDir: appDir,
+    });
+    expect(ok.ok).toBe(true);
+    expect(ok.files).toContain("base/unrelated.cc");
+    writeFileSync(
+      join(appDir, "app-return-1.patch"),
+      readFileSync(join(appDir, "app-return-1.patch"), "utf8").replace("return 0", "return 7"),
+    );
+    const bad = await checkPatchSeries({
+      remote: up.dir,
+      tag: "1.0.0",
+      patchesDir,
+      appPatchesDir: appDir,
+    });
+    expect(bad.ok).toBe(false);
+    expect(bad.patches[1]).toMatchObject({ patch: "app/app-return-1.patch", status: "conflict" });
+  });
+
+  it("names the application's series in a format error", () => {
+    const appDir = join(tmp("app-bad"), "patches");
+    mkdirSync(appDir, { recursive: true });
+    writeFileSync(join(appDir, "series"), "missing.patch\n");
+    expect(() => loadSeriesWithApp(join(tmp("bdk-empty"), "patches"), appDir)).toThrow(
+      /the application's patches: series lists "missing.patch"/,
     );
   });
 });

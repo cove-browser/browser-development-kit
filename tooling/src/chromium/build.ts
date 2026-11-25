@@ -10,7 +10,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { git, run } from "../git.js";
 import { abiExports } from "../runtime/abi.js";
@@ -224,6 +224,8 @@ export interface BuildOptions {
   readonly noPatch?: boolean;
   readonly noVerify?: boolean;
   readonly forcePatch?: boolean;
+  /** An application's series (source mode), applied after BDK's and part of the build's identity. */
+  readonly appPatchesDir?: string;
   readonly log?: (line: string) => void;
 }
 
@@ -287,15 +289,17 @@ export async function buildCheckout(
 
   // The build is tied to the inputs it starts from. The stamp is gone while the output is in flux and
   // is written only after a successful, verified build (the packager refuses an out/ without it).
+  const app = options.appPatchesDir === undefined ? {} : { appPatchesDir: options.appPatchesDir };
   const identity = await computeSourceIdentity({
     repoRoot: ctx.layout.repoRoot,
     config: options.config,
+    ...app,
   });
   await clearBuildStamp(join(ctx.src, "out", options.config));
 
   let t = Date.now();
   if (!options.noPatch) {
-    await applyToCheckout(ctx, { ...(options.forcePatch ? { force: true } : {}), log });
+    await applyToCheckout(ctx, { ...(options.forcePatch ? { force: true } : {}), ...app, log });
   }
   const patchMs = Date.now() - t;
 
@@ -408,10 +412,12 @@ async function main(): Promise<void> {
       "no-patch": { type: "boolean", default: false },
       "no-verify": { type: "boolean", default: false },
       force: { type: "boolean", default: false },
+      "app-patches": { type: "string" },
       [LOCKED_FLAG.slice(2)]: { type: "boolean", default: false },
     },
     strict: true,
   });
+  const appPatches = values["app-patches"];
   if (values.config !== "dev" && values.config !== "release")
     fail(`--config must be dev or release, got "${values.config}"`);
   const checkout = checkoutFromFlag(values.experiment);
@@ -427,6 +433,7 @@ async function main(): Promise<void> {
       noPatch: values["no-patch"],
       noVerify: values["no-verify"],
       forcePatch: values.force,
+      ...(appPatches === undefined ? {} : { appPatchesDir: resolve(appPatches) }),
     });
   } catch (e) {
     fail(e instanceof Error ? e.message : String(e));
