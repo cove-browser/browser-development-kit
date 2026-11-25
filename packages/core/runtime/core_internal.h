@@ -237,9 +237,20 @@ struct Window {
 };
 
 /* [extensions] of the resolved configuration (configuration.md 3.7), read at start by
-   extension_configure (extension_policy.cc). Keys with status Added (developer_mode, blocklist,
-   bundled) are not in the schema yet and are not read. */
+   extension_configure (extension_policy.cc). */
 struct ExtensionConfig {
+    /* developer_mode: whether loading unpacked extensions is the user's setting, always on or
+       unavailable. */
+    enum class DeveloperMode : uint8_t { kUser, kOn, kOff };
+    /* An extension shipped inside the application bundle ([extensions.bundled], S6). path is
+       relative to the bundle's Contents/Resources. */
+    struct Bundled {
+        std::string name, path;
+        bool required = false;
+    };
+    DeveloperMode developer_mode = DeveloperMode::kUser;
+    std::vector<std::string> blocklist; /* identifiers that never install or load */
+    std::vector<Bundled> bundled;       /* in the order the resolved file lists them */
     bool enabled = true;
     bool allow_all = false;     /* install_policy = "allow_all" */
     bool private_never = false; /* allow_in_private = "never" */
@@ -290,6 +301,7 @@ struct Runtime {
     std::vector<std::shared_ptr<Window>> windows; /* registered, in order */
     ExtensionConfig extensions;
     std::string browser_name; /* [browser] name, for text BDK shows */
+    std::string bundle_path;  /* the start configuration's bundle_path, for bundled extensions */
     bdk_log_cb log_cb = nullptr;
     void* log_ctx = nullptr;
     bdk_release_cb log_rel = nullptr;

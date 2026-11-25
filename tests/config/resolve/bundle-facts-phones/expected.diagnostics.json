@@ -1,0 +1,10 @@
+{
+  "diagnostics": [
+    {
+      "code": "plist.passkeys_phone",
+      "severity": "note",
+      "message": "[services.webauthn] phones is true, but Info.plist has no NSBluetoothAlwaysUsageDescription, so passkeys on a phone are not offered. Security keys still work.",
+      "file": "Info.plist"
+    }
+  ]
+}

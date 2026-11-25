@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "bdk_version": "0.0.0",
-  "config_digest": "sha256:6c9f59a830466ea79ce00cb7f23ed427bb955327bb70123b051ea399e861fb19",
+  "config_digest": "sha256:e2ce10ada5df063f485705574748d0503b81a3db6a6c50719ca51e2695d6f698",
   "browser": {
     "name": "Cove",
     "internal_scheme": "cove",
@@ -23,30 +23,40 @@
     "permissions": "custom",
     "javascript_dialogs": "custom",
     "http_auth": "custom",
+    "client_certificates": "custom",
     "file_pickers": "custom",
     "context_menus": "custom",
     "new_windows": "custom",
     "downloads": "custom",
     "passwords": "custom",
     "autofill": "custom",
+    "autofill_suggestions": "custom",
     "printing": "custom",
     "translation": "custom",
     "find": "default",
     "fullscreen": "custom",
+    "exclusive_access": "custom",
     "notifications": "disabled",
     "certificate_errors": "custom",
     "reputation_warnings": "custom",
-    "devtools": "custom"
+    "devtools": "custom",
+    "device_choosers": "custom",
+    "screen_capture": "custom",
+    "webauthn": "custom",
+    "external_protocols": "custom",
+    "page_health": "custom"
   },
   "extensions": {
     "enabled": true,
     "install_policy": "reject_known_incompatible",
     "allow_in_private": "user",
+    "developer_mode": "user",
     "install": {
       "unpacked": true,
       "crx": true,
       "update_urls": "any",
-      "stores": []
+      "stores": [],
+      "blocklist": []
     },
     "ui": {
       "actions": "custom",
@@ -70,6 +80,9 @@
     },
     "geolocation": {
       "provider": "system"
+    },
+    "webauthn": {
+      "phones": false
     },
     "credentials": {
       "provider": "chromium"

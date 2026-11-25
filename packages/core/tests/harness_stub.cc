@@ -67,6 +67,19 @@ bdk_status_t bdk_harness_last_ui_outcome(bdk_runtime_t rt, bdk_harness_ui_outcom
     return BDK_OK;
 }
 
+bdk_status_t bdk_harness_page_unresponsive(bdk_contents_t c) {
+    return bdk_stub_page_unresponsive(c);
+}
+
+bdk_status_t bdk_harness_page_responsive(bdk_contents_t c) {
+    return bdk_stub_page_responsive(c);
+}
+
+bdk_status_t bdk_harness_block_popup(bdk_contents_t c, const char* url, uint8_t* out_blocked) {
+    bdk_string_t u = {url, strlen(url)};
+    return bdk_stub_block_popup(c, u, out_blocked);
+}
+
 bdk_status_t bdk_harness_simulate_key(bdk_contents_t c, uint8_t* out_reserved) {
     bdk_native_handle_t ev;
     memset(&ev, 0, sizeof ev);

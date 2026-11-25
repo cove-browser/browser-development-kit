@@ -62,6 +62,8 @@ extern "C" {
 #define BDK_CODE_NOT_SERIALIZABLE "notSerializable"
 #define BDK_CODE_NO_ELEMENT "noElement"
 #define BDK_CODE_SOURCE_NOT_ALLOWED "sourceNotAllowed"
+#define BDK_CODE_BLOCKLISTED "blocklisted"
+#define BDK_CODE_NOT_REMOVABLE "notRemovable"
 #define BDK_CODE_INCOMPATIBLE "incompatible"
 #define BDK_CODE_SURFACE_DISABLED "surfaceDisabled"
 #define BDK_CODE_MANIFEST_INVALID "manifestInvalid"
@@ -144,6 +146,7 @@ extern "C" {
 #define BDK_SURFACE_EXTENSION_DEVTOOLS 30u
 #define BDK_SURFACE_EXTENSION_INSTALLS 31u
 #define BDK_SURFACE_EXTENSION_UNINSTALLS 32u
+#define BDK_SURFACE_PAGE_HEALTH 33u
 
 /* bdk_page_handler_register's mode: how a logical route is served (architecture.md 8.1) */
 #define BDK_PAGE_MODE_CHROMIUM 1u

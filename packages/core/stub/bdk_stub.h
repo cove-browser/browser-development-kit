@@ -55,6 +55,20 @@ typedef struct bdk_stub_ui_outcome {
 
 BDK_EXPORT bdk_status_t bdk_stub_last_ui_outcome(bdk_runtime_t, bdk_stub_ui_outcome_t* out);
 
+/* Page health (ui-requests.md 5.19). Acts as Chromium finding the page's renderer hung: a
+   page_health request of kind "unresponsive" (one per hang); an accept {"action":"terminate"} ends
+   the renderer, which the page reports as gone with the reason "killed". bdk_stub_page_responsive
+   acts as the renderer answering again and withdraws the question. */
+BDK_EXPORT bdk_status_t bdk_stub_page_unresponsive(bdk_contents_t);
+BDK_EXPORT bdk_status_t bdk_stub_page_responsive(bdk_contents_t);
+/* Acts as the page opening a popup without a gesture. *out_blocked is 1 when the popup blocker
+   stopped it: the page's blocked-popup notice (kind "blockedPopups") is raised again with every
+   popup blocked since it was last answered, withdrawing the last one. A grant {"popup": id}
+   opens that popup as a new-window request; {"always": true} allows the site's popups for the
+   profile, so its later popups are not blocked (*out_blocked 0, a new-window request at once). */
+BDK_EXPORT bdk_status_t bdk_stub_block_popup(bdk_contents_t, bdk_string_t url,
+                                             uint8_t* out_blocked);
+
 /* Open requests (bdk_ui.h): sends the runtime's update to the most recently raised request, and
    reads the last update the application sent it (bdk_ui_update), "" for none. */
 BDK_EXPORT bdk_status_t bdk_stub_send_ui_update(bdk_runtime_t, bdk_string_t update_json);

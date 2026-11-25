@@ -156,6 +156,9 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
 | Dropped | An uncompleted request released by the application finishes `kCancelled`, never granted. |
 | Gesture kind | The core checks that the gesture is an `NSEVENT`. That it is recent and went to a window of this application is the backend's: while a completion's `on_finish` runs, `Request::gesture` holds the borrowed event so the engine can check it (the Chromium engine does: mouse-up or key-down, under 10 s old, delivered to one of the application's windows; anything less grants nothing). `withdraw_ui_request` withdraws one request, for a backend whose own UI went away. |
 | WebAuthn (`webauthn`, T-UIR-09) | One request per step of a ceremony (ui-requests.md 5.18). Completions are `accept`, `grant` and `deny` only (`ui.completionNotAllowed`). `grant` names one of the payload's `accounts` by `id`, and needs the gesture like every grant; `accept` with an `account` is refused (`ui.completionNotAllowed`). `accept` names one of the payload's `mechanisms`, or gives a `pin` where the payload has `pin`, or asks for `{"action":"otherMechanisms"}` where it has `otherMechanismsLabel`, or, with none of these, presses the button of a payload with `acceptLabel`; anything else is `ui.widensRequest`. A non-string `account`, `mechanism`, `pin` or `action` is `BDK_ERR_INVALID_ARGUMENT`. |
+| Autofill suggestions (`autofill_suggestions`, T-UIR-15) | Completed by `grant` or `accept` (both grant, so both need the gesture) naming one of the payload's `suggestions` by `id` (`ui.widensRequest` otherwise), or `deny`; anything else is `ui.completionNotAllowed`. `bdk_ui_update` takes only `{"preview": id}` for an offered suggestion or `{"preview": null}` (`ui.widensRequest` otherwise); the core checks every other surface's updates only for being an object. |
+| Exclusive access (`exclusive_access`, T-UIR-15) | A notice: `accept` only (`ui.completionNotAllowed`). A rejected or dropped one finishes `kDefaulted`, because the exit instruction must be shown (ui-requests.md 5.12). |
+| Page health (`page_health`, surface 33, T-UIR-15) | Two kinds by the payload's `kind` (ui-requests.md 5.19). `unresponsive`: `accept` with `{"action":"wait"}` or `{"action":"terminate"}`, or `deny` (waits). `blockedPopups`: `grant` with exactly one of `{"popup": id}` (one of the payload's `popups`) and `{"always": true}`, or `deny`. Other answers are `ui.widensRequest` or `ui.completionNotAllowed`; a non-string `action` or `popup`, or a non-literal `always`, is `BDK_ERR_INVALID_ARGUMENT`. It cannot be disabled. The stub raises both itself (`bdk_stub_page_unresponsive`, `bdk_stub_page_responsive`, `bdk_stub_block_popup`); the harness's `bdk_harness_page_*` and `bdk_harness_block_popup` reach them, and answer `BDK_ERR_INVALID_ARGUMENT` on a runtime without them, which the tests skip. |
 | Extension surfaces | See "Extensions" below. |
 
 ### Extensions (M5)
@@ -209,8 +212,14 @@ where it was silent (2026-11-20):
    manifest needs (`inspect_manifest`: manifest version and `minimum_chrome_version` against the engine's
    `EngineFacts`, permissions for APIs BDK lacks, surfaces the configuration disables, `update_url` against
    `update_urls`). A blocking finding refuses the install or update unless `install_policy = "allow_all"`, which
-   shows the findings in the prompt instead (`install_refused`). The keys with status Added (`developer_mode`,
-   `blocklist`, `[extensions.bundled]`) are not in the schema yet and are not read.
+   shows the findings in the prompt instead (`install_refused`). Since T-EXT-14 (2026-11-25) it also reads
+   `developer_mode` (`"off"` refuses unpacked directories in `source_refusal`; `"user"` behaves as `"on"` until the
+   setting `extensions.developerMode` exists), `[extensions.install] blocklist` (`blocklisted`: refused from every
+   source with `extension.blocklisted`, which `allow_all` does not override) and `[extensions.bundled]` (each
+   `{path, required}`, with `path` relative to the bundle's `Contents/Resources`, `bundled_directory`). The stub loads
+   bundled extensions, with no prompt, the first time a persistent profile's extensions are asked for, refuses to
+   uninstall them and to disable a required one (`extension.notRemovable`), and reads their manifest from a package
+   registered as `bundled` with the declared path, or from the bundle.
 7. Gestures from the host. `bdk_extension_action_activate`, `bdk_extension_command_perform` and
    `bdk_extension_menu_present` (`bdk_extensions.h`) take the confirming event, like a granting completion: the core
    checks its kind (`ui.gestureRequired`), the engine that it is recent and went to one of the application's windows.
@@ -461,6 +470,7 @@ Choosing a provider. `bdk_runtime_start` reads `services` from the resolved conf
 | `reputation` | `default`, `app`, `google` | `web-risk`: `config.providerUnavailable` | Only with `default`: where the lists are fetched (https, or http on the loopback address) |
 | `geolocation` | `system`, `app`, `google` | | `config.endpointUnsupported`: the network provider's host is a constant (T-PRV-14) |
 | `credentials`, `leak_check` | Only their defaults (`chromium`, `none`); S14 and S16 are proposals | Anything else: `config.providerUnavailable` | |
+| `webauthn` | Not a provider table: `phones`, a boolean, false when absent (T-UIR-12). `webauthn_phones_allowed` (`providers_internal.h`) gives it to the backend | | |
 
 An unknown name or a value of the wrong kind is `config.resolvedInvalid` (the CLI's `services.provider_unknown` comes
 first). The Google key is `google_api_key` in `bdk_start_config_t`, not `bdk_provider_set_key`, because Chromium reads

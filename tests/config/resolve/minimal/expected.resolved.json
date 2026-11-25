@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "bdk_version": "0.0.0",
-  "config_digest": "sha256:3a7ce9ba88275daad6561e37cbd353086e6aacde37d7bc29ab0435a5c20d4140",
+  "config_digest": "sha256:9a8e1c2f970125fd012f0d94b362d109e7ec0311d193a0470f217f1aa2985bd9",
   "browser": {
     "name": "Tide",
     "internal_scheme": "tide",
@@ -23,30 +23,40 @@
     "permissions": "default",
     "javascript_dialogs": "default",
     "http_auth": "default",
+    "client_certificates": "default",
     "file_pickers": "default",
     "context_menus": "default",
     "new_windows": "default",
     "downloads": "default",
     "passwords": "default",
     "autofill": "default",
+    "autofill_suggestions": "default",
     "printing": "default",
     "translation": "default",
     "find": "default",
     "fullscreen": "default",
+    "exclusive_access": "default",
     "notifications": "default",
     "certificate_errors": "default",
     "reputation_warnings": "default",
-    "devtools": "default"
+    "devtools": "default",
+    "device_choosers": "default",
+    "screen_capture": "default",
+    "webauthn": "default",
+    "external_protocols": "default",
+    "page_health": "default"
   },
   "extensions": {
     "enabled": true,
     "install_policy": "reject_known_incompatible",
     "allow_in_private": "user",
+    "developer_mode": "user",
     "install": {
       "unpacked": true,
       "crx": true,
       "update_urls": "any",
-      "stores": []
+      "stores": [],
+      "blocklist": []
     },
     "ui": {
       "actions": "default",
@@ -70,6 +80,9 @@
     },
     "geolocation": {
       "provider": "system"
+    },
+    "webauthn": {
+      "phones": false
     },
     "credentials": {
       "provider": "chromium"

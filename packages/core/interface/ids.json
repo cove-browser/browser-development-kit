@@ -263,6 +263,8 @@
       { "name": "NOT_SERIALIZABLE", "id": "notSerializable" },
       { "name": "NO_ELEMENT", "id": "noElement" },
       { "name": "SOURCE_NOT_ALLOWED", "id": "sourceNotAllowed" },
+      { "name": "BLOCKLISTED", "id": "blocklisted" },
+      { "name": "NOT_REMOVABLE", "id": "notRemovable" },
       { "name": "INCOMPATIBLE", "id": "incompatible" },
       { "name": "SURFACE_DISABLED", "id": "surfaceDisabled" },
       { "name": "MANIFEST_INVALID", "id": "manifestInvalid" },
@@ -335,7 +337,8 @@
       { "name": "EXTENSION_OPTIONS_PAGES", "id": 29 },
       { "name": "EXTENSION_DEVTOOLS", "id": 30 },
       { "name": "EXTENSION_INSTALLS", "id": 31 },
-      { "name": "EXTENSION_UNINSTALLS", "id": 32 }
+      { "name": "EXTENSION_UNINSTALLS", "id": 32 },
+      { "name": "PAGE_HEALTH", "id": 33 }
     ],
     "pageModes": [
       { "name": "CHROMIUM", "id": 1 },

@@ -188,6 +188,22 @@ public final class AutofillSuggestionsRequest: BDKUIRequest {
         try submit("grant", ["suggestion": .string(suggestion.id)], gesture: event)
     }
 
+    /// Shows what the suggestion would fill, without filling it, or clears the preview (nil),
+    /// as the default popup does while a row is highlighted (`bdk_ui_update` `{"preview"}`).
+    /// Throws `ui.unknownSuggestion` for one the request did not offer.
+    public func preview(_ suggestion: Suggestion?) throws {
+        guard let suggestion else {
+            try sendUpdate(["preview": .null])
+            return
+        }
+        guard suggestions.contains(suggestion) else {
+            throw BDKError(
+                domain: .ui, code: "unknownSuggestion",
+                message: "the request did not offer this suggestion")
+        }
+        try sendUpdate(["preview": .string(suggestion.id)])
+    }
+
     public func dismiss() {
         try? submit("deny")
     }

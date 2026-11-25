@@ -1,0 +1,25 @@
+{
+  "diagnostics": [
+    {
+      "code": "extensions.bundled_invalid",
+      "severity": "error",
+      "message": "The bundled extension \"broken\" at \"Extensions/Broken\" has no valid manifest: its manifest.json has no \"version\".",
+      "file": "bdk.toml",
+      "line": 5
+    },
+    {
+      "code": "extensions.bundled_invalid",
+      "severity": "error",
+      "message": "The bundled extension \"empty\" at \"Extensions/Empty\" has no valid manifest: it has no manifest.json.",
+      "file": "bdk.toml",
+      "line": 6
+    },
+    {
+      "code": "extensions.bundled_invalid",
+      "severity": "error",
+      "message": "The bundled extension \"missing\" at \"Extensions/Missing\" has no valid manifest: it does not exist.",
+      "file": "bdk.toml",
+      "line": 7
+    }
+  ]
+}

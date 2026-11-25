@@ -64,6 +64,8 @@
         "NOT_SERIALIZABLE": "notSerializable",
         "NO_ELEMENT": "noElement",
         "SOURCE_NOT_ALLOWED": "sourceNotAllowed",
+        "BLOCKLISTED": "blocklisted",
+        "NOT_REMOVABLE": "notRemovable",
         "INCOMPATIBLE": "incompatible",
         "SURFACE_DISABLED": "surfaceDisabled",
         "MANIFEST_INVALID": "manifestInvalid",
@@ -173,7 +175,8 @@
         "EXTENSION_OPTIONS_PAGES": 29,
         "EXTENSION_DEVTOOLS": 30,
         "EXTENSION_INSTALLS": 31,
-        "EXTENSION_UNINSTALLS": 32
+        "EXTENSION_UNINSTALLS": 32,
+        "PAGE_HEALTH": 33
       }
     },
     {

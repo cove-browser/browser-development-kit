@@ -259,6 +259,19 @@ bdk_status_t bdk_harness_last_ui_outcome(bdk_runtime_t rt, bdk_harness_ui_outcom
     return BDK_OK;
 }
 
+/* Page health is not raised by the engine yet (T-UIR-15): the tests that need these skip. */
+bdk_status_t bdk_harness_page_unresponsive(bdk_contents_t) {
+    return BDK_ERR_INVALID_ARGUMENT;
+}
+
+bdk_status_t bdk_harness_page_responsive(bdk_contents_t) {
+    return BDK_ERR_INVALID_ARGUMENT;
+}
+
+bdk_status_t bdk_harness_block_popup(bdk_contents_t, const char*, uint8_t*) {
+    return BDK_ERR_INVALID_ARGUMENT;
+}
+
 bdk_status_t bdk_harness_simulate_key(bdk_contents_t c, uint8_t* out_reserved) {
     bdk_native_handle_t ev;
     memset(&ev, 0, sizeof ev);

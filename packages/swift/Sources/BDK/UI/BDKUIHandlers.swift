@@ -94,6 +94,8 @@ public final class BDKUIHandlers {
     public var extensionUninstalls: Surface<ExtensionUninstallRequest> {
         surface(.extensionUninstalls)
     }
+    /// Receives `UnresponsivePageRequest` and `BlockedPopupRequest`.
+    public var pageHealth: Surface<BDKUIRequest> { surface(.pageHealth) }
 
     private func surface<Request: BDKUIRequest>(_ kind: BDKUISurface) -> Surface<Request> {
         Surface(owner: self, kind: kind)
@@ -247,6 +249,10 @@ extension BDKUIRequest {
         .extensionSidePanels: { ExtensionSidePanelRequest($0, runtime: $1) },
         .extensionInstalls: { ExtensionInstallRequest($0, runtime: $1) },
         .extensionUninstalls: { ExtensionUninstallRequest($0, runtime: $1) },
+        .pageHealth: {
+            BDKUIPayload($0).string("kind") == "blockedPopups"
+                ? BlockedPopupRequest($0, runtime: $1) : UnresponsivePageRequest($0, runtime: $1)
+        },
     ]
 
     /// The typed request for a delivery. Surfaces without a typed request (device

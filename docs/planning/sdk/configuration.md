@@ -183,7 +183,7 @@ One line per surface: `surface = "default" | "custom" | "disabled"`. Surface nam
 | `enabled` | boolean | `true` | Plan | The extension system as a whole. `false` removes extension APIs, pages and installation. |
 | `install_policy` | `"reject_known_incompatible"` or `"allow_all"` | `"reject_known_incompatible"` | Plan; the second value is proposed | Whether a manifest that requires a disabled or unsupported surface is refused before installation. With `allow_all` it installs, and unsupported calls still fail explicitly. |
 | `allow_in_private` | `"user"` or `"never"` | `"user"` | Plan (spec: incognito compatibility is open) | Whether the user may allow an extension in private profiles. |
-| `developer_mode` | `"user"`, `"on"` or `"off"` | `"user"` | Accepted (S6, 2026-11-25); built in T-EXT-14, M9 | Whether loading unpacked extensions is a user setting, always on, or unavailable. |
+| `developer_mode` | `"user"`, `"on"` or `"off"` | `"user"` | Accepted (S6, 2026-11-25); schema, resolver and core built (T-EXT-14, 2026-11-25); engine not built | Whether loading unpacked extensions is a user setting, always on, or unavailable. `"off"` refuses an unpacked directory with `extension.sourceNotAllowed` naming this key. `"user"` behaves as `"on"` until the setting `extensions.developerMode` exists (services.md 7; not built, T-EXT-14). |
 
 #### `[extensions.install]`
 
@@ -193,13 +193,13 @@ One line per surface: `surface = "default" | "custom" | "disabled"`. Surface nam
 | `crx` | boolean | `true` | Plan | Install a local CRX file. BDK owns the off-store policy and keeps Chromium's install prompt. |
 | `update_urls` | array of URL patterns, or `"any"` | `"any"` | Plan | Which self-hosted update manifests an extension may name. |
 | `stores` | array of names | `[]` | Plan, M5 | Named store sources. `"chrome-web-store"` is available and off unless listed (decision D4); when listed, the store's install button reads "Add to <browser name>". The spec's `compatible_stores = true` is replaced by this list. |
-| `blocklist` | array of extension identifiers | `[]` | Accepted (S6, 2026-11-25); built in T-EXT-14, M9 | Identifiers that never install or load. |
+| `blocklist` | array of extension identifiers | `[]` | Accepted (S6, 2026-11-25); schema, resolver and core built (T-EXT-14, 2026-11-25); engine not built | Identifiers (32 letters from a to p) that never install or load, from any source, bundled ones included, whatever `install_policy` says. An install is refused with `extension.blocklisted`. |
 
 #### `[extensions.ui]`
 
 One line per surface, with the same three modes as `[ui.surfaces]`: `actions`, `popups`, `side_panels`, `context_menus`, `options_pages`, `devtools`. Details are in [extensions.md](extensions.md) section 4.
 
-#### `[extensions.bundled]` (Accepted, S6, 2026-11-25; built in T-EXT-14, M9)
+#### `[extensions.bundled]` (Accepted, S6, 2026-11-25; schema, resolver and core built in T-EXT-14, 2026-11-25; engine and the build's copy not built)
 
 One line per extension: `name = "Extensions/<directory>"`. The directory is an unpacked extension inside the application bundle, covered by its signature. It loads at start in every persistent profile, cannot be uninstalled by the user, and can be disabled by the user unless `required = true` is set in the long form:
 
@@ -208,6 +208,8 @@ One line per extension: `name = "Extensions/<directory>"`. The directory is an u
 path = "Extensions/Reader"
 required = true
 ```
+
+The name is a lower-case letter followed by letters, digits, `_` or `-`. The path is relative to the directory of `bdk.toml`, and the build copies the directory to the same path under `Contents/Resources`. The resolver checks that it is a directory inside the project with a `manifest.json` that has `name`, `version` and a numeric `manifest_version` (`extensions.bundled_invalid` otherwise) and writes the long form with the directory's digest: `"bundled": {"reader": {"path": "Extensions/Reader", "required": true, "digest": "sha256:…"}}`. Not built (T-EXT-14): the copy into the bundle, and the engine loading it.
 
 ### 3.7A `[web_apps]` (product owner, 2026-11-25; built in T-PWA-02 to T-PWA-04, M9)
 
@@ -251,13 +253,15 @@ The spec's illustrative `[services.google]` table of booleans is not used. Choos
 
 Built in M6 (2026-11-20; core, stub and Swift tested, engine written and not yet built). The runtime reads the resolved `services` at start. A provider BDK names but this runtime does not have (`apple`, `deepl`, `microsoft`, `google` for translation, `web-risk`: T-PRV-08) is the start error `config.providerUnavailable`. `endpoint` is accepted only for the default reputation provider (where its lists come from; https, or http on the loopback address); for any other provider it is `config.endpointUnsupported`, because Chromium's Safe Browsing and network-location hosts are constants (T-PRV-14, after v1). The list download itself is not built (T-PRV-11), so `update_interval` and the endpoint have no effect yet. `models`, `bundled_languages` and `model_source` have no effect until the default translation engine exists (T-PRV-02). A Google key with no `provider = "google"` is `config.keyUnused`, and a Google provider with no key `config.keyMissing`. The rules are in `packages/core/docs/conventions.md`, "Providers".
 
-#### `[services.webauthn]` (product owner, 2026-11-25; built in T-UIR-12, M9)
+#### `[services.webauthn]` (product owner, 2026-11-25; schema, resolver, core and Swift built 2026-11-25; engine not built, T-UIR-12, M9)
 
 Not a provider table: WebAuthn has no provider to choose.
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `phones` | boolean | `false` | Whether a passkey on a phone (hybrid: QR code, Bluetooth, the phone's tunnel service) is offered. With `false` the engine offers no phone and contacts no tunnel host. With `true` it also needs `NSBluetoothAlwaysUsageDescription` (section 6), and the tunnel host is contacted only after the person chooses a phone. Off by default because Android phones use a Google-run tunnel host, which invariant 9 allows only when the application asks for it (`architecture.md` 16). `true` without the usage string is the note `plist.passkeys_phone`. |
+
+The resolved file always has `services.webauthn.phones`. The runtime core reads it at start (a value that is not a boolean is `config.resolvedInvalid`) and offers it to the engine; `BDKWebAuthnSupport.current.phones` lists the requirement `.configuration("[services.webauthn] phones = true")` while it is off. The engine still offers phones whenever `Info.plist` allows them: making it offer none and contact no tunnel host while the switch is off is not built (T-UIR-12, M9).
 
 #### `[services.push]` (product owner, 2026-11-25; built in T-PWA-02 and T-PWA-05, M9)
 
@@ -521,7 +525,7 @@ BDK does not edit the application's `Info.plist`. `bdk doctor` and `bdk build` c
 | `LSMinimumSystemVersion` | Yes | Must be at least the `min_os` in the runtime manifest. |
 | `NSCameraUsageDescription`, `NSMicrophoneUsageDescription` | For camera and microphone | macOS refuses capture without them, whatever the site permission says. |
 | `NSLocationUsageDescription` | For geolocation with the system provider | As above. |
-| `NSBluetoothAlwaysUsageDescription` | For Web Bluetooth and passkeys on a phone | As above. Without it the engine reports Bluetooth as unsupported, so a WebAuthn request offers no phone and makes no Bluetooth call (macOS ends a process that calls Bluetooth without it) (`plist.passkeys_phone`, a note); security keys need nothing. |
+| `NSBluetoothAlwaysUsageDescription` | For Web Bluetooth and passkeys on a phone | As above. Without it the engine reports Bluetooth as unsupported, so a WebAuthn request offers no phone and makes no Bluetooth call (macOS ends a process that calls Bluetooth without it) (`plist.passkeys_phone`, a note, raised only with `[services.webauthn] phones = true`); security keys need nothing. Phones also need that switch (3.8). |
 | `NSLocalNetworkUsageDescription` | For pages that reach local-network hosts | macOS prompts for local-network access. |
 | `CFBundleURLTypes` with `http` and `https` | To be a default-browser candidate | Launch Services lists only applications that declare them. |
 | `CFBundleDocumentTypes` for HTML | To be a default-browser candidate | As above. |
@@ -650,7 +654,7 @@ Each has a stable code, used by fixtures in `tests/config/`. Messages name the f
 | `ui.surface_unknown` | An unknown surface name |
 | `ui.surface_mode` | A mode the surface does not allow, such as `disabled` for interstitials. The runtime core checks the resolved file again at start and reports the same condition as `ui.surfaceMode` (and an unknown surface as `ui.surfaceUnknown`, a custom surface without a handler at the freeze as `config.handlerMissing`) |
 | `extensions.store_unknown` | A store name BDK does not ship |
-| `extensions.bundled_invalid` | A bundled extension with no valid manifest |
+| `extensions.bundled_invalid` | A bundled extension whose directory does not exist, is not a directory, or has no `manifest.json` with `name`, `version` and a numeric `manifest_version` (T-EXT-14) |
 | `services.provider_unknown` | A provider name BDK does not ship |
 | `search.default_missing` | `default` names an engine that is not defined |
 | `search.url_invalid` | A search URL with no `{searchTerms}` |
@@ -660,7 +664,7 @@ Each has a stable code, used by fixtures in `tests/config/`. Messages name the f
 | `plist.conflict` | `bdk.toml` and the Xcode project disagree |
 | `plist.min_os` | The deployment target is below the runtime's minimum |
 | `plist.app_sandbox` | The App Sandbox entitlement is set |
-| `plist.passkeys_phone` | A note: Info.plist has no `NSBluetoothAlwaysUsageDescription`, or the entitlements lack `com.apple.security.device.bluetooth`, so passkeys on a phone are not offered (T-UIR-09) |
+| `plist.passkeys_phone` | A note, only with `[services.webauthn] phones = true` (T-UIR-12): Info.plist has no `NSBluetoothAlwaysUsageDescription`, or the entitlements lack `com.apple.security.device.bluetooth`, so passkeys on a phone are not offered (T-UIR-09) |
 | `web_apps.push_unconfigured` | A note: `[web_apps] enabled = true` with `[services.push] provider = "none"`, so installed web apps receive no push messages (T-PWA-02) |
 | `services.push_google` | A warning: `[services.push] provider = "google"`, which requires the developer's own project in Google's console and sends every subscription to Google (T-PWA-02) |
 
@@ -670,7 +674,7 @@ Dated 2026-11-18. The documents were silent on these points; the schema and reso
 
 - Only keys with status Plan are in the schema. Every key marked Added, with or without an S number, and every Conditional or Later key, is rejected as an unknown key until the product owner accepts it. The list is in `packages/cli/src/core/config/README.md`. For the resolved file, the sections those keys would fill carry their documented defaults.
 - Three codes were added to the table above: `config.required`, `pages.name_invalid` and `automation.collision`. Disabling `credits` is `config.type`.
-- Surface names under `[ui.surfaces]` and `[extensions.ui]` that are not in the schema are `ui.surface_unknown`, except the S3 surfaces, which are the ordinary `config.unknown_key`. S3 was accepted on 2026-11-25 (amendments 2.23); T-UIR-15 (M9) adds its surfaces to the schema, after which they follow the same rules as the others. A mode the surface does not allow is `ui.surface_mode`; a value that is not a mode at all is `config.type`.
+- Surface names under `[ui.surfaces]` and `[extensions.ui]` that are not in the schema are `ui.surface_unknown`. The eight S3 surfaces, accepted on 2026-11-25 (amendments 2.23), are in the schema since T-UIR-15 with the modes of ui-requests.md section 4 and follow the same rules as the others; before that they were the ordinary `config.unknown_key`. A mode the surface does not allow is `ui.surface_mode`; a value that is not a mode at all is `config.type`.
 - Provider values outside the listed enum are `services.provider_unknown`. The named providers documented as "after v1" are accepted by the schema.
 - Reserved names are the fixed list in 4.3 plus `chrome-error`, `chrome-search`, `chrome-untrusted`. The excluded routes of 4.4 (`signin`, `sign-in`, `sync-internals`, `feedback`, `whats-new`, `welcome`) are also `pages.reserved`.
 - Links inside a page directory are checked like the directory itself: one that leaves the project is `config.path_escape`, and one that points nowhere or back to a directory it is inside is `pages.bad_link` (a code added to the table above).
