@@ -91,7 +91,14 @@ class PopupNativeMac : public PopupNative {
   void SetSize(int width, int height) override {
     const NSSize size = NSMakeSize(width, height);
     if (!panel_) {
-      [view_ setFrameSize:size];
+      // In the application's container, the container sizes the view: the
+      // application hears the size as an update and may not grant all of it
+      // (a popover keeps to the screen). A view taller than its container
+      // would put the top of the page out of sight. Not yet placed, the view
+      // takes the size it will be placed at.
+      if (!view_.superview) {
+        [view_ setFrameSize:size];
+      }
       return;
     }
     // The panel grows and shrinks downwards and towards its leading edge, the

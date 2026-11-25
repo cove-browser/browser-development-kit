@@ -342,6 +342,12 @@ void bdk_harness_engine_place_view(int window, bdk_native_handle_t view, double 
     bdk_harness_pump();
 }
 
+void bdk_harness_engine_view_size(bdk_native_handle_t view, double* w, double* h) {
+    NSSize size = view.pointer ? ((__bridge NSView*)view.pointer).frame.size : NSZeroSize;
+    *w = size.width;
+    *h = size.height;
+}
+
 void bdk_harness_engine_remove_view(bdk_native_handle_t view) {
     if (view.pointer)
         [(__bridge NSView*)view.pointer removeFromSuperview];

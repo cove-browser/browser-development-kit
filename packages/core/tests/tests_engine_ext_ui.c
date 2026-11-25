@@ -25,6 +25,7 @@ bdk_window_t bdk_harness_engine_window_handle(int window);
 void bdk_harness_engine_window_attach(int window, bdk_contents_t contents);
 void bdk_harness_engine_window_close(int window);
 void bdk_harness_engine_place_view(int window, bdk_native_handle_t view, double w, double h);
+void bdk_harness_engine_view_size(bdk_native_handle_t view, double* w, double* h);
 bdk_native_handle_t bdk_harness_engine_gesture(bdk_contents_t contents, int kind);
 int bdk_harness_engine_window_is_key(bdk_contents_t contents);
 extern const char* bdk_harness_engine_extensions;
@@ -511,6 +512,11 @@ static void test_engine_ext_ui_popup_with_a_handler_gets_the_secure_view_and_siz
     CHECK(grown);
     for (int u = 0; u < g_update_count && u < 16; ++u)
         CHECK(strstr(g_updates[u], "\"preferredSize\"") != NULL);
+    /* The application placed the view at 300x200 and has not resized it: the new size is its to
+       grant, so the view keeps the container's size instead of outgrowing it. */
+    double width = 0, height = 0;
+    bdk_harness_engine_view_size(g_popups.secure_view, &width, &height);
+    CHECK(width == 300 && height == 200);
     popup_state(out, sizeof out);
     CHECK(count_of(out, "shown") >= 1);
     CHECK(g_withdrawn == 0);
