@@ -74,28 +74,31 @@ The key is what goes in `[ui.surfaces]`. "Modes" lists what the surface allows: 
 | `permissions` | Site permission prompts | D C | Plan | M3, T-UIR-02 |
 | `javascript_dialogs` | `alert`, `confirm`, `prompt`, `beforeunload` | D C | Plan | M3, T-UIR-02 |
 | `http_auth` | HTTP and proxy authentication | D C | Plan | M3, T-UIR-02 |
-| `client_certificates` | Client certificate selection | D C | Added (S3); default is a sheet of BDK's own, not routed (8.2) | T-UIR-10, M4; routing T-UIR-13, M9 |
+| `client_certificates` | Client certificate selection | D C | Accepted (S3, 2026-11-25); default is a sheet of BDK's own, not routed yet (8.2) | T-UIR-10, M4; routing T-UIR-13, M9 |
 | `file_pickers` | File and directory choosers | D C X | Plan | M3, T-UIR-02 |
 | `context_menus` | Page context menus | D C X | Plan | M3, T-UIR-03 |
 | `new_windows` | Popups, undocked DevTools, picture-in-picture, extension windows | D C | Plan | M2, T-ADP-05; M3, T-UIR-03 |
 | `downloads` | Download start, progress, warnings | D C X | Plan | M3, T-UIR-03 |
 | `passwords` | Save, update, generate; leaked-password warning (Added, S16) | D C X | Plan | M3, T-UIR-04 |
 | `autofill` | Save address or card; fill confirmation | D C X | Plan | M3, T-UIR-04 |
-| `autofill_suggestions` | The suggestion list under a form field | D C | Added (S3) | — |
+| `autofill_suggestions` | The suggestion list under a form field | D C | Accepted (S3, 2026-11-25) | T-UIR-15, M9 |
 | `printing` | Print preview and the system print dialog | D C X | Plan | M3, T-UIR-04 |
 | `translation` | Offer, progress, result, errors, preferences | D C X | Plan | M6, T-PRV-03 |
 | `find` | Find bar | D C | Plan | M3, T-UIR-06 |
 | `fullscreen` | HTML fullscreen | D C X | Plan | M2, T-MAC-05; M3, T-UIR-06 |
-| `exclusive_access` | Keyboard-lock and pointer-lock notices | D C | Added (S3) | — |
+| `exclusive_access` | Keyboard-lock and pointer-lock notices | D C | Accepted (S3, 2026-11-25) | T-UIR-15, M9 |
 | `notifications` | Web notifications | D C X | Plan | M3, T-UIR-06 |
 | `certificate_errors` | Certificate interstitials | D C | Plan | M3, T-UIR-05 |
 | `reputation_warnings` | Malware, phishing and download warnings | D C | Plan | M3, T-UIR-05 |
 | `devtools` | The DevTools front end | D C X | Plan; built in M7, engine pending (T-AUT-06) | M7, T-AUT-05 |
-| `device_choosers` | WebUSB, Web Bluetooth, WebHID, Web Serial | D C X | Added (S3); refused until routed, Web Bluetooth off (8.2) | T-UIR-10, M4; routing T-UIR-13, M9 |
-| `screen_capture` | The `getDisplayMedia` source picker | D C X | Added (S3); refused until routed (8.2) | T-UIR-10, M4; routing T-UIR-13, M9 |
-| `webauthn` | Passkey and security-key dialogs | D C X | Added (S3); built and tested on the engine 2026-11-22, the `bdk.toml` key still awaits S3 | M4, T-UIR-09 |
-| `external_protocols` | "Open this link in another application?" | D C X | Added (S3); default is a sheet of BDK's own, not routed (8.2) | T-UIR-10, M4; routing T-UIR-13, M9 |
-| `page_health` | Unresponsive page; blocked popups | D C | Added (S3) | — |
+| `device_choosers` | WebUSB, Web Bluetooth, WebHID, Web Serial | D C X | Accepted (S3, 2026-11-25); refused until routed, Web Bluetooth off (8.2) | T-UIR-10, M4; routing T-UIR-13, M9 |
+| `screen_capture` | The `getDisplayMedia` source picker | D C X | Accepted (S3, 2026-11-25); refused until routed (8.2) | T-UIR-10, M4; routing T-UIR-13, M9 |
+| `webauthn` | Passkey and security-key dialogs | D C X | Accepted (S3, 2026-11-25); built and tested on the engine 2026-11-22; the `bdk.toml` key is T-UIR-15 | M4, T-UIR-09; key T-UIR-15, M9 |
+| `external_protocols` | "Open this link in another application?" | D C X | Accepted (S3, 2026-11-25); default is a sheet of BDK's own, not routed yet (8.2) | T-UIR-10, M4; routing T-UIR-13, M9 |
+| `page_health` | Unresponsive page; blocked popups | D C | Accepted (S3, 2026-11-25) | T-UIR-15, M9 |
+| `payments` (name settled in T-UIR-14) | Payment Request sheet and Secure Payment Confirmation | D C X | Planned (product owner, 2026-11-25); off at start until built (8.2) | T-UIR-14, M9 |
+| `identity` (name settled in T-UIR-14) | FedCM account chooser | D C X | Planned (product owner, 2026-11-25); off at start until built (8.2) | T-UIR-14, M9 |
+| `digital_credentials` (name settled in T-UIR-14) | Digital Credentials API dialogs | D C X | Planned (product owner, 2026-11-25); off at start until built (8.2) | T-UIR-14, M9 |
 | Extension surfaces | Actions, popups, side panels, menus, options, install prompts | See [extensions.md](extensions.md) | Plan | M5: surfaces 25 to 32 (`extension_actions` … `extension_uninstalls`), configured under `[extensions.ui]`; see `packages/core/docs/conventions.md`, "Extensions (M5)" |
 
 `[ui] default_browser_surfaces = false` sets every key above to `custom`, which means the application must register a handler for each before start.
@@ -506,7 +509,7 @@ public final class ScreenCaptureRequest: BDKUIRequest {
 }
 ```
 
-Default presenters: Chromium's chooser dialogs and media picker. `disabled`: the API rejects. While a page is capturing, `page.capture` reports it, and the application must show an indicator; the default presenter for that is a small "sharing" bar in the page's window.
+Default presenters: Chromium's chooser dialogs and media picker. `disabled`: the API rejects. Chromium's choosers and picker are views and cannot be shown on a BDK page (8.2), so T-UIR-13 (M9) writes BDK's own default presenters for both, and Web Bluetooth is turned on with them (product owner, 2026-11-25). While a page is capturing, `page.capture` reports it, and the application must show an indicator; the default presenter for that is a small "sharing" bar in the page's window.
 
 Built so far (T-UIR-10, 2026-11-22, passes on Chromium 158; 8.2): neither surface is routed (S3, T-UIR-13), and Chromium's chooser bubbles and picker cannot be shown on a BDK page, so both behave as `disabled` does. `navigator.usb.requestDevice()` and `navigator.serial.requestPort()` reject with NotFoundError, `navigator.hid.requestDevice()` resolves with no device, and `getDisplayMedia` rejects with NotAllowedError. Web Bluetooth is off at start (`navigator.bluetooth` is absent): nothing could choose a device, and its adapter would need the application's Bluetooth usage string.
 
@@ -523,7 +526,7 @@ public final class ExternalProtocolRequest: BDKUIRequest {
 }
 ```
 
-Default presenter: Chromium's confirmation dialog. `disabled`: external schemes are blocked.
+Default presenter: Chromium's confirmation dialog. `disabled`: external schemes are blocked. BDK's sheet (below) becomes the default presenter once the request is routed (T-UIR-13, M9).
 
 Built so far (T-UIR-10, 2026-11-22, passes on Chromium 158; 8.2): no request is raised yet (S3, T-UIR-13). Chrome decides whether to ask: blocked schemes stay blocked, `mailto:` and schemes the person allowed open without asking, and policy applies. When it asks, a patch gives the question to the engine, which shows a sheet of BDK's own with Chromium's wording ("Open <application>?") and Cancel as the default button, and opens the application only on "Open". The "always allow" checkbox is not offered.
 
@@ -689,6 +692,13 @@ reading the source, not from a test.
 | Autofill payments (server cards, OTP, BNPL, save and fill, payments WebAuthn), password change, the leaked-password dialog, tailored security, password reuse, Lens, Glic, the actor, skills, Save to Drive, dictation onboarding, feature first run | Google services | Not reachable: off at start or with no Google key (providers/README.md); the leaked-password warning is S16 |
 | Content analysis, data controls, device signals, idle and enterprise start-up dialogs, cloud management | Enterprise policy | Not reachable: they need policies BDK applications do not set |
 | Platform-app choosers, media galleries, kiosk file system, `chrome.desktopCapture.chooseDesktopMedia` | Extension and platform-app APIs | Platform apps cannot run. An installed extension can still open the desktop-capture picker: T-UIR-13, M9 |
+
+**Decided by the product owner, 2026-11-25** ([../amendments.md](../amendments.md) 2.23): every row above that is
+refused, off or a fixed sheet becomes a routed request in M9, except the web application install dialogs, which stay
+off while the product owner investigates them. T-UIR-13 routes the device choosers (with Web Bluetooth on), screen
+capture, client certificates, external protocols, the File System Access pickers through `file_pickers`, and
+`chrome.desktopCapture.chooseDesktopMedia` through `screen_capture`. T-UIR-14 turns on and routes Payment Request,
+Secure Payment Confirmation, FedCM and the Digital Credentials API, each with a default presenter of BDK's own.
 
 Default presenters scripted in tests (`present.script`, `bdk_testing.h`): `external_protocols` (`cancel`, `open`),
 `client_certificates` (`certificate<N>`, `cancel`), `browser_dialogs` (`accept`, `cancel`) and `passwords`

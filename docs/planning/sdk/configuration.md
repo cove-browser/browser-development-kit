@@ -183,7 +183,7 @@ One line per surface: `surface = "default" | "custom" | "disabled"`. Surface nam
 | `enabled` | boolean | `true` | Plan | The extension system as a whole. `false` removes extension APIs, pages and installation. |
 | `install_policy` | `"reject_known_incompatible"` or `"allow_all"` | `"reject_known_incompatible"` | Plan; the second value is proposed | Whether a manifest that requires a disabled or unsupported surface is refused before installation. With `allow_all` it installs, and unsupported calls still fail explicitly. |
 | `allow_in_private` | `"user"` or `"never"` | `"user"` | Plan (spec: incognito compatibility is open) | Whether the user may allow an extension in private profiles. |
-| `developer_mode` | `"user"`, `"on"` or `"off"` | `"user"` | Added | Whether loading unpacked extensions is a user setting, always on, or unavailable. |
+| `developer_mode` | `"user"`, `"on"` or `"off"` | `"user"` | Accepted (S6, 2026-11-25); built in T-EXT-14, M9 | Whether loading unpacked extensions is a user setting, always on, or unavailable. |
 
 #### `[extensions.install]`
 
@@ -193,13 +193,13 @@ One line per surface: `surface = "default" | "custom" | "disabled"`. Surface nam
 | `crx` | boolean | `true` | Plan | Install a local CRX file. BDK owns the off-store policy and keeps Chromium's install prompt. |
 | `update_urls` | array of URL patterns, or `"any"` | `"any"` | Plan | Which self-hosted update manifests an extension may name. |
 | `stores` | array of names | `[]` | Plan, M5 | Named store sources. `"chrome-web-store"` is available and off unless listed (decision D4); when listed, the store's install button reads "Add to <browser name>". The spec's `compatible_stores = true` is replaced by this list. |
-| `blocklist` | array of extension identifiers | `[]` | Added | Identifiers that never install or load. |
+| `blocklist` | array of extension identifiers | `[]` | Accepted (S6, 2026-11-25); built in T-EXT-14, M9 | Identifiers that never install or load. |
 
 #### `[extensions.ui]`
 
 One line per surface, with the same three modes as `[ui.surfaces]`: `actions`, `popups`, `side_panels`, `context_menus`, `options_pages`, `devtools`. Details are in [extensions.md](extensions.md) section 4.
 
-#### `[extensions.bundled]` (Added, S6)
+#### `[extensions.bundled]` (Accepted, S6, 2026-11-25; built in T-EXT-14, M9)
 
 One line per extension: `name = "Extensions/<directory>"`. The directory is an unpacked extension inside the application bundle, covered by its signature. It loads at start in every persistent profile, cannot be uninstalled by the user, and can be disabled by the user unless `required = true` is set in the long form:
 
@@ -238,6 +238,14 @@ Extra keys:
 The spec's illustrative `[services.google]` table of booleans is not used. Choosing Google is `provider = "google"` on the service concerned, so there is one way to say it.
 
 Built in M6 (2026-11-20; core, stub and Swift tested, engine written and not yet built). The runtime reads the resolved `services` at start. A provider BDK names but this runtime does not have (`apple`, `deepl`, `microsoft`, `google` for translation, `web-risk`: T-PRV-08) is the start error `config.providerUnavailable`. `endpoint` is accepted only for the default reputation provider (where its lists come from; https, or http on the loopback address); for any other provider it is `config.endpointUnsupported`, because Chromium's Safe Browsing and network-location hosts are constants (T-PRV-14, after v1). The list download itself is not built (T-PRV-11), so `update_interval` and the endpoint have no effect yet. `models`, `bundled_languages` and `model_source` have no effect until the default translation engine exists (T-PRV-02). A Google key with no `provider = "google"` is `config.keyUnused`, and a Google provider with no key `config.keyMissing`. The rules are in `packages/core/docs/conventions.md`, "Providers".
+
+#### `[services.webauthn]` (product owner, 2026-11-25; built in T-UIR-12, M9)
+
+Not a provider table: WebAuthn has no provider to choose.
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `phones` | boolean | `false` | Whether a passkey on a phone (hybrid: QR code, Bluetooth, the phone's tunnel service) is offered. With `false` the engine offers no phone and contacts no tunnel host. With `true` it also needs `NSBluetoothAlwaysUsageDescription` (section 6), and the tunnel host is contacted only after the person chooses a phone. Off by default because Android phones use a Google-run tunnel host, which invariant 9 allows only when the application asks for it (`architecture.md` 16). `true` without the usage string is the note `plist.passkeys_phone`. |
 
 #### `[services.credentials]` (Added, S14)
 
@@ -638,7 +646,7 @@ Dated 2026-11-18. The documents were silent on these points; the schema and reso
 
 - Only keys with status Plan are in the schema. Every key marked Added, with or without an S number, and every Conditional or Later key, is rejected as an unknown key until the product owner accepts it. The list is in `packages/cli/src/core/config/README.md`. For the resolved file, the sections those keys would fill carry their documented defaults.
 - Three codes were added to the table above: `config.required`, `pages.name_invalid` and `automation.collision`. Disabling `credits` is `config.type`.
-- Surface names under `[ui.surfaces]` and `[extensions.ui]` that are not in the schema are `ui.surface_unknown`, except the S3 surfaces, which are the ordinary `config.unknown_key`. A mode the surface does not allow is `ui.surface_mode`; a value that is not a mode at all is `config.type`.
+- Surface names under `[ui.surfaces]` and `[extensions.ui]` that are not in the schema are `ui.surface_unknown`, except the S3 surfaces, which are the ordinary `config.unknown_key`. S3 was accepted on 2026-11-25 (amendments 2.23); T-UIR-15 (M9) adds its surfaces to the schema, after which they follow the same rules as the others. A mode the surface does not allow is `ui.surface_mode`; a value that is not a mode at all is `config.type`.
 - Provider values outside the listed enum are `services.provider_unknown`. The named providers documented as "after v1" are accepted by the schema.
 - Reserved names are the fixed list in 4.3 plus `chrome-error`, `chrome-search`, `chrome-untrusted`. The excluded routes of 4.4 (`signin`, `sign-in`, `sync-internals`, `feedback`, `whats-new`, `welcome`) are also `pages.reserved`.
 - Links inside a page directory are checked like the directory itself: one that leaves the project is `config.path_escape`, and one that points nowhere or back to a directory it is inside is `pages.bad_link` (a code added to the table above).

@@ -451,6 +451,28 @@ never became visible, so it was reverted; T-ADP-11 (M9) has the host view report
 The patch series is 25 (this branch's patch is the last). No other C ABI function changed. New tasks: T-ARC-04 and
 T-ADP-11 (M9); the task list is 146. T-ADP-11 was T-ADP-10 on this branch, a number the fix-up had taken.
 
+### 2.23 Product-owner decisions for M9: S3, S6, phone passkeys and Widevine (2026-11-25)
+
+The product owner decided the M9 items that were waiting for them. Each is work for M9; nothing here was built
+when it was recorded.
+
+| Item | Decision | What M9 does |
+|---|---|---|
+| S3, the Added browser-owned surfaces ([sdk/README.md](sdk/README.md) section 6) | **Accepted, all of them.** | The eight `[ui.surfaces]` keys (`client_certificates`, `autofill_suggestions`, `exclusive_access`, `device_choosers`, `screen_capture`, `webauthn`, `external_protocols`, `page_health`) move from Added to Plan: the schema accepts them and drops `UNACCEPTED_SURFACES` (`packages/cli/src/core/config/schema-check.ts`), and the core, Swift and the engine honour each mode. Every surface is a routed request with a default presenter (T-UIR-13, T-UIR-15). |
+| What T-UIR-10 refused or turned off ([sdk/ui-requests.md](sdk/ui-requests.md) 8.2) | **Routed, all of it, except web application installs.** | Device choosers (WebUSB, WebHID, Web Serial, and Web Bluetooth, turned on), screen capture, client certificates and external protocols become requests instead of refusals or BDK's fixed sheets; the File System Access pickers go through `file_pickers`; an extension's `chrome.desktopCapture.chooseDesktopMedia` goes through `screen_capture` (T-UIR-13). Payment Request, Secure Payment Confirmation, FedCM and the Digital Credentials API are turned on and routed through new surfaces (T-UIR-14). |
+| Page-initiated web application installs | **Not decided.** The product owner is investigating; they stay off. | Nothing in M9. The scope statement that installable web apps are not in v1 ([sdk/README.md](sdk/README.md) section 6) stands until then. |
+| S6, extensions shipped in the bundle, and the other Added extension keys | **Accepted.** | `[extensions] developer_mode`, `[extensions.install] blocklist` and `[extensions.bundled]` move to Plan (T-EXT-14). |
+| Contacting a phone's tunnel service for a passkey on a phone (T-UIR-12) | **A configuration switch, off by default.** | `[services.webauthn] phones` ([sdk/configuration.md](sdk/configuration.md) 3.8). With it off, the engine offers no phone and contacts no tunnel host, whatever `Info.plist` says; with it on and the Bluetooth usage string present, phones are offered and the tunnel host is contacted only after the person chooses a phone. Off by default because the tunnel service is a Google-run host for Android phones, which invariant 9 allows only when the application asks for it (architecture 16). |
+| Widevine (decision D7) | **Not in v1.** | Nothing. DRM streaming does not play. Nothing may rule out adding it as an application opt-in later ([risks.md](risks.md) D7). |
+
+Changed: [sdk/README.md](sdk/README.md) section 6 (S3, S6), [sdk/ui-requests.md](sdk/ui-requests.md) sections 4,
+5.16, 5.17 and 8.2, [sdk/configuration.md](sdk/configuration.md) 3.7, 3.8 and 9, [risks.md](risks.md) D7, the M9
+rows of [roadmap.md](roadmap.md), and tasks T-UIR-12, T-UIR-13, T-EXT-14, with T-UIR-14 and T-UIR-15 new. The task
+list is 148.
+
+Still waiting for the product owner: S1, S12 and S16 (roadmap section 6), web application installs, and the other
+Added items and scope statements in [sdk/README.md](sdk/README.md) section 6.
+
 ## 3. Tasks and workflows
 
 | Task | Change |
@@ -476,6 +498,9 @@ T-ADP-11 (M9); the task list is 146. T-ADP-11 was T-ADP-10 on this branch, a num
 | T-ARC-04 | New, M9 (2026-11-21): left over from M8; the reference application checked by hand and its extension scenarios on the engine through its own windows. |
 | T-ADP-11 | New, M9 (2026-11-21): left over from M8; a never-shown page and a window's focused pane after its view leaves report visible. |
 | T-EXT-12 | Widened (2026-11-21): a page an extension opens is also announced as `webContentsCreated(_, by: .extension(id))`. |
+| T-UIR-12, T-UIR-13, T-EXT-14 | Decided (2026-11-25, 2.23): the phone tunnel is behind `[services.webauthn] phones`; everything T-UIR-10 refused is routed except web application installs; S6 is accepted. |
+| T-UIR-14 | New, M9 (2026-11-25): Payment Request, Secure Payment Confirmation, FedCM and the Digital Credentials API turned on and routed (2.23). |
+| T-UIR-15 | New, M9 (2026-11-25): the S3 `[ui.surfaces]` keys accepted, and the three S3 surfaces with no task (`autofill_suggestions`, `exclusive_access`, `page_health`) finished (2.23). |
 
 The task list goes from 103 to 106 tasks. The README said 100 before, which was already wrong; it now says 106. With T-CLI-05 on 2026-11-16 it is 107.
 

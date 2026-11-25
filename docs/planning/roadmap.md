@@ -323,10 +323,10 @@ Not done, each a task: the application used by hand, and its extension popups an
 | Robustness | T-REL-03 | Long-run, crash-recovery and memory tests pass. |
 | Chromium's own tests | T-ADP-09 | The `browser_tests` filters named in T-ADP-02 pass on the BDK window, or each failure is recorded. Needed for the process-isolation gate. |
 | Cross-platform review | T-XPL-01 | The ABI and service contracts are reviewed against Windows and Linux host requirements and a future .NET binding; findings are resolved or recorded. |
-| Legal | T-REL-02 | Third-party notices ship. The legal review covers the store source (D4), component data (D5) and system codecs (D7). Widevine is deferred and not part of v1 unless the product owner decides otherwise. |
-| Extension additions (after the product owner accepts S6) | T-EXT-14 | `developer_mode`, `blocklist` and bundled extensions behave as extensions.md says. |
-| Browser dialogs left refused or off (after the product owner decides S3) | T-UIR-13 | Device choosers, screen capture, client certificates and external protocols are requests, or stay as they are by decision; Payment Request, FedCM, Digital Credentials, Web Bluetooth and page-initiated installs are routed or stay off by decision; the File System Access pickers go through `file_pickers`; an extension's `chrome.desktopCapture` picker no longer reaches Chromium's views. |
-| Passkeys that need a signed application | T-UIR-11, T-UIR-12 | On a signed, entitled build: Touch ID passkeys with the application's keychain access group, a passkey on a phone and one from the system's provider; the product owner decides whether the phone's tunnel service needs a switch. |
+| Legal | T-REL-02 | Third-party notices ship. The legal review covers the store source (D4), component data (D5) and system codecs (D7). Widevine is not part of v1 (product owner, 2026-11-25). |
+| Extension additions (S6, accepted 2026-11-25) | T-EXT-14 | `developer_mode`, `blocklist` and bundled extensions behave as extensions.md says. |
+| Browser dialogs left refused or off (S3, accepted in full 2026-11-25; amendments 2.23) | T-UIR-13, T-UIR-14, T-UIR-15 | Every S3 surface is a `[ui.surfaces]` key and a routed request with a default presenter, including `page_health`. Device choosers (with Web Bluetooth on), screen capture, client certificates and external protocols are requests; the File System Access pickers go through `file_pickers`; an extension's `chrome.desktopCapture` picker goes through `screen_capture`. Payment Request, Secure Payment Confirmation, FedCM and Digital Credentials are on and routed. Page-initiated installs stay off while the product owner investigates them. |
+| Passkeys that need a signed application | T-UIR-11, T-UIR-12 | On a signed, entitled build: Touch ID passkeys with the application's keychain access group, a passkey on a phone behind `[services.webauthn] phones` (off by default; product owner, 2026-11-25), and one from the system's provider once an application holds Apple's browser passkey entitlement. |
 | Left over from M8 | T-ARC-04, T-ADP-11 | The reference application is used by hand and its extension popups and side panels pass on the engine through its own windows; a page reports hidden whenever its view is in no visible window. |
 
 ### M10 — Windows feasibility
@@ -429,6 +429,5 @@ Each was fixed where it was; the commit messages give the detail.
 | T-PRV-02 | M6 | The Bergamot engine and its model source |
 | T-PRV-11 | M6 | Feed licences, a signing key and where BDK publishes the lists |
 | T-PRV-13 | M6 | The product owner accepting S16 |
-| T-EXT-14 | M9 | The product owner accepting the S6 keys |
 | T-ADP-09 | M9 | A `browser_tests` build |
 | T-PRV-14 | After v1 | Patches to Chromium's Google protocol hosts |
