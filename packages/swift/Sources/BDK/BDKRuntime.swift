@@ -68,6 +68,14 @@ public final class BDKRuntime {
     /// Automation sessions, tasks and the external endpoint (swift-api.md section 13).
     public private(set) lazy var automation = BDKAutomation(runtime: self)
     public private(set) var areRegistrationsFrozen = false
+    /// Asked before each navigation of a page's main frame sends its request, and again at each
+    /// server redirect (swift-api.md 6.3). Nil, the default, allows every navigation. It can be set
+    /// or replaced at any time; a navigation already asked gets its answer from the policy that was
+    /// asked.
+    public var navigationPolicy: NavigationPolicy? {
+        didSet { installNavigationPolicy() }
+    }
+    var isNavigationPolicyInstalled = false
 
     package private(set) var handle: bdk_runtime_t
     private(set) var state = State.running

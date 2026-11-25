@@ -126,6 +126,22 @@ public struct BDKStub {
         try check(status)
     }
 
+    /// Scripts a server redirect: every later request for `url` is redirected to `target`. The
+    /// navigation policy is asked at each redirect.
+    public func scriptRedirect(from url: URL, to target: URL) throws {
+        let handle = try runtime.liveHandle()
+        let status = withBDKStrings([url.absoluteString, target.absoluteString]) { lent in
+            bdk_stub_script_redirect(handle, lent[0], lent[1])
+        }
+        try check(status)
+    }
+
+    /// Acts as the page starting a navigation itself (a link or `location.href`).
+    public func navigateAsPage(_ page: BDKWebContents, to url: URL) throws {
+        let status = withBDKString(url.absoluteString) { bdk_stub_page_navigate(page.handle, $0) }
+        try check(status)
+    }
+
     /// Raises a UI request as Chromium would. The handler for the surface runs on the next pump.
     /// With no handler the request takes the default.
     public func raiseUIRequest(

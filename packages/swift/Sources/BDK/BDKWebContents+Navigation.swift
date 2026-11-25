@@ -27,8 +27,10 @@ extension BDKWebContents {
         }
 
         /// Loads a URL and returns when the navigation commits. Throws `navigation.superseded`
-        /// when another navigation replaces it, `navigation.aborted` when it is stopped and
-        /// `navigation.netError` when it fails. Cancelling the task stops the navigation.
+        /// when another navigation replaces it, `navigation.aborted` when it is stopped,
+        /// `navigation.cancelledByPolicy` when the navigation policy cancels it and
+        /// `navigation.netError` when it fails. When the policy redirects it, returns the commit of
+        /// the URL loaded instead. Cancelling the task stops the navigation.
         @discardableResult
         public func load(_ url: URL) async throws -> Commit {
             var iterator = contents.events.makeAsyncIterator()
@@ -39,10 +41,17 @@ extension BDKWebContents {
             // A navigation this one replaced may still have events queued ahead; only the start of this
             // URL's navigation opens the window for its outcome.
             var started = false
+            // The policy redirected it: the runtime starts the redirect's navigation next.
+            var redirected = false
             while let event = await iterator.next() {
                 switch event {
-                case .navigationStarted(let info) where info.url == url:
+                case .navigationStarted(let info) where info.url == url || redirected:
                     started = true
+                    redirected = false
+                case .navigationFailed(let failure)
+                where started && failure.reason == "redirectedByPolicy":
+                    started = false
+                    redirected = true
                 case .navigationCommitted(let commit) where started:
                     return commit
                 case .navigationFailed(let failure) where started:

@@ -46,7 +46,7 @@ With no application UI code beyond a window and an address field, the result mus
 | Feature | BDK API | Application work | Status |
 |---|---|---|---|
 | Back, forward, reload, stop, history list | `page.navigation` (6.3) | Buttons | Plan, M2 |
-| Cancelling or redirecting a navigation | Navigation policy ([swift-api.md](swift-api.md) 6.3) | The rules | Product owner, 2026-11-25; not built, T-SWF-10 and T-SWF-11, M9 |
+| Cancelling or redirecting a navigation | Navigation policy ([swift-api.md](swift-api.md) 6.3) | The rules | Product owner, 2026-11-25; stub, core and Swift built (T-SWF-10, M9); engine not built (T-SWF-11) |
 | What to show in the address field | `page.displayURL`, `page.security` (6.2) | The field. Use `displayURL`, not `url`, or the field can be spoofed during a navigation. | Plan, M2 |
 | Security indicator and certificate viewer | `page.security`; `permissions.certificateExceptions` | The indicator and a details view | Plan, M3 |
 | Typed text: URL or search | `search.classify` ([services.md](services.md) 5.13) | Call it on submit | Added (S1) |

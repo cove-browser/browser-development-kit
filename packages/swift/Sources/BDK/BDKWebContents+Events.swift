@@ -25,9 +25,12 @@ extension BDKWebContents {
         public let url: URL?
         /// The network error, or 0 when the navigation was stopped or superseded.
         public let netError: Int32
-        /// "superseded", "aborted" or "netError".
+        /// "superseded", "aborted", "handledNatively", "cancelledByPolicy", "redirectedByPolicy"
+        /// or "netError".
         public let reason: String
         public let isErrorPage: Bool
+        /// For "redirectedByPolicy": the URL the navigation policy loads instead.
+        public let redirectURL: URL?
 
         /// The failure as the error `load` throws.
         public var error: BDKError {
@@ -43,6 +46,10 @@ extension BDKWebContents {
                 BDKError(
                     domain: .navigation, code: "handledNatively",
                     message: "the route's native handler showed the page")
+            case "cancelledByPolicy":
+                BDKError(
+                    domain: .navigation, code: "cancelledByPolicy",
+                    message: "the application's navigation policy cancelled the navigation")
             default:
                 BDKError(
                     domain: .navigation, code: "netError",
@@ -104,7 +111,8 @@ extension BDKWebContents.Event {
             self = .navigationFailed(
                 BDKWebContents.NavigationFailure(
                     url: info.url, netError: event.net_error,
-                    reason: detail?.string("code") ?? "netError", isErrorPage: info.isErrorPage))
+                    reason: detail?.string("code") ?? "netError", isErrorPage: info.isErrorPage,
+                    redirectURL: detail?.string("redirectUrl").flatMap(URL.init(string:))))
         case BDK_CONTENTS_EVENT_LOAD_FINISHED:
             self = .navigationFinished(info)
         case BDK_CONTENTS_EVENT_TITLE_CHANGED:
