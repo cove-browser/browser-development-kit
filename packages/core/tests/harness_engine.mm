@@ -419,6 +419,12 @@ size_t bdk_harness_newer_session_state(uint8_t* out, size_t cap) {
     return n;
 }
 
+int bdk_harness_own_data_directory(void) {
+    /* Chromium starts once per process, with g_data_dir. The engine's half of the snapshot and
+       downgrade policy needs an engine scenario with its own launch (T-PKG-05). */
+    return 0;
+}
+
 void bdk_harness_engine_show(bdk_contents_t contents, int visible) {
     static NSMutableDictionary<NSNumber*, NSWindow*>* windows;
     if (!windows)

@@ -612,14 +612,16 @@ void withdraw_contents_requests(const std::shared_ptr<Runtime>& rt, bdk_contents
 
 /* ---- Completing ---------------------------------------------------------------------------- */
 
-namespace {
-
 /* A user gesture is the operating system's event that confirmed the grant. The ABI has one such
-   kind. A runtime with a window system can check more (that it is recent, that it went to a window
-   of this application); that is the backend's to add when it presents UI. */
-bool is_gesture(const bdk_native_handle_t& g) {
+   kind, BDK_NATIVE_NSEVENT; a Windows or Linux runtime adds its input event's kind here and nowhere
+   else (T-XPL-01, docs/release/cross-platform-review.md). A runtime with a window system can check
+   more (that it is recent, that it went to a window of this application); that is the backend's to
+   add when it presents UI. */
+bool is_gesture_event(const bdk_native_handle_t& g) {
     return g.kind == BDK_NATIVE_NSEVENT;
 }
+
+namespace {
 
 /* A string array under key, or false when it is there but is not one. */
 bool string_set(const Json& object, const char* key, std::vector<std::string>* out, bool* present) {
@@ -724,7 +726,7 @@ bdk_status_t ui_complete(Request& r, const std::string& completion, const std::s
     if (interstitial && completion != "go_back" && completion != "proceed")
         return fail(err, BDK_DOMAIN_UI, "completionNotAllowed",
                     "an interstitial is completed by go_back or proceed only");
-    if (completion_grants(r.surface, completion) && !is_gesture(gesture))
+    if (completion_grants(r.surface, completion) && !is_gesture_event(gesture))
         return fail(err, BDK_DOMAIN_UI, BDK_CODE_GESTURE_REQUIRED,
                     "a granting completion needs the gesture event");
 

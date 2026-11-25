@@ -22,6 +22,10 @@ size_t bdk_harness_newer_session_state(uint8_t* out, size_t cap) {
     return n;
 }
 
+int bdk_harness_own_data_directory(void) {
+    return 1;
+}
+
 size_t bdk_harness_pump(void) {
     return bdk_stub_pump();
 }

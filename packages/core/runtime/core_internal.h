@@ -317,6 +317,16 @@ class Backend {
     virtual void Shutdown(Runtime& rt, std::function<void()> done) = 0;
     /* The manifest of the runtime, as JSON. Any thread. */
     virtual std::string ManifestJson() = 0;
+    /* The profile snapshot and downgrade policy (profile_versions.h, T-PKG-05): the data directory
+       this start will use and the engine's version ("158.0.8127.37"). Called before Start; when
+       either is empty the policy is not applied. The Chromium engine does not supply them yet
+       (T-PKG-05). */
+    virtual std::string ProfileDataDirectory(const bdk_start_config_t&, const std::string&) {
+        return "";
+    }
+    virtual std::string EngineVersion() {
+        return "";
+    }
 
     /* Profiles. The core keeps the list and the names; the backend keeps what is on disk. */
     virtual void ProfilesChanged(Runtime& rt) = 0;
@@ -473,6 +483,8 @@ bdk_error_t make_error(const std::string& domain, const std::string& code,
 bdk_status_t fail(bdk_error_t* out, const char* domain, const char* code,
                   const std::string& message);
 void clear_out(bdk_error_t* out);
+/* Whether a native handle is the platform's input event that confirmed a grant (ui_router.cc). */
+bool is_gesture_event(const bdk_native_handle_t& g);
 bdk_buffer_t make_buffer(const std::string& data);
 
 std::shared_ptr<Runtime> current_runtime();

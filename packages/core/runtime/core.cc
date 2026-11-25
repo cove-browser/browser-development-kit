@@ -10,6 +10,7 @@
 #include "bdk_abi_hash.h"
 #include "broker_internal.h"
 #include "core_internal.h"
+#include "profile_versions.h"
 #include "providers_internal.h"
 #include "routes.h"
 
@@ -613,6 +614,16 @@ BDK_EXPORT bdk_status_t bdk_runtime_start(const bdk_start_config_t* config, bdk_
         return s;
     if (bdk_status_t s = routes_configure(*rt, resolved, out_error))
         return s;
+    ProfileVersionPolicy profile_policy;
+    if (bdk_status_t s = profile_policy_configure(resolved, &profile_policy, out_error))
+        return s;
+    const std::string data_dir = backend().ProfileDataDirectory(c, resolved);
+    const std::string engine_version = backend().EngineVersion();
+    if (!data_dir.empty() && !engine_version.empty()) {
+        if (bdk_status_t s =
+                profile_versions_apply(data_dir, engine_version, profile_policy, out_error))
+            return s;
+    }
     {
         std::lock_guard<std::mutex> lock(g.mutex);
         g.ui_set = true;
