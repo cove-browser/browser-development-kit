@@ -38,6 +38,7 @@ extension BDKStubTests {
                 .extensionDevTools: BDK_SURFACE_EXTENSION_DEVTOOLS,
                 .extensionInstalls: BDK_SURFACE_EXTENSION_INSTALLS,
                 .extensionUninstalls: BDK_SURFACE_EXTENSION_UNINSTALLS,
+                .pageHealth: BDK_SURFACE_PAGE_HEALTH,
             ]
             #expect(expected.count == BDKUISurface.allCases.count)
             for (surface, value) in expected { #expect(surface.rawValue == value) }
@@ -243,6 +244,9 @@ private func expectNeverGranted(
     switch surface {
     case .certificateErrors, .reputationWarnings:
         try fixture.expectOutcome(.completed, "go_back", "{}", sourceLocation: sourceLocation)
+    case .exclusiveAccess:
+        // The exit instruction is always shown: the default presenter takes the notice.
+        try fixture.expectOutcome(.defaulted, sourceLocation: sourceLocation)
     default:
         try fixture.expectOutcome(kind, sourceLocation: sourceLocation)
     }

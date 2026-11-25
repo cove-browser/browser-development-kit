@@ -195,10 +195,11 @@ extension BDKStubTests {
             let sonoma = OperatingSystemVersion(majorVersion: 14, minorVersion: 0, patchVersion: 0)
             let bare = BDKWebAuthnSupport(
                 infoPlist: [:], hasEntitlement: { _ in false }, isHardenedRuntime: true,
-                operatingSystem: sonoma)
+                operatingSystem: sonoma, phonesEnabled: false)
             #expect(bare.securityKeys.isAvailable)
             #expect(
                 bare.phones.missing == [
+                    .configuration("[services.webauthn] phones = true"),
                     .infoPlistKey("NSBluetoothAlwaysUsageDescription"),
                     .entitlement("com.apple.security.device.bluetooth"),
                 ])
@@ -211,8 +212,16 @@ extension BDKStubTests {
 
             let configured = BDKWebAuthnSupport(
                 infoPlist: ["NSBluetoothAlwaysUsageDescription": "Sign in with your phone."],
-                hasEntitlement: { _ in true }, isHardenedRuntime: true, operatingSystem: sonoma)
+                hasEntitlement: { _ in true }, isHardenedRuntime: true, operatingSystem: sonoma,
+                phonesEnabled: true)
             #expect(configured.phones.isAvailable && configured.systemPasskeys.isAvailable)
+            // With the switch off, everything else in place still offers no phone.
+            let switchedOff = BDKWebAuthnSupport(
+                infoPlist: ["NSBluetoothAlwaysUsageDescription": "Sign in with your phone."],
+                hasEntitlement: { _ in true }, isHardenedRuntime: true, operatingSystem: sonoma,
+                phonesEnabled: false)
+            #expect(
+                switchedOff.phones.missing == [.configuration("[services.webauthn] phones = true")])
 
             // Unsigned development builds need no Bluetooth entitlement; old systems no passkeys.
             let old = BDKWebAuthnSupport(
@@ -220,11 +229,26 @@ extension BDKStubTests {
                 hasEntitlement: { $0 != "com.apple.developer.web-browser.public-key-credential" },
                 isHardenedRuntime: false,
                 operatingSystem: OperatingSystemVersion(
-                    majorVersion: 13, minorVersion: 4, patchVersion: 0))
+                    majorVersion: 13, minorVersion: 4, patchVersion: 0),
+                phonesEnabled: true)
             #expect(old.phones.isAvailable)
             #expect(old.systemPasskeys.missing.first == .macOS("13.5"))
             #expect("\(BDKWebAuthnSupport.Requirement.macOS("13.5"))" == "macOS 13.5 or later")
             #expect(BDKWebAuthnSupport.current.securityKeys.isAvailable)
+        }
+
+        @Test func phonesFollowTheConfigurationOfTheRunningRuntime() async throws {
+            let setting = BDKWebAuthnSupport.Requirement.configuration(
+                "[services.webauthn] phones = true")
+            #expect(BDKWebAuthnSupport.current.phones.missing.contains(setting))
+            try await withStubRuntime { _ in
+                #expect(BDKWebAuthnSupport.current.phones.missing.contains(setting))
+            }
+            let phonesOn = BDKConfiguration(
+                resolvedJSON: "{\"services\":{\"webauthn\":{\"phones\":true}}}")
+            try await withStubRuntime(phonesOn) { _ in
+                #expect(!BDKWebAuthnSupport.current.phones.missing.contains(setting))
+            }
         }
     }
 }

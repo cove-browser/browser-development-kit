@@ -68,6 +68,9 @@ public final class BDKRuntime {
     /// Automation sessions, tasks and the external endpoint (swift-api.md section 13).
     public private(set) lazy var automation = BDKAutomation(runtime: self)
     public private(set) var areRegistrationsFrozen = false
+    /// `[services.webauthn] phones` in the resolved configuration: whether passkeys on a phone may
+    /// be offered (`BDKWebAuthnSupport.phones`).
+    private(set) var offersPhonePasskeys = false
 
     package private(set) var handle: bdk_runtime_t
     private(set) var state = State.running
@@ -146,6 +149,9 @@ public final class BDKRuntime {
             info: Info(
                 abiVersion: bdk_abi_version(), abiHash: swiftString(bdk_abi_hash())))
         current = runtime
+        runtime.offersPhonePasskeys =
+            BDKJSValue(jsonString: configuration.resolvedJSON)?.objectValue?["services"]?
+            .objectValue?["webauthn"]?.objectValue?["phones"]?.boolValue ?? false
         runtime.subscribeToEvents()
         do {
             // The core checks some registrations only now (a custom UI surface needs its handler

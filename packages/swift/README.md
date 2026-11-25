@@ -162,17 +162,18 @@ throws `ui.requestCompleted`; completing a withdrawn request does nothing.
 | `newWindows` | `NewWindowRequest` | `accept()`, `reject()` |
 | `downloads` | `DownloadRequest`, `DangerousDownloadRequest` | `proceed(to:)`, `cancel()`; `keep(confirmedBy:)` (grant), `discard()` |
 | `passwords` | `PasswordSaveRequest`, `LeakedPasswordRequest` | `save(confirmedBy:)` (grant), `never()`, `dismiss()` |
-| `autofill`, `autofillSuggestions` | `AutofillSaveRequest`, `AutofillSuggestionsRequest` | `save(confirmedBy:)`, `accept(_:confirmedBy:)` (grant), `dismiss()` |
+| `autofill`, `autofillSuggestions` | `AutofillSaveRequest`, `AutofillSuggestionsRequest` | `save(confirmedBy:)`, `accept(_:confirmedBy:)` (grant), `preview(_:)` (`bdk_ui_update` `{"preview"}`, nil clears it; fills nothing), `dismiss()` |
 | `printing` | `PrintRequest` | `printWithSystemDialog()`, `savePDF(to:)`, `cancel()` |
 | `find` | `FindRequest` | `session`, `close()` |
-| `fullscreen`, `exclusiveAccess` | `FullscreenRequest`, `ExclusiveAccessRequest` | `allow()`, `deny()`; `acknowledge()` |
+| `fullscreen`, `exclusiveAccess` | `FullscreenRequest`, `ExclusiveAccessRequest` | `allow()`, `deny()`; `acknowledge()` (the only completion; a rejected or dropped notice goes to the default presenter) |
+| `pageHealth` | `UnresponsivePageRequest`, `BlockedPopupRequest` (by the payload's `kind`) | `wait()`, `terminate()`; `allowOnce(_:confirmedBy:)` (grant `{"popup"}`), `alwaysAllow(confirmedBy:)` (grant `{"always":true}`), `dismiss()`; `presentation` (`BDKPageHealthPresentation`) and `perform(_:)` |
 | `notifications` | `NotificationRequest` | `shown()` (local), `clicked(action:)`, `closed(byUser:)` |
 | `certificateErrors`, `reputationWarnings` | `CertificateErrorRequest`, `ReputationWarningRequest` | `goBack()`, `proceed(confirmedBy:)` (grant; `ui.notOverridable` when Chromium refuses) |
 | `devTools`, `externalProtocols` | `DevToolsRequest`, `ExternalProtocolRequest` | `accept()`, `reject()`; `open(remember:confirmedBy:)` (grant), `cancel()` |
 | `extensionPopups`, `extensionSidePanels` | `ExtensionPopupRequest`, `ExtensionSidePanelRequest` | Open requests: `accept()` (popup) and `accept(side:)` (panel) send `bdk_ui_update` `{"placed":true}` and stay open; `side` sends `{"side"}`; `sizeChanges` and `visibilityChanges` come from `bdk_ui_set_update_handler`; `reject()` (deny), `close()` (accept `{"action":"close"}`); `closed` is the request's `cancellation` |
 | `extensionInstalls`, `extensionUninstalls` | `ExtensionInstallRequest`, `ExtensionUninstallRequest` | `accept(confirmedBy:)`, `confirm(confirmedBy:)` (grant), `cancel()` (deny) |
 | `translation` | `TranslationRequest` | `translate(from:to:)`, `revert()`, `always(for:)`, `never(for:)`, `neverForThisSite()`, `dismiss()` (none grants, none needs a gesture) |
-| `webAuthn` | `WebAuthnRequest`, one per step of a ceremony (same `ceremonyID`; a new step withdraws the last) | `choose(_:)` (accept `{"mechanism"}`), `providePIN(_:)` (accept `{"pin"}`), `chooseAccount(_:confirmedBy:)` (grant `{"account"}`), `accept()` (the step's own button), `useOtherMechanism()` (accept `{"action":"otherMechanisms"}`), `cancel()` (deny); `presentation` and `perform(_:)` describe and answer the step whatever draws it; `qrCodeImage(scale:)`; `cancelAll` as a handler. `BDKWebAuthnSupport.current` says which mechanisms the application can offer and what it lacks for the others |
+| `webAuthn` | `WebAuthnRequest`, one per step of a ceremony (same `ceremonyID`; a new step withdraws the last) | `choose(_:)` (accept `{"mechanism"}`), `providePIN(_:)` (accept `{"pin"}`), `chooseAccount(_:confirmedBy:)` (grant `{"account"}`), `accept()` (the step's own button), `useOtherMechanism()` (accept `{"action":"otherMechanisms"}`), `cancel()` (deny); `presentation` and `perform(_:)` describe and answer the step whatever draws it; `qrCodeImage(scale:)`; `cancelAll` as a handler. `BDKWebAuthnSupport.current` (main actor) says which mechanisms the application can offer and what it lacks for the others; phones also need `[services.webauthn] phones = true` in the running runtime's configuration (`.configuration(…)` while it is off) |
 | `deviceChoosers`, `screenCapture` | `BDKRawUIRequest` | `complete(_:arguments:confirmedBy:)` with "grant", "deny" or "accept" |
 
 Completion mapping (provisional, settled here for T-UIR-01 to T-UIR-06): a completion that grants (permission, a kept
@@ -319,13 +320,15 @@ so a test can start a load and act on it (supersede it, stop it) before the stub
 * `BDKKeyboardDelegate` is on the page (`keyboardDelegate`), with a forwarding property on the view. An unhandled key
   the delegate declines is offered to the main menu.
 * `BDKJSValue` exists here because error details need it; scripting reuses it (T-AUT-03).
-* `BDKTestSupport` offers `scriptNavigation` and `simulateKey` rather than `simulateNavigation` and `raise(...)`.
+* `BDKTestSupport` offers `scriptNavigation` and `simulateKey` rather than `simulateNavigation` and `raise(...)`, and `makeUnresponsive(_:)`, `makeResponsive(_:)` and `blockPopup(on:url:)` for page health.
 
 * UI requests (T-SWF-04): `BDKUIRequest` is a class, not a protocol; `window` is an `NSWindow?` (there is no
   `BDKWindow` yet); `profile` is optional; `setHandler` throws (it can fail after the freeze); a surface with two
   request kinds (`downloads`, `passwords`) takes `BDKUIRequest`; `NewWindowRequest.newContents` and the other
-  page-carrying fields are optional; `BDKMenuItem` has no `icon`; there is no `AutofillSuggestionsRequest.preview`,
-  or `ProviderDescriptor` beyond the generated `BDKProviderDescriptor`.
+  page-carrying fields are optional; `BDKMenuItem` has no `icon`; there is no `ProviderDescriptor` beyond the
+  generated `BDKProviderDescriptor`. `AutofillSuggestionsRequest.preview(_:)` throws (`ui.unknownSuggestion`) and
+  sends an update rather than completing. `BlockedPopupRequest.allowOnce` takes a `BlockedPopup` and the confirming
+  event, and `alwaysAllow` the event, where ui-requests.md 5.19 proposed a URL and no event.
 * Windows (T-SWF-08): `BDKWindow.nsWindow` is weak and optional (the registry must not keep an `NSWindow` alive);
   `extensionWindowID` is `Int?` (nil for the ABI's -1); `WindowRequest` is a struct with `action` (the doc's enum) and
   `extensionID`, so the delegate learns which extension asked; anchor rectangles are given in AppKit window
