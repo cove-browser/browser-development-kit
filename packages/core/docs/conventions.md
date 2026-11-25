@@ -356,8 +356,10 @@ taken where the specification was silent (2026-11-20):
    `TaskPort::cpu_budget_ms`; a host that stops the script at it calls `TaskPort::BudgetExceeded` and the task
    finishes with `automation.budgetExceeded` (M8, T-AUT-07). A `failed` frame is always `scriptFailed`, so a script
    cannot claim the code. The engine's host counts the CPU time of each entry into the script (its start, a frame,
-   a timer) with `base::ThreadTicks` and arms a watchdog thread with the budget left, which terminates a run still
-   going when it is due; the wait is wall-clock time, never shorter than the CPU time used meanwhile. The stub's
+   a timer) with `base::ThreadTicks` and arms a watchdog thread with the budget left. When that much wall-clock time
+   has passed (the earliest the budget can be used up), the watchdog interrupts the run, reads the host thread's CPU
+   time inside the interrupt, and terminates the run only if it has used the budget; otherwise it waits again for
+   what is left. The stub's
    host reports the budget (`bdk_stub_script_budget`) and can be told the script used it
    (`bdk_stub_script_exhaust_budget`).
 5. Audit: every call a session makes emits `automation.commandInvoked {session, task?, command, profile?, contents?,

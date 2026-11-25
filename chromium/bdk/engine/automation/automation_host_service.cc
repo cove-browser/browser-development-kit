@@ -285,10 +285,12 @@ void InitializeV8() {
 
 // Stops a script that runs past its task's CPU budget (T-AUT-07). The isolate
 // runs one script at a time, on the host's thread. While one runs, a task on
-// the watchdog's own thread is due when the task's remaining budget has
-// passed; if the same run is still going then, it terminates the execution.
-// The wait is wall-clock time, which is never less than the CPU time the
-// script uses meanwhile, so a script is never stopped before its budget.
+// the watchdog's own thread is due when the run's remaining budget has passed
+// in wall-clock time. That is only the earliest the budget can be used up:
+// the host thread may have had less CPU time meanwhile. So the watchdog then
+// interrupts the script, and on the host's thread reads the CPU time the run
+// has used: it terminates the execution when that reaches the budget, and
+// otherwise waits again for what is left.
 class BudgetWatchdog {
  public:
   explicit BudgetWatchdog(v8::Isolate* isolate)
@@ -302,7 +304,7 @@ class BudgetWatchdog {
   // Joins the thread first: its pending task refers to this.
   ~BudgetWatchdog() { thread_.Stop(); }
 
-  // A run starts with `remaining` budget.
+  // A run starts, on the host's thread, with `remaining` budget.
   void Arm(base::TimeDelta remaining) {
     uint64_t run;
     {
@@ -310,11 +312,10 @@ class BudgetWatchdog {
       run = ++run_;
       armed_ = true;
       fired_ = false;
+      remaining_ = remaining;
+      start_ = base::ThreadTicks::Now();
     }
-    thread_.task_runner()->PostDelayedTask(
-        FROM_HERE,
-        base::BindOnce(&BudgetWatchdog::Fire, base::Unretained(this), run),
-        remaining);
+    Wait(run, remaining);
   }
 
   // The run ended. Returns whether the watchdog stopped it.
@@ -331,12 +332,52 @@ class BudgetWatchdog {
   }
 
  private:
-  void Fire(uint64_t run) {
-    base::AutoLock lock(lock_);
-    if (armed_ && run == run_) {
-      fired_ = true;
-      isolate_->TerminateExecution();
+  // Why an interrupt was requested: for which run.
+  struct Check {
+    raw_ptr<BudgetWatchdog> watchdog;
+    uint64_t run;
+  };
+
+  void Wait(uint64_t run, base::TimeDelta delay) {
+    thread_.task_runner()->PostDelayedTask(
+        FROM_HERE,
+        base::BindOnce(&BudgetWatchdog::Due, base::Unretained(this), run),
+        delay);
+  }
+
+  // On the watchdog's thread: the run's budget may be used up. Only the host's
+  // thread can read its own CPU time, so the script is interrupted to check.
+  void Due(uint64_t run) {
+    {
+      base::AutoLock lock(lock_);
+      if (!armed_ || run != run_) {
+        return;
+      }
     }
+    isolate_->RequestInterrupt(&BudgetWatchdog::CheckOnHost,
+                               new Check{this, run});
+  }
+
+  // On the host's thread, between two steps of the script.
+  static void CheckOnHost(v8::Isolate* isolate, void* data) {
+    std::unique_ptr<Check> check(static_cast<Check*>(data));
+    BudgetWatchdog* watchdog = check->watchdog;
+    base::TimeDelta left;
+    {
+      base::AutoLock lock(watchdog->lock_);
+      // A run that ended since, or a later one, which has its own deadline.
+      if (!watchdog->armed_ || check->run != watchdog->run_) {
+        return;
+      }
+      left =
+          watchdog->remaining_ - (base::ThreadTicks::Now() - watchdog->start_);
+      if (!left.is_positive()) {
+        watchdog->fired_ = true;
+        isolate->TerminateExecution();
+        return;
+      }
+    }
+    watchdog->Wait(check->run, left);
   }
 
   const raw_ptr<v8::Isolate> isolate_;
@@ -345,6 +386,8 @@ class BudgetWatchdog {
   uint64_t run_ GUARDED_BY(lock_) = 0;
   bool armed_ GUARDED_BY(lock_) = false;
   bool fired_ GUARDED_BY(lock_) = false;
+  base::TimeDelta remaining_ GUARDED_BY(lock_);
+  base::ThreadTicks start_ GUARDED_BY(lock_);
 };
 
 // One task: a context of its own in the process's isolate, running one script.
