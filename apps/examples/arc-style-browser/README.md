@@ -91,6 +91,7 @@ whether it is on screen, the runtime's visibility, entries, the settings URL and
 | New pages from links | `ScenarioTests.linksOpenNewPages`, `ScenarioTests.pageClosesItself` | `engine_a_defaulted_new_window_opens_in_the_default_presenter` (BDK's popup window) | |
 | Internal pages | `ScenarioTests.settingsPage` | `tests_engine_pages.c` | `settings` (real runtime) |
 | Automation | `ScenarioTests.automation` | `engine_arc_a_script_drives_pages_in_two_spaces_one_signed_in` | `automation` (real runtime) |
+| Robustness (T-REL-03) | `ScenarioTests.manyPagesOpenAndClose`, `ScenarioTests.crashedPageReloads`: 40 rounds; `arc-style-browser:test-release` runs 500 (`BDK_ROBUSTNESS_ITERATIONS`) | `engine_a_crashed_renderer_reports_renderer_gone` | |
 
 The stub cannot show what Chromium makes of a layout, so the engine scenarios repeat each one with the same
 view moves in windows the harness registers. CI never builds Chromium; those run on a developer's Mac
