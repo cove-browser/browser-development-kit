@@ -133,6 +133,7 @@ struct ScenarioTests {
     @Test("the application saves its layout and each page's state, and restores both")
     func sessionRestoration() async throws {
         var saved: SessionFile?
+        var moved: Layout.PageID?
         var entries: [Layout.PageID: [URL?]] = [:]
         try await withBrowser { browser in
             let controller = browser.controller
@@ -141,6 +142,11 @@ struct ScenarioTests {
             try await controller.perform(.splitNext)
             try await controller.perform(.pin)
             try await controller.perform(.newWindow("Work"))
+            // A Personal page moved to Work, which must come back in Personal's profile.
+            let (personal, work) = (controller.layout.spaces[0], controller.layout.spaces[1])
+            let movedID = try #require(personal.allPages.first)
+            try controller.change { try $0.move(movedID, toSpace: work.id) }
+            moved = movedID
             for (id, page) in controller.registry.pages {
                 entries[id] = try page.navigation.entries.map(\.url)
             }
@@ -153,6 +159,9 @@ struct ScenarioTests {
             #expect(controller.layout.spaces == session.layout.spaces)
             #expect(controller.layout.windows == session.layout.windows)
             #expect(controller.windows.count == 2)
+            let movedID = try #require(moved)
+            #expect(controller.layout.spaceOf(movedID)?.name == "Work")
+            #expect(try browser.page(movedID).profile.info().name == "Personal")
             for (id, urls) in entries {
                 let restored = try browser.page(id).navigation.entries.map(\.url)
                 #expect(restored == urls)

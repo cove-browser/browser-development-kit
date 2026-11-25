@@ -72,8 +72,9 @@ public final class BrowserController {
 
     private func makePage(_ id: Layout.PageID, in space: Layout.Space) async throws {
         let record = layout.pages[id] ?? Layout.Page(url: "about:blank")
+        // The page's own profile, not the space's: a page moved from another space keeps it.
         let page = try await registry.page(
-            id, profile: space.profile, url: record.url, state: states[id])
+            id, profile: record.profile ?? space.profile, url: record.url, state: states[id])
         observe(page, id: id)
     }
 
@@ -235,7 +236,8 @@ public final class BrowserController {
         let space =
             try openerID.flatMap { layout.spaceOf($0)?.id } ?? layout.window(focusedWindow).space
         let address = url?.absoluteString ?? page.url?.absoluteString ?? ""
-        let id = try layout.addPage(url: address, title: page.title, to: space)
+        let id = try layout.addPage(
+            url: address, title: page.title, to: space, profile: registry.name(of: page.profile))
         registry.adopt(page, as: id)
         observe(page, id: id)
         openers[id] = openerID

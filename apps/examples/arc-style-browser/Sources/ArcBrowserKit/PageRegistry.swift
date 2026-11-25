@@ -29,6 +29,11 @@ public final class PageRegistry {
         return profile
     }
 
+    /// The name the profile was opened under, nil for one the registry did not open.
+    public func name(of profile: BDKProfile) -> String? {
+        profiles.first { $0.value === profile }?.key
+    }
+
     public var openProfiles: [BDKProfile] {
         profiles.keys.sorted().compactMap { profiles[$0] }
     }

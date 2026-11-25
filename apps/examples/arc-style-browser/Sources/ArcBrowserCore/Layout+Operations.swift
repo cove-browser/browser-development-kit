@@ -47,14 +47,16 @@ extension Layout {
 
     // MARK: Pages
 
-    /// A new page at the end of the space's list (or of its pinned pages).
+    /// A new page at the end of the space's list (or of its pinned pages), made in `profile`, or
+    /// in the space's profile when that is nil.
     @discardableResult
     public mutating func addPage(
-        url: String, title: String = "", to space: SpaceID, pinned: Bool = false
+        url: String, title: String = "", to space: SpaceID, pinned: Bool = false,
+        profile: String? = nil
     ) throws -> PageID {
         let index = try spaceIndex(space)
         let id = PageID.make()
-        pages[id] = Page(url: url, title: title)
+        pages[id] = Page(url: url, title: title, profile: profile ?? spaces[index].profile)
         if pinned { spaces[index].pinned.append(id) } else { spaces[index].pages.append(id) }
         return id
     }
@@ -181,7 +183,7 @@ extension Layout {
     // MARK: Moving pages
 
     /// Moves the page to another space. A window showing it that does not show that space stops
-    /// showing it: the page is hidden, and keeps running.
+    /// showing it: the page is hidden, and keeps running. It keeps its profile.
     public mutating func move(_ page: PageID, toSpace space: SpaceID) throws {
         let from = try spaceIndex(containing: page)
         let to = try spaceIndex(space)

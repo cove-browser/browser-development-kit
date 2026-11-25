@@ -71,10 +71,15 @@ public struct Layout: Codable, Equatable, Sendable {
     public struct Page: Codable, Equatable, Sendable {
         public var url: String
         public var title: String
+        /// The name of the BDK profile the page was made in. A page keeps it when it moves to
+        /// another space, as its contents do, so a relaunch gives it back the same cookies and
+        /// storage. Nil in a session saved before pages recorded it: the space's profile then.
+        public var profile: String?
 
-        public init(url: String, title: String = "") {
+        public init(url: String, title: String = "", profile: String? = nil) {
             self.url = url
             self.title = title
+            self.profile = profile
         }
     }
 

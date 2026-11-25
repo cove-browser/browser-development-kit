@@ -75,6 +75,8 @@ struct LayoutTests {
         try layout.split(page, in: window)
         try layout.move(page, toSpace: work)
         #expect(layout.spaceOf(page)?.id == work)
+        // Its contents stay in the profile they were made in.
+        #expect(layout.pages[page]?.profile == "Personal")
         #expect(try !layout.window(window).panes.contains(page))
         #expect(layout.hiddenPages.contains(page))
         // A pinned page stays pinned in its new space.
@@ -159,6 +161,11 @@ struct LayoutTests {
         // Page ids are the keys of a readable table.
         let text = try String(contentsOf: SessionFile.fileURL(in: directory), encoding: .utf8)
         #expect(text.contains("\"\(page.rawValue)\" : {"))
+
+        // A page saved before pages recorded their profile reads as having none.
+        let record = try JSONDecoder().decode(
+            Layout.Page.self, from: Data(#"{"url":"https://example.com/","title":""}"#.utf8))
+        #expect(record.profile == nil)
 
         try Data(#"{"version":2}"#.utf8).write(to: SessionFile.fileURL(in: directory))
         #expect(throws: (any Error).self) { try SessionFile.load(from: directory) }
