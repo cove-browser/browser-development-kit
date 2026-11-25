@@ -1,0 +1,28 @@
+---
+title: Versioning
+description: One SemVer version for the Swift SDK, the C ABI, the JavaScript packages, the CLI and the runtime.
+---
+
+BDK has one version for everything it ships: the Swift SDK, the C ABI headers, the `@bdk/*` packages, the
+`bdk` CLI and the runtime. They are tied together by the ABI hash, so separate versions would only
+describe combinations nobody can use. The tag is `vX.Y.Z`, which is what SwiftPM resolves. The policy is
+[repository-and-tooling.md section
+8.1](https://github.com/cove-browser/browser-development-kit/blob/main/docs/planning/repository-and-tooling.md#81-versioning-and-releases).
+
+| Bump | When |
+| --- | --- |
+| Major | A breaking change to the Swift API, the C ABI, the `@bdk/*` APIs, the CLI's contract or the `bdk.toml` schema: a file that was valid stops validating or changes meaning |
+| Minor | Additive API or schema; a roll to a new Chromium milestone |
+| Patch | Fixes; a Chromium point or security release inside the same milestone |
+
+Before 1.0 the version is `0.y.z`, and a breaking change bumps `y`. 1.0 is the release that passes the
+public v1 gates.
+
+| Number | Rule |
+| --- | --- |
+| The Chromium version | Not part of the BDK version. It is in the runtime manifest and the release notes. |
+| The `bdk.toml` schema | Has no number of its own and follows the BDK version. Inside one major version, every earlier valid file still validates. |
+| `bdk_abi_version()` | Increases on any incompatible ABI change. The Swift package and the runtime must also report the same ABI hash, which is checked at start, and by `bdk doctor`. |
+
+Keep the CLI, the Swift package and the runtime at the same version: `bdk doctor` warns when the BDK version
+`Package.resolved` pins is not the CLI's.

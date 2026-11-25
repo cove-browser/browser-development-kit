@@ -2,6 +2,7 @@ packages:
   - "packages/js/*"
   - "packages/cli"
   - "tooling"
+  - "apps/docs"
 # pnpm 11 and later skip install scripts unless a package is listed here.
 allowBuilds:
   nx: true

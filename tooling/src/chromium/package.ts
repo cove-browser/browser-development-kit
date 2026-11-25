@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { currentBdkPaths } from "../paths.js";
 import { detectBuilder } from "../runtime/builder.js";
@@ -11,8 +11,9 @@ import { checkReproducible } from "../runtime/reproducible.js";
 import { verifyCheckout } from "./package-checkout.js";
 
 const USAGE =
-  "usage: package.ts [--config release] [--experiment <id>] [--reproducible-check]\n" +
-  "  Assembles out/<config> of the managed (or experiment) checkout into runtimes/<source-key>.";
+  "usage: package.ts [--config release] [--experiment <id>] [--app-patches <dir>] [--reproducible-check]\n" +
+  "  Assembles out/<config> of the managed (or experiment) checkout into runtimes/<source-key>.\n" +
+  "  --app-patches: an application's series, applied after BDK's (source mode); the manifest records it.";
 
 /** The slice of lock.ts this command uses (the checkout lock is owned by another module). */
 interface LockModule {
@@ -43,12 +44,18 @@ async function main(argv: string[]): Promise<number> {
   let config = "release";
   let experiment: string | undefined;
   let reproducibleCheck = false;
+  let appPatchesDir: string | undefined;
   try {
     for (let i = 0; i < argv.length; i++) {
       const a = argv[i];
       if (a === "--config") config = takeValue(argv, i++, a);
       else if (a === "--experiment") experiment = takeValue(argv, i++, a);
-      else if (a === "--reproducible-check") reproducibleCheck = true;
+      else if (a === "--app-patches") {
+        // The command re-runs itself under the lock from the repository root, so a relative path
+        // would change meaning.
+        appPatchesDir = takeValue(argv, i++, a);
+        if (!isAbsolute(appPatchesDir)) throw new Error("--app-patches needs an absolute path.");
+      } else if (a === "--reproducible-check") reproducibleCheck = true;
       else throw new Error(`unknown argument "${a}"\n${USAGE}`);
     }
     const repoRoot = repoRootFromHere(import.meta.url);
@@ -79,8 +86,10 @@ async function main(argv: string[]): Promise<number> {
       checkoutBase: await verifyCheckout({
         srcDir: src,
         patchesDir: join(repoRoot, "chromium", "patches"),
+        ...(appPatchesDir === undefined ? {} : { appPatchesDir }),
         pinCommit: readPin(repoRoot).commit,
       }),
+      ...(appPatchesDir === undefined ? {} : { appPatchesDir }),
       config,
       builder: detectBuilder(src),
       repoCommit: git(["rev-parse", "HEAD"], repoRoot),

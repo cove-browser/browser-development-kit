@@ -1,0 +1,35 @@
+---
+title: Compatibility gaps
+description: Where a BDK-based browser behaves differently from Chrome, and what a product must disclose.
+---
+
+BDK runs Chromium without Google's services and without Chrome's own browser UI. Some things therefore
+work differently from Chrome, and a product built on BDK should say so. The list is
+[production-browser.md section
+4](https://github.com/cove-browser/browser-development-kit/blob/main/docs/planning/sdk/production-browser.md#4-differences-from-chrome-a-product-must-disclose);
+it changes as the compatibility matrix is filled in.
+
+| Area | Difference |
+| --- | --- |
+| Google services | No sign-in, no sync, and no Google-backed suggestions, safe browsing or push unless the application configures them with its own project and key. |
+| Reputation | The default provider uses known-threat lists: no real-time checks and no download reputation. |
+| Passwords | No leak detection unless the application supplies a leak-check provider. No weak or reused password check. |
+| Extensions | No Chrome Web Store unless the application enables it. `identity.getAuthToken`, `sessions` and `tabGroups` are absent. With several pages on screen, an extension sees the focused one as the window's active tab. |
+| Internal pages | The address shown is `<scheme>://...`; the origin inside the page and in DevTools is `chrome://...`. |
+| Media | System decoders where available; no DRM streaming, because Widevine is not in v1. |
+| Translation | A local engine with fewer language pairs than Google's. |
+| Installable web apps | Off unless the application enables them. Installed apps have no Dock icon, file or protocol handlers of their own. |
+| Security patches | A gap between each upstream security release and your update: see [Security patches](./security-patches.mdx). |
+
+## Not in v1
+
+`chrome.tabGroups`, the reading list, side search and Chrome's own new-tab page are not in v1; their
+APIs report themselves unavailable. Importing from other browsers is later, except HTML bookmark import
+and export. Mac App Store distribution is not supported.
+
+## What BDK never supplies
+
+An updater, a sync service, telemetry, tab and window UI, onboarding and import flows, an extension
+store, and codec or DRM licences are the application's. See [section
+3](https://github.com/cove-browser/browser-development-kit/blob/main/docs/planning/sdk/production-browser.md#3-what-bdk-will-never-supply)
+of the same document.

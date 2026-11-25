@@ -1,0 +1,26 @@
+---
+title: Overview
+description: What BDK is, what it gives an application and what it leaves to it.
+---
+
+BDK, the Browser Development Kit, lets you build a Chromium-based browser for macOS as an ordinary Swift
+application. BDK runs the engine and its browser-owned surfaces (permission prompts, dialogs, downloads,
+passwords, extensions). Your application owns every window, menu and control, and can replace any of
+Chromium's own pages and prompts with its own.
+
+| Surface | What it is | Reference |
+| --- | --- | --- |
+| `bdk.toml` | The application's build-time and start-up configuration | [bdk.toml](./configuration.mdx) |
+| Swift SDK | The `BDK` package: runtime, profiles, pages, views, UI requests, services | [Swift API](./swift-api.mdx) |
+| `@bdk/internal/*` | What the application's own internal pages import | [JavaScript APIs](./javascript-apis.mdx) |
+| `@bdk/automation` | What automation scripts and the tools the application admits call | [JavaScript APIs](./javascript-apis.mdx) |
+| `bdk` | The command line tool: `init`, `doctor`, `patch` and the build steps Xcode runs | [CLI](./cli.mdx) |
+
+Start with [Getting started](./getting-started.mdx). Before you ship, read the policies: how BDK is
+[versioned](./versioning.mdx), how [security patches](./security-patches.mdx) reach your users, the
+[differences from Chrome](./compatibility.mdx) you must disclose, and which APIs are still
+[experimental](./experimental.mdx).
+
+BDK is developed against a plan whose documents are the full reference: [the SDK surface on
+GitHub](https://github.com/cove-browser/browser-development-kit/tree/main/docs/planning/sdk). These pages
+summarise them; where the two disagree, the plan is right and this site is to be fixed.

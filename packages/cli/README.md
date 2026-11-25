@@ -2,12 +2,15 @@
 
 The `bdk` command line tool, in TypeScript, shipped as one self-contained executable built with Node's own
 `node --build-sea`. Design: [docs/planning/sdk/cli.md](../../docs/planning/sdk/cli.md) (sections 2 and 3).
-Task: T-CLI-05. This is the foundation; commands are added as their tasks land.
+Tasks: T-CLI-05 (the executable), T-CLI-04 (`bdk build`), T-CLI-01, T-CLI-02 and T-CLI-03 (`doctor`, `init`, `patch`).
 
 ## Commands
 
 | Command | Status |
 |---|---|
+| `bdk init [<directory>] [flags]` | T-CLI-02, see "Init" below. Asks for each choice not given as a flag (only with a terminal on standard input; never with `--yes`, `--no-input` or without one) and writes the project from the embedded templates. |
+| `bdk doctor [--bundle <App.app>]` | T-CLI-01, see "Doctor" below. Findings in the groups machine, project, compatibility and, with `--bundle`, bundle; exit 1 when one is an error. |
+| `bdk patch status\|apply\|new <name>\|export\|check\|rebase <tag>` | T-CLI-03, see "Patch" below. Source mode only. |
 | `bdk build config [--out <file>]` | Resolves `bdk.toml` against the embedded schema (`assets/bdk.schema.json`) and, on macOS inside Xcode, the `Info.plist` and entitlements Xcode names. Writes `bdk.resolved.json` next to `bdk.toml` (or to `--out`) only when there are no errors. In Xcode it also writes the build phases' `.xcfilelist` files (see "Xcode" below). The resolver itself is T-CFG-02 (`src/core/config/`). |
 | `bdk build` | With no step, runs the steps that apply, in order: `config` and `codegen` always (`codegen` does nothing without `Pages/` or `Automation/`), `pages` when a bundle is named (`--bundle`, or an Xcode build), `sign` in an Xcode build or with `--identity`. `--out` is a file for `config` and a directory for `codegen`, so it is refused when both run. Not built: `runtime`, `automation`, `embed`. |
 | `bdk build codegen [--out <dir>] [--commands <file>] [--resolved <file>]` | Writes the `@bdk` packages for editors, `tsc` and Vite (T-CLI-04, see "Codegen" below). |
@@ -33,10 +36,13 @@ src/
 ├── assets.ts        # the one adapter for embedded assets (node:sea, or assets/ when unpackaged)
 ├── asset-sources.ts # where the SDK modules and packages come from (packages/js/*/dist) and the embedded asset index
 ├── core/            # platform-neutral: args, project discovery, diagnostics, steps, config seam, the `--watch` loop (watch.ts)
+│   ├── doctor/      # bdk doctor: the groups' checks, the requirements, the embedded release facts
+│   ├── init/        # bdk init: the choices, the prompts, the project generator
+│   └── patch/       # bdk patch: source-mode settings and the subcommands, over tooling/src/chromium
 └── platform/
     ├── platform.ts  # the interface the core sees
     ├── select.ts    # the one place a platform module is chosen
-    ├── xcode/       # macOS: Xcode environment, Info.plist and entitlements through plutil
+    ├── xcode/       # macOS: Xcode environment, Info.plist and entitlements through plutil; doctor.ts: toolchain and signature facts
     └── generic/     # every other host, until it has a module
 assets/              # files embedded in the executable (see its README)
 scripts/             # package.ts: the packaging script run by cli:package
@@ -66,18 +72,93 @@ how tests supply fakes.
 
 1. Bundles `src/main.ts` into one CommonJS file with Rolldown (`dist/sea/bdk.cjs`). The version from `package.json`
    is substituted for `__BDK_CLI_VERSION__` at this point; unpackaged runs read `package.json` instead.
-2. Lists every file under `assets/` (except `assets/README.md`), adds the built `@bdk/internal` modules
+   `import.meta.url` becomes a name beside the executable (`<bdk>.cjs`): the tooling modules the bundle includes
+   run their command when `isMain(import.meta.url)` holds, which the executable's own path would make true. Tooling
+   modules the CLI imports must not use top-level `await`, which a CommonJS bundle cannot hold.
+2. Adds BDK's patch series (`chromium/patches/*`), the `bdk init` templates (`apps/templates/swift-browser/**` as
+   `templates/swift-browser/`, `apps/templates/pages/**` as `templates/pages/`, without their README and
+   `project.json`) and `bdk-release.json` (the pin and the ABI, from `chromium/pin.json` and `packages/core`), all
+   listed in `src/asset-sources.ts`; unpackaged runs read the same files from the repository.
+3. Lists every file under `assets/` (except `assets/README.md`), adds the built `@bdk/internal` modules
    (`packages/js/internal/dist/*.js`) as `js/internal/<module>.js`, and the `.js` and `.d.ts` files of the
    `@bdk/internal`, `@bdk/protocol`, `@bdk/automation` and `@bdk/vite` builds as `js/sdk/@bdk/<package>/<file>`, and writes an `asset-index.json` of every name,
    because `node:sea` cannot list assets. It writes `dist/sea/sea-config.json` with them all as named assets. A new
    asset in `assets/` needs no configuration change. Packaging fails, naming the fix, when the SDK is not built;
    `cli:package` builds it first (`js-internal`, `js-protocol`, `js-vite`, `js-codegen`).
-3. Runs `node --build-sea` with the Node that runs the script (the release pinned in `.node-version`), with code
+4. Runs `node --build-sea` with the Node that runs the script (the release pinned in `.node-version`), with code
    cache on. Code cache ties the executable to that Node build and architecture, so cross builds would need it off.
-4. On macOS, signs ad hoc (`codesign --sign - --force`) and lays out `dist/bdk.artifactbundle/` with an `info.json`
+5. On macOS, signs ad hoc (`codesign --sign - --force`) and lays out `dist/bdk.artifactbundle/` with an `info.json`
    (schema version 1.0, artifact `bdk`, type `executable`, variant for `arm64-apple-macosx`).
 
 Signing with a Developer ID identity and notarization are part of the release procedure (T-PKG-06), not done here.
+
+## Init
+
+`bdk init` (`src/core/init/`): `choices.ts` lists the choices, `prompts.ts` collects the answers and builds the
+replayed command, `generate.ts` turns the answers and the embedded templates into a file map (pure, so tests
+generate every combination), and `init.ts` writes it and runs `git init` and the package manager through
+`Context.exec`. The questions come from `Context.prompter` (`src/main.ts`: readline on standard error, only when
+standard input is a terminal).
+
+| Part | Behaviour |
+|---|---|
+| Choices | sdk/cli.md 4.2, in that order except that "Automation host" comes before "Package manager": the package manager and "Install packages now" are asked for Vite pages or automation, because scripts are bundled with the project's own Rolldown. `--search-engine` is not offered (`[search]`, S1, is not accepted). `--bdk-package <url\|path>` (not a question) points the Xcode project at another BDK package: a URL, or a checkout as a local package. |
+| Frameworks | `vanilla`, `react`, `preact`. Vue, Svelte, Solid and Lit assign template strings to `innerHTML`, which the internal-page policy blocks (`trusted-types` with no policy, `chromium/bdk/engine/pages/bundled_page_source.cc`), so they are not offered. |
+| Templates | `apps/templates/swift-browser` (the Xcode project, `__PRODUCT__` in paths, `{{name}}`, `{{product}}`, `{{bundleId}}`, `{{bdkCli}}` and the package placeholders in contents, escaped for Swift, property lists and pbxproj) and `apps/templates/pages` (see its README). `bdk.toml` is written by code. |
+| Writes | Into an empty or missing directory; with `--force` into any, never overwriting a file (`init.file_kept`). `BuildPhases/*.sh` are made executable. `BDK_CLI` is the packaged executable that ran; unpackaged it is left empty with the note `init.cli_unset`. |
+| After | `git init` unless `--no-git`; `<package manager> install` in `Pages/` (Vite) and in the project (automation) unless `--no-install` or `--offline`. A failure is a warning (`init.git_failed`, `init.install_failed`), and the project stays. Prints the command that makes the same project with no questions; `--json` gives the answers. |
+
+Tests: `src/core/init/init.test.ts` generates a project for every combination of pages, framework, language, styling,
+automation and runtime (56), with every starter page, with a prompter that records questions (none are asked),
+then checks the files, `plutil -lint` on the pbxproj and `Info.plist`, the content security policy of each page's
+HTML, the pinned versions, and that the generated `bdk.toml` resolves with each starter's grants.
+
+## Doctor
+
+`bdk doctor` (`src/core/doctor/`). Every finding is a diagnostic with a code, a message and a fix; `--json`
+gives `{mode, toolchain, groups: {<group>: {errors, warnings, notes, codes}}}`. Requirements are in
+`requirements.ts` (macOS 14, Xcode 26, Swift 6, arm64), each with its source.
+
+| Group | Codes |
+|---|---|
+| machine | `doctor.host_unsupported`, `doctor.not_apple_silicon`, `doctor.macos_unknown`, `doctor.macos_too_old` (against the resolved runtime's `min_os` too), `doctor.xcode_missing`, `doctor.xcode_too_old`, `doctor.swift_missing`, `doctor.swift_too_old`, `doctor.node_missing` and `doctor.package_manager_missing` (with `Pages/vite.config.*` or automation scripts), and in source mode `doctor.bdk_home_invalid`, `doctor.bdk_home_not_writable`, `doctor.depot_tools_missing`, `doctor.checkout_missing`, `doctor.checkout_not_at_pin`, `doctor.ccache_missing` |
+| project | Every diagnostic of the configuration resolver, with `Info.plist` and entitlements read from Xcode's settings or, outside Xcode, the template's `Resources/`; `doctor.page_capabilities` (a note per bundled page), `doctor.package_unresolved`, `doctor.bdk_version_mismatch`, `doctor.runtime_unpublished`, `doctor.runtime_missing`, `doctor.runtime_modified` (`.bdk/runtime.json` verified with the tooling's `verifyRuntimeDir`), `doctor.bdk_home_invalid` |
+| compatibility | `doctor.abi_mismatch`, `doctor.runtime_other_chromium`, and in source mode `doctor.patch_invalid`, `doctor.patch_unlisted`, `doctor.application_patches` |
+| bundle | `doctor.bundle_missing` (exit 2), `doctor.bundle_config_missing`, `doctor.bundle_config_stale`, `doctor.signature_invalid`, `doctor.ad_hoc`, `doctor.helper_team_mismatch`, `doctor.not_notarized` |
+
+The project group is the hook for diagnostics added to the resolver (`src/core/config/`): whatever `bdk build
+config` reports, `bdk doctor` lists, with its own severity, so `web_apps.push_unconfigured` and `services.push_google`
+(T-PWA-02) need no change here. The platform supplies the facts through `Platform.toolchain` and
+`Platform.inspectSignature` (`src/platform/xcode/doctor.ts`: `sw_vers`, `sysctl`, `xcodebuild -version`, `xcrun swift
+--version`, `codesign`, `xcrun stapler`). Tests: one fixture and message per code in `src/core/doctor/doctor.test.ts`,
+with a fake platform; the parsers in `src/platform/xcode/doctor.test.ts` with a fake runner. Not built: `--fix`, page
+and script digests against the bundle, the framework's files against the runtime manifest, whether the pin is behind
+the newest BDK release (needs a release feed), and the "template-pinned dependency the Vite preset no longer
+supports" check.
+
+## Patch
+
+`bdk patch` (`src/core/patch/`) works on the managed checkout `$BDK_HOME/chromium/managed/src` with the tooling's
+own code: the series format, `applySeries` with an application series after BDK's (`appPatchesDir`), the
+deterministic `exportSeries`, `checkPatchSeries` and the checkout lock. BDK's series and the pin come from the
+embedded assets. The application's series is `[chromium] patches` (a directory with `series`, default
+`Chromium/patches`, or a list of files, copied to a temporary series), and is named `app/<file>` in reports.
+
+| Command | Behaviour |
+|---|---|
+| `status` | BDK's and the application's patches with the files each touches, and the checkout's state. No lock. |
+| `apply` | Resets to the pin and applies both series, or does nothing when they are applied; refuses uncommitted work or commits that are not in the series (`patch.checkout_unsafe`). A conflict is `patch.conflict`, naming the patch, its file in the project and every conflicting file. |
+| `new <name>` | As `apply`, then says where to edit and how to commit. |
+| `export` | The commits after BDK's series (`patch.base_unknown` when the checkout does not start with it) into the patch directory; refuses the list form (`patch.list_not_exportable`). |
+| `check`, `rebase <tag>` | The sparse check against the pin (its commit must match) or another tag, with no build. `BDK_PATCH_CHECK_REMOTE` names the remote. `--offline` refuses (`patch.offline`, exit 3). |
+
+`apply`, `new` and `export` run again as a child holding the checkout lock (`Context.underCheckoutLock`, with
+`BDK_CHECKOUT_LOCKED=1`); a held lock is `patch.checkout_locked`, exit 3, naming the holder. Not in source mode:
+`patch.not_source_mode`; no checkout: `patch.checkout_missing`, exit 3. A runtime built with the application's
+patches records them in its manifest (`application.patches` and `patches_digest`, `tooling/src/runtime/`); the CLI
+cannot build one yet (`bdk build runtime`, T-CLI-04), so `pnpm chromium:build -- --app-patches <dir>` and
+`pnpm chromium:package -- --app-patches <dir>` do it. Tests: `src/core/patch/patch.test.ts` on the tooling's fake
+upstream (`tooling/src/chromium/test-support.ts`), never a real checkout.
 
 ## Pages
 
@@ -169,3 +250,6 @@ It clones the runtime with `ditto` (a copy-on-write clone on APFS, so it takes u
 | `bdk build config codegen` on a project with `Pages/`, packaged, with no `node` on `PATH` | Pass (`src/packaged.test.ts`): the packages and `app.d.ts` written, `Pages/node_modules/@bdk` linked |
 | `tsc` (module resolution `bundler`) on a file importing `@bdk/internal/page`, `@bdk/internal/settings` and `@bdk/vite` through the link | Pass for `@bdk/internal` and `@bdk/protocol`; `@bdk/vite`'s own `import "vite"` does not resolve unless `skipLibCheck` is set (checked once by hand on `apps/examples/minimal-browser`) |
 | `bdk build codegen`, the file lists and the Xcode defaults in an Xcode run-script phase, with user script sandboxing on or off | Not verified; the Xcode variables are simulated in tests (`src/core/steps/codegen.test.ts`, `src/platform/xcode/build.test.ts`) |
+| (2026-11-25, Xcode 27.2) A project from the packaged `bdk init` (plain starter pages, automation) built and tested with `xcodebuild` against this repository's package and the stub runtime | Pass (`apps/templates/swift-browser/scripts/build-generated.sh`, the `template-swift-browser:build` target): the run-script phases ran `bdk build config codegen`, `pages automation` and skipped `sign` (no runtime embedded); the bundle carries `bdk.resolved.json`, the pages, `BDK/js/internal` and `BDK/Automation/hello.js`; `codesign --verify --deep --strict` passes; the unit test passes. Launched by hand, the application stayed up on the stub runtime with no error. The Xcode GUI's Run was not used. |
+| (2026-11-25) Vite page templates installed from the registry and built by the packaged `bdk build pages`: React + TypeScript + Tailwind, Preact + TypeScript + CSS, vanilla + JavaScript | Pass, by hand: each page built and passed the policy check; `tsc --noEmit` passed in the React and Preact projects. Each framework's output at run time under Trusted Types in Chromium is not verified. |
+| `bdk build automation` in the packaged executable | Pass (`src/packaged.test.ts`) after loading Rolldown with `require`: `import()` of a file is not available in a single executable, which made the packaged step fail with "No such built-in module" before. |

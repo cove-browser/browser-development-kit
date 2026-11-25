@@ -37,7 +37,7 @@ import { publishRuntime } from "./publisher.js";
 import { checkReproducible } from "./reproducible.js";
 import { resolveRuntime } from "./resolver.js";
 import { readRuntimeFiles } from "./runtime-files.js";
-import { BUILD_STAMP_NAME } from "./stamp.js";
+import { BUILD_STAMP_NAME, writeBuildStamp } from "./stamp.js";
 import { removeTree } from "./store.js";
 import {
   BUILDER,
@@ -233,6 +233,55 @@ describe("packaging guards", () => {
     expect((error as Error).message).toContain("rm -rf");
     await removeTree(r.runtimeDir);
     await expect(packageRuntime(packageOptions(s))).resolves.toMatchObject({ status: "created" });
+  });
+});
+
+describe("an application's patches (source mode, T-CLI-03)", () => {
+  function appPatches(root: string, text = "From 0 Mon Sep 17 00:00:00 2001\n"): string {
+    const dir = join(root, "app", "Chromium", "patches");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "series"), "app-change.patch\n");
+    writeFileSync(join(dir, "app-change.patch"), text);
+    return dir;
+  }
+
+  it("are recorded in the identity and the manifest, and give the runtime its own key", async () => {
+    const s = await sandbox("app-patches");
+    const dir = appPatches(s.root);
+    const plain = await computeSourceIdentity({ repoRoot: s.repo });
+    const withApp = await computeSourceIdentity({ repoRoot: s.repo, appPatchesDir: dir });
+    expect(plain.application).toBeUndefined();
+    expect(withApp.application).toEqual({
+      patches_digest: expect.stringMatching(/^[0-9a-f]{64}$/),
+      patches: ["app-change.patch"],
+    });
+    expect(sourceKey(withApp)).not.toBe(sourceKey(plain));
+    await writeBuildStamp(s.outDir, withApp);
+    const r = await packageRuntime(packageOptions(s, { appPatchesDir: dir }));
+    expect(r.sourceKey).toBe(sourceKey(withApp));
+    const m = parseManifest(readFileSync(join(r.runtimeDir, "manifest.json"), "utf8"));
+    expect(m.application).toEqual(withApp.application);
+    // A changed application patch is a different runtime.
+    writeFileSync(join(dir, "app-change.patch"), "From 1 Mon Sep 17 00:00:00 2001\n");
+    const changed = await computeSourceIdentity({ repoRoot: s.repo, appPatchesDir: dir });
+    expect(sourceKey(changed)).not.toBe(r.sourceKey);
+  });
+
+  it("leave the key alone when the application's series is empty", async () => {
+    const s = await sandbox("app-patches-empty");
+    const dir = appPatches(s.root);
+    writeFileSync(join(dir, "series"), "# none yet\n");
+    expect(await keyOf(s.repo)).toBe(
+      sourceKey(await computeSourceIdentity({ repoRoot: s.repo, appPatchesDir: dir })),
+    );
+  });
+
+  it("refuse packaging when the build was stamped without them", async () => {
+    const s = await sandbox("app-patches-stale");
+    const dir = appPatches(s.root);
+    await expect(packageRuntime(packageOptions(s, { appPatchesDir: dir }))).rejects.toThrow(
+      /application/,
+    );
   });
 });
 

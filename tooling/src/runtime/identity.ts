@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { readFile, readlink } from "node:fs/promises";
 import { arch as nodeArch, platform as nodePlatform } from "node:os";
 import { join } from "node:path";
+import { parseSeries } from "../chromium/common.js";
 import { readAbi } from "./abi.js";
 import { canonicalJson, sha256Hex } from "./canonical.js";
 import { readPin } from "./pin.js";
@@ -40,13 +41,28 @@ export interface SourceIdentity {
     /** Digest of chromium/runtime-files.json (paths and min_os): what is packaged decides what the key names. */
     readonly runtime_files_digest: string;
   };
+  /**
+   * An application's own patches in source mode (sdk/cli.md section 7), applied after BDK's. Absent
+   * when there are none, so a runtime without them keeps the key it always had.
+   */
+  readonly application?: ApplicationPatches;
   readonly target: Target;
+}
+
+/** What a runtime records of an application's patches, so a release can be audited. */
+export interface ApplicationPatches {
+  /** `directoryDigest` of the application's patch directory (its `series` and every patch file). */
+  readonly patches_digest: string;
+  /** The `series` entries, in the order they were applied. */
+  readonly patches: readonly string[];
 }
 
 export interface IdentityOptions {
   readonly repoRoot: string;
   /** GN preset name: `chromium/gn/<config>.gn`. Default `release`. */
   readonly config?: string;
+  /** An application's patch directory (a `series` file and its patches), for a source-mode runtime. */
+  readonly appPatchesDir?: string;
   readonly target?: Target;
 }
 
@@ -93,6 +109,8 @@ export async function computeSourceIdentity(opts: IdentityOptions): Promise<Sour
     );
   }
   const preset = gnPresetPath(repoRoot, config);
+  const application =
+    opts.appPatchesDir === undefined ? undefined : await applicationPatches(opts.appPatchesDir);
   return {
     chromium: { tag: pin.tag, commit: pin.commit },
     bdk_abi: { version: abi.version, hash: abi.hash },
@@ -103,8 +121,17 @@ export async function computeSourceIdentity(opts: IdentityOptions): Promise<Sour
       gn_args_digest: existsSync(preset) ? sha256Hex(readFileSync(preset)) : "absent",
       runtime_files_digest: runtimeFilesDigest(repoRoot),
     },
+    ...(application === undefined ? {} : { application }),
     target: opts.target ?? hostTarget(),
   };
+}
+
+/** The application's patches, or undefined when its `series` lists none. */
+export async function applicationPatches(dir: string): Promise<ApplicationPatches | undefined> {
+  const seriesFile = join(dir, "series");
+  const patches = existsSync(seriesFile) ? parseSeries(readFileSync(seriesFile, "utf8")) : [];
+  if (patches.length === 0) return undefined;
+  return { patches_digest: await directoryDigest(dir), patches };
 }
 
 /** The store key: first 16 hex digits of the SHA-256 of the canonical source identity. */

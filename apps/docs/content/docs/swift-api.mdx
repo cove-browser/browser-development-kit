@@ -1,0 +1,99 @@
+---
+title: Swift API
+description: The BDK package an application's native code uses.
+---
+
+The Swift SDK is the `BDK` product of the BDK package. `BDKTestSupport` adds the in-memory stub runtime,
+for unit tests that need no Chromium. The full reference is
+[swift-api.md](https://github.com/cove-browser/browser-development-kit/blob/main/docs/planning/sdk/swift-api.md),
+and every type and member as tables is
+[swift-api-reference.md](https://github.com/cove-browser/browser-development-kit/blob/main/docs/planning/sdk/swift-api-reference.md).
+
+## Conventions
+
+| Topic | Rule |
+| --- | --- |
+| Actor | Every public type is `@MainActor`. |
+| Asynchrony | Work that crosses into Chromium is `async throws`; cancelling the task cancels the native work. |
+| Events | Each object has `events`, an `AsyncSequence`; state is also readable as properties. |
+| Ownership | `BDKWebContents` and private profiles are closed explicitly. Using a destroyed object throws `BDKError` with code `stale`, never crashes. |
+| Errors | Every throwing call throws `BDKError`: a domain, a code, a message and details. |
+| Core abstraction | The page, `BDKWebContents`. BDK has no tab, space or window-group type; how pages are organised is the application's. |
+
+## The pieces
+
+| Type | What it is |
+| --- | --- |
+| `BDKApplication` | The `NSApplication` subclass the bundle names as `NSPrincipalClass`. The application keeps its delegate, menus, run loop and windows. |
+| `BDKConfiguration` | `bdk.resolved.json` from the bundle, plus what Swift registers before start: native pages, UI request handlers, providers, commands. |
+| `BDKRuntime` | The engine. `start(_:)` from `applicationWillFinishLaunching`; `terminate(replyingTo:)` from `applicationShouldTerminate`. |
+| `BDKProfile` | A profile: `runtime.profiles.open("Personal")`, or a private one with `openPrivate()`. History, cookies and settings belong to one profile. |
+| `BDKWebContents` | A page: navigation, state, find, zoom, printing, session state, events. Its `view` goes into any `NSView` hierarchy. |
+| UI requests | Each browser-owned surface (permission prompt, dialog, download, password save, extension popup) reaches a handler the application registers, or BDK's default presenter. |
+| Services | History, bookmarks, downloads, settings, permissions, cookies, passwords and the rest, the same commands internal pages and automation call. |
+| Application commands | `app.` commands, events and settings the application declares in Swift and pages and scripts call, typed in TypeScript by `bdk build codegen`. |
+
+## A small browser
+
+```swift
+import AppKit
+import BDK
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var runtime: BDKRuntime?
+    private var window: NSWindow?
+    private var page: BDKWebContents?
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        do {
+            runtime = try BDKRuntime.start(try BDKConfiguration.load())
+        } catch {
+            NSAlert(error: error).runModal()   // never continue without a runtime
+            exit(1)
+        }
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        Task { @MainActor in
+            guard let runtime else { return }
+            let profile = try await runtime.profiles.open("Personal")
+            let page = try profile.webContents.create(.init())
+            let window = NSWindow(contentRect: .init(x: 0, y: 0, width: 1200, height: 800),
+                                  styleMask: [.titled, .closable, .resizable, .miniaturizable],
+                                  backing: .buffered, defer: false)
+            window.contentView = page.view
+            window.makeKeyAndOrderFront(nil)
+            (self.page, self.window) = (page, window)
+            try await page.navigate(to: URL(string: "https://example.com")!)
+        }
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        runtime?.terminate(replyingTo: sender) ?? .terminateNow
+    }
+}
+```
+
+With this and the smallest `bdk.toml`, every browser-owned surface uses its default presenter.
+`bdk init` writes the same application with an address field, a test target and the build phases.
+
+## Testing without Chromium
+
+`BDKRuntime.startStub()` from `BDKTestSupport` starts the stub runtime in the test process. It renders
+nothing and runs no JavaScript; `runtime.stub.scriptNavigation(to:title:)` tells it how a URL answers.
+
+```swift
+import BDK
+import BDKTestSupport
+import Testing
+
+@MainActor @Test func pageLoads() async throws {
+    let runtime = try BDKRuntime.startStub()
+    let url = URL(string: "https://example.com/")!
+    try runtime.stub.scriptNavigation(to: url, title: "Example Domain")
+    let page = try await runtime.profiles.open("Tests").webContents.create(.init())
+    try await page.navigate(to: url)
+    #expect(page.title == "Example Domain")
+}
+```

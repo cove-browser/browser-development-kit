@@ -8,7 +8,7 @@ import {
   DEFAULT_PATCH_CHECK_REMOTE,
   fail,
   isMain,
-  loadSeries,
+  loadSeriesWithApp,
   type PatchFile,
   PatchFormatError,
   readPin,
@@ -50,6 +50,8 @@ export interface PatchCheckOptions {
   /** If given, the fetched commit must equal it (the pin's commit). */
   readonly expectCommit?: string;
   readonly patchesDir: string;
+  /** An application's series (source mode), checked after BDK's: `loadSeriesWithApp`. */
+  readonly appPatchesDir?: string;
   /** Scratch directory to use (kept afterwards); a temporary one is made and removed otherwise. */
   readonly workDir?: string;
   readonly log?: (line: string) => void;
@@ -77,7 +79,7 @@ export async function checkPatchSeries(opts: PatchCheckOptions): Promise<PatchCh
   let orphans: readonly string[];
   const entries: PatchCheckEntry[] = [];
   try {
-    ({ patches, orphans } = loadSeries(opts.patchesDir));
+    ({ patches, orphans } = loadSeriesWithApp(opts.patchesDir, opts.appPatchesDir));
   } catch (e) {
     if (!(e instanceof PatchFormatError)) throw e;
     return {
@@ -221,6 +223,7 @@ async function main(): Promise<void> {
   if (!result.ok) process.exit(1);
 }
 
+// No top-level await: the bdk CLI bundles this module into a CommonJS executable (packages/cli).
 if (isMain(import.meta.url)) {
-  await main().catch((e: unknown) => fail(e instanceof Error ? e.message : String(e)));
+  main().catch((e: unknown) => fail(e instanceof Error ? e.message : String(e)));
 }

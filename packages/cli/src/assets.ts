@@ -7,6 +7,10 @@ import {
   INTERNAL_MODULES_PREFIX,
   internalModulesDir,
   listInternalModules,
+  RELEASE_ASSET,
+  REPOSITORY_ASSET_DIRS,
+  releaseFacts,
+  repositoryAssets,
   SDK_PREFIX,
   sdkAssets,
   sdkDirs,
@@ -28,6 +32,11 @@ export class AssetNotFoundError extends Error {
     this.name = "AssetNotFoundError";
     this.assetName = name;
   }
+}
+
+/** Whether this process is the packaged executable rather than the sources run by Node. */
+export function isPackaged(): boolean {
+  return isSea();
 }
 
 /** Where unpackaged runs (development, tests) find the same files that `cli:package` embeds. */
@@ -65,11 +74,14 @@ export function createAssets(
     internalDir?: string;
     /** Build output of each SDK package by name; default `packages/js/<package>/dist`. */
     sdkDirs?: Record<string, string>;
+    /** Where BDK's patch series, the templates and the release facts come from; default this repository. */
+    repositoryRoot?: string;
   } = {},
 ): Assets {
   const packaged = options.packaged ?? isSea();
   const internalDir = options.internalDir ?? internalModulesDir();
   const sdk = (): Record<string, string> => sdkAssets(options.sdkDirs ?? sdkDirs());
+  const repository = (): Record<string, string> => repositoryAssets(options.repositoryRoot);
   return {
     list(prefix) {
       let names: string[];
@@ -83,6 +95,8 @@ export function createAssets(
         names = [
           ...listInternalModules(internalDir).map((name) => `${INTERNAL_MODULES_PREFIX}${name}`),
           ...Object.keys(sdk()),
+          ...Object.keys(repository()),
+          RELEASE_ASSET,
           ...listFiles(options.assetsDir ?? unpackagedAssetsDir()),
         ];
       }
@@ -98,6 +112,13 @@ export function createAssets(
       }
       if (name.startsWith(SDK_PREFIX)) {
         const file = sdk()[name];
+        if (file === undefined) throw new AssetNotFoundError(name);
+        return readFileSync(file, "utf8");
+      }
+      if (name === RELEASE_ASSET)
+        return `${JSON.stringify(releaseFacts(options.repositoryRoot))}\n`;
+      if (REPOSITORY_ASSET_DIRS.some(({ prefix }) => name.startsWith(prefix))) {
+        const file = repository()[name];
         if (file === undefined) throw new AssetNotFoundError(name);
         return readFileSync(file, "utf8");
       }

@@ -19,6 +19,34 @@ export interface FileList {
   outputs: readonly string[];
 }
 
+/** The machine and its toolchain, as `bdk doctor` reports them (sdk/cli.md section 6, "Machine"). */
+export interface HostToolchain {
+  /** `macos`, `linux`, `windows`. */
+  os: string;
+  /** The operating system's version, such as `27.2`; undefined when it cannot be read. */
+  osVersion?: string;
+  /** `arm64`, `x64`. */
+  arch: string;
+  /** The IDE's version (Xcode on macOS), such as `27.2`; undefined when it is not installed. */
+  ide?: string;
+  /** The Swift compiler's version, such as `6.4.2`; undefined when it is not installed. */
+  swift?: string;
+}
+
+/** What `bdk doctor --bundle` learns from a built application's signature. */
+export interface SignatureReport {
+  /** The signature verifies, nested code included. */
+  valid: boolean;
+  /** The verifier's own words when it does not. */
+  detail?: string;
+  /** The team of the application's signature; undefined for an ad hoc signature. */
+  team?: string;
+  /** Every nested helper application, with the team of its signature. */
+  helpers: { path: string; team?: string }[];
+  /** A notarization ticket is stapled to the application. */
+  stapled: boolean;
+}
+
 /** What the core needs from the host platform (sdk/cli.md section 2.2). One implementation per platform. */
 export interface Platform {
   /** A short name for messages: `xcode`, `generic`. */
@@ -39,4 +67,8 @@ export interface Platform {
    * sign (exit 3) or the signature does not verify (exit 4).
    */
   sign(request: SignRequest): Promise<SignOutcome>;
+  /** The machine's operating system, architecture and toolchain versions, for `bdk doctor`. */
+  toolchain(env: NodeJS.ProcessEnv): Promise<HostToolchain>;
+  /** Verifies a built application's signature, for `bdk doctor --bundle`. */
+  inspectSignature(appPath: string): Promise<SignatureReport>;
 }

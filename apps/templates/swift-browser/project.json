@@ -7,19 +7,38 @@
     "build": {
       "executor": "nx:run-commands",
       "cache": false,
-      "inputs": [
-        "default",
-        { "dependentTasksOutputFiles": "**/runtime.json", "transitive": false },
-        { "fileset": "{workspaceRoot}/.bdk/runtime.json" }
-      ],
+      "dependsOn": [{ "projects": ["cli"], "target": "package" }],
+      "inputs": ["default", "nativeToolchain"],
       "options": {
-        "command": "echo 'template-swift-browser:build: not implemented until M9'"
+        "command": "apps/templates/swift-browser/scripts/build-generated.sh",
+        "cwd": "{workspaceRoot}"
       }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "swift format lint --strict --recursive apps/templates/swift-browser/Sources apps/templates/swift-browser/Tests",
+          "swiftlint lint --strict --config .swiftlint.yml apps/templates/swift-browser",
+          "shellcheck apps/templates/swift-browser/BuildPhases/*.sh apps/templates/swift-browser/scripts/*.sh",
+          "shfmt -d apps/templates/swift-browser/BuildPhases apps/templates/swift-browser/scripts",
+          "plutil -lint -s apps/templates/swift-browser/Resources/Info.plist apps/templates/swift-browser/Resources/App.entitlements"
+        ],
+        "parallel": false,
+        "cwd": "{workspaceRoot}"
+      },
+      "inputs": ["default", "lintConfig", "nativeToolchain"]
     },
     "format": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm exec biome format --write {projectRoot}"
+        "commands": [
+          "swift format --in-place --recursive apps/templates/swift-browser/Sources apps/templates/swift-browser/Tests",
+          "shfmt -w apps/templates/swift-browser/BuildPhases apps/templates/swift-browser/scripts",
+          "pnpm exec biome format --write apps/templates/swift-browser"
+        ],
+        "parallel": false,
+        "cwd": "{workspaceRoot}"
       }
     }
   }

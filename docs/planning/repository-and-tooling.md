@@ -89,7 +89,7 @@ All edges below are declared with `implicitDependencies`. Nx does not discover t
 | `minimal-browser` | `apps/examples/minimal-browser` | xcodebuild | `swift`, `chromium`, `cli` | `build`, `dev`, `test-e2e` |
 | `arc-style-browser` | `apps/examples/arc-style-browser` | xcodebuild | `swift`, `chromium`, `cli`, `js-internal` | `build`, `dev`, `test-e2e` |
 | `template-swift-browser` | `apps/templates/swift-browser` | xcodebuild | `swift`, `cli` | `build` |
-| `docs-site` | `apps/docs` | Fumadocs on Next.js, MDX content, static export | none | `build`, `dev`, `lint` |
+| `docs-site` | `apps/docs` | Fumadocs on Next.js, MDX content, static export; `build` checks every internal link of the export (built 2026-11-25, T-REP-06) | none | `build`, `dev`, `lint`, `test` |
 | `integration-tests` | `tests` | Swift test runner plus fixtures | `swift`, `chromium`, `js-automation` | `test-extensions`, `test-e2e` |
 | `tooling` | `tooling` | tsc, shell | none | `build`, `test`, `lint` |
 

@@ -1,0 +1,47 @@
+{
+  "common": {
+    "vite": "8.3.8"
+  },
+  "language": {
+    "ts": {
+      "typescript": "7.0.2"
+    },
+    "js": {}
+  },
+  "styling": {
+    "css": {},
+    "tailwind": {
+      "tailwindcss": "4.3.5",
+      "@tailwindcss/vite": "4.3.5"
+    }
+  },
+  "framework": {
+    "vanilla": {
+      "dependencies": {},
+      "devDependencies": {},
+      "devDependenciesTs": {}
+    },
+    "react": {
+      "dependencies": {
+        "react": "19.3.1",
+        "react-dom": "19.3.1"
+      },
+      "devDependencies": {
+        "@vitejs/plugin-react": "6.3.0"
+      },
+      "devDependenciesTs": {
+        "@types/react": "19.3.0",
+        "@types/react-dom": "19.3.0"
+      }
+    },
+    "preact": {
+      "dependencies": {
+        "preact": "11.2.0"
+      },
+      "devDependencies": {
+        "@preact/preset-vite": "2.10.6"
+      },
+      "devDependenciesTs": {}
+    }
+  }
+}

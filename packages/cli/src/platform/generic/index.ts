@@ -8,6 +8,23 @@ export const genericPlatform: Platform = {
   buildLocations: () => undefined,
   writeFileLists: () => Promise.resolve([]),
   bundleFacts: () => Promise.resolve(undefined),
+  toolchain: () =>
+    Promise.resolve({
+      os: process.platform === "win32" ? "windows" : process.platform,
+      arch: process.arch,
+    }),
+  inspectSignature: () =>
+    Promise.reject(
+      new CliError(
+        {
+          code: "doctor.unsupported_host",
+          severity: "error",
+          message: "Checking an application's signature is only supported on macOS.",
+          fix: "Run `bdk doctor --bundle` on a Mac.",
+        },
+        ExitCode.Environment,
+      ),
+    ),
   sign: () =>
     Promise.reject(
       new CliError(

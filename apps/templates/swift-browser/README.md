@@ -1,36 +1,54 @@
 # template-swift-browser
 
-Starter application used by `bdk init` (xcodebuild).
+The starter application `bdk init` writes (task T-CLI-02). Design: [sdk/cli.md sections 4 and
+8](../../../docs/planning/sdk/cli.md). The CLI embeds every file here except this README and `project.json`
+(`packages/cli/src/asset-sources.ts`) and substitutes the names; the generator is
+`packages/cli/src/core/init/generate.ts`.
 
-Status: skeleton. The Xcode project is not implemented until M9. `BuildPhases/` is: the scripts its run-script
-phases call. Design: [sdk/cli.md section 8](../../../docs/planning/sdk/cli.md).
+## Files
+
+| Path | Becomes |
+|---|---|
+| `__PRODUCT__.xcodeproj/` | `<Product>.xcodeproj`, where the product is the display name with only letters and digits. Three targets: the application, its unit tests, and the aggregate `BDKRuntime`. File-system synchronised groups (`objectVersion = 77`, Xcode 16 or later), so files added to `Sources/`, `Resources/` and `Tests/` join their target with no project edit. |
+| `Sources/` | `main.swift`, `AppDelegate.swift`, `BrowserWindow.swift` (one window, one page, an address field), `AddressInput.swift`, and `RuntimeSource.swift`, the one file that knows the runtime (see below) |
+| `Resources/` | `Info.plist` (`NSPrincipalClass = BDKApplication`, usage strings, http and https URL types), `App.entitlements`, `Assets.xcassets` with an empty `AppIcon` |
+| `Tests/__PRODUCT__Tests.swift` | One unit test against the stub runtime, in the test process |
+| `BuildPhases/` | The scripts the run-script phases call (below) |
+| `Automation/`, `package.json` | With `--automation` only: an example script, and Rolldown pinned to the CLI's version, which `bdk build automation` loads from the project |
+| `gitignore` | `.gitignore` |
+
+Placeholders in contents: `{{name}}`, `{{product}}`, `{{bundleId}}`, `{{scheme}}`, `{{bdkCli}}`, `{{packageName}}`, and in
+the pbxproj `{{packageSection}}`, `{{packageComment}}` and `{{packageFields}}` for the BDK package reference: by URL
+at the CLI's exact version, or a local package with `bdk init --bdk-package <path>`. Values are escaped for the
+file they land in (Swift strings, property lists, pbxproj strings).
+
+The application links `BDK` and `BDKTestSupport` and starts the stub runtime: `bdk build runtime` and `bdk build
+embed`, which put the Chromium runtime in the bundle, are not built (T-CLI-04). `RuntimeSource.swift` says what to
+change when they are.
 
 ## Build phases
 
 | Script | Target | Runs | Steps missing from this `bdk` today |
 |---|---|---|---|
 | `BuildPhases/bdk-runtime.sh` | `BDKRuntime` (aggregate, no sources) | `bdk build config runtime codegen` | `runtime` |
-| `BuildPhases/bdk-bundle.sh` | The application, after Copy Bundle Resources | `bdk build pages automation embed` | `automation`, `embed` |
-| `BuildPhases/bdk-sign.sh` | The application, the last phase | `bdk build sign` | none |
+| `BuildPhases/bdk-bundle.sh` | The application, after Copy Bundle Resources | `bdk build pages automation embed`, then copies `bdk.resolved.json` into `Contents/Resources` | `embed` |
+| `BuildPhases/bdk-sign.sh` | The application, the last phase | `bdk build sign`, only when a runtime framework is embedded | none |
 
 Each script sources `bdk-steps.sh`, which runs the steps the CLI has and prints an Xcode `warning:` for each one it
 has not, so the phases keep working while the missing steps land. It fails, as an Xcode `error:`, when `BDK_CLI`
-names no executable. With `runtime` and `embed` missing, an application built from this template has no runtime in
-its bundle: it builds, signs and runs only against the stub.
+names no executable. The template sets `BDK_CLI` to the packaged `bdk` that ran `bdk init`, user script sandboxing
+off, and every phase to run on every build (`alwaysOutOfDate`): each step is incremental by digest.
 
-### Adding the phases to an Xcode project
+### Adding the phases to an existing Xcode project
 
-1. Define a build setting `BDK_CLI`: the path of the `bdk` executable from the resolved package's artifacts
-   (`bdk.artifactbundle`). Define `BDK_COMMANDS_FILE` too if the application's declarations file
-   (`bdk.commands.json`, written by `BDKDeclarations.write(to:)`) is not `$(DERIVED_FILE_DIR)/bdk.commands.json`.
+1. Define a build setting `BDK_CLI`: the path of the `bdk` executable. Define `BDK_COMMANDS_FILE` too if the
+   application's declarations file (`bdk.commands.json`, written by `BDKDeclarations.write(to:)`) is not
+   `$(DERIVED_FILE_DIR)/bdk.commands.json`.
 2. Add an aggregate target `BDKRuntime` with a Run Script phase that runs `"$SRCROOT/BuildPhases/bdk-runtime.sh"`.
    Make the application depend on it.
-3. In the application target, add a Run Script phase after "Copy Bundle Resources" that runs
-   `bdk-bundle.sh`, and a last one that runs `bdk-sign.sh`.
-4. For the bundle phase, tick "Based on dependency analysis" and set the input and output file lists to
-   `$(DERIVED_FILE_DIR)/bdk/bundle.input.xcfilelist` and `$(DERIVED_FILE_DIR)/bdk/bundle.output.xcfilelist`.
-   Leave the runtime phase unticked: it is incremental by digest and cheap (see below).
-5. Set "User Script Sandboxing" (`ENABLE_USER_SCRIPT_SANDBOXING`) to `NO` for the targets that have these phases.
+3. In the application target, add a Run Script phase after "Copy Bundle Resources" that runs `bdk-bundle.sh`, and a
+   last one that runs `bdk-sign.sh`.
+4. Set "User Script Sandboxing" (`ENABLE_USER_SCRIPT_SANDBOXING`) to `NO` for the targets that have these phases.
 
 ### Input and output file lists
 
@@ -44,21 +62,19 @@ its bundle: it builds, signs and runs only against the stub.
 | `bundle.input.xcfilelist` | `bdk.toml`, `bdk.resolved.json`, every file under the pages directory (not `node_modules`, not dot-files) and under the directory of a route an override moved elsewhere |
 | `bundle.output.xcfilelist` | In the bundle's `Contents/Resources`: the directory of each bundled route, and `BDK/js/internal`. Empty with no bundled routes; the bundle lists are not written when Xcode names no bundle. |
 
-Outputs are directories because a Vite build's file names are hashed; `bdk build pages` replaces each directory, so
-its modification time moves. The files exist only after the first `bdk build config`, so a phase that reads them
-must run after a phase that wrote them. That is why the runtime phase (which runs `config`) does not use its own
-lists: on the first build they would not exist yet, and Xcode refuses a missing file list. The `BDKRuntime` target
-runs first, so the bundle phase's lists exist by the time it is checked.
+The template does not use them: `DERIVED_FILE_DIR` is per target, so the lists `BDKRuntime` writes are not where
+the application target's bundle phase would look for its own.
 
-### Not verified
+## Targets
 
-None of this has been run in Xcode: there is no Xcode project yet, and Xcode could not run on the machine that wrote
-it. What is checked: the scripts with `shellcheck`, the CLI with the Xcode variables set by hand
-(`src/platform/xcode/build.test.ts`), and the file lists' contents. Not checked:
+| Command | What it does |
+|---|---|
+| `pnpm exec nx run template-swift-browser:build` | Packages the CLI, then `scripts/build-generated.sh`: `bdk init` with plain starter pages and automation into a temporary directory (Rolldown linked from the repository, so no network), `xcodebuild build` and `test` against this repository's package, then checks the bundle's resolved file, pages and script and its signature |
+| `pnpm exec nx run template-swift-browser:lint` | `swift format lint`, SwiftLint, `shellcheck`, `shfmt -d`, `plutil -lint` |
 
-- That Xcode accepts directories as outputs, and a missing input as "always run".
-- That a build with user script sandboxing left on works. cli.md section 8 says it is to be tested. The phases read
-  the project and `BDK_HOME` and write under `DERIVED_FILE_DIR` and the bundle; declaring all of that as inputs and
-  outputs may be enough. Until it is shown, turn the sandbox off for these phases.
-- That `bdk` finds `CODESIGNING_FOLDER_PATH`, `DERIVED_FILE_DIR` and the other settings in a real phase's
-  environment, beyond what is documented.
+## Verified (2026-11-25, macOS 27.2, Xcode 27.2, Apple Silicon)
+
+The build target passes: the generated application builds, its unit test passes, and the bundle phase packaged
+the pages and the automation script. Launched by hand, the application stayed up on the stub runtime. Not
+verified: Run from the Xcode GUI, a build with user script sandboxing on, and anything with the Chromium runtime
+embedded (it cannot be yet).
