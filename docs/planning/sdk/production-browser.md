@@ -34,7 +34,7 @@ With no application UI code beyond a window and an address field, the result mus
 | Session restore | `page.sessionState()`, `Options.restoring` (6.8) | Saving and restoring layout and page state. Chromium restores nothing. | Plan, M2 |
 | Recently closed pages | None | Keep the session state of closed pages | Application |
 | Crash recovery | `processGone` event; `reload()` (6.4) | What a crashed page looks like | Plan, M2 |
-| Unresponsive pages | `UnresponsivePageRequest` (5.19) | None | Added (S3) |
+| Unresponsive pages | `UnresponsivePageRequest` (5.19) | None | Accepted (S3, 2026-11-25); core, stub and Swift built, engine not (T-UIR-15) |
 | Background-page throttling | Chromium's own, unchanged: timer throttling, lower process priority and freezing for pages whose view is hidden. It follows view visibility. | None | Plan, M2 |
 | Discarding pages to save memory | Chromium discards a hidden page under critical memory pressure whether BDK plans for it or not, and its Memory Saver does so on a timer when switched on (off by default). BDK surfaces it: `page.isDiscarded`, a `discarded` event, `page.discard()`, `page.isAutoDiscardable`, and `performance.memorySaver.*` settings ([swift-api.md](swift-api.md) 6.1, 6.2) | Show a discarded page as such if the product wants to; mark pages that must never be discarded, such as pinned ones; choose the Memory Saver default | Added (S15) |
 | Menus and shortcuts | `BDKKeyboardDelegate`, `PageCommand` (9) | The menu bar and every shortcut | Plan, M2 |
@@ -76,7 +76,7 @@ With no application UI code beyond a window and an address field, the result mus
 |---|---|---|---|
 | Save and fill passwords | Chromium's password manager; `passwords` surface (5.8); Keychain-protected storage | None | Plan, M3 |
 | Password management UI | `passwords.*` ([services.md](services.md) 5.9); the `passwords` route | None with the built-in page | Plan, M3 |
-| Address and card autofill | `autofill.*`; `autofill` and `autofill_suggestions` surfaces | None | Plan, M3; suggestions surface Added (S3) |
+| Address and card autofill | `autofill.*`; `autofill` and `autofill_suggestions` surfaces | None | Plan, M3; suggestions surface accepted (S3, 2026-11-25) |
 | Passkeys and security keys | `WebAuthnRequest` (5.18), one request per step; `BDKWebAuthnSupport` | None for security keys. Phones: `NSBluetoothAlwaysUsageDescription` and the Bluetooth entitlement. System passkeys: Apple's browser passkey entitlement | Built (M4, T-UIR-09; security keys tested with a virtual key). Phones and system passkeys unverified (T-UIR-12, M9); Touch ID passkeys not offered (T-UIR-11, M9) |
 | HTTP authentication | `HTTPAuthRequest` (5.3) | None | Plan, M3 |
 | Its own credential store instead of Chromium's | `[services.credentials] provider = "app"`: Chromium still detects forms and fills, and the application's store supplies and receives the credentials ([swift-api.md](swift-api.md) 11.2) | The store, its unlock, and its sync | Added (S14); unverified |
@@ -88,7 +88,7 @@ With no application UI code beyond a window and an address field, the result mus
 |---|---|---|---|
 | Site permission prompts | `PermissionRequest` (5.1) | Usage strings in `Info.plist`; entitlements ([configuration.md](configuration.md) section 6) | Plan, M3 |
 | Site settings | `permissions.*`; built-in settings page | None | Plan, M3 |
-| Camera, microphone and screen-sharing indicators | `page.capture` (6.2); default "sharing" bar | An indicator in its own page UI, if it has one | Plan and Added (S3) |
+| Camera, microphone and screen-sharing indicators | `page.capture` (6.2); default "sharing" bar | An indicator in its own page UI, if it has one | Plan; the bar accepted (S3, 2026-11-25), not built (T-UIR-13) |
 | Sandbox, site isolation, process locks | Unchanged from Chromium (invariant 1) | Nothing, and it cannot turn them off | Plan |
 | Certificate errors | `CertificateErrorRequest` (5.14) | None | Plan, M3 |
 | Malware and phishing protection | `[services.reputation]`; `ReputationWarningRequest` | Decide whether the default's reduced protection is acceptable; otherwise configure Web Risk or its own provider | Plan, M6; decision D2 |
@@ -108,9 +108,9 @@ With no application UI code beyond a window and an address field, the result mus
 | Context menus | `ContextMenuRequest` (5.5) | None | Plan, M3 |
 | File upload and save | `FilePickerRequest` (5.4) | None | Plan, M3 |
 | Web notifications | `NotificationRequest` (5.13) | None | Plan, M3 |
-| Links to other applications | `ExternalProtocolRequest` (5.17) | None | Added (S3) |
-| Web Bluetooth, USB, HID, Serial | `DeviceChooserRequest` (5.16) | Usage strings and entitlements | Added (S3) |
-| Screen sharing | `ScreenCaptureRequest` (5.16) | None | Added (S3) |
+| Links to other applications | `ExternalProtocolRequest` (5.17) | None | Accepted (S3, 2026-11-25); not routed yet (T-UIR-13) |
+| Web Bluetooth, USB, HID, Serial | `DeviceChooserRequest` (5.16) | Usage strings and entitlements | Accepted (S3, 2026-11-25); not built (T-UIR-13) |
+| Screen sharing | `ScreenCaptureRequest` (5.16) | None | Accepted (S3, 2026-11-25); not built (T-UIR-13) |
 | Spell checking | Expected to use the operating system's on macOS | None | Unverified |
 | H.264, AAC, HEVC | Through the operating system's decoders, if the spike holds; no bundled proprietary decoder | None expected; legal review pending | Decision D7, T-CHR-12 |
 | DRM video (Widevine) | Not available | Nothing it can do in v1 as planned | Deferred, decision D7 |

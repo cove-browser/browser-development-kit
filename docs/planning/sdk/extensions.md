@@ -2,7 +2,7 @@
 
 Status: proposal, 2026-11-15. Based on [../architecture.md](../architecture.md) section 10, the spec's section 8A and [../feasibility.md](../feasibility.md) section 3. Names are placeholders. Nothing here has run: the MV3 probe has not been loaded into any browser. Status labels are in [README.md](README.md) section 2. Tasks: T-EXT-01 to T-EXT-09. Extension support is a public v1 gate.
 
-**Built in M5 (2026-11-20), engine pending.** The commands, surfaces, Swift API and window registration below exist and pass against the stub; the engine side is written and not yet built or run ([roadmap.md](../roadmap.md) M5, [amendments.md](../amendments.md) 2.17). Departures from this proposal are in amendments 2.17, `packages/swift/README.md` and `packages/core/docs/conventions.md` ("Extensions (M5)"). Not built: `extensions.inspectView` in the engine (T-EXT-11, M5); a default presenter for new pages that extension UI opens (T-EXT-12, M5; written 2026-11-23, not yet run on the engine); the store's update check being suppressed when the store is off (T-EXT-13, M6); `developer_mode`, `blocklist` and bundled extensions, section 9 (T-EXT-14, M9). The matrix is [docs/extensions/compatibility-matrix.md](../../extensions/compatibility-matrix.md), not run until the engine is (T-EXT-10).
+**Built in M5 (2026-11-20), engine pending.** The commands, surfaces, Swift API and window registration below exist and pass against the stub; the engine side is written and not yet built or run ([roadmap.md](../roadmap.md) M5, [amendments.md](../amendments.md) 2.17). Departures from this proposal are in amendments 2.17, `packages/swift/README.md` and `packages/core/docs/conventions.md` ("Extensions (M5)"). Not built: `extensions.inspectView` in the engine (T-EXT-11, M5); a default presenter for new pages that extension UI opens (T-EXT-12, M5; written 2026-11-23, not yet run on the engine); the store's update check being suppressed when the store is off (T-EXT-13, M6); the engine side of `developer_mode`, `blocklist` and bundled extensions, section 9 (T-EXT-14, M9; configuration, core and stub built 2026-11-25). The matrix is [docs/extensions/compatibility-matrix.md](../../extensions/compatibility-matrix.md), not run until the engine is (T-EXT-10).
 
 ## 1. What BDK adds and what it leaves alone
 
@@ -259,7 +259,7 @@ An extension with a `devtools_page` adds panels to DevTools. Supported in the de
 | Local CRX | `.crx(URL)` | `crx` | On | BDK replaces Chromium's off-store default-deny with this setting and keeps the prompt (task T-EXT-05) |
 | Self-hosted update URL | `.updateURL(id:url:)` | `update_urls` | Any | Installs and then updates from an update manifest |
 | Named store | `.store(name:id:)` | `stores` | None | Decision D4: available, off unless the application lists it. A store name is not a promise of access: store terms and endpoints can change (risk R10). |
-| Application bundle | none; declared in `bdk.toml` | `[extensions.bundled]` | None | Added (S6). Section 9. |
+| Application bundle | none; declared in `bdk.toml` | `[extensions.bundled]` | None | Accepted (S6, 2026-11-25). Section 9. `install` refuses the kind `bundled` |
 | Drag and drop, or a `.crx` link on a web page | none | follows `crx` | | Arrives as a download; the application calls `install(.crx(…))` if it wants to offer it |
 
 A source that is switched off is refused with `extension.sourceNotAllowed`, naming the key. Switching a source off does not disable extensions already installed from it.
@@ -348,7 +348,9 @@ What an extension observes, given the application's layout. From `architecture.m
 | A page is created and never attached | A tab in the parking context. Whether `windows.getAll` lists that context is the probe's tenth assertion. |
 | The application closes a page | `tabs.onRemoved` |
 
-## 9. Bundled extensions (Added, S6)
+## 9. Bundled extensions (Accepted, S6, 2026-11-25)
+
+Built in T-EXT-14 (2026-11-25) for the configuration, the core and the stub, with conformance tests (`ext_developer_mode_*`, `ext_blocklisted_*`, `ext_bundled_*`): the schema and resolver (configuration.md 3.7), the core reading `developer_mode`, `blocklist` and `bundled` at start (`runtime/extension_policy.cc`), `developer_mode = "off"` refusing unpacked directories (`extension.sourceNotAllowed`), a blocklisted identifier refused from every source (`extension.blocklisted`, which `allow_all` does not override), and in the stub each bundled extension loaded with no prompt in every persistent profile, refused for uninstall (`extension.notRemovable`) and, with `required = true`, for disabling (`extension.notRemovable`). Not built (T-EXT-14, M9): the build copying the directory into `Contents/Resources`; the engine loading bundled extensions (Chromium's unpacked loader with the component-like "cannot uninstall" management policy, `engine/extensions/management_policy.cc`), honouring the blocklist (Chromium's `ExtensionManagement` blocklist) and `developer_mode` (`extensions::util::SetDeveloperModeForProfile`, which the engine now sets on for every unpacked load); the setting `extensions.developerMode` that `"user"` refers to; an extension already installed whose identifier is blocklisted at a later start being disabled with the reason `blocklisted`; the scenario that a bundled extension loads with no prompt in every persistent profile on the engine.
 
 Declared under `[extensions.bundled]`. The build copies each into the application bundle and records its digest in the resolved file.
 
