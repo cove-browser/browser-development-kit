@@ -62,10 +62,12 @@ base::DictValue InstallInfoAppInfo(Profile* profile,
                                    const web_app::WebAppInstallInfo& info);
 
 // Raises the web_app_installs request for `info` (source "page" or
-// "command") on `page_contents` and calls `done` with whether the person
-// installed. Default presenter: a sheet with the name, the origin, Install
-// and Cancel (Cancel first).
-void AskToInstall(content::WebContents* page_contents,
+// "command") into `profile`, on `page_contents` when a page asked or the
+// command named one (null otherwise), and calls `done` with whether the
+// person installed. Default presenter: a sheet on the page with the name, the
+// origin, Install and Cancel (Cancel first); with no page, nothing installs.
+void AskToInstall(Profile* profile,
+                  content::WebContents* page_contents,
                   const web_app::WebAppInstallInfo& info,
                   const std::string& source,
                   base::OnceCallback<void(bool)> done);

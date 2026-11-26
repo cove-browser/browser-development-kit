@@ -184,7 +184,8 @@ void PresentPageInstall(content::WebContents* initiator,
                         std::unique_ptr<web_app::WebAppInstallInfo> info,
                         web_app::WebAppInstallationAcceptanceCallback accept) {
   web_app::WebAppInstallInfo* raw = info.get();
-  AskToInstall(initiator, *raw, "page",
+  AskToInstall(Profile::FromBrowserContext(initiator->GetBrowserContext()),
+               initiator, *raw, "page",
                base::BindOnce(
                    [](std::unique_ptr<web_app::WebAppInstallInfo> info,
                       web_app::WebAppInstallationAcceptanceCallback accept,
@@ -359,60 +360,67 @@ base::DictValue InstallInfoAppInfo(Profile* profile,
       ShortcutsJson(info.shortcuts_menu_item_infos));
 }
 
-void AskToInstall(content::WebContents* page_contents,
+void AskToInstall(Profile* profile,
+                  content::WebContents* page_contents,
                   const web_app::WebAppInstallInfo& info,
                   const std::string& source,
                   base::OnceCallback<void(bool)> done) {
   EngineContents* page =
       page_contents ? EngineContents::FromWebContents(page_contents) : nullptr;
-  if (!page || !WebAppsEnabled()) {
+  std::shared_ptr<bdkcore::Runtime> rt = bdkcore::current_runtime();
+  std::shared_ptr<bdkcore::Profile> bdk_profile =
+      rt && profile ? BdkProfileOf(*rt, profile) : nullptr;
+  if ((!page && !bdk_profile) || !WebAppsEnabled()) {
     std::move(done).Run(false);
     return;
   }
-  Profile* profile =
-      Profile::FromBrowserContext(page_contents->GetBrowserContext());
   base::DictValue app = InstallInfoAppInfo(profile, info);
   base::DictValue payload;
   payload.Set("app", app.Clone());
   payload.Set("source", source);
   payload.Set("screenshots", base::ListValue());
-  base::WeakPtr<EngineContents> weak_page = page->GetWeakPtr();
-  std::shared_ptr<bdkcore::Request> request = RaiseUiRequest(
-      *page, BDK_SURFACE_WEB_APP_INSTALLS, payload,
-      base::BindOnce(
-          [](base::WeakPtr<EngineContents> page, base::DictValue app,
-             base::OnceCallback<void(bool)> done, const UiResult& result) {
-            if (result.outcome == bdkcore::UiOutcome::kCompleted) {
-              std::move(done).Run(result.completion == "grant" ||
-                                  result.completion == "install");
-              return;
-            }
-            if (result.outcome != bdkcore::UiOutcome::kDefaulted || !page) {
-              std::move(done).Run(false);
-              return;
-            }
-            // The default presenter (web-apps.md 4.1): the name and the
-            // origin, which the site does not choose, with Cancel first.
-            Alert alert;
-            alert.title = base::StringPrintf(
-                "Install “%s”?",
-                app.FindString("name") ? app.FindString("name")->c_str() : "");
-            alert.message = base::StringPrintf(
-                "From %s", app.FindString("origin")
-                               ? app.FindString("origin")->c_str()
-                               : "");
-            alert.buttons = {{"cancel", "Cancel"}, {"install", "Install"}};
-            UiPresenters::Get()
-                .ShowAlert(
-                    "web_app_installs", &page->host_view(), std::move(alert),
-                    base::BindOnce(
-                        [](base::OnceCallback<void(bool)> done, int button) {
-                          std::move(done).Run(button == 1);
-                        },
-                        std::move(done)))
-                .Reset();
-          },
-          weak_page, std::move(app), std::move(done)));
+  base::WeakPtr<EngineContents> weak_page =
+      page ? page->GetWeakPtr() : base::WeakPtr<EngineContents>();
+  UiFinish finish = base::BindOnce(
+      [](base::WeakPtr<EngineContents> page, base::DictValue app,
+         base::OnceCallback<void(bool)> done, const UiResult& result) {
+        if (result.outcome == bdkcore::UiOutcome::kCompleted) {
+          std::move(done).Run(result.completion == "grant" ||
+                              result.completion == "install");
+          return;
+        }
+        if (result.outcome != bdkcore::UiOutcome::kDefaulted || !page) {
+          std::move(done).Run(false);
+          return;
+        }
+        // The default presenter (web-apps.md 4.1): the name and the
+        // origin, which the site does not choose, with Cancel first.
+        Alert alert;
+        alert.title = base::StringPrintf(
+            "Install “%s”?",
+            app.FindString("name") ? app.FindString("name")->c_str() : "");
+        alert.message = base::StringPrintf(
+            "From %s",
+            app.FindString("origin") ? app.FindString("origin")->c_str() : "");
+        alert.buttons = {{"cancel", "Cancel"}, {"install", "Install"}};
+        UiPresenters::Get()
+            .ShowAlert("web_app_installs", &page->host_view(), std::move(alert),
+                       base::BindOnce(
+                           [](base::OnceCallback<void(bool)> done, int button) {
+                             std::move(done).Run(button == 1);
+                           },
+                           std::move(done)))
+            .Reset();
+      },
+      weak_page, std::move(app), std::move(done));
+  // A page's request is anchored on it; an install from a URL that no page
+  // asked for belongs to the profile, and its default (no page to show a
+  // sheet on) installs nothing.
+  std::shared_ptr<bdkcore::Request> request =
+      page ? RaiseUiRequest(*page, BDK_SURFACE_WEB_APP_INSTALLS, payload,
+                            std::move(finish))
+           : RaiseUiRequest(bdk_profile, BDK_SURFACE_WEB_APP_INSTALLS, payload,
+                            std::move(finish));
   (void)request;
 }
 

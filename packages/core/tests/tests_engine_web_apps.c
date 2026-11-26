@@ -31,6 +31,11 @@ static const char* kPage =
     "addEventListener('appinstalled', () => window.wasInstalled = true);</script>"
     "</body></html>";
 
+/* A service worker that tells its pages when a Background Sync event reaches it. */
+static const char* kWorker =
+    "self.addEventListener('sync', e => e.waitUntil(clients.matchAll({includeUncontrolled: true})"
+    ".then(cs => cs.forEach(c => c.postMessage('synced:' + e.tag)))));";
+
 static const char* kIcon =
     "iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAIAAADdvvtQAAABZElEQVR42u3SQQ0AAAjEsPOEJzzhFguEd5MqWJbqgbdI"
     "gIEwEAbCQGAgDISBMBAYCANhIAwEBsJAGAgDgYEwEAbCQBgIDISBMBAGAgNhIAyEgcBAGAgDYSAwEAbCQBgIA4GBMBAG"
@@ -71,8 +76,9 @@ static int start_server(void) {
         {"/manifest.json", "application/manifest+json", kManifest, strlen(kManifest)},
         {"/icon.png", "image/png", icon, icon_length},
         {"/elsewhere.html", "text/html", outside, sizeof outside - 1},
+        {"/app/sw.js", "text/javascript", kWorker, strlen(kWorker)},
     };
-    return t_http_start(routes, 4);
+    return t_http_start(routes, 5);
 }
 
 #define PAGE t_http_url("/app/index.html")
@@ -426,6 +432,73 @@ static void test_the_page_reports_its_installability(void) {
     finish(c);
 }
 
+/* webApps.install {url} with no page: the URL loads hidden, the request names the app with source
+   "command"; a deny is webApps.cancelled and a grant installs. A URL with no manifest is not
+   installable, and the application's confirmed install raises no request. */
+static void test_a_url_installs_with_no_page(void) {
+    bdk_contents_t c = start(1, 1);
+    char args[256];
+    snprintf(args, sizeof args, "{\"url\":\"%s\"}", PAGE);
+    t_capture_t cap;
+    g_complete = 2;
+    call(g_profile, 0, "webApps.install", args, &cap);
+    if (!(cap.has_error && strcmp(cap.code, BDK_CODE_CANCELLED) == 0))
+        printf("    got %s.%s: %s\n", cap.domain, cap.code, cap.message);
+    CHECK(cap.has_error && strcmp(cap.code, BDK_CODE_CANCELLED) == 0);
+    CHECK(g_calls == 1);
+    CHECK(strstr(g_payload, "\"source\":\"command\"") != NULL);
+    CHECK(strstr(g_payload, "\"name\":\"Example App\"") != NULL);
+    g_complete = 1;
+    call(g_profile, 0, "webApps.install", args, &cap);
+    CHECK(!cap.has_error);
+    CHECK(strstr(cap.json, "\"name\":\"Example App\"") != NULL);
+    CHECK(g_calls == 2);
+
+    snprintf(args, sizeof args, "{\"url\":\"%s\"}", OUTSIDE);
+    call(g_profile, 0, "webApps.install", args, &cap);
+    CHECK(cap.has_error && strcmp(cap.code, BDK_CODE_NOT_INSTALLABLE) == 0);
+    CHECK(g_calls == 2);
+
+    bdk_profile_t other = ready_profile("Other", 1);
+    snprintf(args, sizeof args, "{\"url\":\"%s\"}", PAGE);
+    t_cap_init(&cap);
+    bdk_invoke_options_t o;
+    memset(&o, 0, sizeof o);
+    o.struct_size = sizeof o;
+    o.profile = other;
+    REQUIRE(bdk_web_app_install(t_runtime, S(args), &o, bdk_harness_engine_gesture(c, 0),
+                                t_on_result, &cap, t_on_release) != 0);
+    for (int i = 0; i < 200 && cap.results == 0; ++i) {
+        t_pump();
+        bdk_testing_run_for(0.05);
+    }
+    CHECK(cap.results == 1 && !cap.has_error);
+    CHECK(g_calls == 2);
+    call(other, 0, "webApps.list", "{}", &cap);
+    CHECK(strstr(cap.json, "\"name\":\"Example App\"") != NULL);
+    finish(c);
+}
+
+/* An installed app's service worker (web-apps.md 9, a recorded result): a one-off Background Sync
+   registered while online fires at once, and Periodic Background Sync registers, which Chromium
+   allows only for an origin with an installed app. Its first event is at least 12 hours away
+   (Chromium's minimum interval), so a scenario cannot see it. */
+static void test_an_installed_app_gets_background_sync(void) {
+    bdk_contents_t c = start(1, 1);
+    install_through_prompt(c);
+    run(c, "navigator.serviceWorker.onmessage = e => document.title = e.data;"
+           "navigator.serviceWorker.register('/app/sw.js')"
+           ".then(() => navigator.serviceWorker.ready)"
+           ".then(reg => reg.periodicSync.register('p', {minInterval: 1000})"
+           "  .then(() => 'ok', e => e.name)"
+           "  .then(p => { window.periodic = p; return reg.sync.register('s'); }))"
+           ".catch(e => document.title = 'sync ' + e.name)");
+    CHECK(wait_for_title(c, "synced:s"));
+    run(c, "document.title = 'periodic ' + window.periodic");
+    CHECK(wait_for_title(c, "periodic ok"));
+    finish(c);
+}
+
 const t_test_t t_engine_web_app_tests[] = {
     {"engine_web_apps_off_offer_nothing", test_web_apps_off_offer_nothing},
     {"engine_web_apps_a_handler_installs_from_the_page_prompt",
@@ -435,5 +508,8 @@ const t_test_t t_engine_web_app_tests[] = {
     {"engine_web_apps_the_page_reports_its_installability",
      test_the_page_reports_its_installability},
     {"engine_web_apps_a_launched_app_runs_as_an_app_page", test_a_launched_app_runs_as_an_app_page},
+    {"engine_web_apps_a_url_installs_with_no_page", test_a_url_installs_with_no_page},
+    {"engine_web_apps_an_installed_app_gets_background_sync",
+     test_an_installed_app_gets_background_sync},
     {NULL, NULL},
 };
