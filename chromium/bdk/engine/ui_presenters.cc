@@ -12,6 +12,7 @@
 #include "base/memory/weak_ptr.h"
 #include "base/no_destructor.h"
 #include "base/task/sequenced_task_runner.h"
+#include "base/time/time.h"
 #include "bdk/engine/json_util.h"
 
 namespace bdk {
@@ -431,8 +432,11 @@ class RoutingPresenters : public UiPresenters {
     return Scripted::Present(
         "sharing_indicator", sharing,
         [stop = std::move(stop), stops](const base::DictValue&) mutable {
+          // A person presses Stop on a bar they have seen, after the page has
+          // its stream: a stop before then never settles getDisplayMedia().
           if (stops) {
-            std::move(stop).Run();
+            base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
+                FROM_HERE, std::move(stop), base::Seconds(1));
           }
         });
   }
