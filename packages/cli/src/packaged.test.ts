@@ -55,7 +55,9 @@ describe.skipIf(!packaged)("packaged executable (skipped when dist/bdk is absent
   it("prints help", () => {
     const result = bdk(["--help"]);
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("Steps: config, codegen, pages, automation, devtools, sign");
+    expect(result.stdout).toContain(
+      "Steps: config, codegen, pages, automation, devtools, extensions, sign",
+    );
   });
 
   it("exits 2 for an unknown command", () => {

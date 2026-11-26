@@ -2,6 +2,7 @@ import { automationStep } from "./automation.js";
 import { codegenStep } from "./codegen.js";
 import { configStep } from "./config.js";
 import { devtoolsStep } from "./devtools.js";
+import { extensionsStep } from "./extensions.js";
 import { pagesStep } from "./pages.js";
 import { signStep } from "./sign.js";
 import type { Step } from "./step.js";
@@ -13,5 +14,6 @@ export const BUILD_STEPS: readonly Step[] = [
   pagesStep,
   automationStep,
   devtoolsStep,
+  extensionsStep,
   signStep,
 ];

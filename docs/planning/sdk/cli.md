@@ -258,7 +258,7 @@ Verified: every combination generated in tests (56), and one generated project b
 
 ## 5. `bdk build`
 
-Added (S8). Called by Xcode. Each step can also be run alone. Built so far: `config`, `codegen` and `pages` (M4, T-CLI-04), `automation` and `devtools` (M7) and `sign` (M2); `runtime` and `embed` are not built. With no step, `pages`, `automation` and `devtools` run only with a bundle (`--bundle`, or an Xcode build). `--out` is the resolved file for `config`, `automation` and `devtools` and a directory for `codegen`, so one run cannot give it to `codegen` and another of them. `--watch` is built for `automation` only (T-AUT-07); `pages --watch` is not built (T-CLI-06, M5). Run from the packaged executable with no Node on the path; not run from an Xcode build.
+Added (S8). Called by Xcode. Each step can also be run alone. Built so far: `config`, `codegen` and `pages` (M4, T-CLI-04), `automation` and `devtools` (M7), `extensions` (M9, T-EXT-14) and `sign` (M2); `runtime` and `embed` are not built. With no step, `pages`, `automation`, `devtools` and `extensions` run only with a bundle (`--bundle`, or an Xcode build). `--out` is the resolved file for `config`, `automation`, `devtools` and `extensions` and a directory for `codegen`, so one run cannot give it to `codegen` and another of them. `--watch` is built for `automation` only (T-AUT-07); `pages --watch` is not built (T-CLI-06, M5). Run from the packaged executable with no Node on the path; not run from an Xcode build.
 
 `bdk build` is not a second way to build or run the application. The developer builds and runs in Xcode, and Xcode's build phases call `bdk build` for the BDK-specific steps (section 8). `bdk build runtime` is one of seven steps of this one command, not a separate command. A developer types `bdk build` by hand in two cases only: `bdk build pages --watch` while editing internal pages, and `bdk build runtime --allow-source-build` in source mode, because a Chromium build must never start as a side effect of pressing Run.
 
@@ -276,6 +276,7 @@ With no step, runs the steps that apply, in this order:
 | `pages` | `Pages/` | Packaged pages in the bundle's resources; digests in the resolved file | A Vite failure; output that the content security policy would block; a page over the size the data source accepts |
 | `automation` | `Automation/` | Bundled scripts in the bundle's resources; digests in the resolved file | A Rolldown failure; an import that is not `@bdk/*` or bundled. Built in M7: `Contents/Resources/BDK/Automation/<name>.js`, `@bdk/*` inlined, Rolldown from the project. `--watch` is built (T-AUT-07, M8) |
 | `devtools` | `[devtools]` frontend and overlay | `Contents/Resources/BDK/DevTools/{Frontend,Overlay}` | Added in M7: a front end without `index.html`, an empty overlay, a URL |
+| `extensions` | `[extensions.bundled]` in the resolved file, each extension's directory | `Contents/Resources/<path>` for each, copied as it is; prints each one's declared permissions | Added in M9 (T-EXT-14): a directory that changed since `bdk build config` (the resolved file is stale), a link that leaves the extension's directory, a copy whose digest differs from the resolved file's |
 | `embed` | The runtime from the store | `Contents/Frameworks/BDKRuntime.framework`, copied with its symlinks | A copy that does not match the manifest |
 | `sign` | The built bundle, the Xcode signing identity and team | Helper bundle identifiers rewritten to the application's; everything signed inside-out: libraries, helpers, framework, then the application | A signing failure; a helper with the wrong entitlements; an application entitlement on the deny list |
 
@@ -361,7 +362,9 @@ Each finding has a fixture and a message (task T-CLI-01).
 every diagnostic the configuration resolver reports, so a diagnostic added there (`web_apps.push_unconfigured`,
 `services.push_google`, T-PWA-02) appears with no change to `doctor`. Outside Xcode it reads the template's
 `Resources/Info.plist` and `Resources/App.entitlements`. Requirements: macOS 14 (or the resolved runtime's
-`min_os`), Xcode 26, Swift 6, arm64.
+`min_os`), Xcode 26, Swift 6, arm64. With `--bundle`, each bundled extension the application's resolved file lists
+is checked against its copy in `Contents/Resources` (`doctor.bundled_extension_missing`,
+`doctor.bundled_extension_modified`; T-EXT-14).
 
 Added by T-CLI-07 (2026-11-25):
 

@@ -223,7 +223,7 @@ One line per surface: `surface = "default" | "custom" | "disabled"`. Surface nam
 
 One line per surface, with the same three modes as `[ui.surfaces]`: `actions`, `popups`, `side_panels`, `context_menus`, `options_pages`, `devtools`. Details are in [extensions.md](extensions.md) section 4.
 
-#### `[extensions.bundled]` (Accepted, S6, 2026-11-25; schema, resolver and core built in T-EXT-14, 2026-11-25; engine and the build's copy not built)
+#### `[extensions.bundled]` (Accepted, S6, 2026-11-25; schema, resolver, core and the build's copy built in T-EXT-14, 2026-11-25; engine not built)
 
 One line per extension: `name = "Extensions/<directory>"`. The directory is an unpacked extension inside the application bundle, covered by its signature. It loads at start in every persistent profile, cannot be uninstalled by the user, and can be disabled by the user unless `required = true` is set in the long form:
 
@@ -233,7 +233,7 @@ path = "Extensions/Reader"
 required = true
 ```
 
-The name is a lower-case letter followed by letters, digits, `_` or `-`. The path is relative to the directory of `bdk.toml`, and the build copies the directory to the same path under `Contents/Resources`. The resolver checks that it is a directory inside the project with a `manifest.json` that has `name`, `version` and a numeric `manifest_version` (`extensions.bundled_invalid` otherwise) and writes the long form with the directory's digest: `"bundled": {"reader": {"path": "Extensions/Reader", "required": true, "digest": "sha256:…"}}`. Not built (T-EXT-14): the copy into the bundle, and the engine loading it.
+The name is a lower-case letter followed by letters, digits, `_` or `-`. The path is relative to the directory of `bdk.toml`, and the build copies the directory to the same path under `Contents/Resources`. The resolver checks that it is a directory inside the project with a `manifest.json` that has `name`, `version` and a numeric `manifest_version` (`extensions.bundled_invalid` otherwise) and writes the long form with the directory's digest: `"bundled": {"reader": {"path": "Extensions/Reader", "required": true, "digest": "sha256:…"}}`. `bdk build extensions` (cli.md section 5) copies it and fails with `extensions.resolved_stale` when the directory no longer matches that digest. Not built (T-EXT-14): the engine loading it.
 
 ### 3.7A `[web_apps]` (product owner, 2026-11-25; built in T-PWA-02 to T-PWA-04, M9; key, resolver, core and stub built 2026-11-25)
 

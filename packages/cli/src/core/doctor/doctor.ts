@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { loadSeries, PatchFormatError } from "@bdk/tooling/dist/chromium/common.js";
@@ -6,6 +6,8 @@ import { BdkHomeError, bdkPaths, resolveBdkHome } from "@bdk/tooling/dist/paths.
 import { type Manifest, verifyRuntimeDir } from "@bdk/tooling/dist/runtime/manifest.js";
 import type { SignatureReport } from "../../platform/platform.js";
 import type { ParsedArgs } from "../args.js";
+import { directoryDigest } from "../config/digest.js";
+import { pathProblem } from "../config/paths.js";
 import { isRecord } from "../config/reporter.js";
 import type { Context } from "../context.js";
 import type { Diagnostic } from "../diagnostics.js";
@@ -304,6 +306,39 @@ async function compatibilityFindings(
 }
 
 /**
+ * Each bundled extension the application's resolved file lists, against the copy the runtime loads from
+ * `Contents/Resources/<path>` (extensions.md section 9).
+ */
+function bundledExtensionFindings(
+  f: Findings,
+  appPath: string,
+  inBundle: Record<string, unknown>,
+): void {
+  const extensions = isRecord(inBundle.extensions) ? inBundle.extensions : {};
+  const bundled = isRecord(extensions.bundled) ? extensions.bundled : {};
+  for (const [name, entry] of Object.entries(bundled)) {
+    // The resolver writes a path inside the project; anything else is not read outside the bundle.
+    if (!isRecord(entry) || typeof entry.path !== "string" || pathProblem(entry.path)) continue;
+    const copy = join(appPath, "Contents", "Resources", entry.path);
+    if (!existsSync(copy) || !statSync(copy).isDirectory()) {
+      f.error(
+        "doctor.bundled_extension_missing",
+        `The application has no copy of the bundled extension "${name}" at Contents/Resources/${entry.path}.`,
+        "Build the application again; its `bdk build extensions` step copies the extension.",
+        copy,
+      );
+    } else if (directoryDigest(copy) !== entry.digest) {
+      f.error(
+        "doctor.bundled_extension_modified",
+        `The bundled extension "${name}" in the application does not match the digest in its bdk.resolved.json.`,
+        "Build the application again; its `bdk build extensions` step copies the extension.",
+        copy,
+      );
+    }
+  }
+}
+
+/**
  * Built application: its configuration against `bdk.toml`, its pages, scripts and runtime against the
  * digests the build recorded, and its signature.
  */
@@ -353,6 +388,7 @@ async function bundleFindings(
   if (isRecord(inBundle)) {
     await pageFindings(f, project, resources, inBundle, resolved);
     scriptFindings(f, resources, inBundle);
+    bundledExtensionFindings(f, appPath, inBundle);
   }
   await frameworkFindings(f, appPath, manifest);
   await signatureFindings(f, ctx, appPath);

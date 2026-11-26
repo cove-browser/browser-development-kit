@@ -51,7 +51,7 @@ describe("usage errors (exit 2)", () => {
     [["frobnicate"], 'Unknown command "frobnicate". Commands: build'],
     [
       ["build", "embed"],
-      'Unknown build step "embed". Steps: config, codegen, pages, automation, devtools, sign',
+      'Unknown build step "embed". Steps: config, codegen, pages, automation, devtools, extensions, sign',
     ],
     [["build", "config", "embed"], 'Unknown build step "embed"'],
     [["--bogus"], "Unknown option"],
@@ -94,7 +94,7 @@ describe("bdk build with no step", () => {
       await run(["build", "--bundle", join(dir, "A.app"), "--identity", "-", "--json"], ctx),
     ).toBe(0);
     expect(JSON.parse(ctx.out.join("")).command).toMatch(
-      /^build config codegen pages automation devtools sign/,
+      /^build config codegen pages automation devtools extensions sign/,
     );
   });
 

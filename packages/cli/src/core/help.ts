@@ -19,6 +19,7 @@ Usage:
   bdk build pages [--bundle <App.app>] [--resolved <file>]
   bdk build automation --bundle <App.app> [--out <file>] [--watch]
   bdk build devtools --bundle <App.app> [--out <file>]
+  bdk build extensions --bundle <App.app> [--out <file>]
   bdk build sign --bundle <App.app> --identity <name|-> [--team <id>] [--entitlements <file>]
   bdk --help | --version
 
@@ -33,8 +34,9 @@ Commands:
                 BDK's series into the project), check (against the pinned Chromium, no build), rebase
                 (against another tag)
   build         Run build steps. Steps: ${steps.join(", ")}.
-                With no step, runs those that apply, in that order: pages, automation and devtools need a
-                bundle (--bundle, or an Xcode build); sign needs an Xcode build or --identity
+                With no step, runs those that apply, in that order: pages, automation, devtools and
+                extensions need a bundle (--bundle, or an Xcode build); sign needs an Xcode build or
+                --identity
 
 Options:
   --project <dir>         Use the project in <dir> instead of the nearest ancestor with bdk.toml
@@ -42,10 +44,11 @@ Options:
   --offline               Never use the network (fail instead)
   --diagnostics <form>    Print diagnostics as "human" or "xcode" (file:line: error: message).
                           Default: "xcode" inside an Xcode build, otherwise "human"
-  --out <path>            For \`build config\`, \`build automation\` and \`build devtools\`: the file
-                          bdk.resolved.json is written to and read from. For \`build codegen\`: the
-                          directory to write the @bdk packages to (Xcode: $DERIVED_FILE_DIR/bdk/js, else
-                          <project>/.bdk/js). Not for codegen and another of them in one run
+  --out <path>            For \`build config\`, \`build automation\`, \`build devtools\` and
+                          \`build extensions\`: the file bdk.resolved.json is written to and read from.
+                          For \`build codegen\`: the directory to write the @bdk packages to (Xcode:
+                          $DERIVED_FILE_DIR/bdk/js, else <project>/.bdk/js). Not for codegen and another
+                          of them in one run
   --commands <file>       For \`build codegen\`: the application's declarations, bdk.commands.json (Xcode:
                           $BDK_COMMANDS_FILE, else $DERIVED_FILE_DIR/bdk.commands.json; else
                           <project>/.bdk/bdk.commands.json). A missing file means no app. declarations
@@ -53,7 +56,7 @@ Options:
                           CODESIGNING_FOLDER_PATH, else TARGET_BUILD_DIR/WRAPPER_NAME) and the resolved
                           configuration to read (default: bdk.resolved.json next to bdk.toml; \`build codegen\`
                           reads the same file). --bundle is also the application for \`build automation\`,
-                          \`build devtools\`, \`build sign\` and \`doctor\`
+                          \`build devtools\`, \`build extensions\`, \`build sign\` and \`doctor\`
   --identity, --team, --entitlements
                           For \`build sign\`. In an Xcode build they default to CODESIGNING_FOLDER_PATH,
                           EXPANDED_CODE_SIGN_IDENTITY, DEVELOPMENT_TEAM and CODE_SIGN_ENTITLEMENTS.

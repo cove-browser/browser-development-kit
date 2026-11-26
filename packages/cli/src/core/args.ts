@@ -12,9 +12,9 @@ export interface ParsedArgs {
   project?: string;
   /** Forced diagnostics form; undefined means detect from the environment. */
   diagnostics?: DiagnosticFormat;
-  /** `--out <path>`: the resolved file for `build config`, `build automation` and `build devtools`; the output directory for `build codegen`. */
+  /** `--out <path>`: the resolved file for `build config`, `build automation`, `build devtools` and `build extensions`; the output directory for `build codegen`. */
   out?: string;
-  /** `--bundle <App.app>`, for `build pages`, `build automation`, `build devtools` and `build sign`. */
+  /** `--bundle <App.app>`, for `build pages`, `build automation`, `build devtools`, `build extensions` and `build sign`. */
   bundle?: string;
   /** `--identity <name|->`: the signing identity, `-` for ad hoc. */
   identity?: string;

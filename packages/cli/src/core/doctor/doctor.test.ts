@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { type Assets, createAssets } from "../../assets.js";
 import type { HostToolchain, Platform, SignatureReport } from "../../platform/platform.js";
 import { tempDir, tempProject, testContext } from "../../test-support.js";
-import { sha256 } from "../config/digest.js";
+import { directoryDigest, sha256 } from "../config/digest.js";
 import { resolveConfig } from "../config/index.js";
 import { configDigest } from "../config/resolve.js";
 import type { Diagnostic } from "../diagnostics.js";
@@ -684,6 +684,43 @@ describe("bdk doctor --bundle", () => {
       },
     });
     expect(codes(d)).not.toContain("doctor.gatekeeper_rejected");
+  });
+
+  it("checks each bundled extension's copy against the digest in the application's resolved file", async () => {
+    const { dir } = await tempProject();
+    const path = await app(dir);
+    const resources = join(path, "Contents", "Resources");
+    await mkdir(join(resources, "Extensions", "Reader"), { recursive: true });
+    await writeFile(join(resources, "Extensions", "Reader", "manifest.json"), "{}");
+    const entry = (digest: string) => ({ path: "Extensions/Reader", required: false, digest });
+    const check = async (bundled: object) => {
+      await writeFile(
+        join(resources, "bdk.resolved.json"),
+        JSON.stringify({ extensions: { bundled } }),
+      );
+      return doctor(dir, { args: ["--bundle", "build/Demo.app"] });
+    };
+
+    const good = await check({
+      reader: entry(directoryDigest(join(resources, "Extensions/Reader"))),
+    });
+    expect(codes(good)).not.toContain("doctor.bundled_extension_modified");
+    expect(codes(good)).not.toContain("doctor.bundled_extension_missing");
+
+    const modified = await check({ reader: entry("sha256:other") });
+    expect(
+      modified.diagnostics.find((x) => x.code === "doctor.bundled_extension_modified")?.message,
+    ).toBe(
+      'The bundled extension "reader" in the application does not match the digest in its bdk.resolved.json.',
+    );
+
+    const missing = await check({ notes: { path: "Extensions/Notes", digest: "sha256:x" } });
+    expect(
+      missing.diagnostics.find((x) => x.code === "doctor.bundled_extension_missing")?.message,
+    ).toBe(
+      'The application has no copy of the bundled extension "notes" at Contents/Resources/Extensions/Notes.',
+    );
+    expect(missing.code).toBe(ExitCode.ProjectFailure);
   });
 
   it("refuses a path that is not an application (usage error)", async () => {
