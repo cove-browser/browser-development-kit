@@ -190,6 +190,9 @@ bool StartChromium(const ChromiumStartOptions& options, std::string* error) {
       ",HttpsFirstDialogUi,WebPayments,SecurePaymentConfirmation,FedCm,"
       "WebIdentityDigitalCredentials,WebIdentityDigitalCredentialsCreation,"
       "WebAppInstallation,InstallElement";
+  // Installed web apps stay in the application's windows (web-apps.md
+  // 10.5): links do not open in an app, and no app is preinstalled.
+  disabled_features += ",PwaNavigationCapturing,DefaultWebAppInstallation";
   // Web Bluetooth's chooser is a device_choosers request (T-UIR-13), but its
   // adapter needs the application's Bluetooth usage string: macOS ends a
   // process that uses Bluetooth without one. With none, navigator.bluetooth is

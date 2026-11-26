@@ -71,6 +71,7 @@
 #include "bdk/engine/ui_presenters.h"
 #include "bdk/engine/ui_screen_capture.h"
 #include "bdk/engine/ui_select_file.h"
+#include "bdk/engine/web_apps.h"
 #include "bdk/engine/window_registry.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/extensions/extension_tab_util.h"
@@ -270,6 +271,7 @@ class EngineBackend final : public bdkcore::Backend {
       InstallPromptHooks(bdkcore::webauthn_phones_allowed(rt));
       InstallSelectFileDialogs();
       InstallScreenCaptureUi();
+      InstallWebAppHooks();
       chromium_tasks_.store(true);
       registry_writer_ = base::ThreadPool::CreateSequencedTaskRunner(
           {base::MayBlock(), base::TaskShutdownBehavior::BLOCK_SHUTDOWN});

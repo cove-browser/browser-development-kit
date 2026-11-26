@@ -78,13 +78,16 @@ static void test_engine_privacy_chromium_runs_with_the_audit_settings(void) {
     }
 }
 
-static void test_engine_privacy_a_scripted_session_contacts_no_google_host(void) {
+/* A scripted session, with `extra` added to the configuration (NULL for none), contacts no
+   Google-owned host. */
+static void audit(const char* extra) {
     const char* path = getenv("BDK_TEST_NETLOG");
     if (!path || !*path) {
         printf("    skipped: run with BDK_TEST_NETLOG and --log-net-log (see "
                "tests_engine_privacy.c)\n");
         return;
     }
+    t_config_extra = extra;
     t_start_frozen();
     bdk_profile_t p = t_new_profile("Audit");
     bdk_contents_t c = t_new_contents(p);
@@ -125,6 +128,16 @@ static void test_engine_privacy_a_scripted_session_contacts_no_google_host(void)
     CHECK(google == 0);
 }
 
+static void test_engine_privacy_a_scripted_session_contacts_no_google_host(void) {
+    audit(NULL);
+}
+
+/* The same with installable web apps on (web-apps.md 10.5, T-PWA-04): Chromium's web-app system
+   then runs fully, with link capturing and preinstalled apps off and no sync. */
+static void test_engine_privacy_with_web_apps_on_a_session_contacts_no_google_host(void) {
+    audit("\"web_apps\":{\"enabled\":true}");
+}
+
 /* [services.push] provider = "none", the suite's default (web-apps.md 7, T-PWA-05): pages have no
    Push API, so none can subscribe and Chromium's push client never checks in with Google's
    messaging hosts. The suite's first runtime starts Chromium, so the whole process runs so. */
@@ -157,6 +170,8 @@ static void test_engine_privacy_with_no_push_provider_pages_have_no_push_api(voi
 const t_test_t t_engine_privacy_tests[] = {
     {"engine_privacy_with_no_push_provider_pages_have_no_push_api",
      test_engine_privacy_with_no_push_provider_pages_have_no_push_api},
+    {"engine_privacy_with_web_apps_on_a_session_contacts_no_google_host",
+     test_engine_privacy_with_web_apps_on_a_session_contacts_no_google_host},
     {"engine_privacy_chromium_runs_with_the_audit_settings",
      test_engine_privacy_chromium_runs_with_the_audit_settings},
     {"engine_privacy_a_scripted_session_contacts_no_google_host",

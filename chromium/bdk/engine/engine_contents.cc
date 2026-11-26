@@ -42,12 +42,14 @@
 #include "bdk/engine/ui_presenters.h"
 #include "bdk/engine/ui_request.h"
 #include "bdk/engine/ui_screen_capture.h"
+#include "bdk/engine/web_apps.h"
 #include "bdk/engine/window_registry.h"
 #include "chrome/browser/history/history_tab_helper.h"
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h"
+#include "chrome/browser/web_applications/web_app_tab_helper.h"
 #include "components/input/native_web_keyboard_event.h"
 #include "content/public/browser/back_forward_cache.h"
 #include "content/public/browser/context_menu_params.h"
@@ -75,6 +77,7 @@
 #include "ui/base/page_transition_types.h"
 #include "ui/base/window_open_disposition.h"
 #include "url/gurl.h"
+#include "url/origin.h"
 
 namespace bdk {
 
@@ -740,7 +743,8 @@ EngineContents* EngineContents::RequestNewPage(
     const GURL& target_url,
     const blink::mojom::WindowFeatures* features,
     bool user_gesture,
-    const std::string& initiator_extension_id) {
+    const std::string& initiator_extension_id,
+    const base::DictValue* web_app) {
   std::shared_ptr<bdkcore::Runtime> rt = bdkcore::current_runtime();
   if (!profile || !profile->data || !rt || rt->shutting ||
       !HostContexts::CanHost(
@@ -767,6 +771,9 @@ EngineContents* EngineContents::RequestNewPage(
     payload.Set("opener", base::NumberToString(opener->handle));
   }
   payload.Set("userGesture", user_gesture);
+  if (web_app) {
+    payload.Set("webApp", web_app->Clone());
+  }
   if (!initiator_extension_id.empty()) {
     // An extension asked for the page (its options page): ui-requests.md
     // section 5.6.
@@ -815,8 +822,10 @@ EngineContents* EngineContents::RequestNewPage(
           bdkcore::destroy_contents(runtime, p);
         }
       },
-      std::weak_ptr<bdkcore::Contents>(page), DisplayUrl(target_url), width,
-      height);
+      std::weak_ptr<bdkcore::Contents>(page),
+      web_app && web_app->FindString("name") ? *web_app->FindString("name")
+                                             : DisplayUrl(target_url),
+      width, height);
   if (opener) {
     RaiseUiRequest(opener, BDK_SURFACE_NEW_WINDOWS, payload, std::move(finish));
   } else {
@@ -826,6 +835,50 @@ EngineContents* EngineContents::RequestNewPage(
                    std::move(finish));
   }
   return raw;
+}
+
+// static
+EngineContents* EngineContents::LaunchWebApp(
+    const std::shared_ptr<bdkcore::Profile>& profile,
+    const std::string& app_id,
+    const GURL& url,
+    base::DictValue app) {
+  if (!profile || !profile->data) {
+    return nullptr;
+  }
+  Profile* chrome_profile =
+      static_cast<EngineProfile*>(profile->data.get())->profile;
+  std::unique_ptr<content::WebContents> contents = content::WebContents::Create(
+      content::WebContents::CreateParams(chrome_profile));
+  content::WebContents* raw = contents.get();
+  EngineContents* page =
+      RequestNewPage(profile, nullptr, std::move(contents), "webApp",
+                     WindowOpenDisposition::kNewWindow, url, nullptr,
+                     /*user_gesture=*/true, std::string(), &app);
+  if (!page) {
+    return nullptr;
+  }
+  page->web_app_id_ = app_id;
+  // Chromium's readers of "in an app window" (manifest updates, the
+  // webapps client) see it (web-apps.md 10.1).
+  if (web_app::WebAppTabHelper* helper =
+          web_app::WebAppTabHelper::FromWebContents(raw)) {
+    helper->SetIsInAppWindow(app_id);
+  }
+  raw->GetController().LoadURL(url, content::Referrer(),
+                               ui::PAGE_TRANSITION_AUTO_TOPLEVEL,
+                               std::string());
+  return page;
+}
+
+blink::mojom::DisplayMode EngineContents::GetDisplayMode(
+    const content::WebContents* web_contents) {
+  // An app's page reports the app's display mode while it is in the app's
+  // scope (web-apps.md 6); every other page is a browser page.
+  if (web_app_id_.empty() || !in_app_scope_) {
+    return blink::mojom::DisplayMode::kBrowser;
+  }
+  return AppDisplayMode(ProfileOf(*core()), web_app_id_);
 }
 
 void EngineContents::ToggleDevTools() {
@@ -1283,6 +1336,33 @@ void EngineContents::RequestMediaAccessPermission(
       web_contents, request, std::move(callback), /*extension=*/nullptr);
 }
 
+void EngineContents::NoteAppScope(const GURL& url) {
+  if (web_app_id_.empty() || !core()) {
+    return;
+  }
+  const bool in_scope = IsInAppScope(ProfileOf(*core()), web_app_id_, url);
+  if (in_scope == in_app_scope_) {
+    return;
+  }
+  in_app_scope_ = in_scope;
+  // The page's display mode changes with it.
+  if (content::RenderWidgetHostView* view =
+          web_contents_->GetRenderWidgetHostView()) {
+    view->GetRenderWidgetHost()->SynchronizeVisualProperties();
+  }
+  Emit(BDK_CONTENTS_EVENT_WEB_APP, "",
+       ToJson(base::DictValue()
+                  .Set("appId", web_app_id_)
+                  .Set("isInScope", in_scope)),
+       0, 0);
+  // BDK's own app window shows the origin while the page is out of scope
+  // (web-apps.md 4.2); an application's window shows what it likes.
+  if (own_window_) {
+    host_view_->SetOriginNotice(
+        in_scope ? std::string() : url::Origin::Create(url).Serialize());
+  }
+}
+
 void EngineContents::NoteCaptureChanged() {
   const uint32_t flags = CaptureFlags(web_contents_);
   if (flags == capture_flags_) {
@@ -1348,6 +1428,7 @@ void EngineContents::DidFinishNavigation(content::NavigationHandle* handle) {
     }
     KeepOutOfBackForwardCacheForPolicy(handle);
     Emit(BDK_CONTENTS_EVENT_NAVIGATION_COMMITTED, url, "{}", 0, flags);
+    NoteAppScope(handle->GetURL());
     return;
   }
   const int net_error = handle->GetNetErrorCode();

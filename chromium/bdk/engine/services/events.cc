@@ -16,6 +16,7 @@
 #include "bdk/engine/extensions/action_service.h"
 #include "bdk/engine/extensions/extension_events.h"
 #include "bdk/engine/services/services.h"
+#include "bdk/engine/web_apps.h"
 #include "chrome/browser/bookmarks/bookmark_model_factory.h"
 #include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
@@ -252,6 +253,7 @@ class ProfileEvents : public ServiceEvents {
     autofill_ = CreateAutofillEvents(profile, bdk_profile);
     extensions_ = CreateExtensionEvents(profile, bdk_profile);
     extension_actions_ = CreateExtensionActionEvents(profile, bdk_profile);
+    web_apps_ = CreateWebAppEvents(profile, bdk_profile);
   }
 
  private:
@@ -264,6 +266,7 @@ class ProfileEvents : public ServiceEvents {
   std::unique_ptr<ServiceEvents> extensions_;
   std::unique_ptr<ServiceEvents> extension_actions_;
   std::unique_ptr<ServiceEvents> search_;
+  std::unique_ptr<ServiceEvents> web_apps_;
 };
 
 }  // namespace

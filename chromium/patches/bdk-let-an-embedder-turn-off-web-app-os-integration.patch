@@ -1,0 +1,99 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BDK Patches <patches@bdk.invalid>
+Date: Wed, 25 Nov 2026 22:44:23 -0800
+Subject: [PATCH] bdk: let an embedder turn off web app os integration
+
+A user install of a web app is integrated with the operating system:
+OsIntegrationManager::Synchronize runs the shortcut (app shim), file
+handler, protocol handler, shortcut menu, run-on-login and uninstall
+sub-managers, and Start updates every app's shortcuts. An embedder that
+installs web apps into its own windows may not want any of that: BDK keeps
+operating-system integration out of v1 (BDK task T-PWA-04, web-apps.md 8 and
+10.5), and an app shim of an embedded app would launch Chrome's app mode.
+
+Add embedder_web_app_os_integration.h, a small inline header with a flag an
+embedder sets once before any profile's web apps start (no new target, as
+embedder_prompt_visibility.h). When set, SetProvider makes no sub-managers,
+so every Synchronize finishes at once, and Start updates no shortcuts. The
+install state stays INSTALLED_WITH_OS_INTEGRATION, which badging and
+notification attribution read, so nothing else changes. With the flag unset
+nothing changes. Only the one .cc and the new header are touched.
+
+Used by: the BDK engine (//bdk/engine/ui_web_app_installs.cc).
+---
+ .../embedder_web_app_os_integration.h         | 33 +++++++++++++++++++
+ .../os_integration/os_integration_manager.cc  |  8 +++++
+ 2 files changed, 41 insertions(+)
+
+diff --git a/chrome/browser/web_applications/os_integration/embedder_web_app_os_integration.h b/chrome/browser/web_applications/os_integration/embedder_web_app_os_integration.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..1b80d14ad152eacb6693498b73ff7561368e0b95
+--- /dev/null
++++ b/chrome/browser/web_applications/os_integration/embedder_web_app_os_integration.h
+@@ -0,0 +1,33 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_WEB_APPLICATIONS_OS_INTEGRATION_EMBEDDER_WEB_APP_OS_INTEGRATION_H_
++#define CHROME_BROWSER_WEB_APPLICATIONS_OS_INTEGRATION_EMBEDDER_WEB_APP_OS_INTEGRATION_H_
++
++// A hook for Chromium embedders that install web apps but do not integrate
++// them with the operating system: no app shims or shortcuts, file and
++// protocol handlers, shortcut menus, run at login or uninstall entries. When
++// an embedder turns it off, once, before any profile's web apps start,
++// OsIntegrationManager makes no sub-managers and updates no shortcuts, so
++// every Synchronize finishes at once. An app's install state is unchanged
++// (badging and notification attribution read it). With it on (the default)
++// nothing changes.
++namespace embedder_web_app_os_integration {
++
++inline bool& OffFlag() {
++  static bool off = false;
++  return off;
++}
++
++inline void TurnOff() {
++  OffFlag() = true;
++}
++
++inline bool IsOff() {
++  return OffFlag();
++}
++
++}  // namespace embedder_web_app_os_integration
++
++#endif  // CHROME_BROWSER_WEB_APPLICATIONS_OS_INTEGRATION_EMBEDDER_WEB_APP_OS_INTEGRATION_H_
+diff --git a/chrome/browser/web_applications/os_integration/os_integration_manager.cc b/chrome/browser/web_applications/os_integration/os_integration_manager.cc
+index f41cd96a3946068b507f528af6668d04bc966e50..b3b3dcea0ed7120dc0c12ee167cbd83de961b765 100644
+--- a/chrome/browser/web_applications/os_integration/os_integration_manager.cc
++++ b/chrome/browser/web_applications/os_integration/os_integration_manager.cc
+@@ -35,6 +35,7 @@
+ #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
+ #include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"
+ #include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/web_applications/os_integration/embedder_web_app_os_integration.h"
+ #include "chrome/browser/web_applications/os_integration/file_handling_sub_manager.h"
+ #include "chrome/browser/web_applications/os_integration/os_integration_sub_manager.h"
+ #include "chrome/browser/web_applications/os_integration/os_integration_test_override.h"
+@@ -197,6 +198,10 @@ void OsIntegrationManager::SetProvider(base::PassKey<WebAppProvider>,
+     protocol_handler_manager_->SetProvider(pass_key, provider);
+ 
+   sub_managers_.clear();
++  if (embedder_web_app_os_integration::IsOff()) {
++    set_provider_called_ = true;
++    return;
++  }
+   sub_managers_.push_back(
+       std::make_unique<ShortcutSubManager>(*profile_, provider));
+   sub_managers_.push_back(
+@@ -222,6 +227,9 @@ void OsIntegrationManager::Start() {
+   if (protocol_handler_manager_) {
+     protocol_handler_manager_->Start();
+   }
++  if (embedder_web_app_os_integration::IsOff()) {
++    return;
++  }
+   UpdateShortcutsForAllAppsIfNeeded();
+ }
+ 

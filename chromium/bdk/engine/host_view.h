@@ -86,6 +86,10 @@ class HostView {
   // The view's frame in its window, in window coordinates with the origin at
   // the top left. All zero when the view is not in a window.
   virtual std::array<double, 4> FrameInWindow() = 0;
+  // A line of text in a bar above the page, or none for an empty `text`:
+  // BDK's app window shows an app page's origin there while the page is out
+  // of the app's scope (web-apps.md 4.2).
+  virtual void SetOriginNotice(const std::string& text) = 0;
 };
 
 }  // namespace bdk

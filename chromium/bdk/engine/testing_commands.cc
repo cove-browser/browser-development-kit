@@ -16,6 +16,7 @@
 #include <utility>
 #include <vector>
 
+#include "base/base64.h"
 #include "base/command_line.h"
 #include "base/compiler_specific.h"
 #include "base/containers/span.h"
@@ -503,15 +504,22 @@ bool Run(const std::string& name,
     return true;
   }
   if (name == "script_page") {
-    // A page with content: {"url", "body", "contentType", "headers"}.
+    // A page with content: {"url", "body" or "bodyBase64" (binary, an image),
+    // "contentType", "headers"}.
     const std::string* url = args.FindString("url");
     const std::string* body = args.FindString("body");
-    if (!url || !body) {
+    const std::string* body_base64 = args.FindString("bodyBase64");
+    std::string decoded;
+    if (body_base64 && !base::Base64Decode(*body_base64, &decoded)) {
+      return false;
+    }
+    if (!url || (!body && !body_base64)) {
       return false;
     }
     const std::string* content_type = args.FindString("contentType");
     const std::string* headers = args.FindString("headers");
-    ScriptPageForTesting(*url, *body, content_type ? *content_type : "",
+    ScriptPageForTesting(*url, body ? *body : decoded,
+                         content_type ? *content_type : "",
                          headers ? *headers : "");
     return true;
   }

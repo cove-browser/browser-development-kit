@@ -868,9 +868,12 @@ int main(int argc, char** argv) {
         /* Chromium starts once per process and registers the branded scheme then: the page
            tests' scheme, conf, is named here for the whole run, whatever the first runtime's
            configuration says. */
+        /* Chromium offers a page for installation only after the person has engaged with the
+           site for a while; the web app scenarios install at once, as Chromium's own tests do. */
         setenv("BDK_ENGINE_SWITCHES",
                "disable-features=SuppressFullscreenFromUnfocusedView,"
-               "RWHVMacHasFocusReturnsFalseForNonKeyWindow bdk-internal-scheme=conf",
+               "RWHVMacHasFocusReturnsFalseForNonKeyWindow bdk-internal-scheme=conf "
+               "bypass-app-banner-engagement-checks",
                0);
         if (Silent()) {
             /* Behind other windows a page is occluded, and Chromium stops drawing it. */

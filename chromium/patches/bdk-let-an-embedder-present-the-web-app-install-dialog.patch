@@ -1,0 +1,105 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BDK Patches <patches@bdk.invalid>
+Date: Wed, 25 Nov 2026 22:44:20 -0800
+Subject: [PATCH] bdk: let an embedder present the web app install dialog
+
+Every install a person confirms, a page's beforeinstallprompt prompt() or
+the install promotion, reaches web_app::OnWebAppInstallShowInstallDialog,
+which shows one of the views install dialogs (simple, detailed or DIY). An
+embedder whose windows are not views widgets cannot parent them, and
+AppBannerManagerDesktop::CreateWebApp and WebAppUiManager::Create have no
+embedder seam (BDK task T-PWA-04, web-apps.md 10.2).
+
+Add embedder_web_app_install_dialog.h, a small inline header with a
+presenter an embedder sets once before any page can ask (no new target, as
+embedder_prompt_visibility.h). When set, OnWebAppInstallShowInstallDialog
+gives it the initiating page, the install info (with the standalone display
+mode the site flow sets) and the acceptance callback, and returns; the
+embedder answers the callback from its own prompt. With no presenter
+nothing changes. Only the one .cc and the new header are touched.
+
+Used by: the BDK engine (//bdk/engine/ui_web_app_installs.cc).
+---
+ .../embedder_web_app_install_dialog.h         | 45 +++++++++++++++++++
+ .../web_applications/web_app_dialog_utils.cc  | 10 +++++
+ 2 files changed, 55 insertions(+)
+
+diff --git a/chrome/browser/ui/web_applications/embedder_web_app_install_dialog.h b/chrome/browser/ui/web_applications/embedder_web_app_install_dialog.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..ee116405b680b99ea167fe57e19fad688f110d9b
+--- /dev/null
++++ b/chrome/browser/ui/web_applications/embedder_web_app_install_dialog.h
+@@ -0,0 +1,45 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_UI_WEB_APPLICATIONS_EMBEDDER_WEB_APP_INSTALL_DIALOG_H_
++#define CHROME_BROWSER_UI_WEB_APPLICATIONS_EMBEDDER_WEB_APP_INSTALL_DIALOG_H_
++
++#include <memory>
++
++#include "chrome/browser/web_applications/web_app_install_params.h"
++
++namespace content {
++class WebContents;
++}  // namespace content
++
++namespace web_app {
++struct WebAppInstallInfo;
++}  // namespace web_app
++
++// A hook for Chromium embedders whose windows are not views widgets. Every
++// install a person confirms (a page's beforeinstallprompt prompt(), the
++// install promotion) reaches web_app::OnWebAppInstallShowInstallDialog, which
++// shows a views dialog. When an embedder sets a presenter, once, before any
++// page can ask, that function hands it the initiating page, the install info
++// and the acceptance callback instead, and the embedder answers the callback
++// when its own prompt is answered. With no presenter nothing changes.
++namespace embedder_web_app_install_dialog {
++
++using Presenter =
++    void (*)(content::WebContents* initiator,
++             std::unique_ptr<web_app::WebAppInstallInfo> info,
++             web_app::WebAppInstallationAcceptanceCallback accept);
++
++inline Presenter& PresenterRef() {
++  static Presenter presenter = nullptr;
++  return presenter;
++}
++
++inline void SetPresenter(Presenter presenter) {
++  PresenterRef() = presenter;
++}
++
++}  // namespace embedder_web_app_install_dialog
++
++#endif  // CHROME_BROWSER_UI_WEB_APPLICATIONS_EMBEDDER_WEB_APP_INSTALL_DIALOG_H_
+diff --git a/chrome/browser/ui/web_applications/web_app_dialog_utils.cc b/chrome/browser/ui/web_applications/web_app_dialog_utils.cc
+index 715861fa712bc7ea61d0d65d158b2d1aa567fb13..35f9fb3035677b2f46eb30f2f7a109ba95b9cd76 100644
+--- a/chrome/browser/ui/web_applications/web_app_dialog_utils.cc
++++ b/chrome/browser/ui/web_applications/web_app_dialog_utils.cc
+@@ -23,6 +23,7 @@
+ #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
+ #include "chrome/browser/ui/views/web_apps/progress_delay.h"
+ #include "chrome/browser/ui/views/web_apps/web_app_install_flow_dialog_delegate.h"
++#include "chrome/browser/ui/web_applications/embedder_web_app_install_dialog.h"
+ #include "chrome/browser/ui/web_applications/pwa_install_page_action.h"
+ #include "chrome/browser/ui/web_applications/web_app_dialogs.h"
+ #include "chrome/browser/web_applications/mojom/user_display_mode.mojom.h"
+@@ -127,6 +128,15 @@ void OnWebAppInstallShowInstallDialog(
+     std::unique_ptr<WebAppInstallInfo> web_app_info,
+     WebAppInstallationAcceptanceCallback web_app_acceptance_callback) {
+   CHECK(web_app_info, base::NotFatalUntil::M162);
++  if (embedder_web_app_install_dialog::Presenter presenter =
++          embedder_web_app_install_dialog::PresenterRef()) {
++    if (flow == WebAppInstallFlow::kInstallSite) {
++      web_app_info->user_display_mode = mojom::UserDisplayMode::kStandalone;
++    }
++    presenter(initiator_web_contents, std::move(web_app_info),
++              std::move(web_app_acceptance_callback));
++    return;
++  }
+   InstallOsType os_type = InstallOsType::kOther;
+ #if BUILDFLAG(IS_CHROMEOS)
+   os_type = InstallOsType::kCros;

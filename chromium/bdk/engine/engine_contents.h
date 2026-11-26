@@ -81,9 +81,22 @@ class EngineContents : public bdkcore::BackendData,
 
   content::WebContents* web_contents() { return web_contents_; }
   HostView& host_view() { return *host_view_; }
+  // Creates a page of `profile` loading `url` as the installed app `app_id`
+  // (web-apps.md 4.2) and raises its new-window request of kind webApp with
+  // `app` (WebAppInfo). Null when the profile cannot host a page.
+  static EngineContents* LaunchWebApp(
+      const std::shared_ptr<bdkcore::Profile>& profile,
+      const std::string& app_id,
+      const GURL& url,
+      base::DictValue app);
+  // The app this page was launched as, or empty.
+  const std::string& web_app_id() const { return web_app_id_; }
   // What the page captures changed (ui_screen_capture.h): emits
   // BDK_CONTENTS_EVENT_CAPTURE_CHANGED when its BDK_CAPTURE_* flags did.
   void NoteCaptureChanged();
+  // An app's page committed `url`: reports leaving or re-entering the app's
+  // scope (BDK_CONTENTS_EVENT_WEB_APP).
+  void NoteAppScope(const GURL& url);
   // The page's JavaScript dialogs and file pickers.
   PageDialogs& dialogs() { return *dialogs_; }
 
@@ -121,7 +134,8 @@ class EngineContents : public bdkcore::BackendData,
       const GURL& target_url,
       const blink::mojom::WindowFeatures* features,
       bool user_gesture,
-      const std::string& initiator_extension_id);
+      const std::string& initiator_extension_id,
+      const base::DictValue* web_app = nullptr);
 
   // Moves the page's tab into `context`. A page with a focus keeps being the
   // active tab of the context it moves into.
@@ -183,6 +197,8 @@ class EngineContents : public bdkcore::BackendData,
   void set_auto_discardable(bool value) { auto_discardable_ = value; }
 
   // content::WebContentsDelegate:
+  blink::mojom::DisplayMode GetDisplayMode(
+      const content::WebContents* web_contents) override;
   content::WebContents* OpenURLFromTab(
       content::WebContents* source,
       const content::OpenURLParams& params,
@@ -300,6 +316,10 @@ class EngineContents : public bdkcore::BackendData,
   // ui_find.h).
   std::unique_ptr<PageDialogs> dialogs_;
   uint32_t capture_flags_ = 0;
+  // An app's page: the app, and whether its last committed page was in the
+  // app's scope.
+  std::string web_app_id_;
+  bool in_app_scope_ = true;
   std::unique_ptr<PageFind> find_;
   // Owned by its tab model, in a host context.
   raw_ptr<content::WebContents> web_contents_ = nullptr;

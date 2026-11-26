@@ -243,6 +243,7 @@ source_set("bdk") {
       "engine/services/system_service.cc",
       "engine/services/user_scripts.cc",
       "engine/services/user_scripts.h",
+      "engine/services/web_apps_service.cc",
       "engine/session_state.cc",
       "engine/session_state.h",
       "engine/startup_completion.cc",
@@ -289,6 +290,8 @@ source_set("bdk") {
       "engine/ui_webauthn.h",
       "engine/webauthn_testing.cc",
       "engine/webauthn_testing.h",
+      "engine/web_apps.cc",
+      "engine/web_apps.h",
       "engine/window_registry.cc",
       "engine/window_registry.h",
     ]

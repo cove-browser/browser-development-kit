@@ -27,6 +27,7 @@
 #include "bdk/engine/ui_device_chooser.h"
 #include "bdk/engine/ui_presenters.h"
 #include "bdk/engine/ui_request.h"
+#include "bdk/engine/web_apps.h"
 #include "chrome/browser/bluetooth/chrome_bluetooth_delegate.h"
 #include "chrome/browser/bluetooth/chrome_bluetooth_delegate_impl_client.h"
 #include "chrome/browser/enterprise/util/managed_browser_utils.h"
@@ -518,13 +519,13 @@ class BrowserDialogPrefDefaults : public BrowserContextKeyedServiceFactory {
  private:
   void RegisterProfilePrefs(
       user_prefs::PrefRegistrySyncable* registry) override {
-    // Installing the page as an application shows Chrome's install dialog
-    // (tab-modal views), and BDK applications own their windows: a page
-    // never offers itself for installation. Read once, when the profile's
-    // web application system starts, so it is a default rather than a value
-    // set after the profile loads.
+    // A page offers itself for installation only when [web_apps] enabled
+    // is set (web-apps.md 10.5, T-PWA-04): its prompt is then a
+    // web_app_installs request. Read once, when the profile's web application
+    // system starts, so it is a default rather than a value set after the
+    // profile loads.
     registry->SetDefaultPrefValue(prefs::kWebAppInstallByUserEnabled,
-                                  base::Value(false));
+                                  base::Value(WebAppsEnabled()));
   }
 
   std::unique_ptr<KeyedService> BuildServiceInstanceForBrowserContext(
