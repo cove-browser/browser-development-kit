@@ -80,6 +80,8 @@ extension BDKWebContents {
         /// A page launched as an installed web app left its app's scope or came back into it
         /// (`webApp.isInScope`).
         case webAppScope(appID: String, isInScope: Bool)
+        /// What the page captures changed (`captureActivity`).
+        case captureChanged(CaptureActivity)
         /// A kind this version does not know, from a newer runtime.
         case unknown(kind: UInt32)
     }
@@ -95,6 +97,13 @@ extension BDKJSValue {
 
     fileprivate func bool(_ key: String) -> Bool? {
         guard case .object(let object) = self, case .bool(let value) = object[key] else {
+            return nil
+        }
+        return value
+    }
+
+    fileprivate func number(_ key: String) -> Double? {
+        guard case .object(let object) = self, case .number(let value) = object[key] else {
             return nil
         }
         return value
@@ -146,6 +155,9 @@ extension BDKWebContents.Event {
         case BDK_CONTENTS_EVENT_WEB_APP:
             .webAppScope(
                 appID: detail?.string("appId") ?? "", isInScope: detail?.bool("isInScope") ?? true)
+        case BDK_CONTENTS_EVENT_CAPTURE_CHANGED:
+            .captureChanged(
+                BDKWebContents.CaptureActivity(rawValue: UInt32(detail?.number("capture") ?? 0)))
         default:
             .unknown(kind: kind)
         }

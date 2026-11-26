@@ -88,7 +88,7 @@ typedef struct bdk_contents_state {
     double progress;     /* 0.0 to 1.0 */
     uint32_t security;   /* BDK_SECURITY_* */
     uint32_t audio;      /* BDK_AUDIO_* flags */
-    uint32_t capture;    /* capture flags; none are defined yet, always 0 */
+    uint32_t capture;    /* BDK_CAPTURE_* flags */
     uint32_t visibility; /* BDK_VISIBILITY_* */
     uint8_t focused;
     double zoom; /* 1.0 is 100 percent */

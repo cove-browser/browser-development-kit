@@ -623,6 +623,103 @@ class DeviceChooserSheetMac : public DeviceChooserSheet {
   Dismisser dismiss_;
 };
 
+// The default screen-capture picker: a sheet with the sources in a pop-up
+// menu, grouped by kind and kept to the lists, Share audio when the page asked
+// for it, and Share, which needs a source, and Cancel.
+class ScreenCaptureSheetMac : public ScreenCaptureSheet {
+ public:
+  ScreenCaptureSheetMac(
+      HostView* view,
+      const base::DictValue& payload,
+      base::OnceCallback<void(std::optional<ScreenCaptureChoice>)> answer)
+      : answer_(std::move(answer)) {
+    alert_ = [[NSAlert alloc] init];
+    alert_.messageText =
+        [NSString stringWithFormat:@"%@ wants to share your screen",
+                                   Str(payload, "origin")];
+    alert_.informativeText = @"Choose a screen, a window or a page to share.";
+    [alert_ addButtonWithTitle:@"Share"];
+    [alert_ addButtonWithTitle:@"Cancel"];
+    NSView* accessory =
+        [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 320, 56)];
+    menu_ = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(0, 30, 320, 26)
+                                       pullsDown:NO];
+    [accessory addSubview:menu_];
+    if (payload.FindBool("requestsAudio").value_or(false)) {
+      audio_ = [NSButton checkboxWithTitle:@"Share audio"
+                                    target:nil
+                                    action:nil];
+      audio_.frame = NSMakeRect(0, 0, 320, 22);
+      [accessory addSubview:audio_];
+    }
+    alert_.accessoryView = accessory;
+    if (const base::ListValue* sources = payload.FindList("sources")) {
+      SetSources(*sources);
+    } else {
+      SetSources(base::ListValue());
+    }
+    NSPopUpButton* menu = menu_;
+    NSButton* audio = audio_;
+    __block base::OnceCallback<void(std::optional<ScreenCaptureChoice>)>*
+        callback = &answer_;
+    dismiss_ =
+        PresentAlert(AnchorOf(view), alert_, ^(NSModalResponse response) {
+          std::optional<ScreenCaptureChoice> chosen;
+          NSString* id = menu.selectedItem.representedObject;
+          if (response == NSAlertFirstButtonReturn && id) {
+            chosen = ScreenCaptureChoice{base::SysNSStringToUTF8(id),
+                                         audio.state == NSControlStateValueOn};
+          }
+          if (*callback) {
+            AnswerLater(std::move(*callback), std::move(chosen));
+          }
+        });
+  }
+
+  ~ScreenCaptureSheetMac() override {
+    answer_.Reset();
+    if (dismiss_) {
+      std::move(dismiss_).Run();
+    }
+  }
+
+  void SetSources(const base::ListValue& sources) override {
+    NSDictionary<NSString*, NSString*>* kinds =
+        @{@"screen" : @"Screen", @"window" : @"Window", @"page" : @"Page"};
+    NSString* selected = menu_.selectedItem.representedObject;
+    [menu_ removeAllItems];
+    for (const base::Value& source : sources) {
+      const base::DictValue* dict = source.GetIfDict();
+      if (!dict) {
+        continue;
+      }
+      NSString* title = [NSString
+          stringWithFormat:@"%@: %@", kinds[Str(*dict, "kind")] ?: @"Source",
+                           Str(*dict, "name")];
+      NSMenuItem* item = [menu_.menu addItemWithTitle:title
+                                               action:nil
+                                        keyEquivalent:@""];
+      item.representedObject = Str(*dict, "id");
+      if ([selected isEqualToString:item.representedObject]) {
+        [menu_ selectItem:item];
+      }
+    }
+    const bool any = menu_.numberOfItems > 0;
+    if (!any) {
+      [menu_ addItemWithTitle:@"Looking for screens and windows…"];
+    }
+    menu_.enabled = any;
+    alert_.buttons.firstObject.enabled = any;
+  }
+
+ private:
+  NSAlert* __strong alert_;
+  NSPopUpButton* __strong menu_;
+  NSButton* __strong audio_ = nil;
+  base::OnceCallback<void(std::optional<ScreenCaptureChoice>)> answer_;
+  Dismisser dismiss_;
+};
+
 class PresentersMac : public UiPresenters {
  public:
   Dismisser ShowPermission(
@@ -1002,6 +1099,55 @@ class PresentersMac : public UiPresenters {
       base::OnceCallback<void(std::optional<std::string>)> answer) override {
     return std::make_unique<DeviceChooserSheetMac>(view, payload,
                                                    std::move(answer));
+  }
+
+  std::unique_ptr<ScreenCaptureSheet> ShowScreenCapturePicker(
+      HostView* view,
+      const base::DictValue& payload,
+      base::OnceCallback<void(std::optional<ScreenCaptureChoice>)> answer)
+      override {
+    return std::make_unique<ScreenCaptureSheetMac>(view, payload,
+                                                   std::move(answer));
+  }
+
+  // A bar at the top of the page's window, centred, while it shares.
+  Dismisser ShowSharingBar(HostView* view,
+                           const base::DictValue& sharing,
+                           base::OnceClosure stop) override {
+    NSString* name = Str(sharing, "name");
+    NSString* message =
+        name.length ? [NSString stringWithFormat:@"%@ is sharing “%@”",
+                                                 Str(sharing, "origin"), name]
+                    : [NSString stringWithFormat:@"%@ is sharing your screen",
+                                                 Str(sharing, "origin")];
+    BDKAnchoredPromptView* bar =
+        [[BDKAnchoredPromptView alloc] initWithMessage:message
+                                               buttons:@[ @"Stop sharing" ]];
+    bar.frame = NSMakeRect(0, 0, 340, 72);
+    auto state = std::make_shared<SheetState>();
+    __block base::OnceClosure stopped = std::move(stop);
+    __weak BDKAnchoredPromptView* weak_bar = bar;
+    bar.answered = ^(NSInteger) {
+      [weak_bar removeFromSuperview];
+      if (state->alive && stopped) {
+        state->alive = false;
+        std::move(stopped).Run();
+      }
+    };
+    WhenInWindow(AnchorOf(view), state, ^(NSWindow* window) {
+      NSView* content = window.contentView;
+      bar.frame = NSMakeRect((NSWidth(content.bounds) - 340) / 2,
+                             NSHeight(content.bounds) - 80, 340, 72);
+      bar.autoresizingMask =
+          NSViewMinXMargin | NSViewMaxXMargin | NSViewMinYMargin;
+      [content addSubview:bar positioned:NSWindowAbove relativeTo:nil];
+    });
+    std::function<void()> remove = [state, bar] {
+      state->alive = false;
+      [bar removeFromSuperview];
+    };
+    return base::BindOnce([](std::function<void()> run) { run(); },
+                          std::move(remove));
   }
 
   Dismisser ShowWebAuthn(

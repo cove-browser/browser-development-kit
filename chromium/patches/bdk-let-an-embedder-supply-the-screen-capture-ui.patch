@@ -1,0 +1,140 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BDK Patches <patches@bdk.invalid>
+Date: Wed, 25 Nov 2026 22:16:13 -0800
+Subject: [PATCH] bdk: let an embedder supply the screen capture ui
+
+getDisplayMedia() and chrome.desktopCapture.chooseDesktopMedia() show a
+source picker (DesktopMediaPickerImpl or ShareThisTabMediaPicker) and,
+while a page shares, a notification (ScreenCaptureNotificationUIImpl for a
+screen or a window, TabSharingUI for a tab). All are views UI. An embedder
+whose windows are not views widgets cannot parent them: the picker is a
+tab-modal dialog that failed a check and ended the process, so BDK refused
+every getDisplayMedia() call (BDK task T-UIR-13).
+
+Add embedder_screen_capture_ui.h, a small inline header with two factories
+an embedder sets once before any page asks to capture (no new target, as
+embedder_prompt_visibility.h). DesktopMediaPicker::Create returns the
+embedder's picker when it has one, and GetDevicesForDesktopCapture asks the
+embedder for the notification of every capture it would show one for.
+Everything else of the capture path is unchanged: the access handler, the
+source lists the picker is given, the stream, the capture indicator and
+its policy checks. With no factory set nothing changes. Only the two .cc
+files and the new header are touched.
+
+Used by: the BDK engine (//bdk/engine/ui_screen_capture.cc).
+---
+ .../webrtc/desktop_capture_devices_util.cc    |  6 +-
+ .../media/webrtc/embedder_screen_capture_ui.h | 57 +++++++++++++++++++
+ .../desktop_media_picker_views.cc             |  5 ++
+ 3 files changed, 67 insertions(+), 1 deletion(-)
+
+diff --git a/chrome/browser/media/webrtc/desktop_capture_devices_util.cc b/chrome/browser/media/webrtc/desktop_capture_devices_util.cc
+index 0cbbf964784663e75302029f40a91d32d9a18731..9c9a7119baf7b1dfc384563d7988a945b4f934ce 100644
+--- a/chrome/browser/media/webrtc/desktop_capture_devices_util.cc
++++ b/chrome/browser/media/webrtc/desktop_capture_devices_util.cc
+@@ -17,6 +17,7 @@
+ #include "base/task/thread_pool.h"
+ #include "base/unguessable_token.h"
+ #include "build/build_config.h"
++#include "chrome/browser/media/webrtc/embedder_screen_capture_ui.h"
+ #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
+ #include "chrome/browser/ui/browser_window/public/browser_collection.h"
+ #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+@@ -374,7 +375,10 @@ void CreateMediaStreamCaptureIndicatorUI(
+ #else
+   // If required, register to display the notification for stream capture.
+   if (display_notification) {
+-    if (media_id.type == content::DesktopMediaID::TYPE_WEB_CONTENTS) {
++    if (embedder_screen_capture_ui::NotificationFactory factory =
++            embedder_screen_capture_ui::NotificationFactoryRef()) {
++      notification_ui = factory(web_contents, media_id, application_title);
++    } else if (media_id.type == content::DesktopMediaID::TYPE_WEB_CONTENTS) {
+       content::GlobalRenderFrameHostId capturer_id;
+       if (web_contents && web_contents->GetPrimaryMainFrame()) {
+         capturer_id = web_contents->GetPrimaryMainFrame()->GetGlobalId();
+diff --git a/chrome/browser/media/webrtc/embedder_screen_capture_ui.h b/chrome/browser/media/webrtc/embedder_screen_capture_ui.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..6e71b546c03b230eea4922c13034fab0e176e305
+--- /dev/null
++++ b/chrome/browser/media/webrtc/embedder_screen_capture_ui.h
+@@ -0,0 +1,57 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_MEDIA_WEBRTC_EMBEDDER_SCREEN_CAPTURE_UI_H_
++#define CHROME_BROWSER_MEDIA_WEBRTC_EMBEDDER_SCREEN_CAPTURE_UI_H_
++
++#include <memory>
++#include <string>
++
++class DesktopMediaPicker;
++class MediaStreamUI;
++
++namespace content {
++struct DesktopMediaID;
++struct MediaStreamRequest;
++class WebContents;
++}  // namespace content
++
++// A hook for Chromium embedders whose windows are not views widgets. The
++// screen-capture source picker (getDisplayMedia, chrome.desktopCapture) and
++// the "sharing" notification (ScreenCaptureNotificationUI for a screen or a
++// window, TabSharingUI for a tab) are views UI; an embedder sets these
++// factories, once, before any page or extension asks to capture.
++// DesktopMediaPicker::Create returns the embedder's picker, and
++// GetDevicesForDesktopCapture asks the embedder for the notification of every
++// capture it would show one for. Everything else of Chrome's capture path (the
++// source lists, the access handler, the stream, the capture indicator) is
++// unchanged. With no factory set nothing changes.
++namespace embedder_screen_capture_ui {
++
++using PickerFactory = std::unique_ptr<DesktopMediaPicker> (*)(
++    const content::MediaStreamRequest* request);
++using NotificationFactory = std::unique_ptr<MediaStreamUI> (*)(
++    content::WebContents* capturing_web_contents,
++    const content::DesktopMediaID& captured,
++    const std::u16string& application_title);
++
++inline PickerFactory& PickerFactoryRef() {
++  static PickerFactory factory = nullptr;
++  return factory;
++}
++
++inline NotificationFactory& NotificationFactoryRef() {
++  static NotificationFactory factory = nullptr;
++  return factory;
++}
++
++inline void SetFactories(PickerFactory picker,
++                         NotificationFactory notification) {
++  PickerFactoryRef() = picker;
++  NotificationFactoryRef() = notification;
++}
++
++}  // namespace embedder_screen_capture_ui
++
++#endif  // CHROME_BROWSER_MEDIA_WEBRTC_EMBEDDER_SCREEN_CAPTURE_UI_H_
+diff --git a/chrome/browser/ui/views/desktop_capture/desktop_media_picker_views.cc b/chrome/browser/ui/views/desktop_capture/desktop_media_picker_views.cc
+index 148d42eef075a0f97eba4b0116746142adb5ee74..47df0f6a9b1623a43c506bfe40d4866a90a45d33 100644
+--- a/chrome/browser/ui/views/desktop_capture/desktop_media_picker_views.cc
++++ b/chrome/browser/ui/views/desktop_capture/desktop_media_picker_views.cc
+@@ -22,6 +22,7 @@
+ #include "chrome/browser/media/webrtc/desktop_media_picker_controller.h"
+ #include "chrome/browser/media/webrtc/desktop_media_picker_manager.h"
+ #include "chrome/browser/media/webrtc/desktop_media_picker_utils.h"
++#include "chrome/browser/media/webrtc/embedder_screen_capture_ui.h"
+ #include "chrome/browser/ui/browser_window.h"
+ #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
+ #include "chrome/browser/ui/color/chrome_color_id.h"
+@@ -1567,6 +1568,10 @@ void DesktopMediaPickerImpl::NotifyDialogResult(
+ // static
+ std::unique_ptr<DesktopMediaPicker> DesktopMediaPicker::Create(
+     const content::MediaStreamRequest* request) {
++  if (embedder_screen_capture_ui::PickerFactory factory =
++          embedder_screen_capture_ui::PickerFactoryRef()) {
++    return factory(request);
++  }
+   if (request &&
+       request->video_type ==
+           blink::mojom::MediaStreamType::DISPLAY_VIDEO_CAPTURE_THIS_TAB) {

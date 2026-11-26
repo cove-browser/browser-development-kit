@@ -69,6 +69,7 @@
 #include "bdk/engine/ui_find.h"
 #include "bdk/engine/ui_notifications.h"
 #include "bdk/engine/ui_presenters.h"
+#include "bdk/engine/ui_screen_capture.h"
 #include "bdk/engine/ui_select_file.h"
 #include "bdk/engine/window_registry.h"
 #include "chrome/browser/browser_process.h"
@@ -268,6 +269,7 @@ class EngineBackend final : public bdkcore::Backend {
       ApplyLocalStatePrivacyPrefs();
       InstallPromptHooks(bdkcore::webauthn_phones_allowed(rt));
       InstallSelectFileDialogs();
+      InstallScreenCaptureUi();
       chromium_tasks_.store(true);
       registry_writer_ = base::ThreadPool::CreateSequencedTaskRunner(
           {base::MayBlock(), base::TaskShutdownBehavior::BLOCK_SHUTDOWN});
@@ -693,6 +695,7 @@ class EngineBackend final : public bdkcore::Backend {
     }
     state->audio = (contents->IsCurrentlyAudible() ? BDK_AUDIO_AUDIBLE : 0u) |
                    (contents->IsAudioMuted() ? BDK_AUDIO_MUTED : 0u);
+    state->capture = CaptureFlags(contents);
     state->visibility = contents->GetVisibility() == content::Visibility::HIDDEN
                             ? BDK_VISIBILITY_HIDDEN
                             : BDK_VISIBILITY_VISIBLE;

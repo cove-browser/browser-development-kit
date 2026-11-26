@@ -81,6 +81,9 @@ class EngineContents : public bdkcore::BackendData,
 
   content::WebContents* web_contents() { return web_contents_; }
   HostView& host_view() { return *host_view_; }
+  // What the page captures changed (ui_screen_capture.h): emits
+  // BDK_CONTENTS_EVENT_CAPTURE_CHANGED when its BDK_CAPTURE_* flags did.
+  void NoteCaptureChanged();
   // The page's JavaScript dialogs and file pickers.
   PageDialogs& dialogs() { return *dialogs_; }
 
@@ -296,6 +299,7 @@ class EngineContents : public bdkcore::BackendData,
   // JavaScript dialogs and file pickers; find in page (ui_dialogs.h,
   // ui_find.h).
   std::unique_ptr<PageDialogs> dialogs_;
+  uint32_t capture_flags_ = 0;
   std::unique_ptr<PageFind> find_;
   // Owned by its tab model, in a host context.
   raw_ptr<content::WebContents> web_contents_ = nullptr;

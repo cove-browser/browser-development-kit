@@ -273,6 +273,8 @@ source_set("bdk") {
       "engine/ui_page_health.h",
       "engine/ui_device_chooser.cc",
       "engine/ui_device_chooser.h",
+      "engine/ui_screen_capture.cc",
+      "engine/ui_screen_capture.h",
       "engine/ui_select_file.cc",
       "engine/ui_select_file.h",
       "engine/ui_notifications.cc",

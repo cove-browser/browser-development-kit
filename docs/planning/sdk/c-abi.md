@@ -169,7 +169,7 @@ The functions behind the Swift objects in [swift-api.md](swift-api.md) sections 
 |---|---|
 | `bdk_contents_create`, `bdk_contents_close`, `bdk_contents_destroy` | Lifecycle. Create takes a size-prefixed options struct. |
 | `bdk_contents_load`, `_reload`, `_stop`, `_go_to_offset`, `_go_to_index`, `_entries`, `_prune` | Navigation |
-| `bdk_contents_state` | Fills a size-prefixed struct with URL, title, loading, progress, security, audio, capture, visibility, focus, zoom |
+| `bdk_contents_state` | Fills a size-prefixed struct with URL, title, loading, progress, security, audio, capture, visibility, focus, zoom. `capture` is `BDK_CAPTURE_*` (camera, microphone, display: a screen, a window or a page, and captured: another page captures this one), and `BDK_CONTENTS_EVENT_CAPTURE_CHANGED` (13, detail `{capture}`) reports each change (T-UIR-13, 2026-11-26) |
 | `bdk_contents_session_state`, `bdk_contents_restore` | Serialised navigation state, as a buffer |
 | `bdk_contents_set_muted`, `_set_zoom`, `_set_user_agent`, `_perform_command`, `_can_perform_command` | Page controls |
 | `bdk_contents_discard`, `_set_auto_discardable` | Added (S15). Discard a hidden page's renderer; exempt a page from Chromium's automatic discarding. The `bdk_contents_t` handle stays valid across a discard, including when Chromium replaces the underlying WebContents. |

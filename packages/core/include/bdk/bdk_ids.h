@@ -95,6 +95,8 @@ extern "C" {
 #define BDK_CONTENTS_EVENT_FIND_RESULT 10u
 #define BDK_CONTENTS_EVENT_TRANSLATION 11u
 #define BDK_CONTENTS_EVENT_WEB_APP 12u
+/* The page's capture flags changed; detail_json {"capture": BDK_CAPTURE_* flags}. */
+#define BDK_CONTENTS_EVENT_CAPTURE_CHANGED 13u
 
 /* bdk_contents_event_t.flags */
 #define BDK_EVENT_FLAG_MAIN_FRAME 0x1u
@@ -105,6 +107,14 @@ extern "C" {
 /* bdk_contents_state_t.audio flags */
 #define BDK_AUDIO_AUDIBLE 0x1u
 #define BDK_AUDIO_MUTED 0x2u
+
+/* bdk_contents_state_t.capture flags: what the page captures, and whether another page captures it.
+   While BDK_CAPTURE_DISPLAY is set the application shows that the page is sharing (ui-requests.md
+   5.16). */
+#define BDK_CAPTURE_CAMERA 0x1u
+#define BDK_CAPTURE_MICROPHONE 0x2u
+#define BDK_CAPTURE_DISPLAY 0x4u  /* a screen, a window or a page */
+#define BDK_CAPTURE_CAPTURED 0x8u /* this page is being captured */
 
 /* bdk_contents_state_t.security */
 #define BDK_SECURITY_UNKNOWN 0u

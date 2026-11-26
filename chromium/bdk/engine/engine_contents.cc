@@ -41,6 +41,7 @@
 #include "bdk/engine/ui_permissions.h"
 #include "bdk/engine/ui_presenters.h"
 #include "bdk/engine/ui_request.h"
+#include "bdk/engine/ui_screen_capture.h"
 #include "bdk/engine/window_registry.h"
 #include "chrome/browser/history/history_tab_helper.h"
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
@@ -1276,25 +1277,20 @@ void EngineContents::RequestMediaAccessPermission(
     content::WebContents* web_contents,
     const content::MediaStreamRequest& request,
     content::MediaResponseCallback callback) {
-  // getDisplayMedia: Chrome's source picker is a tab-modal views dialog,
-  // which this page's window cannot parent (it ended the process). Until the
-  // screen_capture surface is built (S3), the request is refused as that
-  // surface's `disabled` mode refuses it: NotAllowedError (T-UIR-10).
-  using blink::mojom::MediaStreamType;
-  for (MediaStreamType type : {request.video_type, request.audio_type}) {
-    if (type == MediaStreamType::DISPLAY_VIDEO_CAPTURE ||
-        type == MediaStreamType::DISPLAY_VIDEO_CAPTURE_THIS_TAB ||
-        type == MediaStreamType::DISPLAY_VIDEO_CAPTURE_SET ||
-        type == MediaStreamType::DISPLAY_AUDIO_CAPTURE) {
-      std::move(callback).Run(
-          blink::mojom::StreamDevicesSet(),
-          blink::mojom::MediaStreamRequestResult::PERMISSION_DENIED,
-          /*ui=*/nullptr);
-      return;
-    }
-  }
+  // getDisplayMedia goes through Chrome's display media handler too; its
+  // picker and its sharing notification are BDK's (ui_screen_capture.h).
   MediaCaptureDevicesDispatcher::GetInstance()->ProcessMediaAccessRequest(
       web_contents, request, std::move(callback), /*extension=*/nullptr);
+}
+
+void EngineContents::NoteCaptureChanged() {
+  const uint32_t flags = CaptureFlags(web_contents_);
+  if (flags == capture_flags_) {
+    return;
+  }
+  capture_flags_ = flags;
+  Emit(BDK_CONTENTS_EVENT_CAPTURE_CHANGED, "",
+       ToJson(base::DictValue().Set("capture", static_cast<int>(flags))), 0, 0);
 }
 
 bool EngineContents::CheckMediaAccessPermission(

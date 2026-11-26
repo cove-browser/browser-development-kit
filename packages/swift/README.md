@@ -177,7 +177,7 @@ throws `ui.requestCompleted`; completing a withdrawn request does nothing.
 | `translation` | `TranslationRequest` | `translate(from:to:)`, `revert()`, `always(for:)`, `never(for:)`, `neverForThisSite()`, `dismiss()` (none grants, none needs a gesture) |
 | `webAuthn` | `WebAuthnRequest`, one per step of a ceremony (same `ceremonyID`; a new step withdraws the last) | `choose(_:)` (accept `{"mechanism"}`), `providePIN(_:)` (accept `{"pin"}`), `chooseAccount(_:confirmedBy:)` (grant `{"account"}`), `accept()` (the step's own button), `useOtherMechanism()` (accept `{"action":"otherMechanisms"}`), `cancel()` (deny); `presentation` and `perform(_:)` describe and answer the step whatever draws it; `qrCodeImage(scale:)`; `cancelAll` as a handler. `BDKWebAuthnSupport.current` (main actor) says which mechanisms the application can offer and what it lacks for the others; phones also need `[services.webauthn] phones = true` in the running runtime's configuration (`.configuration(…)` while it is off) |
 | `deviceChoosers` | `DeviceChooserRequest` (`kind`, `origin`, `devices`, `isAdapterEnabled`, `isScanning`; `deviceChanges` as devices come and go) | `select(_:confirmedBy:)` ("select" `{"device"}`), `cancel()` |
-| `screenCapture` | `BDKRawUIRequest` | `complete(_:arguments:confirmedBy:)` with "grant", "deny" or "accept" |
+| `screenCapture` | `ScreenCaptureRequest` (`origin`, `extensionName`, `requestsAudio`, `sources`; `sourceChanges`) | `share(_:audio:confirmedBy:)` ("share" `{"source","audio"}`), `cancel()` |
 
 Completion mapping (provisional, settled here for T-UIR-01 to T-UIR-06): a completion that grants (permission, a kept
 dangerous download, a saved password or card, an accepted suggestion, a proceed past an interstitial, opening an

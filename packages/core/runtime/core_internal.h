@@ -137,6 +137,7 @@ struct ContentsState {
     double progress = 0.0;
     uint32_t security = BDK_SECURITY_UNKNOWN;
     uint32_t audio = 0;
+    uint32_t capture = 0;
     uint32_t visibility = BDK_VISIBILITY_VISIBLE;
     bool focused = false;
     double zoom = 1.0;

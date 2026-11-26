@@ -203,11 +203,41 @@ extension BDKStubTests {
                 try fixture.expectOutcome(.completed, "grant", "{\"remember\":true}")
 
                 let raw = try fixture.deliver(
-                    BDKRawUIRequest.self, BDK_SURFACE_SCREEN_CAPTURE,
+                    BDKRawUIRequest.self, BDK_SURFACE_EXTENSION_DEVTOOLS,
                     "{\"origin\":\"https://a.test\"}")
                 #expect(raw.payload["origin"] == .string("https://a.test"))
                 try raw.complete("deny", arguments: ["why": .string("no")])
                 try fixture.expectOutcome(.completed, "deny", "{\"why\":\"no\"}")
+            }
+        }
+
+        @Test func aScreenCapturePickerFollowsItsSourcesAndShares() async throws {
+            try await withUIFixture { fixture in
+                let picker = try fixture.deliver(
+                    ScreenCaptureRequest.self, BDK_SURFACE_SCREEN_CAPTURE,
+                    "{\"origin\":\"https://meet.test\",\"requestsAudio\":true,\"sources\":"
+                        + "[{\"id\":\"source0\",\"kind\":\"screen\",\"name\":\"Display\"}]}")
+                #expect(picker.origin == URL(string: "https://meet.test"))
+                #expect(picker.requestsAudio && picker.extensionName == nil)
+                #expect(picker.sources.map(\.kind) == [.screen])
+                let changes = EventReader(picker.sourceChanges)
+                try fixture.runtime.stub.sendUIUpdate(
+                    "{\"sources\":[{\"id\":\"source0\",\"kind\":\"screen\",\"name\":\"Display\"},"
+                        + "{\"id\":\"source1\",\"kind\":\"page\",\"name\":\"Notes\"}]}")
+                fixture.runtime.stub.pump()
+                #expect(await changes.next()?.count == 2)
+                let page = try #require(picker.sources.last)
+                #expect(page.kind == .page && page.name == "Notes")
+                try picker.share(page, audio: true, confirmedBy: try confirmingEvent())
+                try fixture.expectOutcome(
+                    .completed, "share", "{\"audio\":true,\"source\":\"source1\"}")
+
+                let refused = try fixture.deliver(
+                    ScreenCaptureRequest.self, BDK_SURFACE_SCREEN_CAPTURE,
+                    "{\"origin\":\"https://meet.test\",\"extensionName\":\"Recorder\"}")
+                #expect(refused.extensionName == "Recorder" && refused.sources.isEmpty)
+                refused.cancel()
+                try fixture.expectOutcome(.completed, "deny", "{}")
             }
         }
 

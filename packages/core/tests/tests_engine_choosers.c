@@ -9,10 +9,14 @@
 #include <string.h>
 
 #include "bdk_testing.h"
+#include "engine_ext_support.h"
 #include "test_support.h"
 
 void bdk_harness_engine_show(bdk_contents_t contents, int visible);
 bdk_native_handle_t bdk_harness_engine_gesture(bdk_contents_t contents, int kind);
+int bdk_ext_window_open(bdk_runtime_t rt, uint32_t kind, bdk_window_t* handle);
+void bdk_ext_window_attach(int window, bdk_contents_t contents);
+void bdk_ext_window_close(int window);
 extern const char* bdk_harness_engine_surfaces;
 
 /* A secure context the engine's interceptor serves. */
@@ -21,9 +25,9 @@ extern const char* bdk_harness_engine_surfaces;
 typedef struct {
     int calls;
     bdk_request_t request;
-    char payloads[4][2048];
+    char payloads[4][65536];
     int updates;
-    char update[2048];
+    char update[65536];
     /* 1: cancel each request at once; 0: leave it open for the scenario. */
     int deny;
 } choosers_t;
@@ -91,17 +95,17 @@ static int wait_for_title(bdk_contents_t c, const char* want) {
     return 0;
 }
 
-/* A runtime (with a device_choosers handler unless `handler` is 0, and the surfaces of
+/* A runtime (with a handler of `surface` unless `handler` is 0, and the surfaces of
    `surfaces_json`) and a page, shown and focused. */
-static bdk_contents_t start_page(int handler, const char* surfaces_json) {
+static bdk_contents_t start_surface(uint32_t surface, int handler, const char* surfaces_json) {
     memset(&g_choosers, 0, sizeof g_choosers);
     bdk_harness_engine_surfaces = surfaces_json;
     t_start();
     control("present.clear", "{}", NULL, 0);
     bdk_error_t err = 0;
     if (handler)
-        REQUIRE(bdk_ui_set_handler(t_runtime, BDK_SURFACE_DEVICE_CHOOSERS, on_request, &g_choosers,
-                                   NULL, &err) == BDK_OK);
+        REQUIRE(bdk_ui_set_handler(t_runtime, surface, on_request, &g_choosers, NULL, &err) ==
+                BDK_OK);
     t_freeze();
     g_profile = t_new_profile("Choosers");
     bdk_contents_t c = t_new_contents(g_profile);
@@ -111,6 +115,14 @@ static bdk_contents_t start_page(int handler, const char* surfaces_json) {
     REQUIRE(bdk_contents_focus(c) == BDK_OK);
     t_pump();
     return c;
+}
+
+static bdk_contents_t start_page(int handler, const char* surfaces_json) {
+    return start_surface(BDK_SURFACE_DEVICE_CHOOSERS, handler, surfaces_json);
+}
+
+static bdk_contents_t start_screen_capture(int handler, const char* surfaces_json) {
+    return start_surface(BDK_SURFACE_SCREEN_CAPTURE, handler, surfaces_json);
 }
 
 static void finish(bdk_contents_t c) {
@@ -256,6 +268,210 @@ static void test_the_default_chooser_offers_a_device_that_appears_later(void) {
     finish(c);
 }
 
+/* ---- Screen capture ---- */
+
+#define SHARED_PAGE "http://localhost/shared"
+
+static const char* share_script =
+    "navigator.mediaDevices.getDisplayMedia({video: true}).then(s => {"
+    "  window.stream = s; s.getVideoTracks()[0].onended = () => document.title = 'ended';"
+    "  document.title = 'shared'; }, e => document.title = e.name)";
+
+static uint32_t capture_of(bdk_contents_t c) {
+    bdk_contents_state_t st;
+    memset(&st, 0, sizeof st);
+    st.struct_size = sizeof st;
+    bdk_error_t err = 0;
+    REQUIRE(bdk_contents_state(c, &st, &err) == BDK_OK);
+    return st.capture;
+}
+
+static int wait_for_capture(bdk_contents_t c, uint32_t flag, int set) {
+    for (int i = 0; i < 200; ++i) {
+        if (((capture_of(c) & flag) != 0) == (set != 0))
+            return 1;
+        t_pump();
+    }
+    return 0;
+}
+
+/* A second page, titled "Shared", that the first may share. */
+static bdk_contents_t shared_page(void) {
+    REQUIRE(bdk_harness_script_navigation(t_runtime, SHARED_PAGE, 0, "Shared") == BDK_OK);
+    bdk_contents_t c = t_new_contents(g_profile);
+    bdk_error_t err = 0;
+    REQUIRE(bdk_contents_load(c, S(SHARED_PAGE), &err) == BDK_OK);
+    t_pump();
+    bdk_harness_engine_show(c, 1);
+    t_pump();
+    return c;
+}
+
+/* The id of the source named `name` in `json` (a payload or an update), or "" if it is not
+   offered. */
+static void source_named(const char* json, const char* name, char* id, size_t n) {
+    id[0] = 0;
+    char pattern[128];
+    snprintf(pattern, sizeof pattern, "\"name\":\"%s\"", name);
+    const char* at = strstr(json, pattern);
+    if (!at)
+        return;
+    /* The id comes first in each source: walk back to its object. */
+    const char* start = at;
+    while (start > json && *start != '{')
+        --start;
+    const char* key = strstr(start, "\"id\":\"");
+    if (!key || key > at)
+        return;
+    key += 6;
+    size_t len = strcspn(key, "\"");
+    snprintf(id, n, "%.*s", (int)(len < n ? len : n - 1), key);
+}
+
+/* A handler sees the page's sources and shares one with the person's gesture: the page gets the
+   stream, the capturing page reports BDK_CAPTURE_DISPLAY and the shared one BDK_CAPTURE_CAPTURED,
+   until the page stops. */
+static void test_a_handler_shares_a_page(void) {
+    bdk_contents_t c = start_screen_capture(1, NULL);
+    bdk_contents_t other = shared_page();
+    run(c, share_script);
+    char id[32] = "";
+    for (int i = 0; i < 200 && !id[0]; ++i) {
+        source_named(g_choosers.updates ? g_choosers.update : g_choosers.payloads[0], "Shared", id,
+                     sizeof id);
+        if (!id[0])
+            t_pump();
+    }
+    CHECK(g_choosers.calls == 1);
+    CHECK(strstr(g_choosers.payloads[0], "\"origin\":\"http://localhost\"") != NULL);
+    CHECK(strstr(g_choosers.payloads[0], "\"requestsAudio\":false") != NULL);
+    REQUIRE(id[0] != 0);
+    char args[96];
+    snprintf(args, sizeof args, "{\"source\":\"%s\"}", id);
+    bdk_error_t err = 0;
+    CHECK(bdk_ui_complete(g_choosers.request, S("share"), S(args), bdk_harness_engine_gesture(c, 0),
+                          &err) == BDK_OK);
+    CHECK(wait_for_capture(c, BDK_CAPTURE_DISPLAY, 1));
+    CHECK(wait_for_capture(other, BDK_CAPTURE_CAPTURED, 1));
+    /* The stream reaches the page once the shared page has drawn. */
+    CHECK(wait_for_title(c, "shared"));
+    run(c, "window.stream.getTracks().forEach(t => t.stop())");
+    CHECK(wait_for_capture(c, BDK_CAPTURE_DISPLAY, 0));
+    CHECK(wait_for_capture(other, BDK_CAPTURE_CAPTURED, 0));
+    bdk_harness_engine_show(other, 0);
+    finish(c);
+}
+
+/* With no handler BDK's picker asks, and BDK's sharing bar shows while the page shares; its Stop
+   ends the stream. */
+static void test_the_default_picker_shares_and_the_bar_stops_it(void) {
+    bdk_contents_t c = start_screen_capture(0, NULL);
+    bdk_contents_t other = shared_page();
+    control("present.script", "{\"surface\":\"screen_capture\",\"answer\":{\"source\":\"Shared\"}}",
+            NULL, 0);
+    control("present.script", "{\"surface\":\"sharing_indicator\",\"answer\":{\"none\":true}}",
+            NULL, 0);
+    run(c, share_script);
+    CHECK(wait_for_title(c, "shared"));
+    char out[4096];
+    control("present.record", "{\"surface\":\"sharing_indicator\"}", out, sizeof out);
+    CHECK(strstr(out, "\"shown\":1") != NULL);
+    CHECK(strstr(out, "Shared") != NULL);
+    control("present.script",
+            "{\"surface\":\"sharing_indicator\",\"answer\":{\"answer\":\"stop\"}}", NULL, 0);
+    /* A second share, whose bar stops it as the person would. */
+    run(c, "document.title = 'again'");
+    run(c, share_script);
+    CHECK(wait_for_title(c, "ended"));
+    control("present.record", "{\"surface\":\"sharing_indicator\"}", out, sizeof out);
+    printf("    indicator %s\n", out);
+    control("present.record", "{\"surface\":\"screen_capture\"}", out, sizeof out);
+    printf("    picker %.300s\n", out);
+    bdk_harness_engine_show(other, 0);
+    finish(c);
+}
+
+/* A handler's cancel and a disabled surface each refuse: NotAllowedError. */
+static void test_a_cancelled_or_disabled_capture_is_refused(void) {
+    bdk_contents_t c = start_screen_capture(1, NULL);
+    g_choosers.deny = 1;
+    run(c, share_script);
+    CHECK(wait_for_title(c, "NotAllowedError"));
+    CHECK(g_choosers.calls == 1);
+    finish(c);
+}
+
+static void test_a_disabled_capture_is_refused_without_asking(void) {
+    bdk_contents_t c = start_screen_capture(1, "{\"screen_capture\":\"disabled\"}");
+    run(c, share_script);
+    CHECK(wait_for_title(c, "NotAllowedError"));
+    CHECK(g_choosers.calls == 0);
+    finish(c);
+}
+
+/* Asks the extension to choose a source for its tab; the answer lands in globalThis.out. */
+static void extension_chooses(bdk_contents_t c, const char* ext) {
+    char out[256];
+    ext_eval(c, ext,
+             "globalThis.out = undefined; chrome.tabs.query({}, tabs =>"
+             " chrome.desktopCapture.chooseDesktopMedia(['tab'], tabs[0],"
+             " id => globalThis.out = id ? 'chosen' : 'cancelled')); 1",
+             out, sizeof out);
+}
+
+/* What the extension's choice gave: "chosen", "cancelled", or "" while it waits. */
+static int extension_answer(bdk_contents_t c, const char* ext, const char* want) {
+    char out[256];
+    for (int i = 0; i < 100; ++i) {
+        ext_eval(c, ext, "String(globalThis.out)", out, sizeof out);
+        if (ext_has(out, want))
+            return 1;
+        t_pump();
+    }
+    printf("    the extension has %s, not %s\n", out, want);
+    return 0;
+}
+
+/* chrome.desktopCapture.chooseDesktopMedia with the extension's tab asks on that page, naming the
+   extension; a shared source gives the extension a stream id, a cancel none. */
+static void test_an_extension_asks_through_the_page(void) {
+    bdk_contents_t c = start_screen_capture(1, NULL);
+    bdk_contents_t other = shared_page();
+    char ext[64];
+    ext_load(c, "capture-desktop", ext, sizeof ext);
+    /* A page is a tab an extension sees once it is in a registered window. */
+    bdk_window_t w = 0;
+    int window = bdk_ext_window_open(t_runtime, BDK_WINDOW_KIND_NORMAL, &w);
+    REQUIRE(window >= 0);
+    bdk_ext_window_attach(window, c);
+    ext_pumps(5);
+    g_choosers.deny = 1;
+    extension_chooses(c, ext);
+    CHECK(extension_answer(c, ext, "cancelled"));
+    CHECK(g_choosers.calls == 1);
+    CHECK(strstr(g_choosers.payloads[0], "\"extensionName\":\"Capture Desktop\"") != NULL);
+    g_choosers.deny = 0;
+    g_choosers.updates = 0;
+    extension_chooses(c, ext);
+    char id[32] = "";
+    for (int i = 0; i < 200 && !id[0]; ++i) {
+        source_named(g_choosers.updates ? g_choosers.update : g_choosers.payloads[1], "Shared", id,
+                     sizeof id);
+        if (!id[0])
+            t_pump();
+    }
+    REQUIRE(id[0] != 0);
+    char args[96];
+    snprintf(args, sizeof args, "{\"source\":\"%s\"}", id);
+    bdk_error_t err = 0;
+    CHECK(bdk_ui_complete(g_choosers.request, S("share"), S(args), bdk_harness_engine_gesture(c, 0),
+                          &err) == BDK_OK);
+    CHECK(extension_answer(c, ext, "chosen"));
+    bdk_harness_engine_show(other, 0);
+    bdk_ext_window_close(window);
+    finish(c);
+}
+
 const t_test_t t_engine_chooser_tests[] = {
     {"engine_choosers_each_api_raises_a_device_chooser_request",
      test_each_api_raises_a_device_chooser_request},
@@ -267,5 +483,14 @@ const t_test_t t_engine_chooser_tests[] = {
      test_a_handler_selects_a_device_as_the_list_changes},
     {"engine_choosers_the_default_chooser_offers_a_device_that_appears_later",
      test_the_default_chooser_offers_a_device_that_appears_later},
+    {"engine_screen_capture_a_handler_shares_a_page", test_a_handler_shares_a_page},
+    {"engine_screen_capture_the_default_picker_shares_and_the_bar_stops_it",
+     test_the_default_picker_shares_and_the_bar_stops_it},
+    {"engine_screen_capture_a_cancelled_capture_is_refused",
+     test_a_cancelled_or_disabled_capture_is_refused},
+    {"engine_screen_capture_a_disabled_capture_is_refused_without_asking",
+     test_a_disabled_capture_is_refused_without_asking},
+    {"engine_screen_capture_an_extension_asks_through_the_page",
+     test_an_extension_asks_through_the_page},
     {NULL, NULL},
 };

@@ -96,6 +96,21 @@ class DeviceChooserSheet {
   virtual void SetDevices(const base::ListValue& devices) = 0;
 };
 
+// The default screen-capture picker being shown (ui_screen_capture.h).
+// Destroying it takes it down without an answer.
+class ScreenCaptureSheet {
+ public:
+  virtual ~ScreenCaptureSheet() = default;
+  // The sources to offer now: the request's "sources" list.
+  virtual void SetSources(const base::ListValue& sources) = 0;
+};
+
+// What the person chose in the screen-capture picker.
+struct ScreenCaptureChoice {
+  std::string source;  // the source's id
+  bool audio = false;
+};
+
 class UiPresenters {
  public:
   virtual ~UiPresenters() = default;
@@ -182,6 +197,21 @@ class UiPresenters {
       HostView* view,
       const base::DictValue& payload,
       base::OnceCallback<void(std::optional<std::string>)> answer) = 0;
+  // payload: the screen_capture request payload. `answer` gets the chosen
+  // source, or nothing when the person cancelled. A script answers {"source":
+  // name, "audio"?} to share the source of that name as soon as it is
+  // offered, or {"answer": "cancel"}.
+  virtual std::unique_ptr<ScreenCaptureSheet> ShowScreenCapturePicker(
+      HostView* view,
+      const base::DictValue& payload,
+      base::OnceCallback<void(std::optional<ScreenCaptureChoice>)> answer) = 0;
+  // The "sharing" bar in the window of `view` while its page shares a
+  // screen, a window or a page: {origin, kind, name}. `stop` runs when the
+  // person stops sharing. Scripted as "sharing_indicator": {"answer":
+  // "stop"} stops at once.
+  virtual Dismisser ShowSharingBar(HostView* view,
+                                   const base::DictValue& sharing,
+                                   base::OnceClosure stop) = 0;
   // payload: the find request payload (initialText).
   virtual std::unique_ptr<FindBar> ShowFindBar(HostView* view,
                                                const base::DictValue& payload,

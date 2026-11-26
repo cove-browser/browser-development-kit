@@ -247,17 +247,6 @@ static void test_a_tab_modal_dialog_model_is_a_sheet(void) {
     finish(c);
 }
 
-/* getDisplayMedia's source picker was a tab-modal views dialog; it is refused as the
-   screen_capture surface's disabled mode would refuse it. */
-static void test_screen_capture_is_refused(void) {
-    bdk_contents_t c = start_page(PAGE);
-    run(c, "navigator.mediaDevices.getDisplayMedia({video: true})"
-           ".then(() => { document.title = 'shared'; },"
-           "      e => { document.title = e.name; })");
-    CHECK(wait_for_title(c, "NotAllowedError"));
-    finish(c);
-}
-
 /* The APIs whose UI is views only are off at start, so a site finds them unsupported, and a page
    never offers itself as an application to install. */
 static void test_apis_with_views_only_ui_are_absent(void) {
@@ -454,7 +443,6 @@ const t_test_t t_engine_dialogs_tests[] = {
      test_a_disabled_external_protocol_surface_asks_nothing},
     {"engine_dialogs_a_tab_modal_dialog_model_is_a_sheet",
      test_a_tab_modal_dialog_model_is_a_sheet},
-    {"engine_dialogs_screen_capture_is_refused", test_screen_capture_is_refused},
     {"engine_dialogs_apis_with_views_only_ui_are_absent", test_apis_with_views_only_ui_are_absent},
     {"engine_dialogs_a_blocked_popup_raises_a_page_health_notice",
      test_a_blocked_popup_raises_a_page_health_notice},

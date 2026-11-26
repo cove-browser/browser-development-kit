@@ -542,7 +542,7 @@ BDK_EXPORT bdk_status_t bdk_contents_state(bdk_contents_t h, bdk_contents_state_
     full.progress = state.progress;
     full.security = state.security;
     full.audio = state.audio;
-    full.capture = 0;
+    full.capture = state.capture;
     full.visibility = state.visibility;
     full.focused = state.focused ? 1 : 0;
     full.zoom = state.zoom;
