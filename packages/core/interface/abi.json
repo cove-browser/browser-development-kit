@@ -106,7 +106,8 @@
         "VISIBILITY_CHANGED": 9,
         "FIND_RESULT": 10,
         "TRANSLATION": 11,
-        "WEB_APP": 12
+        "WEB_APP": 12,
+        "CAPTURE_CHANGED": 13
       }
     },
     {
@@ -127,6 +128,13 @@
       "prefix": "BDK_AUDIO_",
       "comment": "bdk_contents_state_t.audio flags",
       "values": { "AUDIBLE": 1, "MUTED": 2 }
+    },
+    {
+      "group": "capture",
+      "kind": "flags",
+      "prefix": "BDK_CAPTURE_",
+      "comment": "bdk_contents_state_t.capture flags: what the page captures (DISPLAY: a screen, a window or a page), and whether another page captures it (CAPTURED). BDK_CONTENTS_EVENT_CAPTURE_CHANGED reports each change.",
+      "values": { "CAMERA": 1, "MICROPHONE": 2, "DISPLAY": 4, "CAPTURED": 8 }
     },
     {
       "group": "security",

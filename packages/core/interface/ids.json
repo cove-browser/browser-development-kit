@@ -303,7 +303,8 @@
       { "name": "VISIBILITY_CHANGED", "id": 9 },
       { "name": "FIND_RESULT", "id": 10 },
       { "name": "TRANSLATION", "id": 11 },
-      { "name": "WEB_APP", "id": 12 }
+      { "name": "WEB_APP", "id": 12 },
+      { "name": "CAPTURE_CHANGED", "id": 13 }
     ],
     "eventFlags": [
       { "name": "MAIN_FRAME", "id": 1 },
@@ -312,6 +313,12 @@
       { "name": "ERROR_PAGE", "id": 8 }
     ],
     "audio": [{ "name": "AUDIBLE", "id": 1 }, { "name": "MUTED", "id": 2 }],
+    "capture": [
+      { "name": "CAMERA", "id": 1 },
+      { "name": "MICROPHONE", "id": 2 },
+      { "name": "DISPLAY", "id": 4 },
+      { "name": "CAPTURED", "id": 8 }
+    ],
     "security": [
       { "name": "UNKNOWN", "id": 0 },
       { "name": "NONE", "id": 1 },
