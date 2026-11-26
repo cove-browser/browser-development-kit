@@ -534,6 +534,95 @@ void AnswerLater(base::OnceCallback<void(T)> answer, T value) {
       FROM_HERE, base::BindOnce(std::move(answer), std::move(value)));
 }
 
+// The default device chooser: a sheet with the devices in a pop-up menu,
+// kept to the chooser's list, and Connect, which needs a device, and Cancel.
+class DeviceChooserSheetMac : public DeviceChooserSheet {
+ public:
+  DeviceChooserSheetMac(
+      HostView* view,
+      const base::DictValue& payload,
+      base::OnceCallback<void(std::optional<std::string>)> answer)
+      : answer_(std::move(answer)) {
+    NSDictionary<NSString*, NSString*>* what = @{
+      @"usb" : @"a USB device",
+      @"hid" : @"a HID device",
+      @"serial" : @"a serial port",
+      @"bluetooth" : @"a Bluetooth device"
+    };
+    alert_ = [[NSAlert alloc] init];
+    alert_.messageText = [NSString
+        stringWithFormat:@"%@ wants to connect to %@", Str(payload, "origin"),
+                         what[Str(payload, "kind")] ?: @"a device"];
+    [alert_ addButtonWithTitle:@"Connect"];
+    [alert_ addButtonWithTitle:@"Cancel"];
+    menu_ = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(0, 0, 300, 26)
+                                       pullsDown:NO];
+    alert_.accessoryView = menu_;
+    if (const base::ListValue* devices = payload.FindList("devices")) {
+      SetDevices(*devices);
+    } else {
+      SetDevices(base::ListValue());
+    }
+    NSPopUpButton* menu = menu_;
+    __block base::OnceCallback<void(std::optional<std::string>)>* callback =
+        &answer_;
+    dismiss_ =
+        PresentAlert(AnchorOf(view), alert_, ^(NSModalResponse response) {
+          std::optional<std::string> chosen;
+          NSString* id = menu.selectedItem.representedObject;
+          if (response == NSAlertFirstButtonReturn && id) {
+            chosen = base::SysNSStringToUTF8(id);
+          }
+          if (*callback) {
+            AnswerLater(std::move(*callback), std::move(chosen));
+          }
+        });
+  }
+
+  ~DeviceChooserSheetMac() override {
+    answer_.Reset();
+    if (dismiss_) {
+      std::move(dismiss_).Run();
+    }
+  }
+
+  void SetDevices(const base::ListValue& devices) override {
+    NSString* selected = menu_.selectedItem.representedObject;
+    [menu_ removeAllItems];
+    for (const base::Value& device : devices) {
+      const base::DictValue* dict = device.GetIfDict();
+      if (!dict) {
+        continue;
+      }
+      NSString* title = Str(*dict, "name");
+      if (dict->FindBool("paired").value_or(false)) {
+        title = [title stringByAppendingString:@" (paired)"];
+      }
+      // Added to the menu, not the button, which would merge two devices of
+      // the same name; the item stands for the device's id.
+      NSMenuItem* item = [menu_.menu addItemWithTitle:title
+                                               action:nil
+                                        keyEquivalent:@""];
+      item.representedObject = Str(*dict, "id");
+      if ([selected isEqualToString:item.representedObject]) {
+        [menu_ selectItem:item];
+      }
+    }
+    const bool any = menu_.numberOfItems > 0;
+    if (!any) {
+      [menu_ addItemWithTitle:@"Looking for devices…"];
+    }
+    menu_.enabled = any;
+    alert_.buttons.firstObject.enabled = any;
+  }
+
+ private:
+  NSAlert* __strong alert_;
+  NSPopUpButton* __strong menu_;
+  base::OnceCallback<void(std::optional<std::string>)> answer_;
+  Dismisser dismiss_;
+};
+
 class PresentersMac : public UiPresenters {
  public:
   Dismisser ShowPermission(
@@ -905,6 +994,14 @@ class PresentersMac : public UiPresenters {
     NSImage* image = [[NSImage alloc] initWithSize:NSMakeSize(side, side)];
     [image addRepresentation:rep];
     return image;
+  }
+
+  std::unique_ptr<DeviceChooserSheet> ShowDeviceChooser(
+      HostView* view,
+      const base::DictValue& payload,
+      base::OnceCallback<void(std::optional<std::string>)> answer) override {
+    return std::make_unique<DeviceChooserSheetMac>(view, payload,
+                                                   std::move(answer));
   }
 
   Dismisser ShowWebAuthn(

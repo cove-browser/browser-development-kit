@@ -66,9 +66,16 @@ class PageDialogs : public content::JavaScriptDialogManager {
   void EnumerateDirectory(scoped_refptr<content::FileSelectListener> listener,
                           const base::FilePath& path);
 
+  // A picker Chromium opens through its file dialog (the File System Access
+  // API, ui_select_file.h): `payload` is the file_pickers request's, and
+  // `chosen` gets the chosen paths, none when it was cancelled.
+  using PickerCallback =
+      base::OnceCallback<void(std::vector<base::FilePath> paths)>;
+  void RunPicker(base::DictValue payload, PickerCallback chosen);
+
  private:
-  // A dialog or picker that has not ended: a script dialog (`script`) or a
-  // file picker (`listener`).
+  // A dialog or picker that has not ended: a script dialog (`script`), a
+  // file input's picker (`listener`) or another picker (`picker`).
   struct Pending {
     Pending();
     Pending(Pending&&);
@@ -78,6 +85,7 @@ class PageDialogs : public content::JavaScriptDialogManager {
     Dismisser dismiss;
     DialogClosedCallback script;
     scoped_refptr<content::FileSelectListener> listener;
+    PickerCallback picker;
     blink::mojom::FileChooserParams::Mode mode =
         blink::mojom::FileChooserParams::Mode::kOpen;
   };

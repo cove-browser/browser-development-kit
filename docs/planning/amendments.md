@@ -567,8 +567,18 @@ status is in [roadmap.md](roadmap.md), M9. Decisions taken while building:
 | Bundled extensions on the engine (T-EXT-14) | Chromium's unpacked loader with no prompt, before the profile is handed over; `MustRemainInstalled`, and `MustRemainEnabled` when required. An installed extension blocklisted later is disabled by BDK when it loads, with `DISABLE_BLOCKED_BY_POLICY`, which BDK reports as `blocklisted`. A bundled extension the configuration stops listing stays installed. |
 | External protocols and client certificates (T-UIR-13, part) | Requests, with BDK's sheets as default presenters. `isUserGesture` is always `false` (Chrome does not pass it to its dialog). `remember` uses Chrome's per-origin "always allow". |
 
-Found and recorded, not fixed: on the engine the robustness suite's memory bound fails (the browser process's heap
-grows by about 1 to 3 MB per page opened and closed; roadmap M9, T-REL-03).
+The robustness suite's memory bound, which failed on the engine in the first pass (about 1 to 3 MB a page), passes
+since the third (2.28): the growth was the engine harness, not a leak of BDK's or Chromium's.
+
+### 2.28 M9 on the engine, third pass (2026-11-26)
+
+| Topic | Decision |
+|---|---|
+| The engine suite runs outside a Chromium task (T-REL-03) | The engine harness ran the whole suite as one Chromium task posted to the UI thread, and pumped inside it. PartitionAlloc keeps what a task frees in the thread's scheduler-loop quarantine and purges it only when the outermost task ends, so nothing freed during the suite was ever released: 2.4 MB a page opened and closed, mostly Chromium's own objects freed with the page (found by forcing a purge from a test command: the live heap fell from 278 MB to 41 MB). The suite now starts from a run-loop timer inside Chromium's main loop, where an application's own code runs, and the harness's pump drains an autorelease pool between scenario steps, as each AppKit event would. Over 3,000 pages the process now grows 288 KB. A purge from inside the task was tried first and rejected: it frees objects the task's outer frames still use, which the quarantine is there to prevent. |
+| File System Access pickers (T-UIR-13) | Through a `ui::SelectFileDialogFactory` and the `SelectFilePolicy` BDK's browser client returns, which carries the page: every file dialog Chromium opens for a page (the File System Access API's, and any other of a page's) is a `file_pickers` request with `isFileSystemAccessAPI` true. A dialog for no page is Chromium's own. No patch. |
+| Device choosers (T-UIR-13) | Chrome's chooser controllers (USB, HID, Serial, Bluetooth) find the devices; BDK replaces only `chrome::ShowDeviceChooserDialog`, with a session that is the controller's view and raises a `device_choosers` request whose device list follows the controller through updates. The default presenter is a sheet of BDK's with the devices in a pop-up menu. The Swift type exposes the current `devices` and a `deviceChanges` sequence rather than one `Devices` sequence, as the extension panels expose their state. |
+| Web Bluetooth and Web Serial without a Bluetooth usage string (T-UIR-13) | macOS ends a process that opens the Bluetooth adapter without `NSBluetoothAlwaysUsageDescription`. Web Bluetooth is turned on only when the application's `Info.plist` has it, and absent otherwise. The serial chooser opened the adapter to list Bluetooth serial ports, which ended the engine suite: patch `bdk-let-an-embedder-keep-the-serial-chooser-from-asking-for-bluetooth` lets BDK have it list only the ports it can find without asking, as `getPorts()` does, when the key is missing. Bluetooth's scanning prompt (`requestLEScan`, behind Chromium's experimental features) and pairing prompts stay refused. |
+| Choosing a device in the engine suite | No Mac the suite runs on has a known USB, HID or serial device, so the scenarios that choose one use a fake chooser controller of the engine's (`chooser.open`, `bdk_testing.h`) through the same session; the web APIs' own scenarios cover the request, the default presenter and `disabled`. |
 
 ## 3. Tasks and workflows
 

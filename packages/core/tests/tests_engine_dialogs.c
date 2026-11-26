@@ -247,23 +247,6 @@ static void test_a_tab_modal_dialog_model_is_a_sheet(void) {
     finish(c);
 }
 
-/* The device choosers were views bubbles anchored to a BrowserView; they are refused as a person
-   cancelling would, so each request rejects or comes back empty, and Web Bluetooth is absent. */
-static void test_device_choosers_are_refused(void) {
-    bdk_contents_t c = start_page(PAGE);
-    run(c, "(async () => { const r = [];"
-           "try { await navigator.usb.requestDevice({filters: []}); r.push('usb'); }"
-           "  catch (e) { r.push(e.name); }"
-           "try { await navigator.serial.requestPort(); r.push('serial'); }"
-           "  catch (e) { r.push(e.name); }"
-           "try { r.push(String((await navigator.hid.requestDevice({filters: []})).length)); }"
-           "  catch (e) { r.push(e.name); }"
-           "r.push(typeof navigator.bluetooth);"
-           "document.title = r.join(','); })()");
-    CHECK(wait_for_title(c, "NotFoundError,NotFoundError,0,undefined"));
-    finish(c);
-}
-
 /* getDisplayMedia's source picker was a tab-modal views dialog; it is refused as the
    screen_capture surface's disabled mode would refuse it. */
 static void test_screen_capture_is_refused(void) {
@@ -471,7 +454,6 @@ const t_test_t t_engine_dialogs_tests[] = {
      test_a_disabled_external_protocol_surface_asks_nothing},
     {"engine_dialogs_a_tab_modal_dialog_model_is_a_sheet",
      test_a_tab_modal_dialog_model_is_a_sheet},
-    {"engine_dialogs_device_choosers_are_refused", test_device_choosers_are_refused},
     {"engine_dialogs_screen_capture_is_refused", test_screen_capture_is_refused},
     {"engine_dialogs_apis_with_views_only_ui_are_absent", test_apis_with_views_only_ui_are_absent},
     {"engine_dialogs_a_blocked_popup_raises_a_page_health_notice",

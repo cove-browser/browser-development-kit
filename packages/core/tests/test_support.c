@@ -266,6 +266,7 @@ static const t_test_t* const kTables[] = {
     t_engine_extension_probe_tests, /* the MV3 probe, T-EXT-01 (tests_engine_ext_probe.c) */
     t_engine_webauthn_tests,        /* passkeys and security keys (tests_engine_webauthn.c) */
     t_engine_dialogs_tests,         /* Chromium's other browser dialogs (tests_engine_dialogs.c) */
+    t_engine_chooser_tests,         /* the device choosers (tests_engine_choosers.c) */
     t_engine_arc_tests,             /* the Arc-style layouts, M8 (tests_engine_arc.c) */
     t_engine_navigation_policy_tests, /* the navigation policy on Chromium
                                          (tests_engine_navigation_policy.c) */

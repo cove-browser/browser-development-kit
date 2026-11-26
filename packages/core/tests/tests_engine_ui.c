@@ -438,6 +438,97 @@ static void test_ui_a_disabled_file_picker_does_nothing(void) {
     finish(c);
 }
 
+/* ---- File System Access pickers (T-UIR-13) ---- */
+
+static const char* fsa_open_script =
+    "showOpenFilePicker({types:[{description:'Text',accept:{'text/plain':['.txt']}}]})"
+    ".then(h=>document.title='fsa:'+h[0].name,e=>document.title='fsa-error:'+e.name)";
+
+static const char* fsa_directory_script =
+    "showDirectoryPicker().then(h=>document.title='dir:'+h.name,"
+    "e=>document.title='fsa-error:'+e.name)";
+
+static const char* fsa_save_script =
+    "showSaveFilePicker({suggestedName:'notes.txt'}).then(h=>document.title='saved:'+h.name,"
+    "e=>document.title='fsa-error:'+e.name)";
+
+static void test_ui_a_file_system_access_picker_with_no_handler_uses_the_default_picker(void) {
+    char path[64], name[64], answer[200], want[128];
+    make_file(path, sizeof path, name, sizeof name);
+    bdk_contents_t c = start_page(0, NULL);
+    snprintf(answer, sizeof answer, "{\"paths\":[\"%s\"]}", path);
+    script("file_pickers", answer);
+    run_script(c, fsa_open_script, 1);
+    snprintf(want, sizeof want, "fsa:%s", name);
+    CHECK(wait_for_title(c, want));
+    char out[4096];
+    last_shown("file_pickers", out, sizeof out);
+    CHECK(strstr(out, "isFileSystemAccessAPI\\\":true") != NULL);
+    unlink(path);
+    finish(c);
+}
+
+static void test_ui_a_handler_answers_a_file_system_access_picker(void) {
+    char path[64], name[64], args[200], want[128];
+    make_file(path, sizeof path, name, sizeof name);
+    bdk_contents_t c = start_page(BDK_SURFACE_FILE_PICKERS, NULL);
+    snprintf(args, sizeof args, "{\"paths\":[\"%s\"]}", path);
+    g_log.complete = "accept";
+    g_log.complete_args = args;
+    run_script(c, fsa_open_script, 1);
+    snprintf(want, sizeof want, "fsa:%s", name);
+    CHECK(wait_for_title(c, want));
+    CHECK(strstr(g_log.payload, "\"mode\":\"open\"") != NULL);
+    CHECK(strstr(g_log.payload, "\"isFileSystemAccessAPI\":true") != NULL);
+    CHECK(strstr(g_log.payload, "\".txt\"") != NULL);
+    CHECK(strstr(g_log.payload, "\"origin\":\"https://bdk.test\"") != NULL);
+    unlink(path);
+    finish(c);
+}
+
+static void test_ui_a_handler_answers_the_directory_and_save_pickers(void) {
+    char dir[64] = "/tmp/bdk-pick-dir-XXXXXX", args[200], want[128];
+    REQUIRE(mkdtemp(dir) != NULL);
+    bdk_contents_t c = start_page(BDK_SURFACE_FILE_PICKERS, NULL);
+    /* Chromium then asks whether the site may view the folder: a tab-modal model BDK shows as a
+       sheet of browser_dialogs. */
+    script("browser_dialogs", "{\"answer\":\"accept\"}");
+    snprintf(args, sizeof args, "{\"paths\":[\"%s\"]}", dir);
+    g_log.complete = "accept";
+    g_log.complete_args = args;
+    run_script(c, fsa_directory_script, 1);
+    snprintf(want, sizeof want, "dir:%s", strrchr(dir, '/') + 1);
+    CHECK(wait_for_title(c, want));
+    CHECK(strstr(g_log.payload, "\"mode\":\"directory\"") != NULL);
+    char file[128];
+    snprintf(file, sizeof file, "%s/notes.txt", dir);
+    snprintf(args, sizeof args, "{\"paths\":[\"%s\"]}", file);
+    run_script(c, fsa_save_script, 1);
+    CHECK(wait_for_title(c, "saved:notes.txt"));
+    CHECK(strstr(g_log.payload, "\"mode\":\"save\"") != NULL);
+    CHECK(strstr(g_log.payload, "\"suggestedName\":\"notes.txt\"") != NULL);
+    unlink(file);
+    rmdir(dir);
+    finish(c);
+}
+
+static void test_ui_a_cancelled_file_system_access_picker_rejects(void) {
+    bdk_contents_t c = start_page(BDK_SURFACE_FILE_PICKERS, NULL);
+    g_log.complete = "deny";
+    run_script(c, fsa_open_script, 1);
+    CHECK(wait_for_title(c, "fsa-error:AbortError"));
+    finish(c);
+}
+
+static void test_ui_a_disabled_file_system_access_picker_rejects(void) {
+    bdk_contents_t c = start_page(BDK_SURFACE_FILE_PICKERS, "{\"file_pickers\":\"disabled\"}");
+    run_script(c, fsa_open_script, 1);
+    CHECK(wait_for_title(c, "fsa-error:AbortError"));
+    CHECK(g_log.calls == 0);
+    CHECK(shown("file_pickers") == 0);
+    finish(c);
+}
+
 /* ---- permissions ---- */
 
 static const char* ask_notifications = "Notification.requestPermission().then(p=>document.title=p)";
@@ -1035,6 +1126,16 @@ const t_test_t t_engine_ui_tests[] = {
     {"engine_ui_a_handler_cancels_a_picker", test_ui_a_handler_cancels_a_picker},
     {"engine_ui_use_default_and_reject_for_a_picker", test_ui_use_default_and_reject_for_a_picker},
     {"engine_ui_a_disabled_file_picker_does_nothing", test_ui_a_disabled_file_picker_does_nothing},
+    {"engine_ui_a_file_system_access_picker_with_no_handler_uses_the_default_picker",
+     test_ui_a_file_system_access_picker_with_no_handler_uses_the_default_picker},
+    {"engine_ui_a_handler_answers_a_file_system_access_picker",
+     test_ui_a_handler_answers_a_file_system_access_picker},
+    {"engine_ui_a_handler_answers_the_directory_and_save_pickers",
+     test_ui_a_handler_answers_the_directory_and_save_pickers},
+    {"engine_ui_a_cancelled_file_system_access_picker_rejects",
+     test_ui_a_cancelled_file_system_access_picker_rejects},
+    {"engine_ui_a_disabled_file_system_access_picker_rejects",
+     test_ui_a_disabled_file_system_access_picker_rejects},
     {"engine_ui_allowing_a_permission_in_the_default_prompt_grants_and_persists",
      test_ui_allowing_a_permission_in_the_default_prompt_grants_and_persists},
     {"engine_ui_blocking_a_permission_in_the_default_prompt_denies_and_persists",

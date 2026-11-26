@@ -138,6 +138,12 @@ ChromiumStartOptions::ChromiumStartOptions(const ChromiumStartOptions&) =
     default;
 ChromiumStartOptions::~ChromiumStartOptions() = default;
 
+bool ApplicationDeclaresBluetoothUse() {
+  return [NSBundle.mainBundle
+             objectForInfoDictionaryKey:@"NSBluetoothAlwaysUsageDescription"] !=
+         nil;
+}
+
 bool StartChromium(const ChromiumStartOptions& options, std::string* error) {
   CHECK([NSThread isMainThread]);
   State& state = GetState();
@@ -174,17 +180,23 @@ bool StartChromium(const ChromiumStartOptions& options, std::string* error) {
   // (ui-requests.md 8.2, T-UIR-10). HTTPS-First then asks with its
   // interstitial page, in the page, as it did before the dialog. The others'
   // APIs are absent from pages, so a site sees them as unsupported: Payment
-  // Request and Secure Payment Confirmation, FedCM, the Digital Credentials
-  // API, and Web Bluetooth (its chooser is refused, ui_browser_dialogs.h, and
-  // its adapter would need the application's Bluetooth usage string). Pages
-  // ask for web app installs only through beforeinstallprompt, which
-  // [web_apps] enabled governs (web-apps.md 10, T-PWA-06): navigator.install()
-  // and the <install> element reach views dialogs whether installs are on or
-  // off, so both are absent (WebAppInstallation, InstallElement).
+  // Request and Secure Payment Confirmation, FedCM and the Digital Credentials
+  // API. Pages ask for web app installs only through beforeinstallprompt,
+  // which [web_apps] enabled governs (web-apps.md 10, T-PWA-06):
+  // navigator.install() and the <install> element reach views dialogs whether
+  // installs are on or off, so both are absent (WebAppInstallation,
+  // InstallElement).
   disabled_features +=
       ",HttpsFirstDialogUi,WebPayments,SecurePaymentConfirmation,FedCm,"
       "WebIdentityDigitalCredentials,WebIdentityDigitalCredentialsCreation,"
-      "WebBluetooth,WebAppInstallation,InstallElement";
+      "WebAppInstallation,InstallElement";
+  // Web Bluetooth's chooser is a device_choosers request (T-UIR-13), but its
+  // adapter needs the application's Bluetooth usage string: macOS ends a
+  // process that uses Bluetooth without one. With none, navigator.bluetooth is
+  // absent, so a site sees Bluetooth as unsupported.
+  if (!ApplicationDeclaresBluetoothUse()) {
+    disabled_features += ",WebBluetooth";
+  }
   // The heavy-ad intervention's opt-out store is kept in memory, as Chrome
   // keeps it for an off-the-record profile. On disk, it opens a database at
   // best-effort priority when the profile starts; a profile deleted before

@@ -21,6 +21,7 @@
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_auth.h"
 #include "bdk/engine/ui_browser_dialogs.h"
+#include "bdk/engine/ui_select_file.h"
 #include "chrome/browser/chrome_browser_main.h"
 #include "chrome/browser/chrome_browser_main_extra_parts.h"
 #include "content/public/browser/bluetooth_delegate.h"
@@ -37,6 +38,7 @@
 #include "content/public/browser/web_ui_browser_interface_broker_registry.h"
 #include "extensions/common/constants.h"
 #include "services/device/public/cpp/geolocation/location_provider.h"
+#include "ui/shell_dialogs/select_file_policy.h"
 
 namespace bdk {
 
@@ -234,6 +236,12 @@ base::OnceClosure BdkContentBrowserClient::SelectClientCertificate(
   return bdk::SelectClientCertificate(
       browser_context, web_contents, cert_request_info, std::move(client_certs),
       std::move(delegate));
+}
+
+std::unique_ptr<ui::SelectFilePolicy>
+BdkContentBrowserClient::CreateSelectFilePolicy(
+    content::WebContents* web_contents) {
+  return bdk::CreateSelectFilePolicy(web_contents);
 }
 
 }  // namespace bdk

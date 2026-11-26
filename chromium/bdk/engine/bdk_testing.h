@@ -190,6 +190,12 @@ BDK_EXPORT bdk_status_t bdk_testing_tab_info(bdk_contents_t,
    authenticator; webauthn.inject {"rpId", "userId",
    "name", "displayName"} -> {"injected"}  a passkey on it; webauthn.state ->
    {"installed", "credentials"}; webauthn.clear  the real authenticators again
+   chooser.open {"contents", "kind", "devices": [names]}  a device chooser of
+   those devices on the page, shown as WebUSB's is (a device_choosers request);
+   chooser.add {"name"} and chooser.remove {"name"} change its list;
+   chooser.result -> {"ended", "chosen"? (the name; absent when cancelled)}.
+   present.script on "device_choosers" answers {"device": name} or
+   {"answer": "cancel"}
 
    Extensions, windows and side panels (extensions/panel_testing.cc; "window"
    is a decimal bdk_window_t string):

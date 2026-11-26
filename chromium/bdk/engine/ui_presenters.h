@@ -87,6 +87,15 @@ class FindBar {
   virtual void Focus() = 0;
 };
 
+// The default device chooser being shown (ui_device_chooser.h). Destroying
+// it takes it down without an answer.
+class DeviceChooserSheet {
+ public:
+  virtual ~DeviceChooserSheet() = default;
+  // The devices to offer now: the request's "devices" list.
+  virtual void SetDevices(const base::ListValue& devices) = 0;
+};
+
 class UiPresenters {
  public:
   virtual ~UiPresenters() = default;
@@ -165,6 +174,14 @@ class UiPresenters {
       HostView* view,
       const base::DictValue& payload,
       base::OnceCallback<void(base::DictValue)> answer) = 0;
+  // payload: the device_choosers request payload. `answer` gets the id of
+  // the device the person chose, or nothing when they cancelled. A script
+  // answers {"device": name} to choose the device of that name as soon as it
+  // is offered, or {"answer": "cancel"}.
+  virtual std::unique_ptr<DeviceChooserSheet> ShowDeviceChooser(
+      HostView* view,
+      const base::DictValue& payload,
+      base::OnceCallback<void(std::optional<std::string>)> answer) = 0;
   // payload: the find request payload (initialText).
   virtual std::unique_ptr<FindBar> ShowFindBar(HostView* view,
                                                const base::DictValue& payload,

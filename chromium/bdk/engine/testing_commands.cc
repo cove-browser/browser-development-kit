@@ -36,6 +36,7 @@
 #include "base/values.h"
 #include "bdk/core/runtime/core_internal.h"
 #include "bdk/engine/bdk_testing.h"
+#include "bdk/engine/device_chooser_testing.h"
 #include "bdk/engine/engine_contents.h"
 #include "bdk/engine/extensions/extension_testing.h"
 #include "bdk/engine/extensions/extension_ui_testing.h"
@@ -373,6 +374,9 @@ bool Run(const std::string& name,
   }
   if (name.starts_with("webauthn.")) {
     return RunWebAuthnTestingCommand(name, args, result);
+  }
+  if (name.starts_with("chooser.")) {
+    return RunChooserTestingCommand(name, PageOf(args), args, result);
   }
   if (name == "reputation.list") {
     // {"json"}: the default provider's list, as a checked download would load

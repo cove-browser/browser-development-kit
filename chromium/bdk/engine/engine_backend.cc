@@ -69,6 +69,7 @@
 #include "bdk/engine/ui_find.h"
 #include "bdk/engine/ui_notifications.h"
 #include "bdk/engine/ui_presenters.h"
+#include "bdk/engine/ui_select_file.h"
 #include "bdk/engine/window_registry.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/extensions/extension_tab_util.h"
@@ -266,6 +267,7 @@ class EngineBackend final : public bdkcore::Backend {
       ApplyIdentityAfterStart(*identity);
       ApplyLocalStatePrivacyPrefs();
       InstallPromptHooks(bdkcore::webauthn_phones_allowed(rt));
+      InstallSelectFileDialogs();
       chromium_tasks_.store(true);
       registry_writer_ = base::ThreadPool::CreateSequencedTaskRunner(
           {base::MayBlock(), base::TaskShutdownBehavior::BLOCK_SHUTDOWN});

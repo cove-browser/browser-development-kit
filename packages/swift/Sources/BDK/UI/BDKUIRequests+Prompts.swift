@@ -193,7 +193,8 @@ public final class FilePickerRequest: BDKUIRequest {
         mode = fields.choice("mode", default: .open)
         // A type is an identifier ("public.png"), a MIME type or a file extension.
         acceptedTypes = fields.strings("acceptedTypes").compactMap {
-            UTType($0) ?? UTType(mimeType: $0) ?? UTType(filenameExtension: $0)
+            UTType($0) ?? UTType(mimeType: $0)
+                ?? UTType(filenameExtension: $0.hasPrefix(".") ? String($0.dropFirst()) : $0)
         }
         suggestedName = fields.string("suggestedName")
         isFileSystemAccessAPI = fields.bool("isFileSystemAccessAPI")

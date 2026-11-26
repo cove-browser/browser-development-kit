@@ -207,6 +207,12 @@ void PageDialogs::OnFolderEnumerated(
   listener->FileSelected(std::move(infos), folder, Mode::kUploadFolder);
 }
 
+void PageDialogs::RunPicker(base::DictValue payload, PickerCallback chosen) {
+  Pending pending;
+  pending.picker = std::move(chosen);
+  Start(std::move(pending), BDK_SURFACE_FILE_PICKERS, std::move(payload));
+}
+
 // Both ------------------------------------------------------------------------
 
 void PageDialogs::Start(Pending pending,
@@ -257,7 +263,7 @@ void PageDialogs::OnEnded(int id,
       return;
     }
     case bdkcore::UiOutcome::kDefaulted: {
-      if (it->second.listener) {
+      if (it->second.listener || it->second.picker) {
         it->second.dismiss = UiPresenters::Get().ShowFilePicker(
             &page_->host_view(), payload,
             base::BindOnce(&PageDialogs::OnPickerAnswered,
@@ -303,6 +309,13 @@ void PageDialogs::Complete(int id,
   }
   if (pending.script) {
     std::move(pending.script).Run(accepted, base::UTF8ToUTF16(text));
+    return;
+  }
+  if (pending.picker) {
+    if (!accepted) {
+      paths.clear();
+    }
+    std::move(pending.picker).Run(std::move(paths));
     return;
   }
   if (!pending.listener) {

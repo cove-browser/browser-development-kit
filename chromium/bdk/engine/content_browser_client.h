@@ -82,6 +82,8 @@ class BdkContentBrowserClient : public ChromeContentBrowserClient {
       net::SSLCertRequestInfo* cert_request_info,
       net::ClientCertIdentityList client_certs,
       std::unique_ptr<content::ClientCertificateDelegate> delegate) override;
+  std::unique_ptr<ui::SelectFilePolicy> CreateSelectFilePolicy(
+      content::WebContents* web_contents) override;
 
  private:
   std::unique_ptr<content::BluetoothDelegate> bluetooth_delegate_;

@@ -21,8 +21,10 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/values.h"
 #include "bdk/core/include/bdk/bdk_ids.h"
+#include "bdk/engine/chromium_main.h"
 #include "bdk/engine/engine_contents.h"
 #include "bdk/engine/host_view.h"
+#include "bdk/engine/ui_device_chooser.h"
 #include "bdk/engine/ui_presenters.h"
 #include "bdk/engine/ui_request.h"
 #include "chrome/browser/bluetooth/chrome_bluetooth_delegate.h"
@@ -32,18 +34,27 @@
 #include "chrome/browser/hid/chrome_hid_delegate.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/serial/chrome_serial_delegate.h"
+#include "chrome/browser/ui/bluetooth/chrome_bluetooth_chooser_controller.h"
 #include "chrome/browser/ui/dialogs/embedder_tab_modal_dialog_hook.h"
+#include "chrome/browser/ui/hid/hid_chooser.h"
+#include "chrome/browser/ui/hid/hid_chooser_controller.h"
+#include "chrome/browser/ui/serial/embedder_serial_bluetooth.h"  // nogncheck
+#include "chrome/browser/ui/serial/serial_chooser_controller.h"
 #include "chrome/browser/ui/views/embedder_external_protocol_dialog_hook.h"
 #include "chrome/browser/usb/chrome_usb_delegate.h"
+#include "chrome/browser/usb/usb_chooser_controller.h"
 #include "chrome/browser/web_applications/web_app_provider_factory.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/keyed_service/content/browser_context_dependency_manager.h"
 #include "components/keyed_service/content/browser_context_keyed_service_factory.h"
 #include "components/keyed_service/core/keyed_service.h"
+#include "components/permissions/bluetooth_chooser_desktop.h"
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/url_formatter/elide_url.h"
 #include "content/public/browser/client_certificate_delegate.h"
+#include "content/public/browser/serial_chooser.h"
+#include "content/public/browser/usb_chooser.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "net/cert/x509_certificate.h"
@@ -390,17 +401,37 @@ std::unique_ptr<ui::DialogModel> ShowTabModalAsSheet(
 
 // ---- Device choosers --------------------------------------------------------
 
-// Each chooser is refused as the person cancelling it would, so the page's
-// request rejects (requestDevice: NotFoundError, HID: an empty list), and no
-// chooser UI is made.
+// Each chooser is Chrome's controller shown as a device_choosers request
+// (ui_device_chooser.h) instead of Chrome's views dialog. The chooser objects
+// content keeps only hold the closure that takes the request down.
+class ClosingUsbChooser : public content::UsbChooser {
+ public:
+  explicit ClosingUsbChooser(base::OnceClosure close)
+      : close_(std::move(close)) {}
+
+ private:
+  base::ScopedClosureRunner close_;
+};
+
+class ClosingSerialChooser : public content::SerialChooser {
+ public:
+  explicit ClosingSerialChooser(base::OnceClosure close)
+      : close_(std::move(close)) {}
+
+ private:
+  base::ScopedClosureRunner close_;
+};
+
 class BdkUsbDelegate : public ChromeUsbDelegate {
  public:
   std::unique_ptr<content::UsbChooser> RunChooser(
       content::RenderFrameHost& frame,
       blink::mojom::WebUsbRequestDeviceOptionsPtr options,
       blink::mojom::WebUsbService::GetPermissionCallback callback) override {
-    std::move(callback).Run(nullptr);
-    return nullptr;
+    return std::make_unique<ClosingUsbChooser>(ShowDeviceChooser(
+        "usb", &frame,
+        std::make_unique<UsbChooserController>(&frame, std::move(options),
+                                               std::move(callback))));
   }
 };
 
@@ -411,8 +442,11 @@ class BdkHidDelegate : public ChromeHidDelegate {
       std::vector<blink::mojom::HidDeviceFilterPtr> filters,
       std::vector<blink::mojom::HidDeviceFilterPtr> exclusion_filters,
       content::HidChooser::Callback callback) override {
-    std::move(callback).Run({});
-    return nullptr;
+    return std::make_unique<HidChooser>(ShowDeviceChooser(
+        "hid", render_frame_host,
+        std::make_unique<HidChooserController>(
+            render_frame_host, std::move(filters), std::move(exclusion_filters),
+            std::move(callback))));
   }
 };
 
@@ -423,20 +457,28 @@ class BdkSerialDelegate : public ChromeSerialDelegate {
       std::vector<blink::mojom::SerialPortFilterPtr> filters,
       std::vector<device::BluetoothUUID> allowed_bluetooth_service_class_ids,
       content::SerialChooser::Callback callback) override {
-    std::move(callback).Run(nullptr);
-    return nullptr;
+    return std::make_unique<ClosingSerialChooser>(
+        ShowDeviceChooser("serial", frame,
+                          std::make_unique<SerialChooserController>(
+                              frame, std::move(filters),
+                              std::move(allowed_bluetooth_service_class_ids),
+                              std::move(callback))));
   }
 };
 
-// Web Bluetooth is also off at start (chromium_main_mac.mm); this keeps any
-// path that still reaches a chooser, a scanning prompt or a pairing prompt
-// from making views UI. No chooser is content's "not supported".
+// Web Bluetooth is on only when the application declares why it uses
+// Bluetooth (chromium_main_mac.mm). The chooser is a request; the scanning
+// prompt (requestLEScan, behind Chromium's experimental features) and the
+// pairing prompts are refused, so no views UI is made.
 class BdkBluetoothClient : public ChromeBluetoothDelegateImplClient {
  public:
   std::unique_ptr<content::BluetoothChooser> RunBluetoothChooser(
       content::RenderFrameHost* frame,
       const content::BluetoothChooser::EventHandler& event_handler) override {
-    return nullptr;
+    return std::make_unique<permissions::BluetoothChooserDesktop>(
+        std::make_unique<ChromeBluetoothChooserController>(frame,
+                                                           event_handler),
+        base::BindOnce(&ShowDeviceChooser, "bluetooth", frame));
   }
   std::unique_ptr<content::BluetoothScanningPrompt> ShowBluetoothScanningPrompt(
       content::RenderFrameHost* frame,
@@ -513,6 +555,11 @@ std::unique_ptr<content::HidDelegate> CreateHidDelegate() {
 }
 
 std::unique_ptr<content::SerialDelegate> CreateSerialDelegate() {
+  // The chooser would open the Bluetooth adapter to list Bluetooth ports
+  // (patch bdk-let-an-embedder-keep-the-serial-chooser-from-asking-for-
+  // bluetooth).
+  embedder_serial_bluetooth::SetMayAskForBluetooth(
+      ApplicationDeclaresBluetoothUse());
   return std::make_unique<BdkSerialDelegate>();
 }
 
