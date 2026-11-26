@@ -3,19 +3,13 @@
    beforeinstallprompt prompt() and through the commands, listed, launched as an app page and
    uninstalled. Default presenters are scripted, so no sheet blocks the suite. Built only into the
    engine conformance app (BDK_HARNESS_ENGINE_TESTS). */
-#include <arpa/inet.h>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <sys/wait.h>
-#include <unistd.h>
 
 #include "bdk/bdk_broker.h"
 #include "bdk_testing.h"
+#include "engine_http_server.h"
 #include "test_support.h"
 
 void bdk_harness_engine_show(bdk_contents_t contents, int visible);
@@ -45,22 +39,9 @@ static const char* kIcon =
     "CANhIAwEBsJAGAgDYSAwEAbCQBgIDISBMBAGAgNhIAyEgcBAGAgDYSAMpAIGwkAYCAOBgTAQBsJAYCAMhIEwEBgIA2Eg"
     "DAQGwkAYCANhIDAQBsJAGAgMhIEwEAYCA2EgDISBwEAYCANhIAwEBsJAGAgDwdUCCpUqFQe2NBgAAAAASUVORK5CYII=";
 
-/* ---- the loopback server ----
-   The app is served from 127.0.0.1, a secure context, by a child process: the engine's interceptor
-   serves navigations only, and the renderer fetches the manifest and the browser the icon. The
-   replies are built before the fork; the child makes only system calls. */
-
-static pid_t g_server;
-static int g_port;
-static char g_origin[64];
-
-typedef struct {
-    const char* path;
-    char reply[4096];
-    size_t length;
-} route_t;
-
-static route_t g_routes[4];
+/* ---- the loopback server (engine_http_server.h) ----
+   The renderer fetches the manifest and the browser the icon, which the engine's interceptor does
+   not serve, so the app comes from 127.0.0.1, a secure context. */
 
 static size_t decode_base64(const char* in, unsigned char* out, size_t cap) {
     static const char* abc = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -81,95 +62,21 @@ static size_t decode_base64(const char* in, unsigned char* out, size_t cap) {
     return n;
 }
 
-static void route(int i, const char* path, const char* type, const void* body, size_t length) {
-    route_t* r = &g_routes[i];
-    r->path = path;
-    int head = snprintf(r->reply, sizeof r->reply,
-                        "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nCache-Control: no-store\r\n"
-                        "Connection: close\r\nContent-Length: %zu\r\n\r\n",
-                        type, length);
-    REQUIRE(head > 0 && (size_t)head + length <= sizeof r->reply);
-    memcpy(r->reply + head, body, length);
-    r->length = (size_t)head + length;
-}
-
-static void serve(int listener) {
-    for (;;) {
-        int fd = accept(listener, NULL, NULL);
-        if (fd < 0)
-            continue;
-        char request[4096];
-        ssize_t n = read(fd, request, sizeof request - 1);
-        request[n > 0 ? n : 0] = '\0';
-        const char* sp = strchr(request, ' ');
-        const route_t* found = NULL;
-        for (int i = 0; sp && i < 4; ++i) {
-            size_t len = strlen(g_routes[i].path);
-            if (strncmp(sp + 1, g_routes[i].path, len) == 0 &&
-                (sp[1 + len] == ' ' || sp[1 + len] == '?'))
-                found = &g_routes[i];
-        }
-        if (found) {
-            (void)!write(fd, found->reply, found->length);
-        } else {
-            static const char missing[] =
-                "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-            (void)!write(fd, missing, sizeof missing - 1);
-        }
-        close(fd);
-    }
-}
-
 static int start_server(void) {
     unsigned char icon[1024];
     const size_t icon_length = decode_base64(kIcon, icon, sizeof icon);
-    route(0, "/app/index.html", "text/html", kPage, strlen(kPage));
-    route(1, "/manifest.json", "application/manifest+json", kManifest, strlen(kManifest));
-    route(2, "/icon.png", "image/png", icon, icon_length);
     static const char outside[] = "<html><head><title>outside</title></head></html>";
-    route(3, "/elsewhere.html", "text/html", outside, sizeof outside - 1);
-    int listener = socket(AF_INET, SOCK_STREAM, 0);
-    struct sockaddr_in a;
-    memset(&a, 0, sizeof a);
-    a.sin_family = AF_INET;
-    a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    socklen_t len = sizeof a;
-    if (listener < 0 || bind(listener, (struct sockaddr*)&a, sizeof a) != 0 ||
-        listen(listener, 16) != 0 || getsockname(listener, (struct sockaddr*)&a, &len) != 0)
-        return 0;
-    g_port = ntohs(a.sin_port);
-    snprintf(g_origin, sizeof g_origin, "http://127.0.0.1:%d", g_port);
-    g_server = fork();
-    if (g_server == 0) {
-        /* Off the suite's output, which a pipe may be waiting to see closed. */
-        int null = open("/dev/null", O_RDWR);
-        dup2(null, 1);
-        dup2(null, 2);
-        serve(listener);
-        _exit(0);
-    }
-    close(listener);
-    return g_server > 0;
+    const t_http_route_t routes[] = {
+        {"/app/index.html", "text/html", kPage, strlen(kPage)},
+        {"/manifest.json", "application/manifest+json", kManifest, strlen(kManifest)},
+        {"/icon.png", "image/png", icon, icon_length},
+        {"/elsewhere.html", "text/html", outside, sizeof outside - 1},
+    };
+    return t_http_start(routes, 4);
 }
 
-static void stop_server(void) {
-    if (g_server > 0) {
-        kill(g_server, SIGKILL); /* not SIGTERM: the child has Chromium's handler for it */
-        waitpid(g_server, NULL, 0);
-        g_server = 0;
-    }
-}
-
-static const char* at(const char* path) {
-    static char buf[4][128];
-    static int next;
-    char* out = buf[next++ % 4];
-    snprintf(out, 128, "%s%s", g_origin, path);
-    return out;
-}
-
-#define PAGE at("/app/index.html")
-#define OUTSIDE at("/elsewhere.html")
+#define PAGE t_http_url("/app/index.html")
+#define OUTSIDE t_http_url("/elsewhere.html")
 
 static bdk_profile_t g_profile;
 static int g_calls;
@@ -265,7 +172,7 @@ static void finish(bdk_contents_t c) {
     bdk_harness_engine_show(c, 0);
     for (int i = 0; i < 10; ++i)
         t_pump();
-    stop_server();
+    t_http_stop();
 }
 
 static void run(bdk_contents_t c, const char* js) {
@@ -340,7 +247,7 @@ static void test_a_handler_installs_from_the_page_prompt(void) {
     CHECK(strstr(g_payload, "\"source\":\"page\"") != NULL);
     CHECK(strstr(g_payload, "\"name\":\"Example App\"") != NULL);
     char origin[96];
-    snprintf(origin, sizeof origin, "\"origin\":\"%s\"", g_origin);
+    snprintf(origin, sizeof origin, "\"origin\":\"%s\"", t_http_origin());
     CHECK(strstr(g_payload, origin) != NULL);
     t_capture_t cap;
     call(g_profile, 0, "webApps.list", "{}", &cap);
