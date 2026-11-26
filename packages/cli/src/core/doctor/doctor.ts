@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { loadSeries, PatchFormatError } from "@bdk/tooling/dist/chromium/common.js";
 import { BdkHomeError, bdkPaths, resolveBdkHome } from "@bdk/tooling/dist/paths.js";
 import { type Manifest, verifyRuntimeDir } from "@bdk/tooling/dist/runtime/manifest.js";
+import type { SignatureReport } from "../../platform/platform.js";
 import type { ParsedArgs } from "../args.js";
 import { isRecord } from "../config/reporter.js";
 import type { Context } from "../context.js";
@@ -13,6 +14,8 @@ import { automationDirectory, pagesDirectory } from "../pages/routes.js";
 import { sourceSettings } from "../patch/source.js";
 import type { Project } from "../project.js";
 import { resolveProject } from "../steps/config.js";
+import { frameworkFindings, pageFindings, scriptFindings, sourceConfigDigest } from "./contents.js";
+import { viteDependencyFindings } from "./dependencies.js";
 import { DOCTOR_GROUPS, type Finding, Findings } from "./findings.js";
 import { machineFindings } from "./machine.js";
 import { type ReleaseFacts, readRelease } from "./release.js";
@@ -215,7 +218,31 @@ async function projectFindings(
   };
 }
 
-/** Compatibility: the runtime's ABI against the SDK's; in source mode, the application's patches. */
+/**
+ * Source mode: the source-built runtime's ABI hash against the prebuilt runtime's for this BDK version, which
+ * the release facts record when one is published.
+ */
+function sourceAbiFindings(f: Findings, release: ReleaseFacts, manifest: Manifest): void {
+  if (release.runtime === null) {
+    f.note(
+      "doctor.prebuilt_abi_unknown",
+      "This BDK version has no published prebuilt runtime, so the source-built runtime's ABI hash is not compared with one.",
+    );
+    return;
+  }
+  if (manifest.bdk_abi.hash !== release.runtime.abi_hash) {
+    f.warning(
+      "doctor.source_abi_differs",
+      `The source-built runtime reports ABI hash ${manifest.bdk_abi.hash.slice(0, 12)}, but the prebuilt runtime of this BDK version reports ${release.runtime.abi_hash.slice(0, 12)}; the two are not the same contract.`,
+      "Rebuild the runtime from this BDK version's sources; a patch must not change BDK's public C headers.",
+    );
+  }
+}
+
+/**
+ * Compatibility: the runtime's ABI against the SDK's; in source mode, the application's patches and the
+ * source-built ABI against the prebuilt one; the pages' pins against the Vite preset.
+ */
 async function compatibilityFindings(
   project: Project,
   release: ReleaseFacts,
@@ -242,6 +269,10 @@ async function compatibilityFindings(
     }
   }
   const settings = await sourceSettings(project.dir, project.configFile);
+  if (settings.mode === "source" && manifest !== undefined) {
+    sourceAbiFindings(f, release, manifest);
+  }
+  await viteDependencyFindings(f, project);
   if (settings.mode === "source" && settings.patches.kind === "directory") {
     try {
       const { patches, orphans } = loadSeries(settings.patches.dir);
@@ -272,11 +303,16 @@ async function compatibilityFindings(
   return f;
 }
 
-/** Built application: its configuration against `bdk.toml`, and its signature. */
+/**
+ * Built application: its configuration against `bdk.toml`, its pages, scripts and runtime against the
+ * digests the build recorded, and its signature.
+ */
 async function bundleFindings(
   ctx: Context,
+  project: Project,
   appPath: string,
   resolved: Record<string, unknown> | undefined,
+  manifest: Manifest | undefined,
 ): Promise<Findings> {
   const f = new Findings("bundle");
   if (!existsSync(join(appPath, "Contents"))) {
@@ -304,7 +340,7 @@ async function bundleFindings(
     );
   }
   if (isRecord(inBundle) && resolved !== undefined) {
-    if (inBundle.config_digest !== resolved.config_digest) {
+    if (sourceConfigDigest(inBundle) !== resolved.config_digest) {
       f.error(
         "doctor.bundle_config_stale",
         "The application's bdk.resolved.json does not match bdk.toml as it is now.",
@@ -313,6 +349,18 @@ async function bundleFindings(
       );
     }
   }
+  const resources = join(appPath, "Contents", "Resources");
+  if (isRecord(inBundle)) {
+    await pageFindings(f, project, resources, inBundle, resolved);
+    scriptFindings(f, resources, inBundle);
+  }
+  await frameworkFindings(f, appPath, manifest);
+  await signatureFindings(f, ctx, appPath);
+  return f;
+}
+
+/** The signature: it verifies, its helpers' teams, Developer ID, Gatekeeper and the stapled ticket. */
+async function signatureFindings(f: Findings, ctx: Context, appPath: string): Promise<void> {
   const signature = await ctx.platform.inspectSignature(appPath);
   if (!signature.valid) {
     f.error(
@@ -343,8 +391,44 @@ async function bundleFindings(
         appPath,
       );
     }
+    developerIdFindings(f, signature, appPath);
   }
-  return f;
+}
+
+/** The leaf certificate of a signature that Gatekeeper accepts from outside the App Store. */
+export const DEVELOPER_ID_PREFIX = "Developer ID Application:";
+
+/**
+ * A team signature: whether it is a Developer ID one, and, when it is, whether Gatekeeper accepts it as
+ * it would on another Mac (that is, notarized).
+ */
+function developerIdFindings(f: Findings, signature: SignatureReport, appPath: string): void {
+  const authority = signature.authority ?? "an unknown certificate";
+  if (!authority.startsWith(DEVELOPER_ID_PREFIX)) {
+    f.warning(
+      "doctor.not_developer_id",
+      `The application is signed with ${authority}, not a Developer ID Application certificate, so Gatekeeper refuses it on other Macs.`,
+      "To distribute it outside the App Store, sign it with a Developer ID Application identity (`bdk build sign --identity`).",
+      appPath,
+    );
+    return;
+  }
+  const gatekeeper = signature.gatekeeper;
+  if (gatekeeper === undefined) return;
+  if (!gatekeeper.accepted) {
+    f.warning(
+      "doctor.gatekeeper_rejected",
+      `Gatekeeper rejects the application (${gatekeeper.source ?? gatekeeper.detail ?? "no reason given"}), so it does not open on other Macs.`,
+      "Notarize the application with `xcrun notarytool submit --wait`, then staple the ticket with `xcrun stapler staple`.",
+      appPath,
+    );
+  } else {
+    f.note(
+      "doctor.gatekeeper_accepted",
+      `Gatekeeper accepts the application: ${gatekeeper.source ?? "accepted"}, signed by ${authority}.`,
+      appPath,
+    );
+  }
 }
 
 /** `bdk doctor`: the machine, the project, compatibility and, with `--bundle`, the built application. */
@@ -375,7 +459,15 @@ export async function runDoctor(
   ];
   if (args.bundle !== undefined) {
     groups.push(
-      (await bundleFindings(ctx, resolve(ctx.cwd, args.bundle), projectResult.resolved)).list,
+      (
+        await bundleFindings(
+          ctx,
+          project,
+          resolve(ctx.cwd, args.bundle),
+          projectResult.resolved,
+          projectResult.manifest,
+        )
+      ).list,
     );
   }
   const findings = groups.flat();

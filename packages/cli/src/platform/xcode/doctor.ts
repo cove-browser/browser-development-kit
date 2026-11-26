@@ -29,6 +29,24 @@ export function parseTeam(text: string): string | undefined {
   return team === undefined || team === "not set" ? undefined : team;
 }
 
+/** The signing certificate, the first `Authority=` line of `codesign -dvv`; undefined for ad hoc. */
+export function parseAuthority(text: string): string | undefined {
+  return /^Authority=(.+)$/m.exec(text)?.[1]?.trim();
+}
+
+/** `spctl --assess -vv`'s report: `<path>: accepted` or `rejected`, then `source=` and `origin=`. */
+export function parseGatekeeper(
+  text: string,
+  accepted: boolean,
+): NonNullable<SignatureReport["gatekeeper"]> {
+  const report: NonNullable<SignatureReport["gatekeeper"]> = { accepted };
+  const source = /^source=(.+)$/m.exec(text)?.[1]?.trim();
+  if (source !== undefined) report.source = source;
+  const detail = text.trim();
+  if (!accepted && detail !== "") report.detail = detail;
+  return report;
+}
+
 /**
  * macOS, its version, the architecture (Apple Silicon even when Node runs under Rosetta), Xcode and
  * Swift. Every value comes from an Apple tool run as a subprocess.
@@ -72,7 +90,22 @@ async function nestedApps(dir: string): Promise<string[]> {
   return found;
 }
 
-/** The application's signature, its helpers' teams and the stapled ticket, through `codesign` and `stapler`. */
+/** Gatekeeper's assessment through `spctl`; undefined when `spctl` cannot be run. */
+async function assess(runner: ToolRunner, appPath: string): Promise<SignatureReport["gatekeeper"]> {
+  try {
+    const result = await runner("spctl", ["--assess", "--type", "execute", "-vv", appPath]);
+    return parseGatekeeper(`${result.stderr}\n${result.stdout}`, true);
+  } catch (error) {
+    if (!(error instanceof ToolError)) throw error;
+    if (error.code === "ENOENT") return undefined;
+    return parseGatekeeper(error.stderr, false);
+  }
+}
+
+/**
+ * The application's signature, its certificate, its helpers' teams, the stapled ticket and Gatekeeper's
+ * assessment, through `codesign`, `stapler` and `spctl`.
+ */
 export async function inspectSignature(
   runner: ToolRunner,
   appPath: string,
@@ -85,18 +118,24 @@ export async function inspectSignature(
     report.valid = false;
     report.detail = error.stderr.trim() || error.message;
   }
-  const teamOf = async (path: string) => {
-    const shown = await output(runner, "codesign", ["-dv", path]);
-    return shown === undefined ? undefined : parseTeam(`${shown.stdout}\n${shown.stderr}`);
+  // `-dvv` adds the certificate chain (`Authority=`) to what `-dv` shows.
+  const shownFor = async (path: string) => {
+    const shown = await output(runner, "codesign", ["-dvv", path]);
+    return shown === undefined ? "" : `${shown.stdout}\n${shown.stderr}`;
   };
-  const team = await teamOf(appPath);
+  const shown = await shownFor(appPath);
+  const team = parseTeam(shown);
   if (team !== undefined) report.team = team;
+  const authority = parseAuthority(shown);
+  if (authority !== undefined) report.authority = authority;
   for (const helper of await nestedApps(join(appPath, "Contents", "Frameworks"))) {
-    const helperTeam = await teamOf(helper);
+    const helperTeam = parseTeam(await shownFor(helper));
     report.helpers.push(
       helperTeam === undefined ? { path: helper } : { path: helper, team: helperTeam },
     );
   }
   report.stapled = (await output(runner, "xcrun", ["stapler", "validate", appPath])) !== undefined;
+  const gatekeeper = await assess(runner, appPath);
+  if (gatekeeper !== undefined) report.gatekeeper = gatekeeper;
   return report;
 }

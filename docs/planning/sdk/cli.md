@@ -363,12 +363,25 @@ every diagnostic the configuration resolver reports, so a diagnostic added there
 `Resources/Info.plist` and `Resources/App.entitlements`. Requirements: macOS 14 (or the resolved runtime's
 `min_os`), Xcode 26, Swift 6, arm64.
 
+Added by T-CLI-07 (2026-11-25):
+
+| Check | How | Codes |
+|---|---|---|
+| Source-built ABI against the prebuilt one | In source mode, the resolved runtime's `bdk_abi.hash` against `runtime.abi_hash` in the release facts (`bdk-release.json`). No prebuilt runtime is published yet, so today it gives a note. | `doctor.source_abi_differs` (warning), `doctor.prebuilt_abi_unknown` (note) |
+| Template-pinned dependencies | Each dependency in the pages' `package.json` that `@bdk/vite` declares a range for (`SUPPORTED_DEPENDENCIES`: Vite 8, `@vitejs/plugin-react` 6, `@preact/preset-vite` 2.10 on, `@tailwindcss/vite` 4), pinned outside it. A test keeps every pin of `apps/templates/pages/versions.json` inside its range. | `doctor.vite_dependency_unsupported` (warning) |
+| Page digests | Every bundled route of the bundle's resolved file is at `Contents/Resources/<path>`. A page `bdk build pages` copies is compared file by file with its source when the route's digest shows the source is the one built. A page Vite builds is reported as not checked: the build records no digest of Vite's output. | `doctor.page_missing`, `doctor.page_modified` (errors), `doctor.page_unverified` (note) |
+| Script digests | Each script of an enabled `[automation]` has the `bundle` and `bundle_digest` `bdk build automation` records, and the file has that digest. `doctor.bundle_config_stale` now leaves those two fields out, so a bundle with scripts is not reported stale. | `doctor.script_not_bundled`, `doctor.script_missing`, `doctor.script_modified` (errors) |
+| Framework files | Each top-level entry of the resolved runtime's manifest at `Contents/Frameworks/<entry>`, where `bdk build embed` is to copy it. Signing rewrites executables, libraries and `Info.plist` files and adds `_CodeSignature`, so those are compared by kind and executable bit only. `embed` is not built, so a bundle today embeds no runtime. | `doctor.framework_modified` (error), `doctor.runtime_not_embedded` (note) |
+| Developer ID and notarization | The signing certificate (`codesign -dvv`, first `Authority=`) and Gatekeeper's assessment (`spctl --assess --type execute -vv`). A team signature that is not `Developer ID Application:` is refused on other Macs; on a Developer ID one, Gatekeeper's answer is reported. | `doctor.not_developer_id`, `doctor.gatekeeper_rejected` (warnings), `doctor.gatekeeper_accepted` (note) |
+
+The signature checks are tested with the inspection faked. They were run once for real, on a third-party application
+signed with Developer ID and notarized but not stapled: `doctor.gatekeeper_accepted` ("Notarized Developer ID") and
+`doctor.not_notarized`. Not done: the run on a BDK application signed with Developer ID and notarized, which needs a
+signing identity (T-PKG-06).
+
 Not built: `--fix`; whether the pin is behind the newest BDK release (there is no release feed to read);
-feature overrides "outside the tested configuration" (`[chromium.features]`, S9, is not accepted); in source mode,
-that the source-built runtime reports the prebuilt one's ABI hash (no prebuilt runtime is published); with
-`--bundle`, page and script digests and the framework's files against the runtime manifest; a template-pinned
-dependency the Vite preset no longer supports. A runtime or signature mismatch is an error, exit 1, as the table
-above says, not exit 4.
+feature overrides "outside the tested configuration" (`[chromium.features]`, S9, is not accepted); a digest of
+Vite's output for each page. A runtime or signature mismatch is an error, exit 1, as the table above says, not exit 4.
 
 ## 7. Source mode and `bdk patch`
 

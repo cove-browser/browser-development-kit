@@ -35,6 +35,14 @@ not scripts. The scanner is a small tokenizer, not an HTML parser; its limits ar
 JavaScript, so `eval` and `new Function` are not found at build time. The CLI imports it from
 `@bdk/vite/tooling`, which does not load the plugin.
 
+## `SUPPORTED_DEPENDENCIES`
+
+The versions of Vite and of the Vite plugins `bdk init`'s templates pin (`apps/templates/pages/versions.json`) that the
+preset is built and checked with, each a range from `from` up to, not including, `before` (`src/supported.ts`, exported
+from `@bdk/vite/tooling`). `bdk doctor` warns about a pin in the pages' `package.json` outside them
+(`doctor.vite_dependency_unsupported`), and a CLI test keeps every template pin inside its range. Move a range when the
+templates move to a new major version and the preset has been checked with it.
+
 ## Targets
 
 `pnpm exec nx run js-vite:build`, `:test` (unit tests for each rule and a `vite.build()` integration test on a

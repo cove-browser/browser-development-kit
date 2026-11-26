@@ -41,6 +41,13 @@ export interface SignatureReport {
   detail?: string;
   /** The team of the application's signature; undefined for an ad hoc signature. */
   team?: string;
+  /** The certificate that signed the application, such as `Developer ID Application: Name (TEAM)`. */
+  authority?: string;
+  /**
+   * Gatekeeper's assessment of the application, as it would be on another Mac: accepted or not, and the
+   * source it names (`Notarized Developer ID`, `Unnotarized Developer ID`). Undefined when it could not run.
+   */
+  gatekeeper?: { accepted: boolean; source?: string; detail?: string };
   /** Every nested helper application, with the team of its signature. */
   helpers: { path: string; team?: string }[];
   /** A notarization ticket is stapled to the application. */

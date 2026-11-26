@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { PAGE_ENV } from "@bdk/vite/tooling";
 import { CliError, ExitCode } from "../exit-codes.js";
 
@@ -9,6 +9,15 @@ const CONFIG_NAMES = ["vite.config.ts", "vite.config.mts", "vite.config.js", "vi
 
 export function findViteConfig(pagesDir: string): string | undefined {
   return CONFIG_NAMES.map((name) => join(pagesDir, name)).find((file) => existsSync(file));
+}
+
+/**
+ * Whether `bdk build pages` builds the page at `source` with Vite, given the pages directory has a Vite
+ * configuration: Vite builds a page that is a direct child of the pages directory, and a page elsewhere (an
+ * override) is copied as it is.
+ */
+export function builtWithVite(pagesDir: string, source: string): boolean {
+  return dirname(source) === pagesDir;
 }
 
 /** Where Node finds `vite` for code in the pages directory: its own `node_modules`, then each parent's. */

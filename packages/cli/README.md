@@ -123,18 +123,22 @@ gives `{mode, toolchain, groups: {<group>: {errors, warnings, notes, codes}}}`. 
 |---|---|
 | machine | `doctor.host_unsupported`, `doctor.not_apple_silicon`, `doctor.macos_unknown`, `doctor.macos_too_old` (against the resolved runtime's `min_os` too), `doctor.xcode_missing`, `doctor.xcode_too_old`, `doctor.swift_missing`, `doctor.swift_too_old`, `doctor.node_missing` and `doctor.package_manager_missing` (with `Pages/vite.config.*` or automation scripts), and in source mode `doctor.bdk_home_invalid`, `doctor.bdk_home_not_writable`, `doctor.depot_tools_missing`, `doctor.checkout_missing`, `doctor.checkout_not_at_pin`, `doctor.ccache_missing` |
 | project | Every diagnostic of the configuration resolver, with `Info.plist` and entitlements read from Xcode's settings or, outside Xcode, the template's `Resources/`; `doctor.page_capabilities` (a note per bundled page), `doctor.package_unresolved`, `doctor.bdk_version_mismatch`, `doctor.runtime_unpublished`, `doctor.runtime_missing`, `doctor.runtime_modified` (`.bdk/runtime.json` verified with the tooling's `verifyRuntimeDir`), `doctor.bdk_home_invalid` |
-| compatibility | `doctor.abi_mismatch`, `doctor.runtime_other_chromium`, and in source mode `doctor.patch_invalid`, `doctor.patch_unlisted`, `doctor.application_patches` |
-| bundle | `doctor.bundle_missing` (exit 2), `doctor.bundle_config_missing`, `doctor.bundle_config_stale`, `doctor.signature_invalid`, `doctor.ad_hoc`, `doctor.helper_team_mismatch`, `doctor.not_notarized` |
+| compatibility | `doctor.abi_mismatch`, `doctor.runtime_other_chromium`, `doctor.vite_dependency_unsupported` (a dependency in the pages' `package.json` outside the range `@bdk/vite` declares in `SUPPORTED_DEPENDENCIES`), and in source mode `doctor.patch_invalid`, `doctor.patch_unlisted`, `doctor.application_patches`, `doctor.source_abi_differs` (the resolved runtime's ABI hash against the published prebuilt runtime's, `runtime.abi_hash` in `bdk-release.json`) or, with no prebuilt runtime published, `doctor.prebuilt_abi_unknown` (a note) |
+| bundle | `doctor.bundle_missing` (exit 2), `doctor.bundle_config_missing`, `doctor.bundle_config_stale` (the scripts' `bundle` and `bundle_digest`, which `bdk build automation` adds, are taken out first), `doctor.page_missing`, `doctor.page_modified` (a page `bdk build pages` copies, file by file against its source, when the route's digest shows the source is the one built), `doctor.page_unverified` (a note: a page Vite builds, whose output has no recorded digest), `doctor.script_not_bundled`, `doctor.script_missing`, `doctor.script_modified` (against `bundle_digest`), `doctor.runtime_not_embedded` (a note), `doctor.framework_modified` (`Contents/Frameworks/<entry>` against the resolved runtime's manifest; executables, `.dylib` files and `Info.plist` files by kind and executable bit only, `_CodeSignature` ignored, because signing rewrites them), `doctor.signature_invalid`, `doctor.ad_hoc`, `doctor.helper_team_mismatch`, `doctor.not_notarized`, `doctor.not_developer_id` (a team signature whose certificate is not `Developer ID Application:`), and on a Developer ID signature `doctor.gatekeeper_rejected` or `doctor.gatekeeper_accepted` (a note), from `spctl --assess` |
 
 The project group is the hook for diagnostics added to the resolver (`src/core/config/`): whatever `bdk build
 config` reports, `bdk doctor` lists, with its own severity, so `web_apps.push_unconfigured` and `services.push_google`
 (T-PWA-02) need no change here. The platform supplies the facts through `Platform.toolchain` and
 `Platform.inspectSignature` (`src/platform/xcode/doctor.ts`: `sw_vers`, `sysctl`, `xcodebuild -version`, `xcrun swift
---version`, `codesign`, `xcrun stapler`). Tests: one fixture and message per code in `src/core/doctor/doctor.test.ts`,
-with a fake platform; the parsers in `src/platform/xcode/doctor.test.ts` with a fake runner. Not built: `--fix`, page
-and script digests against the bundle, the framework's files against the runtime manifest, whether the pin is behind
-the newest BDK release (needs a release feed), and the "template-pinned dependency the Vite preset no longer
-supports" check.
+--version`, `codesign -dvv`, `xcrun stapler`, `spctl --assess --type execute -vv`). Tests: one fixture and message
+per code in `src/core/doctor/doctor.test.ts`, with a fake platform; the parsers in `src/platform/xcode/doctor.test.ts`
+with a fake runner. The pages, scripts and runtime checks are in `contents.ts`, the Vite pins in `dependencies.ts`.
+On 2026-11-25 the signature checks were run for real on a third-party application from `/Applications` that is signed
+with Developer ID and notarized but not stapled: `doctor.not_notarized` and `doctor.gatekeeper_accepted` ("Notarized
+Developer ID"). Not run: on a BDK application signed with Developer ID and notarized (no signing identity), and on a
+Developer ID signature that Gatekeeper rejects. Not built: `--fix`, whether the pin is behind the newest BDK release
+(needs a release feed), feature overrides, and a digest of Vite's output for each page (`bdk build pages` records
+none).
 
 ## Patch
 

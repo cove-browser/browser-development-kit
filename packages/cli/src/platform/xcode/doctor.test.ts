@@ -5,14 +5,21 @@ import { tempDir } from "../../test-support.js";
 import {
   hostToolchain,
   inspectSignature,
+  parseAuthority,
+  parseGatekeeper,
   parseSwiftVersion,
   parseTeam,
   parseXcodeVersion,
 } from "./doctor.js";
 import { ToolError, type ToolRunner } from "./tools.js";
 
-/** A runner that answers from a table, and fails (as a missing tool does) for anything else. */
-function fake(table: Record<string, { stdout?: string; stderr?: string } | "fail">): {
+/**
+ * A runner that answers from a table, and fails (as a missing tool does) for anything else. An answer with
+ * `exit` is a tool that runs and exits with that status, its `stderr` in the error.
+ */
+function fake(
+  table: Record<string, { stdout?: string; stderr?: string; exit?: number } | "fail">,
+): {
   runner: ToolRunner;
   calls: string[];
 } {
@@ -25,6 +32,9 @@ function fake(table: Record<string, { stdout?: string; stderr?: string } | "fail
       return Promise.reject(
         new ToolError(command, args, "failed", answer === undefined ? "ENOENT" : 1),
       );
+    }
+    if (answer.exit !== undefined) {
+      return Promise.reject(new ToolError(command, args, answer.stderr ?? "", answer.exit));
     }
     return Promise.resolve({ stdout: answer.stdout ?? "", stderr: answer.stderr ?? "" });
   };
@@ -62,17 +72,56 @@ describe("xcode doctor facts", () => {
     await mkdir(helper, { recursive: true });
     const { runner, calls } = fake({
       [`codesign --verify --deep --strict ${app}`]: {},
-      [`codesign -dv ${app}`]: { stderr: "TeamIdentifier=AAAA\n" },
-      [`codesign -dv ${helper}`]: { stderr: "TeamIdentifier=BBBB\n" },
+      [`codesign -dvv ${app}`]: {
+        stderr:
+          "Authority=Developer ID Application: A Company (AAAA)\nAuthority=Developer ID Certification Authority\nTeamIdentifier=AAAA\n",
+      },
+      [`codesign -dvv ${helper}`]: { stderr: "TeamIdentifier=BBBB\n" },
       [`xcrun stapler validate ${app}`]: "fail",
+      [`spctl --assess --type execute -vv ${app}`]: {
+        exit: 3,
+        stderr: `${app}: rejected\nsource=Unnotarized Developer ID\norigin=Developer ID Application: A Company (AAAA)\n`,
+      },
     });
-    expect(await inspectSignature(runner, app)).toEqual({
+    expect(await inspectSignature(runner, app)).toMatchObject({
       valid: true,
       team: "AAAA",
+      authority: "Developer ID Application: A Company (AAAA)",
       helpers: [{ path: helper, team: "BBBB" }],
       stapled: false,
+      gatekeeper: { accepted: false, source: "Unnotarized Developer ID" },
     });
     expect(calls[0]).toBe(`codesign --verify --deep --strict ${app}`);
+  });
+
+  it("reads Gatekeeper's acceptance, and leaves it out when spctl cannot run", async () => {
+    const app = join(await tempDir(), "Demo.app");
+    await mkdir(app);
+    const accepted = fake({
+      [`codesign --verify --deep --strict ${app}`]: {},
+      [`spctl --assess --type execute -vv ${app}`]: {
+        stderr: `${app}: accepted\nsource=Notarized Developer ID\n`,
+      },
+    });
+    expect((await inspectSignature(accepted.runner, app)).gatekeeper).toEqual({
+      accepted: true,
+      source: "Notarized Developer ID",
+    });
+    const missing = fake({ [`codesign --verify --deep --strict ${app}`]: {} });
+    const report = await inspectSignature(missing.runner, app);
+    expect(report.gatekeeper).toBeUndefined();
+    expect(report.authority).toBeUndefined();
+  });
+
+  it("parses the certificate and Gatekeeper's words", () => {
+    expect(
+      parseAuthority("Identifier=x\nAuthority=Apple Development: P (T)\nAuthority=WWDR\n"),
+    ).toBe("Apple Development: P (T)");
+    expect(parseAuthority("Signature=adhoc\n")).toBeUndefined();
+    expect(parseGatekeeper("/a.app: rejected\n", false)).toEqual({
+      accepted: false,
+      detail: "/a.app: rejected",
+    });
   });
 
   it("reports a signature that does not verify, with codesign's words", async () => {

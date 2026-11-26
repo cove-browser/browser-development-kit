@@ -1,14 +1,21 @@
 import { execFileSync } from "node:child_process";
-import { chmod, mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { chmod, cp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { scanFiles } from "@bdk/tooling/dist/runtime/manifest.js";
+import { SUPPORTED_DEPENDENCIES } from "@bdk/vite/tooling";
 import { describe, expect, it } from "vitest";
-import { createAssets } from "../../assets.js";
+import { type Assets, createAssets } from "../../assets.js";
 import type { HostToolchain, Platform, SignatureReport } from "../../platform/platform.js";
 import { tempDir, tempProject, testContext } from "../../test-support.js";
+import { sha256 } from "../config/digest.js";
 import { resolveConfig } from "../config/index.js";
+import { configDigest } from "../config/resolve.js";
 import type { Diagnostic } from "../diagnostics.js";
 import { ExitCode } from "../exit-codes.js";
 import { run } from "../run.js";
+import { frameworkDifferences, pageDifferences } from "./contents.js";
+import { inRange, pinnedVersion } from "./dependencies.js";
+import { RELEASE_ASSET, type ReleaseFacts } from "./release.js";
 
 /** A healthy Apple Silicon Mac with a current Xcode. */
 const GOOD: HostToolchain = {
@@ -52,17 +59,28 @@ const STORE_ENTRY = "fixture-runtime";
 const RUNTIME_POINTER = JSON.stringify({ source_key: STORE_ENTRY });
 
 /**
- * A runtime in the test's store that verifies against its manifest (it has no files besides the manifest),
- * resolved by the project. By default it is this BDK's pin and ABI.
+ * A runtime in the test's store that verifies against its manifest (by default it has no files besides the
+ * manifest), resolved by the project. By default it is this BDK's pin and ABI. Returns the store directory.
  */
 async function storeRuntime(
   dir: string,
-  over: { abi?: object; chromium?: { tag: string; commit: string }; minOs?: string },
-): Promise<void> {
+  over: {
+    abi?: object;
+    chromium?: { tag: string; commit: string };
+    minOs?: string;
+    /** Files of the runtime, by path, with their contents. */
+    files?: Record<string, string>;
+  },
+): Promise<string> {
   const release = JSON.parse(createAssets({ packaged: false }).readText("bdk-release.json"));
   const key = STORE_ENTRY;
   const store = join(dir, ".home", "runtimes", key);
   await mkdir(store, { recursive: true });
+  for (const [path, content] of Object.entries(over.files ?? {})) {
+    await mkdir(dirname(join(store, path)), { recursive: true });
+    await writeFile(join(store, path), content);
+  }
+  const files = await scanFiles(store);
   await writeFile(
     join(store, "manifest.json"),
     JSON.stringify({
@@ -71,17 +89,30 @@ async function storeRuntime(
       bdk_abi: over.abi ?? release.abi,
       chromium: { ...(over.chromium ?? release.chromium), deps_digest: "d" },
       target: { os: "macos", arch: "arm64", min_os: over.minOs ?? "14.0" },
-      files: {},
+      files,
     }),
   );
   await mkdir(join(dir, ".bdk"), { recursive: true });
   await writeFile(join(dir, ".bdk", "runtime.json"), JSON.stringify({ source_key: key }));
+  return store;
 }
 
 interface Doctor {
   code: number;
   diagnostics: Diagnostic[];
   result: { groups: Record<string, { codes: string[] }> };
+}
+
+/** The release facts of this repository, with `runtime` replaced: the prebuilt runtime a release publishes. */
+function withPublishedRuntime(runtime: ReleaseFacts["runtime"]): Assets {
+  const assets = createAssets({ packaged: false });
+  return {
+    ...assets,
+    readText: (name) =>
+      name === RELEASE_ASSET
+        ? JSON.stringify({ ...JSON.parse(assets.readText(name)), runtime })
+        : assets.readText(name),
+  };
 }
 
 /** Runs `bdk doctor --json` with the real schema and resolver. */
@@ -92,12 +123,13 @@ async function doctor(
     env?: NodeJS.ProcessEnv;
     signature?: SignatureReport;
     args?: string[];
+    assets?: Assets;
   } = {},
 ): Promise<Doctor> {
   const ctx = testContext({
     cwd: dir,
     env: { PATH: await bin(), BDK_HOME: join(dir, ".home"), ...options.env },
-    assets: createAssets({ packaged: false }),
+    assets: options.assets ?? createAssets({ packaged: false }),
     platform: platform(options.toolchain ?? GOOD, options.signature),
     resolveConfig,
   });
@@ -151,6 +183,7 @@ describe("bdk doctor: each failure mode has a fixture and a message", () => {
     toolchain?: HostToolchain;
     toml?: string;
     setup?: (dir: string) => Promise<NodeJS.ProcessEnv | undefined>;
+    assets?: () => Assets;
   }[] = [
     {
       name: "a host that is not macOS",
@@ -383,6 +416,54 @@ describe("bdk doctor: each failure mode has a fixture and a message", () => {
       },
     },
     {
+      name: "a source-built runtime whose ABI hash is not the prebuilt runtime's",
+      code: "doctor.source_abi_differs",
+      group: "compatibility",
+      severity: "warning",
+      message: /prebuilt runtime of this BDK version reports eeeeeeeeeeee/,
+      toml: '[browser]\nname = "Demo"\n\n[runtime]\nmode = "source"\n',
+      setup: async (dir) => {
+        await withDepotTools(dir);
+        await storeRuntime(dir, {});
+        return undefined;
+      },
+      assets: () =>
+        withPublishedRuntime({
+          source_key: "prebuilt",
+          manifest_sha256: "0".repeat(64),
+          abi_hash: "e".repeat(64),
+        }),
+    },
+    {
+      name: "a source-built runtime and no prebuilt runtime to compare its ABI with",
+      code: "doctor.prebuilt_abi_unknown",
+      group: "compatibility",
+      severity: "note",
+      message: /not compared with one/,
+      toml: '[browser]\nname = "Demo"\n\n[runtime]\nmode = "source"\n',
+      setup: async (dir) => {
+        await withDepotTools(dir);
+        await storeRuntime(dir, {});
+        return undefined;
+      },
+    },
+    {
+      name: "pages that pin a Vite the preset does not support",
+      code: "doctor.vite_dependency_unsupported",
+      group: "compatibility",
+      severity: "warning",
+      message:
+        /pin vite \^9\.1\.0, which BDK's Vite preset does not support: .* 8\.0\.0 up to, not including, 9\.0\.0/,
+      setup: async (dir) => {
+        await mkdir(join(dir, "Pages"));
+        await writeFile(
+          join(dir, "Pages", "package.json"),
+          JSON.stringify({ devDependencies: { vite: "^9.1.0", typescript: "7.0.2" } }),
+        );
+        return undefined;
+      },
+    },
+    {
       name: "an application patch series that lists a missing file",
       code: "doctor.patch_invalid",
       group: "compatibility",
@@ -403,6 +484,7 @@ describe("bdk doctor: each failure mode has a fixture and a message", () => {
     const env = (await c.setup?.(dir)) ?? {};
     const d = await doctor(dir, {
       ...(c.toolchain === undefined ? {} : { toolchain: c.toolchain }),
+      ...(c.assets === undefined ? {} : { assets: c.assets() }),
       env,
     });
     const finding = d.diagnostics.find((x) => x.code === c.code);
@@ -546,11 +628,379 @@ describe("bdk doctor --bundle", () => {
     expect(finding?.message).toMatch(message);
   });
 
+  it.each([
+    [
+      "doctor.not_developer_id",
+      { authority: "Apple Development: A Person (AAAA)" },
+      /signed with Apple Development: A Person \(AAAA\), not a Developer ID/,
+    ],
+    [
+      "doctor.gatekeeper_rejected",
+      {
+        authority: "Developer ID Application: A Company (AAAA)",
+        gatekeeper: { accepted: false, source: "Unnotarized Developer ID" },
+      },
+      /Gatekeeper rejects the application \(Unnotarized Developer ID\)/,
+    ],
+    [
+      "doctor.gatekeeper_accepted",
+      {
+        authority: "Developer ID Application: A Company (AAAA)",
+        gatekeeper: { accepted: true, source: "Notarized Developer ID" },
+      },
+      /accepts the application: Notarized Developer ID, signed by Developer ID Application: A Company/,
+    ],
+  ] as const)("%s on a team signature", async (code, over, message) => {
+    const { dir } = await tempProject();
+    await app(dir, {});
+    const d = await doctor(dir, {
+      args: ["--bundle", "build/Demo.app"],
+      signature: {
+        valid: true,
+        team: "AAAA",
+        helpers: [],
+        stapled: true,
+        ...over,
+        ...("gatekeeper" in over ? { gatekeeper: { ...over.gatekeeper } } : {}),
+      },
+    });
+    const finding = d.diagnostics.find((x) => x.code === code);
+    expect(finding?.message).toMatch(message);
+    expect(d.result.groups.bundle?.codes).toContain(code);
+  });
+
+  it("does not ask Gatekeeper about a signature that is not Developer ID", async () => {
+    const { dir } = await tempProject();
+    await app(dir, {});
+    const d = await doctor(dir, {
+      args: ["--bundle", "build/Demo.app"],
+      signature: {
+        valid: true,
+        team: "AAAA",
+        authority: "Apple Development: A Person (AAAA)",
+        helpers: [],
+        stapled: false,
+        gatekeeper: { accepted: false, source: "no usable signature" },
+      },
+    });
+    expect(codes(d)).not.toContain("doctor.gatekeeper_rejected");
+  });
+
   it("refuses a path that is not an application (usage error)", async () => {
     const { dir } = await tempProject();
     const d = await doctor(dir, { args: ["--bundle", "nowhere.app"] });
     expect(d.code).toBe(ExitCode.Usage);
     expect(codes(d)).toEqual(["doctor.bundle_missing"]);
+  });
+});
+
+describe("bdk doctor --bundle: pages, scripts and the runtime against what the build recorded", () => {
+  const APP = "build/Demo.app";
+
+  /** `bdk build config` in the project: the resolved file the build copies into the bundle. */
+  async function resolveIn(dir: string): Promise<Record<string, unknown>> {
+    const ctx = testContext({
+      cwd: dir,
+      env: { PATH: await bin() },
+      assets: createAssets({ packaged: false }),
+      platform: platform(GOOD),
+      resolveConfig,
+    });
+    expect(await run(["build", "config"], ctx)).toBe(0);
+    return JSON.parse(await readFile(join(dir, "bdk.resolved.json"), "utf8"));
+  }
+
+  /** An application whose Resources hold `resolved` and, unless `pages` is false, a copy of `Pages/`. */
+  async function built(
+    dir: string,
+    resolved: Record<string, unknown>,
+    pages = true,
+  ): Promise<string> {
+    const resources = join(dir, APP, "Contents", "Resources");
+    await mkdir(resources, { recursive: true });
+    await writeFile(join(resources, "bdk.resolved.json"), JSON.stringify(resolved));
+    if (pages) await cp(join(dir, "Pages"), join(resources, "Pages"), { recursive: true });
+    return resources;
+  }
+
+  async function withPage(dir: string): Promise<void> {
+    await mkdir(join(dir, "Pages", "Settings"), { recursive: true });
+    await writeFile(join(dir, "Pages", "Settings", "index.html"), "<!doctype html>\n");
+    await writeFile(join(dir, "Pages", "Settings", "main.js"), "console.log(1);\n");
+  }
+
+  function bundleCodes(d: Doctor): string[] {
+    return d.result.groups.bundle?.codes ?? [];
+  }
+
+  it("reports nothing for pages copied as they are and a matching configuration", async () => {
+    const { dir } = await tempProject();
+    await withPage(dir);
+    await built(dir, await resolveIn(dir));
+    const d = await doctor(dir, { args: ["--bundle", APP] });
+    expect(bundleCodes(d)).toEqual(["doctor.ad_hoc"]);
+  });
+
+  it("doctor.page_missing: a bundled page that is not in the application", async () => {
+    const { dir } = await tempProject();
+    await withPage(dir);
+    await built(dir, await resolveIn(dir), false);
+    const d = await doctor(dir, { args: ["--bundle", APP] });
+    const finding = d.diagnostics.find((x) => x.code === "doctor.page_missing");
+    expect(finding?.message).toMatch(/The page "settings" is not in the application/);
+    expect(finding?.fix).toBeTruthy();
+    expect(d.code).toBe(ExitCode.ProjectFailure);
+  });
+
+  it("doctor.page_modified: a copied page whose files differ from its source", async () => {
+    const { dir } = await tempProject();
+    await withPage(dir);
+    const resources = await built(dir, await resolveIn(dir));
+    await writeFile(join(resources, "Pages", "Settings", "main.js"), "console.log(2);\n");
+    await writeFile(join(resources, "Pages", "Settings", "extra.js"), "\n");
+    const d = await doctor(dir, { args: ["--bundle", APP] });
+    const finding = d.diagnostics.find((x) => x.code === "doctor.page_modified");
+    expect(finding?.message).toBe(
+      'The page "settings" in the application does not match its source: modified: main.js; unexpected: extra.js.',
+    );
+    expect(codes(d)).not.toContain("doctor.bundle_config_stale");
+    expect(d.code).toBe(ExitCode.ProjectFailure);
+  });
+
+  it("does not compare a page whose source changed after the build (the configuration is stale)", async () => {
+    const { dir } = await tempProject();
+    await withPage(dir);
+    await built(dir, await resolveIn(dir));
+    await writeFile(join(dir, "Pages", "Settings", "main.js"), "console.log(3);\n");
+    const d = await doctor(dir, { args: ["--bundle", APP] });
+    expect(bundleCodes(d)).toContain("doctor.bundle_config_stale");
+    expect(bundleCodes(d)).not.toContain("doctor.page_modified");
+  });
+
+  it("doctor.page_unverified: a page Vite builds, whose output has no recorded digest", async () => {
+    const { dir } = await tempProject();
+    await withPage(dir);
+    await writeFile(join(dir, "Pages", "vite.config.ts"), "export default {};\n");
+    await built(dir, await resolveIn(dir));
+    const d = await doctor(dir, {
+      args: ["--bundle", APP],
+      env: { PATH: await bin("node", "pnpm") },
+    });
+    const finding = d.diagnostics.find((x) => x.code === "doctor.page_unverified");
+    expect(finding?.severity).toBe("note");
+    expect(finding?.message).toMatch(/built by Vite/);
+  });
+
+  /** A resolved file with one automation script, as `bdk build automation` completes it. */
+  function withScript(bundle: Record<string, unknown>): Record<string, unknown> {
+    return {
+      config_digest: "sha256:x",
+      routes: {},
+      automation: {
+        enabled: true,
+        scripts: { hello: { path: "Automation/hello.ts", digest: "sha256:s", ...bundle } },
+      },
+    };
+  }
+
+  it.each([
+    ["doctor.script_not_bundled", {}, undefined, /"hello" was not bundled/],
+    [
+      "doctor.script_missing",
+      { bundle: "BDK/Automation/hello.js", bundle_digest: sha256("x") },
+      undefined,
+      /"hello" is not in the application/,
+    ],
+    [
+      "doctor.script_modified",
+      { bundle: "BDK/Automation/hello.js", bundle_digest: sha256("x") },
+      "y",
+      /"hello" in the application does not match the digest/,
+    ],
+  ] as const)("%s", async (code, bundle, content, message) => {
+    const { dir } = await tempProject();
+    const resources = await built(dir, withScript(bundle), false);
+    if (content !== undefined) {
+      await mkdir(join(resources, "BDK", "Automation"), { recursive: true });
+      await writeFile(join(resources, "BDK", "Automation", "hello.js"), content);
+    }
+    const d = await doctor(dir, { args: ["--bundle", APP] });
+    const finding = d.diagnostics.find((x) => x.code === code);
+    expect(finding?.message).toMatch(message);
+    expect(finding?.severity).toBe("error");
+    expect(finding?.fix).toBeTruthy();
+  });
+
+  it("accepts a script whose bundle has the recorded digest", async () => {
+    const { dir } = await tempProject();
+    const resources = await built(
+      dir,
+      withScript({ bundle: "BDK/Automation/hello.js", bundle_digest: sha256("x") }),
+      false,
+    );
+    await mkdir(join(resources, "BDK", "Automation"), { recursive: true });
+    await writeFile(join(resources, "BDK", "Automation", "hello.js"), "x");
+    const d = await doctor(dir, { args: ["--bundle", APP] });
+    expect(bundleCodes(d).filter((c) => c.startsWith("doctor.script_"))).toEqual([]);
+  });
+
+  it("compares the configuration without the scripts' bundles, which `bdk build automation` adds", async () => {
+    const { dir } = await tempProject();
+    await writeFile(
+      join(dir, "bdk.toml"),
+      '[browser]\nname = "Demo"\n\n[automation]\nenabled = true\n',
+    );
+    await mkdir(join(dir, "Automation"));
+    await writeFile(join(dir, "Automation", "hello.ts"), "export default () => 1;\n");
+    const { config_digest: _digest, ...resolved } = await resolveIn(dir);
+    const automation = resolved.automation as { scripts: Record<string, object> };
+    // As `bdk build automation` writes it: the scripts' bundles added and the digest recomputed.
+    const body = {
+      ...resolved,
+      automation: {
+        ...automation,
+        scripts: {
+          hello: {
+            ...automation.scripts.hello,
+            bundle: "BDK/Automation/hello.js",
+            bundle_digest: sha256("x"),
+          },
+        },
+      },
+    };
+    const resources = await built(dir, { ...body, config_digest: configDigest(body) }, false);
+    await mkdir(join(resources, "BDK", "Automation"), { recursive: true });
+    await writeFile(join(resources, "BDK", "Automation", "hello.js"), "x");
+    const d = await doctor(dir, {
+      args: ["--bundle", APP],
+      env: { PATH: await bin("node", "pnpm") },
+    });
+    expect(bundleCodes(d)).toEqual(["doctor.ad_hoc"]);
+  });
+
+  const RUNTIME_FILES = {
+    "Chromium.app/Contents/Info.plist": "<plist/>",
+    "Chromium.app/Contents/Resources/resources.pak": "pak",
+  };
+
+  it("doctor.runtime_not_embedded: a resolved runtime the application does not embed", async () => {
+    const { dir } = await tempProject();
+    await storeRuntime(dir, { files: RUNTIME_FILES });
+    await built(dir, {}, false);
+    const d = await doctor(dir, { args: ["--bundle", APP] });
+    const finding = d.diagnostics.find((x) => x.code === "doctor.runtime_not_embedded");
+    expect(finding?.message).toMatch(/embeds no runtime \(Chromium\.app is not in/);
+  });
+
+  it("accepts an embedded runtime that signing changed only where it signs", async () => {
+    const { dir } = await tempProject();
+    const store = await storeRuntime(dir, { files: RUNTIME_FILES });
+    await built(dir, {}, false);
+    const frameworks = join(dir, APP, "Contents", "Frameworks");
+    await cp(join(store, "Chromium.app"), join(frameworks, "Chromium.app"), { recursive: true });
+    await writeFile(join(frameworks, "Chromium.app", "Contents", "Info.plist"), "<plist id/>");
+    await mkdir(join(frameworks, "Chromium.app", "Contents", "_CodeSignature"));
+    await writeFile(
+      join(frameworks, "Chromium.app", "Contents", "_CodeSignature", "CodeResources"),
+      "",
+    );
+    await mkdir(join(frameworks, "Other.framework"));
+    const d = await doctor(dir, { args: ["--bundle", APP] });
+    expect(codes(d)).not.toContain("doctor.framework_modified");
+    expect(codes(d)).not.toContain("doctor.runtime_not_embedded");
+  });
+
+  it("doctor.framework_modified: an embedded runtime whose files are not the manifest's", async () => {
+    const { dir } = await tempProject();
+    const store = await storeRuntime(dir, { files: RUNTIME_FILES });
+    await built(dir, {}, false);
+    const frameworks = join(dir, APP, "Contents", "Frameworks");
+    await cp(join(store, "Chromium.app"), join(frameworks, "Chromium.app"), { recursive: true });
+    await writeFile(
+      join(frameworks, "Chromium.app", "Contents", "Resources", "resources.pak"),
+      "x",
+    );
+    const d = await doctor(dir, { args: ["--bundle", APP] });
+    const finding = d.diagnostics.find((x) => x.code === "doctor.framework_modified");
+    expect(finding?.message).toBe(
+      `The runtime in the application does not match the manifest of runtime ${STORE_ENTRY}: modified: Chromium.app/Contents/Resources/resources.pak.`,
+    );
+    expect(d.code).toBe(ExitCode.ProjectFailure);
+  });
+});
+
+describe("the bundle checks' comparisons", () => {
+  it("compares a runtime's files by kind and executable bit where signing rewrites them", () => {
+    const manifest = {
+      "R.app/Contents/MacOS/R": "sha256:a:exec",
+      "R.app/Contents/Info.plist": "sha256:b",
+      "R.app/Contents/Libraries/l.dylib": "sha256:c",
+      "R.app/Contents/Resources/x.pak": "sha256:d",
+      "R.app/Current": "symlink:A",
+      "R.app/Contents/Resources/gone.pak": "sha256:e",
+    };
+    expect(
+      frameworkDifferences(manifest, {
+        "R.app/Contents/MacOS/R": "sha256:signed:exec",
+        "R.app/Contents/Info.plist": "sha256:rewritten",
+        "R.app/Contents/Libraries/l.dylib": "sha256:signed",
+        "R.app/Contents/Resources/x.pak": "sha256:d",
+        "R.app/Current": "symlink:B",
+        "R.app/Contents/_CodeSignature/CodeResources": "sha256:f",
+        "R.app/Contents/Resources/new.pak": "sha256:g",
+      }),
+    ).toEqual([
+      "relinked: R.app/Current",
+      "missing: R.app/Contents/Resources/gone.pak",
+      "unexpected: R.app/Contents/Resources/new.pak",
+    ]);
+    expect(frameworkDifferences({ "R.app/x": "sha256:a:exec" }, { "R.app/x": "sha256:a" })).toEqual(
+      ["executable bit differs: R.app/x"],
+    );
+  });
+
+  it("lists a page's missing, modified and unexpected files", () => {
+    expect(
+      pageDifferences(
+        new Map([
+          ["a", "1"],
+          ["b", "2"],
+        ]),
+        new Map([
+          ["b", "3"],
+          ["c", "4"],
+        ]),
+      ),
+    ).toEqual(["missing: a", "modified: b", "unexpected: c"]);
+  });
+
+  it("reads the version a specifier pins, and leaves out tags, paths and ranges it cannot", () => {
+    expect(pinnedVersion("8.3.8")).toBe("8.3.8");
+    expect(pinnedVersion("^8.3.8")).toBe("8.3.8");
+    expect(pinnedVersion("~8.3")).toBe("8.3");
+    expect(pinnedVersion("latest")).toBeUndefined();
+    expect(pinnedVersion("file:../vite")).toBeUndefined();
+    expect(pinnedVersion(">=8 <10")).toBeUndefined();
+    expect(inRange("8.3.8", { from: "8.0.0", before: "9.0.0" })).toBe(true);
+    expect(inRange("9.0.0", { from: "8.0.0", before: "9.0.0" })).toBe(false);
+  });
+
+  it("supports every Vite and Vite plugin version bdk init's templates pin", () => {
+    const versions = JSON.parse(
+      createAssets({ packaged: false }).readText("templates/pages/versions.json"),
+    );
+    const pins: Record<string, string> = { ...versions.common };
+    for (const pin of Object.values(versions.styling)) Object.assign(pins, pin);
+    for (const framework of Object.values(versions.framework) as Record<string, object>[]) {
+      for (const list of Object.values(framework)) Object.assign(pins, list);
+    }
+    const vite = Object.entries(pins).filter(([name]) => name === "vite" || /vite/.test(name));
+    expect(vite.length).toBeGreaterThan(1);
+    for (const [name, version] of vite) {
+      const range = SUPPORTED_DEPENDENCIES[name];
+      expect(range, `${name} has no supported range in @bdk/vite`).toBeDefined();
+      if (range !== undefined) expect(inRange(version, range), `${name} ${version}`).toBe(true);
+    }
   });
 });
 
