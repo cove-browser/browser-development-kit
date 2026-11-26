@@ -10,6 +10,9 @@
 #import <AppKit/AppKit.h>
 #include <libproc.h>
 #import <objc/runtime.h>
+
+extern "C" void* objc_autoreleasePoolPush(void);
+extern "C" void objc_autoreleasePoolPop(void*);
 #include <unistd.h>
 
 #include <arpa/inet.h>
@@ -216,7 +219,29 @@ int bdk_harness_engine_open_descriptors(void) {
     return proc_pidinfo(getpid(), PROC_PIDLISTFDS, 0, nullptr, 0) / (int)sizeof(proc_fdinfo);
 }
 
+static size_t PumpUntilIdle(void);
+
+/* The autorelease pool the outermost pump leaves for the scenario's code until the next pump.
+   The suite runs as one Chromium task, inside one pass of the run loop, so nothing would drain
+   what the scenarios autorelease: a page's views were kept after it was destroyed (T-REL-03). An
+   application's events each drain their own. */
+static void* g_scenario_pool;
+static int g_pump_depth;
+
 size_t bdk_harness_pump(void) {
+    if (g_pump_depth == 0 && g_scenario_pool) {
+        objc_autoreleasePoolPop(g_scenario_pool);
+        g_scenario_pool = nullptr;
+    }
+    ++g_pump_depth;
+    size_t slices = PumpUntilIdle();
+    --g_pump_depth;
+    if (g_pump_depth == 0)
+        g_scenario_pool = objc_autoreleasePoolPush();
+    return slices;
+}
+
+static size_t PumpUntilIdle(void) {
     static size_t last_windows;
     if (getenv("BDK_TEST_TRACE")) {
         size_t windows = bdk_testing_chrome_window_count();
@@ -806,9 +831,23 @@ void RunSuite(void*) {
 #pragma clang diagnostic pop
     }
     g_warmup = warmup;
-    /* Posted through the engine, so it runs as a Chromium task inside Chromium's main loop, which
-       must be the outer one for the suite's nested pumping to let Chromium work. */
-    bdk_post_to_ui_thread(RunSuite, nullptr);
+    /* The suite runs inside Chromium's main loop, which must be the outer one for the suite's
+       nested pumping to let Chromium work, but not inside a Chromium task: it runs where an
+       application's own code does, from the run loop between tasks. PartitionAlloc purges what a
+       task freed only when the outermost task ends, so a suite run as one task kept everything
+       freed while it ran, about 2.4 MB a page (T-REL-03). A task posted through the engine runs
+       once Chromium's loop has started; it adds a one-shot timer, which that loop fires after the
+       task has ended. */
+    bdk_post_to_ui_thread(
+        [](void*) {
+            CFRunLoopTimerRef timer = CFRunLoopTimerCreateWithHandler(
+                kCFAllocatorDefault, CFAbsoluteTimeGetCurrent(), 0, 0, 0, ^(CFRunLoopTimerRef) {
+                  RunSuite(nullptr);
+                });
+            CFRunLoopAddTimer(CFRunLoopGetMain(), timer, kCFRunLoopCommonModes);
+            CFRelease(timer);
+        },
+        nullptr);
 }
 
 @end

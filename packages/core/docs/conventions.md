@@ -173,7 +173,9 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
     resident size bounded. `BDK_ROBUSTNESS_ITERATIONS` sets the rounds: 100 by default in `core:test`,
     50000 in `core:test-release` (about three seconds on the stub), where the memory bound applies. The stub
     treats a load of `chrome://crash` as Chromium does: the page's renderer goes (`reason` `crashed`) and
-    nothing commits.
+    nothing commits. On the engine the suite runs from a run-loop timer inside Chromium's main loop, not
+    as a Chromium task, and the harness's pump drains an autorelease pool between steps: run as one task,
+    nothing the pages freed was released (PartitionAlloc's scheduler-loop quarantine, amendments 2.28).
 
 ### The UI request router
 
