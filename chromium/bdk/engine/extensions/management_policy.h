@@ -36,18 +36,25 @@ namespace bdk {
 //   extension's chrome object) and counts each as an `unavailableApi` error,
 //   and turns off the extension's access to private profiles when
 //   [extensions] allow_in_private is "never".
+// - The extension keys of S6 (T-EXT-14; extensions.md section 9): an
+//   identifier in [extensions.install] blocklist is refused from every source
+//   and, already installed, kept disabled (the reason "blocklisted"); a
+//   bundled extension cannot be uninstalled, nor disabled when it is required;
+//   and Chromium's developer mode follows [extensions] developer_mode.
 
 // The error message of a refusal starts with one of these, so the install
 // flow can tell its kind from Chromium's own refusals.
 inline constexpr char kRefusalIncompatible[] = "[bdk:incompatible] ";
 inline constexpr char kRefusalSource[] = "[bdk:source] ";
+inline constexpr char kRefusalBlocklisted[] = "[bdk:blocklisted] ";
 
 // What BDK decides about an extension Chromium has unpacked or loaded.
 struct Evaluation {
   std::string report_json;                        // the CompatibilityReport
   std::optional<bdkcore::ext::Finding> blocking;  // the finding that refused
   bool refused = false;
-  // When refused: sourceNotAllowed or incompatible (BDK_CODE_*), and why.
+  // When refused: sourceNotAllowed, incompatible or blocklisted (BDK_CODE_*),
+  // and why.
   std::string code;
   std::string message;
 };

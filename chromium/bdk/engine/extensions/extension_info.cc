@@ -15,6 +15,7 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/values.h"
+#include "bdk/engine/extensions/bundled_extensions.h"
 #include "bdk/engine/extensions/extension_support.h"
 #include "bdk/engine/json_util.h"
 #include "chrome/browser/extensions/error_console/error_console.h"
@@ -89,6 +90,9 @@ const char* ReasonName(extensions::disable_reason::DisableReason reason) {
     case extensions::disable_reason::DISABLE_UNSUPPORTED_REQUIREMENT:
       return "incompatible";
     case extensions::disable_reason::DISABLE_GREYLIST:
+    // BDK's only reason to keep an extension disabled: [extensions.install]
+    // blocklist (management_policy.cc).
+    case extensions::disable_reason::DISABLE_BLOCKED_BY_POLICY:
       return "blocklisted";
     case extensions::disable_reason::DISABLE_CORRUPTED:
       return "corrupted";
@@ -245,7 +249,8 @@ void RecordPinned(Profile* profile,
 }
 
 std::string SourceKindOf(Profile* profile, const Extension& extension) {
-  if (extensions::Manifest::IsComponentLocation(extension.location())) {
+  if (extensions::Manifest::IsComponentLocation(extension.location()) ||
+      FindBundledExtension(extension.path())) {
     return "bundled";
   }
   if (extensions::Manifest::IsUnpackedLocation(extension.location())) {

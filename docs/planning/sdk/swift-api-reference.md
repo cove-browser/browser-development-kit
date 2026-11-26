@@ -305,7 +305,7 @@ All read-only unless marked, on the main actor, each with a matching event.
 | Transition | History ranking and autocomplete use it. Address bar passes `.typed`, bookmark passes `.bookmark`. |
 | Internal URLs | The application may navigate to any branded internal URL. A web page may not. |
 | Native route | Calls the registered handler and throws `navigation.handledNatively`. |
-| Navigation policy | `runtime.navigationPolicy` allows, cancels or redirects a navigation before it starts ([swift-api.md](swift-api.md) 6.3). Built on the stub (T-SWF-10, M9); the engine is T-SWF-11. |
+| Navigation policy | `runtime.navigationPolicy` allows, cancels or redirects a navigation before it starts ([swift-api.md](swift-api.md) 6.3). Built on the stub (T-SWF-10) and the engine (T-SWF-11), M9. |
 
 | Navigation policy | Detail |
 |---|---|

@@ -245,14 +245,10 @@ static const t_test_t* const kTables[] = {
     t_provider_tests, /* providers: contracts, configuration, translation, reputation
                          (tests_providers.c) */
     t_pages_tests,
-    t_extension_tests, /* extensions and registered windows (tests_extensions.c) */
-#ifndef BDK_HARNESS_ENGINE_TESTS
-    /* The navigation policy (tests_navigation_policy.c). The engine asks no policy until T-SWF-11,
-       which adds the file to the engine's suite and removes this condition. */
-    t_navigation_policy_tests,
-#endif
-    t_profile_version_tests, /* profile snapshots and the downgrade policy
-                                (tests_profile_versions.c) */
+    t_extension_tests,         /* extensions and registered windows (tests_extensions.c) */
+    t_navigation_policy_tests, /* the navigation policy (tests_navigation_policy.c) */
+    t_profile_version_tests,   /* profile snapshots and the downgrade policy
+                                  (tests_profile_versions.c) */
     t_robustness_tests, /* long-run, crash recovery and memory, T-REL-03 (tests_robustness.c) */
     t_web_app_tests,    /* installable web apps (tests_web_apps.c) */
 #ifdef BDK_HARNESS_ENGINE_TESTS
@@ -271,6 +267,10 @@ static const t_test_t* const kTables[] = {
     t_engine_webauthn_tests,        /* passkeys and security keys (tests_engine_webauthn.c) */
     t_engine_dialogs_tests,         /* Chromium's other browser dialogs (tests_engine_dialogs.c) */
     t_engine_arc_tests,             /* the Arc-style layouts, M8 (tests_engine_arc.c) */
+    t_engine_navigation_policy_tests, /* the navigation policy on Chromium
+                                         (tests_engine_navigation_policy.c) */
+    t_engine_profile_version_tests,   /* the downgrade policy on Chromium, a launch each
+                                         (tests_engine_profile_versions.c) */
 #endif
 };
 

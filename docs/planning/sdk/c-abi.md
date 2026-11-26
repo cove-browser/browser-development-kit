@@ -420,7 +420,7 @@ The conformance suite is one set of tests written against the ABI. It runs again
 - The check order in [services.md](services.md) section 2, for a page caller and a session caller, using a test-only way to act as each.
 - The UI-request rules in [ui-requests.md](ui-requests.md) section 3.
 - Start-up: version mismatch, hash mismatch, invalid resolved configuration, registration after the freeze.
-- The navigation policy (`tests_navigation_policy.c`): stub only until the engine asks it (T-SWF-11).
+- The navigation policy (`tests_navigation_policy.c`), on both; the engine adds its own scenarios against a loopback server (`tests_engine_navigation_policy.c`, T-SWF-11).
 
 A behaviour that the stub and the real runtime could disagree on belongs in the suite.
 

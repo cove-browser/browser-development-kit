@@ -132,14 +132,22 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
     redirect decision in a row is `kTooManyRedirects` (net error -310, the error page). The stub asks before its
     reputation check and its route handling (a native route is asked like any other URL) and simulates server
     redirects with `bdk_stub_script_redirect` (`bdk_harness_script_redirect`, a page hook). The engine (T-SWF-11)
-    is expected to be a throttle beside `engine/pages/pages_navigation_throttle.cc`: `WillStartRequest` and
-    `WillRedirectRequest` return `DEFER` for the outermost main frame of a page with a `bdk_contents_t`, then
-    `Resume`, or `CancelDeferredNavigation(CANCEL_AND_IGNORE)` with the page noting the reason as it does for
-    `handledNatively`, or `{CANCEL, ERR_TOO_MANY_REDIRECTS}`; a redirect posts a load as `LoadAsBrowser` does.
-    Chromium runs no throttle for a page activation (`NavigationRequest`, "Throttles will already have run the
-    first time the page was navigated"), so back/forward cache restores and prerender activations are not
-    asked; the throttle must ask for a prerender's own navigation and discard a prerender it may not keep.
-    Checked against the source at the pin, not built.
+    is `engine/navigation_policy_throttle.cc`, the first throttle of a BDK page's navigations (before the route
+    table's, so a native route is asked like any other URL): `WillStartRequest` and `WillRedirectRequest`
+    return `DEFER` for the outermost main frame (the primary page or a prerender), then `Resume`, or
+    `CancelDeferredNavigation(CANCEL_AND_IGNORE)` with the page noting the policy's detail
+    (`EngineContents::NotePolicyEnd`), or `{CANCEL, ERR_TOO_MANY_REDIRECTS}`. A redirect decision posts
+    `EngineContents::LoadForPolicy`, which hands `policy_redirects` to the throttle of the load it starts
+    (set before `LoadURLWithParams`, which can ask the throttle from inside the call). A navigation the route
+    table drops, or restarts as the browser's own, is not asked; its restart is. The throttle withdraws its
+    decision when it is destroyed (stopped, superseded, closed). Chromium runs no throttle for a page
+    activation, so a prerender is asked at its own start (a prerender the policy does not allow as it is is
+    discarded) and, while a handler is set, `EngineContents` keeps each committed page out of the
+    back/forward cache (`navigation_policy_active`); a page cached before the handler was set can still be
+    restored unasked. The engine reports a navigation another replaced as `superseded`, as the stub does
+    (`GetNavigationDiscardReason`). The engine has no page hooks, so the three page-hook tests skip there;
+    `tests_engine_navigation_policy.c` covers links, script navigations, server redirects and `window.open`
+    against a loopback server that records each request.
 
 17. Profile snapshots and the downgrade policy (`runtime/profile_versions.{h,cc}`, T-PKG-05, M9). Before the
     backend starts, the core reads `runtime.downgrade` and `runtime.snapshot_on_upgrade`, asks the backend for
@@ -152,9 +160,13 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
     directory to `<name>.newer-<version>` beside it and starts empty (`fresh-profile`). A change within a
     milestone does nothing, as in Chromium. Other failures are `runtime.profileMigrationFailed`. The codes are
     strings, not `bdk_ids.h` constants, like `noDataDirectory`. The stub applies it to `user_data_path_override`
-    as engine version `1.0.0.0`; the Chromium engine does not supply its directory and version yet (T-PKG-05).
-    `bdk_harness_own_data_directory` says whether a harness lets a start name its own data directory; the
-    engine's does not (Chromium starts once per process), so `tests_profile_versions.c` runs on the stub only.
+    as engine version `1.0.0.0`. The Chromium engine reports the directory it will open and its version, at the
+    first start of the process only (Chromium has the directory open after that). `bdk_harness_own_data_directory`
+    says whether a harness lets a start name its own data directory; the engine's does not, so
+    `tests_profile_versions.c` runs on the stub only, and the engine's scenarios (`tests_engine_profile_versions.c`)
+    each have a launch of their own: `scripts/test-engine.sh` runs every `engine_launch_*` scenario alone, and the
+    harness calls `bdk_engine_launch_prepare` before its first start, which opens Chromium, so the scenario can
+    write the data directory and choose that start's policy.
 
 18. Robustness (`tests/tests_robustness.c`, T-REL-03). Pages opened, loaded, closed and destroyed many times;
     the runtime shut down with pages open and started again; a renderer crashed and the page reloaded; peak

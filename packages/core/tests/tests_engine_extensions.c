@@ -771,7 +771,119 @@ static void test_engine_ext_the_store_button_is_left_alone_when_the_store_is_off
     close_window();
 }
 
+/* ---- developer_mode, the blocklist and bundled extensions (S6, T-EXT-14) ---- */
+
+/* From harness_engine.mm: the application bundle the runtime is started with, and whether the next
+   start keeps the profiles of the last. */
+const char* bdk_harness_engine_bundle_path(void);
+extern int bdk_harness_engine_keep_profiles;
+
+static void test_engine_ext_developer_mode_off_refuses_an_unpacked_directory(void) {
+    char source[512];
+    snprintf(source, sizeof source, "{\"kind\":\"unpacked\",\"path\":\"%s/install-basic\"}",
+             BDK_EXTENSION_FIXTURES);
+    refused_source("{\"developer_mode\":\"off\"}", source, "developer_mode");
+}
+
+/* Copies fixture `fixture` into the bundle at Contents/Resources/Extensions/<name>. */
+static void bundle_fixture(const char* fixture, const char* name) {
+    char command[2048];
+    snprintf(command, sizeof command,
+             "/bin/rm -rf '%s/Contents/Resources/Extensions/%s' && /bin/mkdir -p "
+             "'%s/Contents/Resources/Extensions' && /bin/cp -R '%s/%s' "
+             "'%s/Contents/Resources/Extensions/%s'",
+             bdk_harness_engine_bundle_path(), name, bdk_harness_engine_bundle_path(),
+             BDK_EXTENSION_FIXTURES, fixture, bdk_harness_engine_bundle_path(), name);
+    REQUIRE(system(command) == 0);
+}
+
+static void test_engine_ext_bundled_extensions_load_with_no_prompt_in_every_profile(void) {
+    bundle_fixture("install-basic", "Basic");
+    bundle_fixture("ui-action-click", "Click");
+    start_with_extensions("{\"bundled\":{"
+                          "\"basic\":{\"path\":\"Extensions/Basic\",\"required\":true},"
+                          "\"click\":{\"path\":\"Extensions/Click\",\"required\":false}}}");
+    control("present.clear", "{}", NULL, 0);
+    t_freeze();
+    bdk_profile_t p = t_new_profile("Bundled");
+    t_capture_t cap;
+    invoke_ok(p, "extensions.list", "{}", &cap);
+    CHECK(!presenter_uses("extension_installs")); /* no prompt */
+    CHECK(strstr(cap.json, "\"source\":\"bundled\"") != NULL);
+    char basic[40] = "", click[40] = "";
+    /* The list's order is not promised: find each by its name. */
+    const char* at = strstr(cap.json, "\"name\":\"Install Basic\"");
+    const char* id_key = "\"id\":\"";
+    for (const char* q = cap.json; (q = strstr(q, id_key)) != NULL; q += strlen(id_key)) {
+        const char* next = strstr(q + strlen(id_key), id_key);
+        char id[40];
+        snprintf(id, sizeof id, "%.32s", q + strlen(id_key));
+        if (at && at > q && (!next || at < next))
+            snprintf(basic, sizeof basic, "%s", id);
+        else if (!click[0])
+            snprintf(click, sizeof click, "%s", id);
+    }
+    REQUIRE(basic[0] && click[0]);
+
+    /* Never uninstalled; disabled only when not required. */
+    char args[128];
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", basic);
+    invoke(p, "extensions.uninstall", args, &cap);
+    CHECK(failed_with(&cap, "notRemovable"));
+    snprintf(args, sizeof args, "{\"id\":\"%s\",\"enabled\":false}", basic);
+    invoke(p, "extensions.setEnabled", args, &cap);
+    CHECK(failed_with(&cap, "notRemovable"));
+    snprintf(args, sizeof args, "{\"id\":\"%s\",\"enabled\":false}", click);
+    invoke_ok(p, "extensions.setEnabled", args, &cap);
+
+    /* Every persistent profile has them. */
+    bdk_profile_t q = t_new_profile("Bundled too");
+    invoke_ok(q, "extensions.list", "{}", &cap);
+    CHECK(strstr(cap.json, basic) != NULL && strstr(cap.json, click) != NULL);
+    CHECK(!presenter_uses("extension_installs"));
+}
+
+static void test_engine_ext_a_blocklisted_extension_is_refused_and_kept_disabled(void) {
+    t_start();
+    t_freeze();
+    char profile_id[64];
+    t_create_profile("Blocklisted", profile_id, sizeof profile_id);
+    bdk_profile_t p = t_open_profile(profile_id);
+    (void)new_active_page(p); /* the page the install prompt asks in */
+    char id[40];
+    install_fixture(p, "install-basic", id, sizeof id);
+    close_window();
+    t_stop();
+
+    /* At a later start the identifier is blocklisted: installed, disabled, and refused again. */
+    char config[160];
+    snprintf(config, sizeof config, "{\"install\":{\"blocklist\":[\"%s\"]}}", id);
+    bdk_harness_engine_keep_profiles = 1; /* the next start keeps the profile */
+    start_with_extensions(config);
+    bdk_harness_engine_keep_profiles = 0;
+    t_freeze();
+    p = t_open_profile(profile_id);
+    t_capture_t cap;
+    char args[1024];
+    snprintf(args, sizeof args, "{\"id\":\"%s\"}", id);
+    invoke_ok(p, "extensions.get", args, &cap);
+    CHECK(strstr(cap.json, "\"isEnabled\":false") != NULL);
+    CHECK(strstr(cap.json, "\"disableReasons\":[\"blocklisted\"]") != NULL);
+    (void)new_active_page(p);
+    unpacked("install-basic", args, sizeof args);
+    script_presenter("extension_installs", "install");
+    invoke(p, "extensions.install", args, &cap);
+    CHECK(failed_with(&cap, "blocklisted"));
+    close_window();
+}
+
 const t_test_t t_engine_extension_tests[] = {
+    {"engine_ext_developer_mode_off_refuses_an_unpacked_directory",
+     test_engine_ext_developer_mode_off_refuses_an_unpacked_directory},
+    {"engine_ext_bundled_extensions_load_with_no_prompt_in_every_profile",
+     test_engine_ext_bundled_extensions_load_with_no_prompt_in_every_profile},
+    {"engine_ext_a_blocklisted_extension_is_refused_and_kept_disabled",
+     test_engine_ext_a_blocklisted_extension_is_refused_and_kept_disabled},
     {"engine_ext_install_a_handler_grants_an_unpacked_install_with_a_gesture",
      test_engine_ext_a_handler_grants_an_unpacked_install_with_a_gesture},
     {"engine_ext_install_a_grant_without_a_recent_gesture_installs_nothing",

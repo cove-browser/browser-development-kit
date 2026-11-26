@@ -69,6 +69,11 @@ ask_navigation_policy(const std::shared_ptr<Runtime>&, const std::shared_ptr<Con
                       const PolicyNavigation&,
                       std::function<void(PolicyAction, const std::string& redirect_url)> done);
 
+/* Whether the application has a handler now. The engine keeps a page out of Chromium's
+   back/forward cache while it does, since a page restored from it starts no navigation to ask
+   about. */
+bool navigation_policy_active(const Runtime&);
+
 /* The navigation ended before the answer (stopped, superseded, the page closed): the decision
    handle goes stale and `done` is never called. Does nothing for null or a finished decision. */
 void withdraw_navigation_policy(const std::shared_ptr<PolicyDecision>&);

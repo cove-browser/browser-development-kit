@@ -51,6 +51,10 @@ std::function<void(PolicyAction, const std::string&)> take(Runtime* rt, PolicyDe
 
 } // namespace
 
+bool navigation_policy_active(const Runtime& rt) {
+    return rt.policy && rt.policy->cb && !rt.shutting;
+}
+
 std::shared_ptr<PolicyDecision>
 ask_navigation_policy(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Contents>& c,
                       const PolicyNavigation& nav,

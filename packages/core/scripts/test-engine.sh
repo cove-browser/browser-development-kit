@@ -22,4 +22,14 @@ if [[ $# -gt 0 ]]; then
   "$app" "$@" 2>"$build/engine.log"
   exit $?
 fi
-"$app" 2>"$build/engine.log"
+# Chromium starts once per process: the engine_launch_* scenarios (the downgrade policy, which acts
+# before Chromium opens its data directory) each run in a launch of their own after the rest.
+status=0
+"$app" --run '!engine_launch_*' 2>"$build/engine.log" || status=$?
+for name in $("$app" --list | grep '^engine_launch_'); do
+  # A data directory of its own: what an earlier launch left (its snapshots) would change the result.
+  launch_dir="$BDK_ENGINE_DATA_DIR/launch-$name"
+  mkdir -p "$launch_dir"
+  BDK_ENGINE_DATA_DIR="$launch_dir" "$app" --run "$name" 2>>"$build/engine.log" || status=$?
+done
+exit "$status"

@@ -134,6 +134,12 @@ class HostViewMac : public HostView {
 
   bool IsInWindow() override { return view_.window != nil; }
 
+  bool IsShown() override {
+    NSWindow* window = view_.window;
+    return window && (window.isVisible || window.isMiniaturized) &&
+           !view_.isHiddenOrHasHiddenAncestor;
+  }
+
   bdk_native_handle_t Window() override {
     NSWindow* window = view_.window;
     return window ? bdk_native_handle_t{BDK_NATIVE_NSWINDOW,

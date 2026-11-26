@@ -41,6 +41,7 @@
 #include "bdk/engine/devtools_frontend.h"
 #include "bdk/engine/engine_contents.h"
 #include "bdk/engine/extensions/action_service.h"
+#include "bdk/engine/extensions/bundled_extensions.h"
 #include "bdk/engine/extensions/extension_menu.h"
 #include "bdk/engine/extensions/extension_ui_util.h"
 #include "bdk/engine/host_context.h"
@@ -164,6 +165,26 @@ class EngineBackend final : public bdkcore::Backend {
         base::Milliseconds(delay_ms));
   }
 
+  // The profile snapshot and downgrade policy (T-PKG-05; profile_versions.h)
+  // applies to the directory Chromium will open, before it opens it. Chromium
+  // starts once per process: a later runtime of the same process uses the
+  // directory Chromium already has open, which the policy must not move.
+  std::string ProfileDataDirectory(const bdk_start_config_t& config,
+                                   const std::string& resolved) override {
+    if (IsChromiumRunning()) {
+      return "";
+    }
+    std::optional<Identity> identity = ParseIdentity(resolved);
+    if (!identity) {
+      return "";  // Start reports it.
+    }
+    return UserDataDirectory(config, *identity).value();
+  }
+
+  std::string EngineVersion() override {
+    return std::string(version_info::GetVersionNumber());
+  }
+
   bdk_status_t Start(Runtime& rt,
                      const bdk_start_config_t& config,
                      const std::string& resolved,
@@ -174,18 +195,10 @@ class EngineBackend final : public bdkcore::Backend {
                            BDK_CODE_RESOLVED_INVALID,
                            "the resolved configuration has no browser name");
     }
-    const std::string override_path =
-        bdkcore::str(config.user_data_path_override);
-    base::FilePath user_data_dir;
-    if (!override_path.empty()) {
-      user_data_dir = base::FilePath(override_path);
-    } else {
-      base::FilePath app_data;
-      if (!base::PathService::Get(base::DIR_APP_DATA, &app_data)) {
-        return bdkcore::fail(out_error, BDK_DOMAIN_RUNTIME, "noDataDirectory",
-                             "the application data directory is unknown");
-      }
-      user_data_dir = app_data.Append(identity->storage_directory);
+    base::FilePath user_data_dir = UserDataDirectory(config, *identity);
+    if (user_data_dir.empty()) {
+      return bdkcore::fail(out_error, BDK_DOMAIN_RUNTIME, "noDataDirectory",
+                           "the application data directory is unknown");
     }
     // Providers (T-PRV-09): Chromium's threads read the choice, and the
     // Google key must reach Chromium before anything reads it.
@@ -419,7 +432,18 @@ class EngineBackend final : public bdkcore::Backend {
                     data->profile = loaded;
                     data->events = CreateServiceEvents(loaded, p);
                     p->data = std::move(data);
-                    backend->LoadAppSettingsThenDone(p, std::move(done));
+                    // The application's own extensions load before the
+                    // profile is handed over, so they run before its first
+                    // navigation (extensions.md 9).
+                    LoadBundledExtensions(
+                        loaded,
+                        base::BindOnce(
+                            [](EngineBackend* backend,
+                               std::shared_ptr<bdkcore::Profile> p, Done done) {
+                              backend->LoadAppSettingsThenDone(p,
+                                                               std::move(done));
+                            },
+                            base::Unretained(backend), p, std::move(done)));
                   },
                   base::Unretained(this), path, weak, std::move(done)));
   }
@@ -988,6 +1012,22 @@ class EngineBackend final : public bdkcore::Backend {
     uint64_t next_id = 1;
     std::vector<std::pair<std::string, std::string>> profiles;  // id, name
   };
+
+  // The data directory a start names (the launch option), or the [storage]
+  // directory in the application data directory; empty when that is unknown.
+  static base::FilePath UserDataDirectory(const bdk_start_config_t& config,
+                                          const Identity& identity) {
+    const std::string override_path =
+        bdkcore::str(config.user_data_path_override);
+    if (!override_path.empty()) {
+      return base::FilePath(override_path);
+    }
+    base::FilePath app_data;
+    if (!base::PathService::Get(base::DIR_APP_DATA, &app_data)) {
+      return base::FilePath();
+    }
+    return app_data.Append(identity.storage_directory);
+  }
 
   static Registry ReadRegistry(const base::FilePath& user_data_dir) {
     Registry registry;

@@ -21,6 +21,7 @@
 #include "base/values.h"
 #include "bdk/core/include/bdk/bdk_ids.h"
 #include "bdk/engine/engine_contents.h"
+#include "bdk/engine/extensions/bundled_extensions.h"
 #include "bdk/engine/extensions/extension_info.h"
 #include "bdk/engine/extensions/extension_support.h"
 #include "bdk/engine/extensions/install_flow.h"
@@ -247,6 +248,13 @@ void Uninstall(const Call& call) {
                   if (!extension) {
                     return;
                   }
+                  if (FindBundledExtension(extension->path())) {
+                    RejectExtension(call, BDK_CODE_NOT_REMOVABLE,
+                                    "the extension " + extension->id() +
+                                        " ships with the application "
+                                        "([extensions.bundled])");
+                    return;
+                  }
                   ConfirmAndUninstall(
                       ExtensionProfile(call->profile()), CallerPage(call),
                       base::WrapRefCounted(extension),
@@ -282,6 +290,15 @@ void SetEnabled(const Call& call) {
             extensions::ExtensionRegistrar* registrar =
                 extensions::ExtensionRegistrar::Get(profile);
             if (!*call->Bool("enabled")) {
+              const BundledExtension* bundled =
+                  FindBundledExtension(extension->path());
+              if (bundled && bundled->required) {
+                RejectExtension(call, BDK_CODE_NOT_REMOVABLE,
+                                "the extension " + id +
+                                    " is required by the application "
+                                    "([extensions.bundled] required = true)");
+                return;
+              }
               registrar->DisableExtension(
                   id, {extensions::disable_reason::DISABLE_USER_ACTION});
               call->ResolveNull();

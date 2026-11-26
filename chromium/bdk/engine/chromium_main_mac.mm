@@ -176,11 +176,15 @@ bool StartChromium(const ChromiumStartOptions& options, std::string* error) {
   // APIs are absent from pages, so a site sees them as unsupported: Payment
   // Request and Secure Payment Confirmation, FedCM, the Digital Credentials
   // API, and Web Bluetooth (its chooser is refused, ui_browser_dialogs.h, and
-  // its adapter would need the application's Bluetooth usage string).
+  // its adapter would need the application's Bluetooth usage string). Pages
+  // ask for web app installs only through beforeinstallprompt, which
+  // [web_apps] enabled governs (web-apps.md 10, T-PWA-06): navigator.install()
+  // and the <install> element reach views dialogs whether installs are on or
+  // off, so both are absent (WebAppInstallation, InstallElement).
   disabled_features +=
       ",HttpsFirstDialogUi,WebPayments,SecurePaymentConfirmation,FedCm,"
       "WebIdentityDigitalCredentials,WebIdentityDigitalCredentialsCreation,"
-      "WebBluetooth";
+      "WebBluetooth,WebAppInstallation,InstallElement";
   // The heavy-ad intervention's opt-out store is kept in memory, as Chrome
   // keeps it for an off-the-record profile. On disk, it opens a database at
   // best-effort priority when the profile starts; a profile deleted before

@@ -327,6 +327,48 @@ static void test_arc_extensions_see_the_focused_pane_as_the_active_tab(void) {
     bdk_harness_engine_window_close(window);
 }
 
+/* ---- a page's visibility follows its view (T-ADP-11) ---- */
+
+/* A page whose view has never been in a window reports hidden, though a WebContents starts
+   visible; once shown it reports visible. */
+static void test_arc_a_page_never_shown_reports_hidden(void) {
+    t_start_frozen();
+    bdk_profile_t profile = t_new_profile("Unshown");
+    bdk_contents_t page = t_new_contents(profile);
+    load(page, PANE_A);
+    CHECK(wait_for_visibility(page, BDK_VISIBILITY_HIDDEN));
+    int window = bdk_harness_engine_window_open(t_runtime);
+    REQUIRE(window >= 0);
+    bdk_harness_engine_window_place(window, page, 0, 1);
+    CHECK(wait_for_visibility(page, BDK_VISIBILITY_VISIBLE));
+    bdk_harness_engine_window_close(window);
+}
+
+/* The pane that had focus reports hidden when the window stops showing it, and visible when it
+   comes back. */
+static void test_arc_the_focused_pane_reports_hidden_when_its_view_leaves(void) {
+    t_start_frozen();
+    bdk_profile_t profile = t_new_profile("Focused");
+    int window = bdk_harness_engine_window_open(t_runtime);
+    REQUIRE(window >= 0);
+    bdk_contents_t page = t_new_contents(profile);
+    bdk_contents_t other = t_new_contents(profile);
+    bdk_harness_engine_window_place(window, page, 0, 1);
+    load(page, PANE_A);
+    REQUIRE(bdk_contents_focus(page) == BDK_OK);
+    t_pump();
+    REQUIRE(wait_for_visibility(page, BDK_VISIBILITY_VISIBLE));
+    /* Focus stays with the page while its view leaves. */
+    bdk_harness_engine_window_detach(page);
+    bdk_harness_engine_window_place(window, other, 0, 1);
+    load(other, PANE_B);
+    CHECK(wait_for_visibility(page, BDK_VISIBILITY_HIDDEN));
+    bdk_harness_engine_window_detach(other);
+    bdk_harness_engine_window_place(window, page, 0, 1);
+    CHECK(wait_for_visibility(page, BDK_VISIBILITY_VISIBLE));
+    bdk_harness_engine_window_close(window);
+}
+
 /* ---- hide and restore (T-ARC-03) ---- */
 
 #define TICKING                                                                                    \
@@ -624,6 +666,9 @@ const t_test_t t_engine_arc_tests[] = {
      test_arc_every_visible_pane_is_foreground_for_dialogs_permissions_find_and_offers},
     {"engine_arc_extensions_see_the_focused_pane_as_the_active_tab",
      test_arc_extensions_see_the_focused_pane_as_the_active_tab},
+    {"engine_arc_a_page_never_shown_reports_hidden", test_arc_a_page_never_shown_reports_hidden},
+    {"engine_arc_the_focused_pane_reports_hidden_when_its_view_leaves",
+     test_arc_the_focused_pane_reports_hidden_when_its_view_leaves},
     {"engine_arc_a_page_in_a_hidden_space_keeps_running_and_comes_back",
      test_arc_a_page_in_a_hidden_space_keeps_running_and_comes_back},
     {"engine_arc_a_page_moved_between_panes_and_windows_keeps_its_tab_grant_and_renderer",

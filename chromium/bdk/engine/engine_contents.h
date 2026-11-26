@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "base/memory/raw_ptr.h"
@@ -94,6 +95,13 @@ class EngineContents : public bdkcore::BackendData,
   void NoteHandledNatively(int64_t navigation_id) {
     handled_natively_ = navigation_id;
   }
+  // The navigation `navigation_id` was cancelled or redirected by the
+  // application's navigation policy: it ends with `detail`
+  // (bdkcore::policy_failure_detail) rather than as aborted.
+  void NotePolicyEnd(int64_t navigation_id, std::string detail) {
+    policy_ended_ = navigation_id;
+    policy_detail_ = std::move(detail);
+  }
   // A tab Chromium inserted in a host context by itself (a link in an
   // extension popup, which Chromium opens in the popup's Browser): unless a
   // page holds it by now, it becomes a page, and a new-window request asks
@@ -124,6 +132,12 @@ class EngineContents : public bdkcore::BackendData,
   void Focus();
 
   void Load(const std::string& url);
+  // Loads the URL of the application's redirect decision, the
+  // `policy_redirects`th in a row (NavigationPolicyThrottle).
+  void LoadForPolicy(const std::string& url, uint32_t policy_redirects);
+  // The count LoadForPolicy left for the navigation it started, once; 0 for
+  // any other.
+  uint32_t TakePolicyRedirects() { return std::exchange(policy_redirects_, 0); }
   // Replaces the WebContents with one restored from `state`, keeping the
   // handle and the host view.
   void ReplaceWebContents(std::unique_ptr<content::WebContents> web_contents);
@@ -196,6 +210,14 @@ class EngineContents : public bdkcore::BackendData,
   void ExitFullscreenModeForTab(content::WebContents* source) override;
   bool IsFullscreenForTabOrPending(
       const content::WebContents* web_contents) override;
+  // A hung renderer is a page_health request (ui_page_health.h).
+  void RendererUnresponsive(
+      content::WebContents* source,
+      content::RenderWidgetHost* render_widget_host,
+      base::RepeatingClosure hang_monitor_restarter) override;
+  void RendererResponsive(
+      content::WebContents* source,
+      content::RenderWidgetHost* render_widget_host) override;
   content::JavaScriptDialogManager* GetJavaScriptDialogManager(
       content::WebContents* source) override;
   void RunFileChooser(content::RenderFrameHost* render_frame_host,
@@ -285,9 +307,21 @@ class EngineContents : public bdkcore::BackendData,
   base::OnceClosure own_window_;
   // For an inspected page: the page of its open front end.
   base::WeakPtr<EngineContents> devtools_page_;
+  // Load and LoadForPolicy, once they have set policy_redirects_.
+  void LoadUrl(const std::string& url);
+  // The page's visibility follows its host view (T-ADP-11): checked on a later
+  // task, after Chromium's own update.
+  void ScheduleVisibilityCheck();
+  void FollowHostViewVisibility();
   std::string user_agent_;
   // The navigation a native route's handler took (NoteHandledNatively), or 0.
   int64_t handled_natively_ = 0;
+  // The navigation the policy ended (NotePolicyEnd), or 0, and its detail.
+  int64_t policy_ended_ = 0;
+  std::string policy_detail_;
+  // LoadForPolicy's count, for TakePolicyRedirects.
+  uint32_t policy_redirects_ = 0;
+  bool visibility_check_pending_ = false;
   bool muted_ = false;
   double zoom_ = 1.0;
   bool auto_discardable_ = true;

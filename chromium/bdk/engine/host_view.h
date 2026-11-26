@@ -48,6 +48,9 @@ class HostView {
   virtual bdk_native_handle_t NativeHandle() = 0;
   // Whether the host view is in a window.
   virtual bool IsInWindow() = 0;
+  // Whether the host view is shown: in a window that is on screen, and neither
+  // it nor a view it is in is hidden. Occlusion does not count.
+  virtual bool IsShown() = 0;
   // The native window the host view is in, as a tagged handle, or a handle of
   // kind 0 when it is in none.
   virtual bdk_native_handle_t Window() = 0;

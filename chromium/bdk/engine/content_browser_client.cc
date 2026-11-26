@@ -9,6 +9,7 @@
 #include "base/command_line.h"
 #include "bdk/core/include/bdk/bdk_ids.h"
 #include "bdk/core/runtime/core_internal.h"
+#include "bdk/engine/navigation_policy_throttle.h"
 #include "bdk/engine/pages/bundled_page_ui.h"
 #include "bdk/engine/pages/page_broker.mojom.h"
 #include "bdk/engine/pages/page_routes.h"
@@ -141,7 +142,10 @@ void BdkContentBrowserClient::BrowserURLHandlerCreated(
 
 void BdkContentBrowserClient::CreateThrottlesForNavigation(
     content::NavigationThrottleRegistry& registry) {
-  // First, so a navigation the route table refuses runs no other throttle.
+  // The application's navigation policy first, so it is asked before the
+  // route table hands a native route to its handler (conventions.md 16), then
+  // the route table, so a navigation it refuses runs no other throttle.
+  NavigationPolicyThrottle::MaybeCreateAndAdd(registry);
   PagesNavigationThrottle::MaybeCreateAndAdd(registry);
   ChromeContentBrowserClient::CreateThrottlesForNavigation(registry);
   registry.AddThrottle(std::make_unique<DevToolsExtensionThrottle>(registry));

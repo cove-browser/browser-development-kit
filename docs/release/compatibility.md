@@ -47,9 +47,9 @@ invariant 9).
 
 - An application chooses its BDK version; BDK never updates itself.
 - Profile snapshots before a newer milestone, and the `[runtime] downgrade` policy when an older engine meets
-  newer data, run in the runtime core and are tested on the stub. **The Chromium engine does not yet report
-  its data directory and version to them** (T-PKG-05), so a real runtime does not snapshot yet, and an older
-  milestone starts on newer data as Chromium does with snapshots off ("unsupported").
+  newer data, run in the runtime core, on the stub and on the Chromium engine (T-PKG-05), at the first start of the
+  process, before Chromium opens its data directory. The engine scenarios prepare a directory as another
+  milestone would leave it; a real move between two released runtimes has not been run.
 
 ## Not verified on BDK's window yet
 

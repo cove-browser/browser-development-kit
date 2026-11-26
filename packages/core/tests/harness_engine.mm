@@ -31,6 +31,8 @@
 #include "harness_engine_windows.h"
 extern "C" {
 #include "test_support.h"
+/* tests_engine_profile_versions.c: prepares the launch for the scenario `name`, if it is one. */
+void bdk_engine_launch_prepare(const char* name);
 }
 
 @interface BDKHarnessApplication : BDKApplicationBase
@@ -170,6 +172,14 @@ static const std::string& fixture_bundle(void) {
                                         resources + "/BDK", ignored);
     }
     return bundle;
+}
+
+const char* bdk_harness_engine_bundle_path(void) {
+    return fixture_bundle().c_str();
+}
+
+const char* bdk_harness_engine_data_dir(void) {
+    return g_data_dir.c_str();
 }
 
 void bdk_harness_prepare_start_config(bdk_start_config_t* config) {
@@ -434,7 +444,8 @@ size_t bdk_harness_newer_session_state(uint8_t* out, size_t cap) {
 
 int bdk_harness_own_data_directory(void) {
     /* Chromium starts once per process, with g_data_dir. The engine's half of the snapshot and
-       downgrade policy needs an engine scenario with its own launch (T-PKG-05). */
+       downgrade policy is tests_engine_profile_versions.c, whose scenarios each prepare the data
+       directory of a launch of their own (bdk_engine_launch_prepare, scripts/test-engine.sh). */
     return 0;
 }
 
@@ -766,6 +777,13 @@ void RunSuite(void*) {
 @implementation BDKHarnessDelegate
 
 - (void)applicationDidFinishLaunching:(NSNotification*)notification {
+    /* A scenario of the downgrade policy, run alone, writes the data directory Chromium is about
+       to open, and makes the starts that must fail before Chromium starts
+       (tests_engine_profile_versions.c). */
+    for (int i = 1; i + 1 < g_argc; ++i) {
+        if (strcmp(g_argv[i], "--run") == 0)
+            bdk_engine_launch_prepare(g_argv[i + 1]);
+    }
     /* Starts Chromium with a first runtime. Its nested main loop is queued on the run loop; the
        block after it runs inside that loop. */
     bdk_start_config_t config;
@@ -778,6 +796,7 @@ void RunSuite(void*) {
                 message.data ? message.data : "");
         exit(2);
     }
+    t_config_extra = NULL;
     bdk_testing_intercept_all(1);
     /* Frontmost, so its windows become key: Chromium counts focus only in the key window. */
     if (!Silent()) {

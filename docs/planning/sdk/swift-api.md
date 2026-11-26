@@ -324,7 +324,7 @@ public struct LoadOptions {
 - The application may navigate to any branded internal URL. A web page may not, exactly as with `chrome://` today.
 - A navigation to a route in `native` mode calls the registered handler and throws `navigation.handledNatively`.
 
-**Navigation policy** (product owner, 2026-11-25; [../amendments.md](../amendments.md) 2.25). The application can cancel or redirect a navigation before it starts. Built on the stub, the core and the C ABI by T-SWF-10 (M9); the engine is T-SWF-11, so a Chromium runtime asks nothing yet. The C side is `bdk_navigation_policy_set_handler` and `bdk_navigation_policy_decide` ([c-abi.md](c-abi.md) 5.2).
+**Navigation policy** (product owner, 2026-11-25; [../amendments.md](../amendments.md) 2.25). The application can cancel or redirect a navigation before it starts. Built on the stub, the core and the C ABI by T-SWF-10 and on the engine by T-SWF-11 (M9). On the engine, while a handler is set, a page is kept out of Chromium's back/forward cache so that going back is a navigation the policy is asked about; a page cached before the handler was set can still come back unasked. The C side is `bdk_navigation_policy_set_handler` and `bdk_navigation_policy_decide` ([c-abi.md](c-abi.md) 5.2).
 
 ```swift
 public enum NavigationDecision: Sendable, Equatable {     // BDKWebContents.NavigationDecision

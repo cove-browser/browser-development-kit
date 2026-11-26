@@ -155,13 +155,13 @@ if(BDK_ENGINE_FRAMEWORK AND APPLE)
     tests/test_support.c tests/tests_base.c tests/tests_runtime.c tests/tests_broker.c
     tests/tests_profile.c tests/tests_contents.c tests/tests_ui.c tests/tests_automation.c
     tests/tests_endpoint.c tests/tests_providers.c tests/tests_pages.c tests/tests_extensions.c tests/tests_engine.c
-    tests/tests_profile_versions.c tests/tests_robustness.c
+    tests/tests_navigation_policy.c tests/tests_profile_versions.c tests/tests_robustness.c
     tests/tests_web_apps.c
     tests/tests_engine_ui.c tests/tests_engine_prompts.c tests/tests_engine_automation.c
     tests/tests_engine_providers.c tests/tests_engine_privacy.c tests/tests_engine_pages.c
     tests/tests_engine_extensions.c tests/tests_engine_ext_ui.c tests/tests_engine_ext_panels.c
     tests/tests_engine_ext_probe.c tests/tests_engine_webauthn.c tests/tests_engine_dialogs.c
-    tests/tests_engine_arc.c
+    tests/tests_engine_arc.c tests/tests_engine_navigation_policy.c tests/tests_engine_profile_versions.c
     tests/engine_ext_support.c
     tests/harness_engine.mm tests/harness_engine_ext.mm
     tests/harness_broker_unsupported.c tests/harness_automation_unsupported.c tests/harness_providers_unsupported.c)

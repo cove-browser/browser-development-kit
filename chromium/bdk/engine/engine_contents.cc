@@ -6,6 +6,8 @@
 
 #include <algorithm>
 #include <array>
+#include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -17,6 +19,7 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/values.h"
 #include "bdk/core/runtime/automation_internal.h"
+#include "bdk/core/runtime/navigation_policy.h"
 #include "bdk/engine/devtools_frontend.h"
 #include "bdk/engine/extensions/extension_menu_items.h"
 #include "bdk/engine/extensions/extension_ui_util.h"
@@ -34,6 +37,7 @@
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_dialogs.h"
 #include "bdk/engine/ui_find.h"
+#include "bdk/engine/ui_page_health.h"
 #include "bdk/engine/ui_permissions.h"
 #include "bdk/engine/ui_presenters.h"
 #include "bdk/engine/ui_request.h"
@@ -44,10 +48,12 @@
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h"
 #include "components/input/native_web_keyboard_event.h"
+#include "content/public/browser/back_forward_cache.h"
 #include "content/public/browser/context_menu_params.h"
 #include "content/public/browser/host_zoom_map.h"
 #include "content/public/browser/keyboard_event_processing_result.h"
 #include "content/public/browser/navigation_controller.h"
+#include "content/public/browser/navigation_discard_reason.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/render_frame_host.h"
@@ -72,6 +78,44 @@
 namespace bdk {
 
 namespace {
+
+// A navigation another one replaced before it committed, as the stub reports
+// it (bdk_contents.h).
+bool Superseded(content::NavigationHandle& handle) {
+  const std::optional<content::NavigationDiscardReason> reason =
+      handle.GetNavigationDiscardReason();
+  if (!reason) {
+    return false;
+  }
+  switch (*reason) {
+    case content::NavigationDiscardReason::kNewReloadNavigation:
+    case content::NavigationDiscardReason::kNewHistoryNavigation:
+    case content::NavigationDiscardReason::kNewOtherNavigationBrowserInitiated:
+    case content::NavigationDiscardReason::kNewOtherNavigationRendererInitiated:
+      return true;
+    default:
+      return false;
+  }
+}
+
+// While the application has a navigation policy, a committed page is not
+// kept in the back/forward cache: a page restored from it starts no
+// navigation, so going back to it would not be asked (conventions.md 16). A
+// page cached before the handler was set can still be restored unasked.
+void KeepOutOfBackForwardCacheForPolicy(content::NavigationHandle* handle) {
+  std::shared_ptr<bdkcore::Runtime> rt = bdkcore::current_runtime();
+  if (handle->IsSameDocument() || !rt ||
+      !bdkcore::navigation_policy_active(*rt) ||
+      !handle->GetRenderFrameHost()) {
+    return;
+  }
+  content::BackForwardCache::DisableForRenderFrameHost(
+      handle->GetRenderFrameHost(),
+      content::BackForwardCache::DisabledReason(
+          content::BackForwardCache::DisabledSource::kEmbedder,
+          /*id=*/0, "The application has a navigation policy", "",
+          "bdkNavigationPolicy"));
+}
 
 constexpr uint32_t kMainFrame = BDK_EVENT_FLAG_MAIN_FRAME;
 
@@ -261,6 +305,7 @@ EngineContents::~EngineContents() {
   host_view_.reset();
   if (web_contents_) {
     // Nothing of ours refers to the page when its tab destroys it.
+    UninstallPageHealth(web_contents_);
     content::WebContents* contents = web_contents_.ExtractAsDangling();
     if (HostContext* context = HostContexts::Get().ContextOf(contents)) {
       context->Destroy(contents);
@@ -296,6 +341,7 @@ void EngineContents::Attach(
   if (web_contents_) {
     // What the old page asked for is withdrawn with it.
     dialogs_->CancelDialogs(web_contents_, /*reset_state=*/true);
+    UninstallPageHealth(web_contents_);
     find_->OnNavigated();
     web_contents_->SetDelegate(nullptr);
     // The page keeps its tab; the tab model swaps the contents.
@@ -339,11 +385,14 @@ void EngineContents::TakeContents(content::WebContents* fresh) {
     devtools_->SetFrontend(web_contents_);
   }
   host_view_->SetWebContents(web_contents_);
+  // A page nobody shows yet reports hidden (T-ADP-11).
+  ScheduleVisibilityCheck();
   if (!user_agent_.empty()) {
     SetUserAgent(user_agent_);
   }
   // Prompts and find follow the page's WebContents.
   InstallPermissionPrompts(*this, web_contents_);
+  InstallPageHealth(*this, web_contents_);
   find_->Attach(web_contents_);
 }
 
@@ -395,7 +444,49 @@ bool EngineContents::IsInWindow(const bdkcore::Window* window) {
   return context && context->window() == window;
 }
 
+void EngineContents::ScheduleVisibilityCheck() {
+  if (visibility_check_pending_) {
+    return;
+  }
+  visibility_check_pending_ = true;
+  // After Chromium's own update for the same change, which runs first.
+  NoteTaskPosted();
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce(
+                     [](base::WeakPtr<EngineContents> self) {
+                       NoteTaskRun();
+                       if (self) {
+                         self->visibility_check_pending_ = false;
+                         self->FollowHostViewVisibility();
+                       }
+                     },
+                     weak_factory_.GetWeakPtr()));
+}
+
+void EngineContents::FollowHostViewVisibility() {
+  // A page's visibility follows its view (amendments 2.18, T-ADP-11). Chromium
+  // trusts a WebContents' first visibility, visible, until it is shown for
+  // real, and ignores the view leaving every window until then; and a page
+  // that has been shown can be left visible once its view has gone (the
+  // focused pane of a window). Hidden here is what Chromium's own view would
+  // have said: not in a window, or in a hidden one. A page being captured
+  // stays as Chromium keeps it.
+  const content::Visibility now = web_contents_->GetVisibility();
+  if (!host_view_->IsShown()) {
+    if (now != content::Visibility::HIDDEN) {
+      web_contents_->WasHidden();
+    }
+    return;
+  }
+  // Shown again: a page BDK hid comes back, as Chromium's view would bring it
+  // back when the window is on screen.
+  if (now == content::Visibility::HIDDEN) {
+    web_contents_->WasShown();
+  }
+}
+
 void EngineContents::OnHostViewWindowChanged() {
+  ScheduleVisibilityCheck();
   if (reconcile_pending_) {
     return;
   }
@@ -445,7 +536,20 @@ void EngineContents::Emit(uint32_t kind,
   }
 }
 
+void EngineContents::LoadForPolicy(const std::string& url,
+                                   uint32_t policy_redirects) {
+  // Set first: Chromium can ask the throttle about the new navigation's start
+  // from inside LoadURLWithParams.
+  policy_redirects_ = policy_redirects;
+  LoadUrl(url);
+}
+
 void EngineContents::Load(const std::string& url) {
+  policy_redirects_ = 0;
+  LoadUrl(url);
+}
+
+void EngineContents::LoadUrl(const std::string& url) {
   content::NavigationController::LoadURLParams params{GURL(url)};
   params.transition_type = ui::PAGE_TRANSITION_TYPED;
   if (!user_agent_.empty()) {
@@ -1246,6 +1350,7 @@ void EngineContents::DidFinishNavigation(content::NavigationHandle* handle) {
     if (zoom_ != 1.0 && !handle->IsSameDocument()) {
       SetZoom(zoom_);
     }
+    KeepOutOfBackForwardCacheForPolicy(handle);
     Emit(BDK_CONTENTS_EVENT_NAVIGATION_COMMITTED, url, "{}", 0, flags);
     return;
   }
@@ -1253,13 +1358,20 @@ void EngineContents::DidFinishNavigation(content::NavigationHandle* handle) {
   if (handle->IsErrorPage()) {
     flags |= BDK_EVENT_FLAG_ERROR_PAGE;
   }
+  if (handle->GetNavigationId() == policy_ended_) {
+    policy_ended_ = 0;
+    Emit(BDK_CONTENTS_EVENT_NAVIGATION_FAILED, url,
+         std::exchange(policy_detail_, std::string()), net_error, flags);
+    return;
+  }
   const bool native = handle->GetNavigationId() == handled_natively_;
   if (native) {
     handled_natively_ = 0;
   }
   const char* code = native                          ? "handledNatively"
-                     : net_error == net::ERR_ABORTED ? "aborted"
-                                                     : "netError";
+                     : net_error != net::ERR_ABORTED ? "netError"
+                     : Superseded(*handle)           ? "superseded"
+                                                     : "aborted";
   Emit(BDK_CONTENTS_EVENT_NAVIGATION_FAILED, url,
        ToJson(base::DictValue()
                   .Set("code", code)
@@ -1313,8 +1425,33 @@ void EngineContents::OnWebContentsLostFocus(
        ToJson(base::DictValue().Set("focused", false)), 0, 0);
 }
 
+void EngineContents::RendererUnresponsive(
+    content::WebContents* source,
+    content::RenderWidgetHost* render_widget_host,
+    base::RepeatingClosure hang_monitor_restarter) {
+  // As Chrome's browser does: not for a hung <select> or date popup, whose
+  // own widget would lose focus to the question.
+  content::RenderWidgetHostView* view = render_widget_host->GetView();
+  if (view && !view->IsHTMLFormPopup()) {
+    ShowUnresponsivePage(source, render_widget_host,
+                         std::move(hang_monitor_restarter));
+  }
+}
+
+void EngineContents::RendererResponsive(
+    content::WebContents* source,
+    content::RenderWidgetHost* render_widget_host) {
+  HideUnresponsivePage(source);
+}
+
 void EngineContents::OnVisibilityChanged(content::Visibility visibility) {
   const bool visible = visibility == content::Visibility::VISIBLE;
+  if (visible && !host_view_->IsShown()) {
+    // Chromium shows a page whose view is in no window (T-ADP-11): it is hidden
+    // again, and the application never sees it visible.
+    ScheduleVisibilityCheck();
+    return;
+  }
   if (visible) {
     LoadIfDiscarded();
   }
