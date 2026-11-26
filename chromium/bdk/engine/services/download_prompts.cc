@@ -291,7 +291,9 @@ class ItemWatch : public DownloadItem::Observer {
   }
 
   void Keep() {
-    if (!item_) {
+    // A download that ended while the person was asked (interrupted,
+    // cancelled) has nothing left to keep.
+    if (!item_ || item_->IsDone()) {
       return;
     }
     if (item_->IsInsecure()) {
