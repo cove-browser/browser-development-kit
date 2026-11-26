@@ -182,20 +182,6 @@ public final class BDKWebContents: Identifiable {
         case visible
     }
 
-    /// What a page captures, and whether another page captures it (`BDK_CAPTURE_*`). While
-    /// `.display` is set the application shows that the page is sharing, unless it left the
-    /// `screenCapture` surface to BDK, whose sharing bar does.
-    public struct CaptureActivity: OptionSet, Sendable, Hashable {
-        public let rawValue: UInt32
-        public init(rawValue: UInt32) { self.rawValue = rawValue }
-        public static let camera = CaptureActivity(rawValue: BDK_CAPTURE_CAMERA)
-        public static let microphone = CaptureActivity(rawValue: BDK_CAPTURE_MICROPHONE)
-        /// A screen, a window or a page.
-        public static let display = CaptureActivity(rawValue: BDK_CAPTURE_DISPLAY)
-        /// This page is being captured.
-        public static let captured = CaptureActivity(rawValue: BDK_CAPTURE_CAPTURED)
-    }
-
     public struct State: Sendable, Equatable {
         public var url: URL?
         public var title = ""
@@ -251,7 +237,6 @@ public final class BDKWebContents: Identifiable {
     public var security: Security { current.security }
     public var isAudible: Bool { current.isAudible }
     public var isMuted: Bool { current.isMuted }
-    public var captureActivity: CaptureActivity { current.captureActivity }
     public var visibility: Visibility { current.visibility }
     public var isFocused: Bool { current.isFocused }
     /// The current state, or the last one read when the page is gone.
