@@ -179,7 +179,7 @@ Web Push is a web API of its own: a site in an ordinary tab can subscribe, insta
 
 | `[services.push] provider` | Behaviour |
 |---|---|
-| `"none"` (default) | `PushManager.subscribe()` rejects, `permissionState()` answers `denied`, and the runtime makes no contact with Google's messaging hosts |
+| `"none"` (default) | Pages have no Push API (the engine starts Chromium with the Blink feature `PushMessaging` off, T-PWA-05): `PushManager` and `registration.pushManager` are absent, so a site finds push unsupported, and the runtime makes no contact with Google's messaging hosts, which Chromium's push client checks in with at the first subscription. This departs from the plan (`subscribe()` rejecting, `permissionState()` answering `denied`): Chromium has no embedder switch for that without a patch, and an absent API is how BDK turns off the other APIs it does not offer. Scenario `engine_privacy_with_no_push_provider_pages_have_no_push_api` |
 | `"google"` | Chromium's own push client. The application supplies its Google credentials from Swift before start, never in `bdk.toml` (as [../amendments.md](../amendments.md) 2.3). Missing credentials are a start error. |
 
 What a developer must know, and where BDK says it:

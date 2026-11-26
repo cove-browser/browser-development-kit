@@ -238,6 +238,13 @@ class EngineBackend final : public bdkcore::Backend {
       base::PathService::Get(base::FILE_EXE, &options.program);
       options.user_data_dir = user_data_dir;
       options.switches = ProviderSwitches(CurrentProviderSettings());
+      // [services.push] provider = "none" (web-apps.md 7, T-PWA-05): the
+      // Push API is absent from pages, so no page can subscribe and Chromium's
+      // push client never checks in with Google's messaging hosts (it does on
+      // the first subscription). Read once, as Chromium starts.
+      if (rt.web_apps.push_provider != "google") {
+        options.switches.push_back("disable-blink-features=PushMessaging");
+      }
       for (std::string& extra : ExtraSwitches()) {
         options.switches.push_back(std::move(extra));
       }
@@ -258,7 +265,7 @@ class EngineBackend final : public bdkcore::Backend {
       }
       ApplyIdentityAfterStart(*identity);
       ApplyLocalStatePrivacyPrefs();
-      InstallPromptHooks();
+      InstallPromptHooks(bdkcore::webauthn_phones_allowed(rt));
       chromium_tasks_.store(true);
       registry_writer_ = base::ThreadPool::CreateSequencedTaskRunner(
           {base::MayBlock(), base::TaskShutdownBehavior::BLOCK_SHUTDOWN});
