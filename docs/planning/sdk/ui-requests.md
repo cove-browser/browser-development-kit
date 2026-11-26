@@ -174,7 +174,7 @@ public final class ClientCertificateRequest: BDKUIRequest {       // Added
 }
 ```
 
-Default presenters: a sheet on the page view for credentials; Chromium's certificate selector for client certificates.
+Default presenters: a sheet on the page view for credentials; BDK's certificate sheet (below) for client certificates. Client certificates are routed since T-UIR-13 (2026-11-25): after Chrome's automatic selection, a `client_certificates` request with `host` and `certificates` `[{id, subject, issuer}]`; `accept` `{"certificate": id}` continues with it, and `deny`, a rejection or `disabled` goes on without one, as Chrome's selector does on Cancel. Not run on the engine: a scenario needs a client identity in the Keychain, which the suite does not install.
 
 Built for client certificates (T-UIR-10, 2026-11-22; built, with no engine scenario yet; 8.2): no request is raised yet (S3, T-UIR-13). Chrome's automatic selection (`AutoSelectCertificateForUrls`) runs first; otherwise a sheet of BDK's own lists the first eight certificates by subject and issuer, with Cancel, which goes on without one, as Chromium's selector does. Chromium's selector is a views dialog and is never shown on a BDK page.
 
@@ -533,7 +533,7 @@ public final class ExternalProtocolRequest: BDKUIRequest {
 }
 ```
 
-Default presenter: Chromium's confirmation dialog. `disabled`: external schemes are blocked. BDK's sheet (below) becomes the default presenter once the request is routed (T-UIR-13, M9).
+Default presenter: BDK's sheet (below). `disabled`: external schemes are blocked. Routed since T-UIR-13 (2026-11-25, `engine/ui_browser_dialogs.cc`): once Chrome decides to ask, the engine raises an `external_protocols` request with `url`, `initiatingOrigin`, `handlerName` and `isUserGesture` (always `false`: Chrome does not pass the gesture to its dialog); `grant` opens the application, and with `{"remember": true}` opens the scheme from that origin without asking again (Chrome's per-origin "always allow"); `deny`, a rejection or a withdrawal opens nothing. Engine scenarios `engine_dialogs_an_external_protocol_is_a_request_to_a_handler` and `engine_dialogs_a_disabled_external_protocol_surface_asks_nothing`; the sheet's scenario is unchanged.
 
 Built so far (T-UIR-10, 2026-11-22, passes on Chromium 158; 8.2): no request is raised yet (S3, T-UIR-13). Chrome decides whether to ask: blocked schemes stay blocked, `mailto:` and schemes the person allowed open without asking, and policy applies. When it asks, a patch gives the question to the engine, which shows a sheet of BDK's own with Chromium's wording ("Open <application>?") and Cancel as the default button, and opens the application only on "Open". The "always allow" checkbox is not offered.
 

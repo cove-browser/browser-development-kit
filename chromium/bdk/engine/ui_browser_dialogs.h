@@ -29,21 +29,23 @@ namespace bdk {
 // Chromium's other browser dialogs on BDK pages (ui-requests.md 8.2,
 // T-UIR-10). Chrome shows them as tab-modal views dialogs or bubbles, which
 // need a views widget to parent to, and a BDK page's window is not one: each
-// ended the process at a check. None of their surfaces is routed to the
-// application yet (S3); until then each has a native sheet of BDK's own, is
-// refused as the surface's `disabled` mode would refuse it, or is turned off
-// at start (chromium_main_mac.mm):
+// ended the process at a check. Each is a request routed to the application
+// with a native sheet of BDK's own as its default presenter (T-UIR-13), or
+// still has only the sheet, is refused as the surface's `disabled` mode would
+// refuse it, or is turned off at start (chromium_main_mac.mm):
 //
 // - External protocols (zoommtg:, maps:): Chrome still decides whether to
-//   ask (mailto: opens without asking, as in Chrome); the question is a
-//   sheet, and the application opens only on "Open".
+//   ask (mailto: opens without asking, as in Chrome); the question is an
+//   external_protocols request, and the application opens only on a grant
+//   (or "Open" in the default sheet).
 // - Tab-modal dialog models (chrome::ShowTabModal: File System Access's
 //   "view files?", restricted-directory and dangerous-file questions,
 //   DevTools' folder permission, extension notices): the model is shown as a
 //   sheet and its own callbacks run. A model with a field a sheet cannot show
 //   (a text field, a combobox) is closed at once, as a dismissed dialog.
-// - Client certificates: a sheet with one button per certificate, after
-//   Chrome's automatic selection.
+// - Client certificates: after Chrome's automatic selection, a
+//   client_certificates request; the default sheet has one button per
+//   certificate.
 // - Device choosers (WebUSB, WebHID, Web Serial, Web Bluetooth): refused, so
 //   requestDevice() and requestPort() reject as if the person cancelled.
 // - Web application installs from a page (beforeinstallprompt.prompt()):
@@ -64,7 +66,7 @@ std::unique_ptr<content::SerialDelegate> CreateSerialDelegate();
 std::unique_ptr<content::BluetoothDelegate> CreateBluetoothDelegate();
 
 // BdkContentBrowserClient::SelectClientCertificate: Chrome's automatic
-// selection, then the sheet.
+// selection, then the request.
 base::OnceClosure SelectClientCertificate(
     content::BrowserContext* browser_context,
     content::WebContents* web_contents,

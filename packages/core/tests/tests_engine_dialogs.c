@@ -12,6 +12,7 @@
 #include "test_support.h"
 
 void bdk_harness_engine_show(bdk_contents_t contents, int visible);
+extern const char* bdk_harness_engine_surfaces;
 
 /* http://localhost is a secure context, which every API below needs, and the engine's
    interceptor serves it. */
@@ -140,6 +141,68 @@ static void test_an_external_protocol_asks_with_a_sheet(void) {
     }
     CHECK(shown == 1);
     CHECK(strstr(out, "[\\\"cancel\\\",\\\"open\\\"]") != NULL);
+    finish(c);
+}
+
+/* The question is an external_protocols request (T-UIR-13): a handler answers it and no sheet is
+   shown; with the surface disabled nothing is asked and nothing opens. */
+typedef struct protocol_seen {
+    int calls;
+    char payload[1024];
+} protocol_seen_t;
+
+static protocol_seen_t g_protocol;
+
+static bdk_ui_response_t deny_protocol(void* ctx, const bdk_ui_request_info_t* info) {
+    protocol_seen_t* seen = (protocol_seen_t*)ctx;
+    ++seen->calls;
+    snprintf(seen->payload, sizeof seen->payload, "%.*s", (int)info->payload_json.length,
+             info->payload_json.data ? info->payload_json.data : "");
+    bdk_native_handle_t none;
+    memset(&none, 0, sizeof none);
+    bdk_error_t err = 0;
+    CHECK(bdk_ui_complete(info->request, S("deny"), S(""), none, &err) == BDK_OK);
+    return BDK_UI_HANDLED;
+}
+
+static void test_an_external_protocol_is_a_request_to_a_handler(void) {
+    memset(&g_protocol, 0, sizeof g_protocol);
+    t_start();
+    control("present.clear", "{}", NULL, 0);
+    script("external_protocols", "cancel");
+    bdk_error_t err = 0;
+    REQUIRE(bdk_ui_set_handler(t_runtime, BDK_SURFACE_EXTERNAL_PROTOCOLS, deny_protocol,
+                               &g_protocol, NULL, &err) == BDK_OK);
+    t_freeze();
+    g_profile = t_new_profile("Protocols");
+    bdk_contents_t c = t_new_contents(g_profile);
+    REQUIRE(bdk_contents_load(c, S(PAGE), &err) == BDK_OK);
+    t_pump();
+    bdk_harness_engine_show(c, 1);
+    REQUIRE(bdk_contents_focus(c) == BDK_OK);
+    t_pump();
+    run(c, "location.href = 'maps:?q=BDK'");
+    for (int i = 0; i < 200 && g_protocol.calls == 0; ++i)
+        t_pump();
+    CHECK(g_protocol.calls == 1);
+    CHECK(strstr(g_protocol.payload, "\"url\":\"maps:?q=BDK\"") != NULL);
+    CHECK(strstr(g_protocol.payload, "\"initiatingOrigin\":\"http://localhost\"") != NULL);
+    char out[4096];
+    record("external_protocols", out, sizeof out);
+    CHECK(json_int(out, "shown") <= 0);
+    finish(c);
+}
+
+static void test_a_disabled_external_protocol_surface_asks_nothing(void) {
+    bdk_harness_engine_surfaces = "{\"external_protocols\":\"disabled\"}";
+    bdk_contents_t c = start_page(PAGE);
+    script("external_protocols", "open");
+    run(c, "location.href = 'maps:?q=BDK'");
+    for (int i = 0; i < 100; ++i)
+        t_pump();
+    char out[4096];
+    record("external_protocols", out, sizeof out);
+    CHECK(json_int(out, "shown") <= 0);
     finish(c);
 }
 
@@ -400,6 +463,10 @@ const t_test_t t_engine_dialogs_tests[] = {
      test_https_first_asks_with_its_interstitial_page},
     {"engine_dialogs_an_external_protocol_asks_with_a_sheet",
      test_an_external_protocol_asks_with_a_sheet},
+    {"engine_dialogs_an_external_protocol_is_a_request_to_a_handler",
+     test_an_external_protocol_is_a_request_to_a_handler},
+    {"engine_dialogs_a_disabled_external_protocol_surface_asks_nothing",
+     test_a_disabled_external_protocol_surface_asks_nothing},
     {"engine_dialogs_a_tab_modal_dialog_model_is_a_sheet",
      test_a_tab_modal_dialog_model_is_a_sheet},
     {"engine_dialogs_device_choosers_are_refused", test_device_choosers_are_refused},

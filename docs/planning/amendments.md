@@ -549,6 +549,27 @@ always failed to load Rolldown; the framework's exports now name the navigation 
 Changed: the M9 status in [roadmap.md](roadmap.md); tasks T-PKG-05, T-REL-01, T-REL-02 and T-XPL-02, with T-PWA-06,
 T-PWA-07, T-CLI-07 and T-REP-09 new. The task list is 159.
 
+### 2.27 M9 on the engine (2026-11-25)
+
+The engine halves of M9 that need no product decision, built on `m9-final-touches` with incremental release
+builds of the managed checkout (each about 60 to 90 seconds; AGENTS.md now allows them without asking). The
+status is in [roadmap.md](roadmap.md), M9. Decisions taken while building:
+
+| Topic | Decision |
+|---|---|
+| Navigation policy on the engine (T-SWF-11) | A throttle of the overlay, first in the list so it is asked before the route table hands a native route to its handler. A navigation the route table drops or restarts as the browser's own is not asked; the restart is. While a handler is set every committed page is kept out of the back/forward cache (`DisabledSource::kEmbedder`), since a restored page starts no navigation; a page cached before the handler was set can still come back unasked. A prerender is asked at its own start and discarded unless allowed. |
+| `superseded` on the engine | A navigation another one replaces now ends with the code `superseded`, as on the stub (Chromium's `NavigationDiscardReason`); before it was `aborted`. |
+| Downgrade policy on the engine (T-PKG-05) | Applied at the first start of the process only, before Chromium opens the directory; a later runtime of the same process uses the directory Chromium has open. Engine scenarios each get a launch of their own (`engine_launch_*`, prepared by `bdk_engine_launch_prepare` before the harness's first start). |
+| Page visibility (T-ADP-11) | BDK hides a page itself whenever its host view is in no shown window (`WasHidden`), and shows it again when it is (`WasShown`), after Chromium's own update for the same change; a page Chromium makes visible while its view is in no window is hidden again and never reported visible. |
+| Push off (T-PWA-05) | `provider = "none"` turns the Blink feature `PushMessaging` off, so the Push API is absent, instead of `subscribe()` rejecting and `permissionState()` answering `denied`: Chromium has no embedder switch for that without a patch, and its push client checks in with Google at the first subscription. |
+| Phones off (T-UIR-12) | `phones = false` reports Bluetooth LE as unsupported to Chrome's WebAuthn code, as a missing Bluetooth usage string does. Read once, as Chromium starts. |
+| Page health on the engine (T-UIR-15) | A hung renderer reaches BDK as `RendererUnresponsive` of the page's own `WebContentsDelegate` (and through `BdkTabDialogs` for a page in a `Browser`); blocked popups through the popup blocker's `UrlListManager`, observed until the tab is about to be deleted. Both default presenters are sheets; the blocked-popup notice is a sheet rather than the planned small notice at the address bar. |
+| Bundled extensions on the engine (T-EXT-14) | Chromium's unpacked loader with no prompt, before the profile is handed over; `MustRemainInstalled`, and `MustRemainEnabled` when required. An installed extension blocklisted later is disabled by BDK when it loads, with `DISABLE_BLOCKED_BY_POLICY`, which BDK reports as `blocklisted`. A bundled extension the configuration stops listing stays installed. |
+| External protocols and client certificates (T-UIR-13, part) | Requests, with BDK's sheets as default presenters. `isUserGesture` is always `false` (Chrome does not pass it to its dialog). `remember` uses Chrome's per-origin "always allow". |
+
+Found and recorded, not fixed: on the engine the robustness suite's memory bound fails (the browser process's heap
+grows by about 1 to 3 MB per page opened and closed; roadmap M9, T-REL-03).
+
 ## 3. Tasks and workflows
 
 | Task | Change |

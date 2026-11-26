@@ -4,6 +4,7 @@
 
 #include "bdk/engine/ui_browser_dialogs.h"
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string>
@@ -19,9 +20,11 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/values.h"
+#include "bdk/core/include/bdk/bdk_ids.h"
 #include "bdk/engine/engine_contents.h"
 #include "bdk/engine/host_view.h"
 #include "bdk/engine/ui_presenters.h"
+#include "bdk/engine/ui_request.h"
 #include "chrome/browser/bluetooth/chrome_bluetooth_delegate.h"
 #include "chrome/browser/bluetooth/chrome_bluetooth_delegate_impl_client.h"
 #include "chrome/browser/enterprise/util/managed_browser_utils.h"
@@ -71,11 +74,12 @@ HostView* ViewOf(content::WebContents* contents) {
 // The question ExternalProtocolDialog asks, with its wording. Cancel is the
 // default, as in Chrome, so Return never opens another application; NSAlert
 // gives Escape to it too.
-void AskToOpenExternally(const GURL& url,
-                         content::WebContents* contents,
-                         const std::optional<url::Origin>& initiating_origin,
-                         content::WeakDocumentPtr initiator_document,
-                         const std::u16string& program_name) {
+void ShowOpenExternallySheet(
+    const GURL& url,
+    content::WebContents* contents,
+    const std::optional<url::Origin>& initiating_origin,
+    content::WeakDocumentPtr initiator_document,
+    const std::u16string& program_name) {
   Alert alert;
   alert.title = base::UTF16ToUTF8(
       l10n_util::GetStringFUTF16(IDS_EXTERNAL_PROTOCOL_TITLE, program_name));
@@ -108,6 +112,79 @@ void AskToOpenExternally(const GURL& url,
             }
           },
           url, contents->GetWeakPtr(), std::move(initiator_document)));
+}
+
+// Chrome decided to ask (T-UIR-13): an external_protocols request
+// (ui-requests.md 5.17). A grant opens the application, and with "remember"
+// opens this scheme from this origin without asking again, as Chrome's
+// checkbox does; it needs the confirming gesture, which the router checks. A
+// denial, a rejection or a withdrawn request opens nothing; `disabled` blocks
+// the scheme; with no handler the sheet above asks.
+void AskToOpenExternally(const GURL& url,
+                         content::WebContents* contents,
+                         const std::optional<url::Origin>& initiating_origin,
+                         content::WeakDocumentPtr initiator_document,
+                         const std::u16string& program_name) {
+  EngineContents* page =
+      contents ? EngineContents::FromWebContents(contents) : nullptr;
+  if (!page) {
+    return;
+  }
+  base::DictValue payload;
+  payload.Set("url", url.spec());
+  if (initiating_origin && !initiating_origin->opaque()) {
+    payload.Set("initiatingOrigin", initiating_origin->Serialize());
+  }
+  if (!program_name.empty()) {
+    payload.Set("handlerName", base::UTF16ToUTF8(program_name));
+  }
+  // Chrome asks only for a navigation it is about to launch; whether a
+  // gesture started it is not passed to the dialog.
+  payload.Set("isUserGesture", false);
+  struct Ask {
+    GURL url;
+    base::WeakPtr<content::WebContents> page;
+    std::optional<url::Origin> origin;
+    content::WeakDocumentPtr document;
+    std::u16string program;
+  };
+  auto ask =
+      std::make_unique<Ask>(Ask{url, contents->GetWeakPtr(), initiating_origin,
+                                std::move(initiator_document), program_name});
+  RaiseUiRequest(
+      *page, BDK_SURFACE_EXTERNAL_PROTOCOLS, payload,
+      base::BindOnce(
+          [](std::unique_ptr<Ask> ask, const UiResult& result) {
+            content::WebContents* contents = ask->page.get();
+            if (!contents) {
+              return;
+            }
+            if (result.outcome == bdkcore::UiOutcome::kDefaulted) {
+              ShowOpenExternallySheet(ask->url, contents, ask->origin,
+                                      std::move(ask->document), ask->program);
+              return;
+            }
+            const bool open =
+                result.outcome == bdkcore::UiOutcome::kCompleted &&
+                result.completion == "grant";
+            ExternalProtocolHandler::RecordHandleStateMetrics(
+                result.args.FindBool("remember").value_or(false),
+                open ? ExternalProtocolHandler::DONT_BLOCK
+                     : ExternalProtocolHandler::BLOCK);
+            if (!open) {
+              return;
+            }
+            if (result.args.FindBool("remember").value_or(false) &&
+                ask->origin && !ask->origin->opaque()) {
+              ExternalProtocolHandler::SetBlockState(
+                  ask->url.GetScheme(), *ask->origin,
+                  ExternalProtocolHandler::DONT_BLOCK,
+                  Profile::FromBrowserContext(contents->GetBrowserContext()));
+            }
+            ExternalProtocolHandler::LaunchUrlWithoutSecurityCheck(
+                ask->url, contents, std::move(ask->document));
+          },
+          std::move(ask)));
 }
 
 // ---- Tab-modal dialog models ------------------------------------------------
@@ -444,6 +521,99 @@ std::unique_ptr<content::BluetoothDelegate> CreateBluetoothDelegate() {
       std::make_unique<BdkBluetoothClient>());
 }
 
+namespace {
+
+// One client-certificate question: the certificates offered, and the delegate
+// the answer goes to, once.
+struct CertificateSelection {
+  CertificateSelection(std::string host,
+                       net::ClientCertIdentityList identities,
+                       std::unique_ptr<content::ClientCertificateDelegate> d)
+      : host(std::move(host)),
+        identities(std::move(identities)),
+        delegate(std::move(d)) {}
+
+  // Continues with the certificate at `index`, or without one when it is out
+  // of range.
+  void Choose(size_t index) {
+    if (!delegate) {
+      return;
+    }
+    std::unique_ptr<content::ClientCertificateDelegate> chosen_by =
+        std::move(delegate);
+    if (index >= identities.size()) {
+      chosen_by->ContinueWithCertificate(nullptr, nullptr);
+      return;
+    }
+    std::unique_ptr<net::ClientCertIdentity> chosen =
+        std::move(identities[index]);
+    scoped_refptr<net::X509Certificate> cert = chosen->certificate();
+    net::ClientCertIdentity::SelfOwningAcquirePrivateKey(
+        std::move(chosen),
+        base::BindOnce(
+            &content::ClientCertificateDelegate::ContinueWithCertificate,
+            std::move(chosen_by), std::move(cert)));
+  }
+
+  // The request went away: what is open goes, and dropping the delegate
+  // cancels it.
+  void Cancel() {
+    if (request) {
+      bdkcore::withdraw_ui_request(*request);
+      request.reset();
+    }
+    if (dismiss) {
+      std::move(dismiss).Run();
+    }
+    delegate.reset();
+  }
+
+  // A sheet can hold a few buttons, not a table: the first certificates, each
+  // named by its subject and issuer.
+  void ShowSheet(HostView* view) {
+    constexpr size_t kMaxShown = 8;
+    const size_t shown = std::min(identities.size(), kMaxShown);
+    Alert alert;
+    alert.title = base::UTF16ToUTF8(
+        l10n_util::GetStringUTF16(IDS_CLIENT_CERT_DIALOG_TITLE));
+    alert.message = base::UTF16ToUTF8(l10n_util::GetStringFUTF16(
+        IDS_CLIENT_CERT_DIALOG_TEXT, base::UTF8ToUTF16(host)));
+    for (size_t i = 0; i < shown; ++i) {
+      const net::X509Certificate& cert = *identities[i]->certificate();
+      alert.buttons.push_back({"certificate" + base::NumberToString(i),
+                               cert.subject().GetDisplayName() + " (" +
+                                   cert.issuer().GetDisplayName() + ")"});
+    }
+    alert.buttons.push_back(
+        {"cancel",
+         base::UTF16ToUTF8(l10n_util::GetStringUTF16(IDS_APP_CANCEL))});
+    dismiss = UiPresenters::Get().ShowAlert(
+        "client_certificates", view, std::move(alert),
+        base::BindOnce(
+            [](base::WeakPtr<CertificateSelection> self, size_t shown,
+               int index) {
+              if (!self || index < 0) {
+                return;  // nowhere to ask: dropping the delegate cancels
+              }
+              self->dismiss.Reset();
+              // Cancel, as in Chrome's selector: go on without one.
+              self->Choose(static_cast<size_t>(index) < shown
+                               ? static_cast<size_t>(index)
+                               : self->identities.size());
+            },
+            weak_factory.GetWeakPtr(), shown));
+  }
+
+  std::string host;
+  net::ClientCertIdentityList identities;
+  std::unique_ptr<content::ClientCertificateDelegate> delegate;
+  std::shared_ptr<bdkcore::Request> request;
+  Dismisser dismiss;
+  base::WeakPtrFactory<CertificateSelection> weak_factory{this};
+};
+
+}  // namespace
+
 base::OnceClosure SelectClientCertificate(
     content::BrowserContext* browser_context,
     content::WebContents* web_contents,
@@ -474,54 +644,58 @@ base::OnceClosure SelectClientCertificate(
     delegate->ContinueWithCertificate(nullptr, nullptr);
     return base::OnceClosure();
   }
-  // A sheet can hold a few buttons, not a table: the first certificates,
-  // each named by its subject and issuer.
-  constexpr size_t kMaxShown = 8;
-  if (others.size() > kMaxShown) {
-    others.resize(kMaxShown);
+  // A client_certificates request (ui-requests.md 5.3, T-UIR-13): the
+  // certificates by an index, subject and issuer. Choosing one continues with
+  // it; a denial, a rejection or `disabled` goes on without one, as Chrome's
+  // selector does on Cancel; with no handler the sheet asks.
+  auto selection = std::make_shared<CertificateSelection>(
+      cert_request_info->host_and_port.ToString(), std::move(others),
+      std::move(delegate));
+  EngineContents* page = EngineContents::FromWebContents(web_contents);
+  base::DictValue payload;
+  payload.Set("host", selection->host);
+  base::ListValue certificates;
+  for (size_t i = 0; i < selection->identities.size(); ++i) {
+    const net::X509Certificate& cert = *selection->identities[i]->certificate();
+    certificates.Append(base::DictValue()
+                            .Set("id", base::NumberToString(i))
+                            .Set("subject", cert.subject().GetDisplayName())
+                            .Set("issuer", cert.issuer().GetDisplayName()));
   }
-  Alert alert;
-  alert.title = base::UTF16ToUTF8(
-      l10n_util::GetStringUTF16(IDS_CLIENT_CERT_DIALOG_TITLE));
-  alert.message = base::UTF16ToUTF8(l10n_util::GetStringFUTF16(
-      IDS_CLIENT_CERT_DIALOG_TEXT,
-      base::ASCIIToUTF16(cert_request_info->host_and_port.ToString())));
-  for (size_t i = 0; i < others.size(); ++i) {
-    const net::X509Certificate& cert = *others[i]->certificate();
-    alert.buttons.push_back({"certificate" + base::NumberToString(i),
-                             cert.subject().GetDisplayName() + " (" +
-                                 cert.issuer().GetDisplayName() + ")"});
-  }
-  alert.buttons.push_back(
-      {"cancel", base::UTF16ToUTF8(l10n_util::GetStringUTF16(IDS_APP_CANCEL))});
-  auto identities =
-      std::make_unique<net::ClientCertIdentityList>(std::move(others));
-  Dismisser dismiss = UiPresenters::Get().ShowAlert(
-      "client_certificates", view, std::move(alert),
+  payload.Set("certificates", std::move(certificates));
+  selection->request = RaiseUiRequest(
+      *page, BDK_SURFACE_CLIENT_CERTIFICATES, payload,
       base::BindOnce(
-          [](std::unique_ptr<net::ClientCertIdentityList> list,
-             std::unique_ptr<content::ClientCertificateDelegate> chosen_by,
-             int index) {
-            if (index < 0) {
-              return;  // nowhere to ask: dropping the delegate cancels
+          [](std::shared_ptr<CertificateSelection> selection, HostView* view,
+             const UiResult& result) {
+            if (result.outcome == bdkcore::UiOutcome::kWithdrawn) {
+              return;  // the page went first; content cancelled it
             }
-            if (static_cast<size_t>(index) >= list->size()) {
-              // Cancel, as in Chrome's selector: go on without one.
-              chosen_by->ContinueWithCertificate(nullptr, nullptr);
+            if (result.outcome == bdkcore::UiOutcome::kDefaulted) {
+              selection->ShowSheet(view);
               return;
             }
-            std::unique_ptr<net::ClientCertIdentity> chosen =
-                std::move((*list)[index]);
-            scoped_refptr<net::X509Certificate> cert = chosen->certificate();
-            net::ClientCertIdentity::SelfOwningAcquirePrivateKey(
-                std::move(chosen),
-                base::BindOnce(&content::ClientCertificateDelegate::
-                                   ContinueWithCertificate,
-                               std::move(chosen_by), std::move(cert)));
+            size_t index = selection->identities.size();
+            if (result.outcome == bdkcore::UiOutcome::kCompleted &&
+                result.completion == "accept") {
+              if (const std::string* id = result.args.FindString("certificate");
+                  !id || !base::StringToSizeT(*id, &index)) {
+                index = selection->identities.size();
+              }
+            }
+            selection->Choose(index);
           },
-          std::move(identities), std::move(delegate)));
+          selection, view));
+  if (!selection->request) {
+    selection->Choose(selection->identities.size());
+    return base::OnceClosure();
+  }
   // Content runs this when the request goes away first (the page navigated).
-  return dismiss;
+  return base::BindOnce(
+      [](std::shared_ptr<CertificateSelection> selection) {
+        selection->Cancel();
+      },
+      selection);
 }
 
 }  // namespace bdk

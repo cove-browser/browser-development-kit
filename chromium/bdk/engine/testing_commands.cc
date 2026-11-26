@@ -40,6 +40,7 @@
 #include "bdk/engine/extensions/extension_testing.h"
 #include "bdk/engine/extensions/extension_ui_testing.h"
 #include "bdk/engine/extensions/panel_testing.h"
+#include "bdk/engine/host_context.h"
 #include "bdk/engine/json_util.h"
 #include "bdk/engine/providers/provider_settings.h"
 #include "bdk/engine/providers/reputation_service.h"
@@ -59,6 +60,7 @@
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/heavy_ad_intervention/heavy_ad_features.h"
 #include "components/prefs/pref_service.h"
+#include "content/browser/web_contents/web_contents_impl.h"  // nogncheck
 #include "content/public/browser/storage_partition.h"
 #include "content/public/browser/web_contents.h"
 #include "google_apis/google_api_keys.h"
@@ -265,6 +267,18 @@ bool Run(const std::string& name,
     AfterStartupTaskUtils::PostTask(
         FROM_HERE, base::SequencedTaskRunner::GetCurrentDefault(),
         base::BindOnce([] { AfterStartupTaskRan() = true; }));
+    return true;
+  }
+  if (name == "pages.count") {
+    // What is alive in the process: every WebContents, BDK's pages and their
+    // host contexts (T-REL-03), for scenarios that check nothing is left
+    // behind.
+    result.Set(
+        "webContents",
+        static_cast<int>(content::WebContentsImpl::GetAllWebContents().size()));
+    result.Set("pages", static_cast<int>(EngineContents::All().size()));
+    result.Set("hostContexts",
+               static_cast<int>(HostContexts::Get().ContextCount()));
     return true;
   }
   if (name == "startup.state") {
