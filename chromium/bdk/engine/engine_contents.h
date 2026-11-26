@@ -322,6 +322,8 @@ class EngineContents : public bdkcore::BackendData,
   // LoadForPolicy's count, for TakePolicyRedirects.
   uint32_t policy_redirects_ = 0;
   bool visibility_check_pending_ = false;
+  // The page has been reported visible once (OnVisibilityChanged).
+  bool shown_once_ = false;
   bool muted_ = false;
   double zoom_ = 1.0;
   bool auto_discardable_ = true;

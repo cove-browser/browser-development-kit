@@ -154,6 +154,8 @@ BDK_EXPORT bdk_status_t bdk_testing_tab_info(bdk_contents_t,
    maps to the loopback address) startup.post  posts a task as Chromium posts
    its after-start-up work; startup.state -> {"complete", "ran"} whether
    Chromium's start-up is complete and whether that task ran
+   protocols.permit  Chrome accepts the next external-protocol launch, as after
+   a user gesture
    pages.count -> {"webContents", "pages", "hostContexts"}  what is alive in
    the process: every WebContents, BDK's pages and their host contexts
    extensions.pack {"dir", "crx", "key"} -> {"id"}  packs the directory into the

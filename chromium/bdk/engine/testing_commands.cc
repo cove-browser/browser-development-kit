@@ -54,6 +54,7 @@
 #include "bdk/engine/webauthn_testing.h"
 #include "chrome/browser/after_startup_task_utils.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
+#include "chrome/browser/external_protocol/external_protocol_handler.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/resource_coordinator/tab_lifecycle_unit_external.h"
 #include "chrome/browser/ui/dialogs/browser_dialogs.h"
@@ -267,6 +268,12 @@ bool Run(const std::string& name,
     AfterStartupTaskUtils::PostTask(
         FROM_HERE, base::SequencedTaskRunner::GetCurrentDefault(),
         base::BindOnce([] { AfterStartupTaskRan() = true; }));
+    return true;
+  }
+  if (name == "protocols.permit") {
+    // Chrome accepts one external-protocol launch until a user gesture
+    // permits the next; a scenario permits it as such a gesture would.
+    ExternalProtocolHandler::PermitLaunchUrl();
     return true;
   }
   if (name == "pages.count") {

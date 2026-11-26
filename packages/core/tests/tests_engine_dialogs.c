@@ -181,6 +181,8 @@ static void test_an_external_protocol_is_a_request_to_a_handler(void) {
     bdk_harness_engine_show(c, 1);
     REQUIRE(bdk_contents_focus(c) == BDK_OK);
     t_pump();
+    /* An earlier scenario's launch used up the one Chrome accepts before a gesture. */
+    control("protocols.permit", "{}", NULL, 0);
     run(c, "location.href = 'maps:?q=BDK'");
     for (int i = 0; i < 200 && g_protocol.calls == 0; ++i)
         t_pump();

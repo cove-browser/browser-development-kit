@@ -469,7 +469,7 @@ void EngineContents::FollowHostViewVisibility() {
   // real, and ignores the view leaving every window until then; and a page
   // that has been shown can be left visible once its view has gone (the
   // focused pane of a window). Hidden here is what Chromium's own view would
-  // have said: not in a window, or in a hidden one. A page being captured
+  // have said: in no window, or in a hidden view. A page being captured
   // stays as Chromium keeps it.
   const content::Visibility now = web_contents_->GetVisibility();
   if (!host_view_->IsShown()) {
@@ -1454,7 +1454,13 @@ void EngineContents::OnVisibilityChanged(content::Visibility visibility) {
   }
   if (visible) {
     LoadIfDiscarded();
+  } else if (!shown_once_) {
+    // A page nobody has shown yet is hidden quietly: its state says so, and
+    // no event reports a change the application never saw the other side of
+    // (the stub reports none either).
+    return;
   }
+  shown_once_ = shown_once_ || visible;
   Emit(BDK_CONTENTS_EVENT_VISIBILITY_CHANGED, "",
        ToJson(base::DictValue().Set("visible", visible)), 0, 0);
 }
