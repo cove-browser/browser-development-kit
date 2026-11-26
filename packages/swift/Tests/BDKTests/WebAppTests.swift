@@ -86,10 +86,12 @@ extension BDKStubTests {
             }
         }
 
-        @Test func googlePushNeedsTheKey() async throws {
-            let keyless = BDKConfiguration(
+        @Test func googlePushNeedsNoKey() async throws {
+            // Chromium's push client registers with Google and reads no key (T-PWA-05).
+            var keyed = BDKConfiguration(
                 resolvedJSON: "{\"services\":{\"push\":{\"provider\":\"google\"}}}")
-            await expectError(.config, "keyMissing") { try BDKRuntime.startStub(keyless) }
+            keyed.services.google.apiKey = "AIzaTestKey"
+            await expectError(.config, "keyUnused") { try BDKRuntime.startStub(keyed) }
             // A failed start shuts the native runtime down in the background; wait for that.
             for _ in 0..<200 {
                 do {

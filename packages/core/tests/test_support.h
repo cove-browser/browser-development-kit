@@ -88,6 +88,9 @@ void t_fill_start_config(bdk_start_config_t* c);
    "\"automation\":{...}"); NULL for none. A harness that writes its own configuration keeps them.
    The runner resets it after each test. */
 extern const char* t_config_extra;
+/* The Google key of the harness's first start, which Chromium keeps for the process: set by a
+   launch's prepare hook (engine harness only; tests_engine_providers.c). */
+extern const char* t_first_start_google_key;
 void t_pump(void);
 
 /* Records the callbacks of an asynchronous call. */

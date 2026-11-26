@@ -39,6 +39,7 @@ int str_has(bdk_string_t s, const char* needle) {
 }
 
 const char* t_config_extra = NULL;
+const char* t_first_start_google_key = NULL;
 
 void t_fill_start_config(bdk_start_config_t* c) {
     static char resolved[2048];

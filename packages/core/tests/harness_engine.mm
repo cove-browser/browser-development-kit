@@ -36,6 +36,10 @@ extern "C" {
 #include "test_support.h"
 /* tests_engine_profile_versions.c: prepares the launch for the scenario `name`, if it is one. */
 void bdk_engine_launch_prepare(const char* name);
+/* From tests_engine_web_apps.c and tests_engine_providers.c: launches that need Chromium started
+   with Google push, or with the application's Google key. */
+void bdk_engine_push_launch_prepare(const char* name);
+void bdk_engine_google_key_launch_prepare(const char* name);
 }
 
 @interface BDKHarnessApplication : BDKApplicationBase
@@ -806,13 +810,18 @@ void RunSuite(void*) {
        to open, and makes the starts that must fail before Chromium starts
        (tests_engine_profile_versions.c). */
     for (int i = 1; i + 1 < g_argc; ++i) {
-        if (strcmp(g_argv[i], "--run") == 0)
+        if (strcmp(g_argv[i], "--run") == 0) {
             bdk_engine_launch_prepare(g_argv[i + 1]);
+            bdk_engine_push_launch_prepare(g_argv[i + 1]);
+            bdk_engine_google_key_launch_prepare(g_argv[i + 1]);
+        }
     }
     /* Starts Chromium with a first runtime. Its nested main loop is queued on the run loop; the
        block after it runs inside that loop. */
     bdk_start_config_t config;
     t_fill_start_config(&config);
+    if (t_first_start_google_key)
+        config.google_api_key = S(t_first_start_google_key);
     bdk_runtime_t warmup = 0;
     bdk_error_t error = 0;
     if (bdk_runtime_start(&config, &warmup, &error) != BDK_OK) {

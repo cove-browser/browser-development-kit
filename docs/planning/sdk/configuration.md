@@ -295,9 +295,9 @@ Web Push, for any site that subscribes, installed as a web app or not ([web-apps
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `provider` | `"none"` or `"google"` | `"none"` | Who delivers push messages. `none`: pages have no Push API (`PushManager` and `registration.pushManager` are absent), so no page subscribes and the runtime contacts no messaging host. `google`: Chromium's own client for Google's messaging service (GCM/FCM), with the application's credentials supplied from Swift before start; missing credentials are a start error, as for the other named providers. |
+| `provider` | `"none"` or `"google"` | `"none"` | Who delivers push messages. `none`: pages have no Push API (`PushManager` and `registration.pushManager` are absent), so no page subscribes and the runtime contacts no messaging host. `google`: Chromium's own client for Google's messaging service (GCM/FCM). It needs no Google key or project: a key given for push alone is `config.keyUnused`. |
 
-**`provider = "google"` requires the developer's own project in Google's console.** BDK ships no key (invariant 9), Google sees every subscription, and Google's terms and quotas apply to the developer. `bdk build` and `bdk doctor` print the warning `services.push_google` whenever this value is set (section 9). What must be created in the console is not verified; T-PWA-05 records it here. Read at the pin for T-PWA-01, Chromium's push client uses no Google API key ([web-apps.md](web-apps.md) 10.6), so until T-PWA-05 settles it the runtime treats push like the other Google providers: `provider = "google"` needs the application's Google key at start (`config.keyMissing` without it). Messages arrive only while the browser is running. There is no `endpoint` key and no `"app"` value in v1; another value is `services.provider_unknown`.
+**`provider = "google"` sends every subscription through Google.** Chromium's push client registers the device with Google as Chrome does (`android.clients.google.com`, then a connection to `mtalk.google.com`), and Google's terms and quotas apply. It needs no project in Google's console and no key (T-PWA-05, run on the engine 2026-11-26; [web-apps.md](web-apps.md) 7). `bdk build` and `bdk doctor` print the warning `services.push_google` whenever this value is set (section 9). Messages arrive only while the browser is running. There is no `endpoint` key and no `"app"` value in v1; another value is `services.provider_unknown`.
 
 #### `[services.credentials]` (Added, S14)
 
@@ -694,7 +694,7 @@ Each has a stable code, used by fixtures in `tests/config/`. Messages name the f
 | `plist.app_sandbox` | The App Sandbox entitlement is set |
 | `plist.passkeys_phone` | A note, only with `[services.webauthn] phones = true` (T-UIR-12): Info.plist has no `NSBluetoothAlwaysUsageDescription`, or the entitlements lack `com.apple.security.device.bluetooth`, so passkeys on a phone are not offered (T-UIR-09) |
 | `web_apps.push_unconfigured` | A note: `[web_apps] enabled = true` with `[services.push] provider = "none"`, so installed web apps receive no push messages (T-PWA-02; at the line of `enabled`) |
-| `services.push_google` | A warning: `[services.push] provider = "google"`, which requires the developer's own project in Google's console and sends every subscription to Google (T-PWA-02; at the line of `provider`). Both come from `bdk build config` (the resolver, `checkWebAppsAndPush` in `packages/cli/src/core/config/resolve.ts`, exported for `bdk doctor`) |
+| `services.push_google` | A warning: `[services.push] provider = "google"`, which sends every subscription to Google (T-PWA-02; at the line of `provider`). Both come from `bdk build config` (the resolver, `checkWebAppsAndPush` in `packages/cli/src/core/config/resolve.ts`, exported for `bdk doctor`) |
 
 ### Decisions made in T-CFG-01/02
 

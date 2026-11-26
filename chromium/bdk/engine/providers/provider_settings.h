@@ -41,11 +41,16 @@ void SetProviderSettings(const bdkcore::Runtime& runtime);
 // with the others by StartChromium.
 std::vector<std::string> ProviderSwitches(const ProviderSettings& settings);
 
-// Gives Chromium the application's Google key. Must run before Chromium
+// Records the application's Google key for Chromium. Must run before Chromium
 // starts: Chromium allows the key to be set once, before anything has read it.
 // False, with a message, when the runtime was built without
 // support_external_google_api_key or Chromium already runs with another key.
 bool ApplyGoogleKey(const std::string& key, std::string* error);
+
+// Gives Chromium the recorded key, if any. Called at the start of the
+// browser's main parts: the key cache reads a feature, so it may not be made
+// before Chromium's feature list exists, and nothing has read a key yet.
+void InstallGoogleKey();
 
 // The preferences of the audit list, for a profile when the engine opens it
 // and for local state once Chromium has started. A preference Chromium has not

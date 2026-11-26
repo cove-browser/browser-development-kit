@@ -271,7 +271,7 @@ export function checkWebAppsAndPush(
   if (pushProvider === "google") {
     reporter.warning(
       "services.push_google",
-      "[services.push] provider = \"google\" sends every push subscription through Google's messaging service (FCM). It needs your own project in Google's console, under your account and Google's terms and quotas, and its credentials supplied from Swift before start; BDK ships none. Messages arrive only while the browser runs.",
+      "[services.push] provider = \"google\" sends every push subscription through Google's messaging service (FCM): Chromium's push client registers the device with Google as Chrome does, so Google sees every subscription and Google's terms apply. It needs no Google project or key. Messages arrive only while the browser runs.",
       ["services", "push", "provider"],
       'See docs/planning/sdk/web-apps.md section 7. To send nothing to Google, use provider = "none".',
     );

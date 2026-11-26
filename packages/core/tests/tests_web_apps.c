@@ -218,17 +218,14 @@ static void test_webapps_invalid_configuration_fails_start(void) {
     CHECK(t_error_is(err, "config", "resolvedInvalid"));
 }
 
-static void test_webapps_push_google_without_a_key_fails_start(void) {
+/* Push through Google takes no Google key (T-PWA-05): a runtime starts without one, and a key
+   given for push alone is unused. */
+static void test_webapps_push_google_needs_no_key(void) {
     bdk_error_t err = 0;
-    CHECK(start_with("\"services\":{\"push\":{\"provider\":\"google\"}}", NULL, &err) ==
+    CHECK(start_with("\"services\":{\"push\":{\"provider\":\"google\"}}", "AIza-test-key", &err) ==
           BDK_ERR_FAILED);
-    CHECK(t_error_is(err, "config", "keyMissing"));
-    /* Chromium takes the key once per process, so only a runtime with the stub's hooks starts
-       with one here (tests_providers.c does the same). */
-    if (!bdk_harness_web_app_hooks())
-        return;
-    REQUIRE(start_with("\"services\":{\"push\":{\"provider\":\"google\"}}", "AIza-test-key",
-                       &err) == BDK_OK);
+    CHECK(t_error_is(err, "config", "keyUnused"));
+    REQUIRE(start_with("\"services\":{\"push\":{\"provider\":\"google\"}}", NULL, &err) == BDK_OK);
     t_freeze();
     t_capture_t cap;
     call(0, "runtime.info", "{}", &cap);
@@ -601,8 +598,7 @@ const t_test_t t_web_app_tests[] = {
     {"webapps.runtime_info_reports_web_apps_and_push",
      test_webapps_runtime_info_reports_web_apps_and_push},
     {"webapps.invalid_configuration_fails_start", test_webapps_invalid_configuration_fails_start},
-    {"webapps.push_google_without_a_key_fails_start",
-     test_webapps_push_google_without_a_key_fails_start},
+    {"webapps.push_google_needs_no_key", test_webapps_push_google_needs_no_key},
     {"webapps.install_surface_cannot_be_disabled", test_webapps_install_surface_cannot_be_disabled},
     {"webapps.private_profile_refuses", test_webapps_private_profile_refuses},
     {"webapps.host_install_needs_its_gesture", test_webapps_host_install_needs_its_gesture},

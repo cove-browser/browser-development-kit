@@ -1,0 +1,91 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BDK Patches <patches@bdk.invalid>
+Date: Thu, 26 Nov 2026 08:50:51 -0800
+Subject: [PATCH] bdk: let an embedder give pages the production push endpoint
+
+A push subscription's endpoint follows the browser's release channel:
+every channel but stable gets the push service's staging endpoint
+(push_messaging_utils.cc). An unbranded build reads no channel
+(channel_info_mac.mm reads KSChannelID only with Chrome branding) and
+reports unknown, so its pages are given a fcm.googleapis.com/preprod/
+endpoint for a registration made with the production service, and the
+push service answers every push to it with 410 Gone.
+
+Add embedder_push_endpoint.h, a small header with a settable channel (no
+new target: it is inline), and ask it in CreateEndpointFromChromeChannel(),
+the one place endpoints are made. Unset, the browser's channel is used,
+so Chrome is unchanged. Nothing widely included changes.
+
+Used by: the BDK engine (//bdk/engine/web_apps.cc), for
+[services.push] provider = "google" (T-PWA-05).
+---
+ .../push_messaging/embedder_push_endpoint.h   | 37 +++++++++++++++++++
+ .../push_messaging_service_impl.cc            |  5 ++-
+ 2 files changed, 41 insertions(+), 1 deletion(-)
+
+diff --git a/chrome/browser/push_messaging/embedder_push_endpoint.h b/chrome/browser/push_messaging/embedder_push_endpoint.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..a7243fb7b64a537ed6393a339cc2c79c909226d6
+--- /dev/null
++++ b/chrome/browser/push_messaging/embedder_push_endpoint.h
+@@ -0,0 +1,37 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_PUSH_MESSAGING_EMBEDDER_PUSH_ENDPOINT_H_
++#define CHROME_BROWSER_PUSH_MESSAGING_EMBEDDER_PUSH_ENDPOINT_H_
++
++#include <optional>
++
++#include "components/version_info/channel.h"
++
++// A hook for Chromium embedders whose builds have no release channel. A push
++// subscription's endpoint follows the browser's channel, and every channel but
++// stable gets the push service's staging endpoint; an unbranded build reports
++// an unknown channel, so its pages are given a staging endpoint for a
++// registration made with the production service, which no push reaches. An
++// embedder that ships to people names the channel its endpoints are for. Only
++// embedders set it, once, before any page subscribes.
++namespace embedder_push_endpoint {
++
++inline std::optional<version_info::Channel>& ChannelOverride() {
++  static std::optional<version_info::Channel> channel;
++  return channel;
++}
++
++inline void SetChannel(version_info::Channel channel) {
++  ChannelOverride() = channel;
++}
++
++// The channel endpoints are made for: the embedder's, or else `browser`'s.
++inline version_info::Channel EndpointChannel(version_info::Channel browser) {
++  return ChannelOverride().value_or(browser);
++}
++
++}  // namespace embedder_push_endpoint
++
++#endif  // CHROME_BROWSER_PUSH_MESSAGING_EMBEDDER_PUSH_ENDPOINT_H_
+diff --git a/chrome/browser/push_messaging/push_messaging_service_impl.cc b/chrome/browser/push_messaging/push_messaging_service_impl.cc
+index 640e36b88bc973ac71c3af32d4cd551622f733f5..325d69074c1be11fb7536e32f7759baa090c8761 100644
+--- a/chrome/browser/push_messaging/push_messaging_service_impl.cc
++++ b/chrome/browser/push_messaging/push_messaging_service_impl.cc
+@@ -30,6 +30,7 @@
+ #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
+ #include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"
+ #include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/push_messaging/embedder_push_endpoint.h"
+ #include "chrome/browser/push_messaging/push_messaging_app_identifier.h"
+ #include "chrome/browser/push_messaging/push_messaging_service_factory.h"
+ #include "chrome/browser/push_messaging/push_messaging_unsubscribed_entry.h"
+@@ -187,7 +188,9 @@ PendingMessage& PendingMessage::operator=(PendingMessage&& other) = default;
+ PendingMessage::~PendingMessage() = default;
+ 
+ GURL CreateEndpointFromChromeChannel(const std::string& subscription_id) {
+-  return push_messaging::CreateEndpoint(chrome::GetChannel(), subscription_id);
++  return push_messaging::CreateEndpoint(
++      embedder_push_endpoint::EndpointChannel(chrome::GetChannel()),
++      subscription_id);
+ }
+ 
+ }  // namespace

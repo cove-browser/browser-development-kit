@@ -3,7 +3,7 @@
     {
       "code": "services.push_google",
       "severity": "warning",
-      "message": "[services.push] provider = \"google\" sends every push subscription through Google's messaging service (FCM). It needs your own project in Google's console, under your account and Google's terms and quotas, and its credentials supplied from Swift before start; BDK ships none. Messages arrive only while the browser runs.",
+      "message": "[services.push] provider = \"google\" sends every push subscription through Google's messaging service (FCM): Chromium's push client registers the device with Google as Chrome does, so Google sees every subscription and Google's terms apply. It needs no Google project or key. Messages arrive only while the browser runs.",
       "file": "bdk.toml",
       "line": 8
     }

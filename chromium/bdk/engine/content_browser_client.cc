@@ -80,6 +80,9 @@ class DevToolsExtensionThrottle : public content::NavigationThrottle {
 // What BDK does at the stages of Chrome's browser start.
 class BdkBrowserMainExtraParts : public ChromeBrowserMainExtraParts {
  public:
+  // Once Chromium's features exist, and before any service reads a key.
+  void PreEarlyInitialization() override { InstallGoogleKey(); }
+
   // After the threads exist and before Chrome's own platform setup, which
   // installs the operating system's location permission unless one is.
   void PostCreateThreads() override {

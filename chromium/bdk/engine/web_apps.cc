@@ -30,6 +30,7 @@
 #include "chrome/browser/badging/badge_manager_delegate.h"
 #include "chrome/browser/badging/badge_manager_factory.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/push_messaging/embedder_push_endpoint.h"  // nogncheck
 #include "chrome/browser/ui/web_applications/embedder_web_app_install_dialog.h"  // nogncheck
 #include "chrome/browser/web_applications/os_integration/embedder_web_app_os_integration.h"  // nogncheck
 #include "chrome/browser/web_applications/web_app_helpers.h"
@@ -38,6 +39,7 @@
 #include "chrome/browser/web_applications/web_app_install_manager_observer.h"
 #include "chrome/browser/web_applications/web_app_provider.h"
 #include "chrome/browser/web_applications/web_app_registrar.h"
+#include "components/version_info/channel.h"
 #include "content/public/browser/web_contents.h"
 #include "third_party/blink/public/mojom/manifest/manifest.mojom.h"
 #include "third_party/skia/include/core/SkColor.h"
@@ -276,6 +278,9 @@ void InstallWebAppHooks() {
   embedder_web_app_install_dialog::SetPresenter(&PresentPageInstall);
   // Operating-system integration is not in v1 (web-apps.md 8).
   embedder_web_app_os_integration::TurnOff();
+  // An unbranded build has no channel, and would give pages the push service's
+  // staging endpoint, which no push reaches (web-apps.md 7, T-PWA-05).
+  embedder_push_endpoint::SetChannel(version_info::Channel::STABLE);
 }
 
 bool WebAppsEnabled() {

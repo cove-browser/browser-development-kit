@@ -500,7 +500,7 @@
             "provider": {
               "enum": ["none", "google"],
               "default": "none",
-              "description": "none: PushManager.subscribe() rejects and no messaging host is contacted. google: Google's messaging service, with your own project in Google's console and its credentials supplied from Swift before start."
+              "description": "none: pages have no Push API and no messaging host is contacted. google: Google's messaging service, through Chromium's own push client, which registers with Google as Chrome does; it needs no Google project or key."
             }
           }
         }
