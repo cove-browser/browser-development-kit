@@ -272,6 +272,7 @@ static const t_test_t* const kTables[] = {
     t_engine_payment_tests,         /* Payment Request (tests_engine_payments.c) */
     t_engine_client_certificate_tests, /* client certificates (tests_engine_client_certificates.c)
                                         */
+    t_engine_identity_tests,           /* FedCM (tests_engine_identity.c) */
     t_engine_arc_tests,                /* the Arc-style layouts, M8 (tests_engine_arc.c) */
     t_engine_navigation_policy_tests,  /* the navigation policy on Chromium
                                           (tests_engine_navigation_policy.c) */

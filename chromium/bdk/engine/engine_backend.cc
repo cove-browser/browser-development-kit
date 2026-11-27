@@ -257,6 +257,11 @@ class EngineBackend final : public bdkcore::Backend {
           bdkcore::ui_surface_available(rt, BDK_SURFACE_PAYMENTS)
               ? "disable-features=WebPaymentsSingleAppUiSkip"
               : "disable-features=WebPaymentsSingleAppUiSkip,WebPayments");
+      // FedCM is identity requests (T-UIR-14); with the surface disabled,
+      // pages have no IdentityCredential.
+      if (!bdkcore::ui_surface_available(rt, BDK_SURFACE_IDENTITY)) {
+        options.switches.push_back("disable-features=FedCm");
+      }
       for (std::string& extra : ExtraSwitches()) {
         options.switches.push_back(std::move(extra));
       }

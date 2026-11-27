@@ -441,6 +441,15 @@ class RoutingPresenters : public UiPresenters {
         });
   }
 
+  Dismisser ShowExclusiveAccessNotice(HostView* view,
+                                      const base::DictValue& notice) override {
+    if (!Scripted::Find("exclusive_access")) {
+      return platform_->ShowExclusiveAccessNotice(view, notice);
+    }
+    return Scripted::Present("exclusive_access", notice,
+                             [](const base::DictValue&) {});
+  }
+
   std::unique_ptr<FindBar> ShowFindBar(HostView* view,
                                        const base::DictValue& payload,
                                        FindBarClient* client) override {

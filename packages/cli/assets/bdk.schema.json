@@ -276,6 +276,10 @@
               "$ref": "#/$defs/surfaceModeDefaultCustom",
               "description": "An unresponsive page; blocked popups. Cannot be disabled."
             },
+            "identity": {
+              "$ref": "#/$defs/surfaceModeAny",
+              "description": "FedCM: signing in to a site with an account of an identity provider. disabled: pages have no IdentityCredential."
+            },
             "payments": {
               "$ref": "#/$defs/surfaceModeAny",
               "description": "Payment Request: choosing the payment app that pays. disabled: pages have no PaymentRequest."

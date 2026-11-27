@@ -79,6 +79,10 @@ class BdkContentBrowserClient : public ChromeContentBrowserClient {
   // (client_cert_testing.h), and otherwise Chrome's Keychain store.
   std::unique_ptr<net::ClientCertStore> CreateClientCertStore(
       content::BrowserContext* browser_context) override;
+  // FedCM's steps are identity requests (ui_identity.h).
+  std::unique_ptr<content::IdentityRequestDialogController>
+  CreateIdentityRequestDialogController(
+      content::WebContents* web_contents) override;
   base::OnceClosure SelectClientCertificate(
       content::BrowserContext* browser_context,
       content::ChildProcessId process_id,

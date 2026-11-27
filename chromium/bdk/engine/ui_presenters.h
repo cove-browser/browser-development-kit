@@ -212,6 +212,13 @@ class UiPresenters {
   virtual Dismisser ShowSharingBar(HostView* view,
                                    const base::DictValue& sharing,
                                    base::OnceClosure stop) = 0;
+  // The default presenter of an exclusive_access notice (ui-requests.md
+  // 5.12): `notice`'s exitInstruction across the top of the window of `view`
+  // for a few seconds. Scripted as "exclusive_access" (recorded; nothing to
+  // answer).
+  virtual Dismisser ShowExclusiveAccessNotice(
+      HostView* view,
+      const base::DictValue& notice) = 0;
   // payload: the find request payload (initialText).
   virtual std::unique_ptr<FindBar> ShowFindBar(HostView* view,
                                                const base::DictValue& payload,

@@ -190,6 +190,7 @@
         "EXTENSION_UNINSTALLS": 32,
         "PAGE_HEALTH": 33,
         "PAYMENTS": 34,
+        "IDENTITY": 35,
         "WEB_APP_INSTALLS": 37
       }
     },

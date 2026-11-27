@@ -197,6 +197,9 @@ BDK_EXPORT bdk_status_t bdk_testing_tab_info(bdk_contents_t,
    chooser.result -> {"ended", "chosen"? (the name; absent when cancelled)}.
    clientcert.identity {"certificate", "key"} (PEM) -> {"set"}  the one client
    identity every profile offers, instead of the Keychain's; {} clears it
+   input.key {"contents", "key": "Escape", "type": "down" | "up"}  a key event
+   through the page's render widget host, which the page's delegate sees first
+   (it reaches the page only while its view has focus)
    present.script on "device_choosers" answers {"device": name} or
    {"answer": "cancel"}
 

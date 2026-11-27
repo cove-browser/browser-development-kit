@@ -152,6 +152,9 @@ public final class NewWindowRequest: BDKUIRequest {
         /// A payment handler's own page, while it takes a payment (`PaymentRequest`). It closes
         /// when the payment ends.
         case paymentHandler
+        /// An identity provider's sign-in or other page during FedCM (`IdentityRequest`). It
+        /// closes when the sign-in moves on.
+        case identityProvider
     }
 
     public enum Disposition: String, Sendable {

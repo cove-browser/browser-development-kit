@@ -179,6 +179,7 @@ throws `ui.requestCompleted`; completing a withdrawn request does nothing.
 | `deviceChoosers` | `DeviceChooserRequest` (`kind`, `origin`, `devices`, `isAdapterEnabled`, `isScanning`; `deviceChanges` as devices come and go) | `select(_:confirmedBy:)` ("select" `{"device"}`), `cancel()` |
 | `screenCapture` | `ScreenCaptureRequest` (`origin`, `extensionName`, `requestsAudio`, `sources`; `sourceChanges`) | `share(_:audio:confirmedBy:)` ("share" `{"source","audio"}`), `cancel()` |
 | `payments` | `PaymentRequest` (`origin`, `topLevelOrigin`, `total`, `displayItems`, `apps` with `name` and `origin`) | `pay(with:confirmedBy:)` ("grant" `{app}`), `cancel()` ("deny"). A handler's own page arrives as a `NewWindowRequest` of kind `.paymentHandler` |
+| `identity` | `IdentityRequest` (`step`, `origin`, `context`, `identityProviders`, `accounts`) | `signIn(as:confirmedBy:)` ("grant" `{account}`), `allowRegistration(confirmedBy:)`, `signInToIdentityProvider(_:)`, `showMoreDetails()` ("accept"), `cancel()` ("deny"). A provider's page arrives as a `NewWindowRequest` of kind `.identityProvider` |
 
 Completion mapping (provisional, settled here for T-UIR-01 to T-UIR-06): a completion that grants (permission, a kept
 dangerous download, a saved password or card, an accepted suggestion, a proceed past an interstitial, opening an

@@ -192,7 +192,9 @@
   self.layer.borderWidth = 1;
   NSTextField* label = [NSTextField wrappingLabelWithString:message];
   label.font = [NSFont systemFontOfSize:12];
-  label.frame = NSMakeRect(12, 40, 316, 48);
+  // With no buttons (a notice) the text takes the whole bar.
+  label.frame =
+      titles.count ? NSMakeRect(12, 40, 316, 48) : NSMakeRect(12, 8, 316, 40);
   [self addSubview:label];
   NSMutableArray<NSButton*>* buttons = [NSMutableArray array];
   CGFloat x = 12;
@@ -1111,6 +1113,35 @@ class PresentersMac : public UiPresenters {
   }
 
   // A bar at the top of the page's window, centred, while it shares.
+  Dismisser ShowExclusiveAccessNotice(HostView* view,
+                                      const base::DictValue& notice) override {
+    BDKAnchoredPromptView* bar = [[BDKAnchoredPromptView alloc]
+        initWithMessage:Str(notice, "exitInstruction")
+                buttons:@[]];
+    bar.frame = NSMakeRect(0, 0, 340, 56);
+    auto state = std::make_shared<SheetState>();
+    WhenInWindow(AnchorOf(view), state, ^(NSWindow* window) {
+      NSView* content = window.contentView;
+      bar.frame = NSMakeRect((NSWidth(content.bounds) - 340) / 2,
+                             NSHeight(content.bounds) - 64, 340, 56);
+      bar.autoresizingMask =
+          NSViewMinXMargin | NSViewMaxXMargin | NSViewMinYMargin;
+      [content addSubview:bar positioned:NSWindowAbove relativeTo:nil];
+    });
+    // Chrome shows its instruction for a few seconds, then it goes.
+    __weak BDKAnchoredPromptView* weak_bar = bar;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 4 * NSEC_PER_SEC),
+                   dispatch_get_main_queue(), ^{
+                     [weak_bar removeFromSuperview];
+                   });
+    std::function<void()> remove = [state, bar] {
+      state->alive = false;
+      [bar removeFromSuperview];
+    };
+    return base::BindOnce([](std::function<void()> run) { run(); },
+                          std::move(remove));
+  }
+
   Dismisser ShowSharingBar(HostView* view,
                            const base::DictValue& sharing,
                            base::OnceClosure stop) override {

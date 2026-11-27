@@ -212,14 +212,14 @@ bool StartChromium(const ChromiumStartOptions& options, std::string* error) {
   // (ui-requests.md 8.2, T-UIR-10). HTTPS-First then asks with its
   // interstitial page, in the page, as it did before the dialog. The others'
   // APIs are absent from pages, so a site sees them as unsupported: Secure
-  // Payment Confirmation, FedCM and the Digital Credentials API (Payment
-  // Request follows the payments surface: engine_backend.cc). Pages ask for web
+  // Payment Confirmation and the Digital Credentials API (Payment Request and
+  // FedCM follow their surfaces: engine_backend.cc). Pages ask for web
   // app installs only through beforeinstallprompt, which [web_apps] enabled
   // governs (web-apps.md 10, T-PWA-06): navigator.install() and the <install>
   // element reach views dialogs whether installs are on or off, so both are
   // absent (WebAppInstallation, InstallElement).
   disabled_features +=
-      ",HttpsFirstDialogUi,SecurePaymentConfirmation,FedCm,"
+      ",HttpsFirstDialogUi,SecurePaymentConfirmation,"
       "WebIdentityDigitalCredentials,WebIdentityDigitalCredentialsCreation,"
       "WebAppInstallation,InstallElement";
   // Installed web apps stay in the application's windows (web-apps.md

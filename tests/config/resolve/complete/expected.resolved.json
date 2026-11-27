@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "bdk_version": "0.0.0",
-  "config_digest": "sha256:dce750e08470e9a5f5c1809ee7f7d263a58abe6b6d63b5820c89aab70a19a844",
+  "config_digest": "sha256:21f3bcdbca612c69a63d478dc1ef7e664bf27e477705ea87240427450b07eb4f",
   "browser": {
     "name": "Cove",
     "internal_scheme": "cove",
@@ -88,6 +88,7 @@
     "webauthn": "default",
     "external_protocols": "default",
     "page_health": "default",
+    "identity": "default",
     "payments": "default",
     "web_app_installs": "default"
   },

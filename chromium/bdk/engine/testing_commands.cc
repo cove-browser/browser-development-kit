@@ -63,8 +63,11 @@
 #include "chrome/browser/ui/dialogs/browser_dialogs.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/heavy_ad_intervention/heavy_ad_features.h"
+#include "components/input/native_web_keyboard_event.h"
 #include "components/prefs/pref_service.h"
 #include "content/browser/web_contents/web_contents_impl.h"  // nogncheck
+#include "content/public/browser/render_widget_host.h"
+#include "content/public/browser/render_widget_host_view.h"
 #include "content/public/browser/storage_partition.h"
 #include "content/public/browser/web_contents.h"
 #include "google_apis/google_api_keys.h"
@@ -73,6 +76,9 @@
 #include "services/network/public/mojom/network_context.mojom.h"
 #include "ui/base/models/dialog_model.h"
 #include "ui/base/mojom/dialog_button.mojom.h"
+#include "ui/events/keycodes/dom/dom_code.h"
+#include "ui/events/keycodes/dom/dom_key.h"
+#include "ui/events/keycodes/keyboard_codes.h"
 #include "url/gurl.h"
 
 namespace bdk {
@@ -376,6 +382,31 @@ bool Run(const std::string& name,
   }
   if (name.starts_with("webauthn.")) {
     return RunWebAuthnTestingCommand(name, args, result);
+  }
+  if (name == "input.key") {
+    // {"contents", "key": "Escape", "type": "down" | "up"}: a key event
+    // through the page's render widget host, as the view sends one, so the
+    // page's delegate sees it first (PreHandleKeyboardEvent).
+    EngineContents* page = PageOf(args);
+    const std::string* key = args.FindString("key");
+    const std::string* type = args.FindString("type");
+    if (!page || !page->web_contents() || !key || *key != "Escape" || !type) {
+      return false;
+    }
+    content::RenderWidgetHostView* view =
+        page->web_contents()->GetRenderWidgetHostView();
+    if (!view) {
+      return false;
+    }
+    input::NativeWebKeyboardEvent event(
+        *type == "up" ? blink::WebInputEvent::Type::kKeyUp
+                      : blink::WebInputEvent::Type::kRawKeyDown,
+        blink::WebInputEvent::kNoModifiers, base::TimeTicks::Now());
+    event.windows_key_code = ui::VKEY_ESCAPE;
+    event.dom_key = ui::DomKey::ESCAPE;
+    event.dom_code = static_cast<int>(ui::DomCode::ESCAPE);
+    view->GetRenderWidgetHost()->ForwardKeyboardEvent(event);
+    return true;
   }
   if (name.starts_with("clientcert.")) {
     return RunClientCertTestingCommand(name, args, result);

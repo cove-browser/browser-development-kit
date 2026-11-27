@@ -12,6 +12,8 @@
 
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
+#include "base/time/time.h"
+#include "base/timer/timer.h"
 #include "bdk/core/runtime/core_internal.h"
 #include "bdk/engine/services/events.h"
 #include "content/public/browser/web_contents_delegate.h"
@@ -231,6 +233,19 @@ class EngineContents : public bdkcore::BackendData,
   void ExitFullscreenModeForTab(content::WebContents* source) override;
   bool IsFullscreenForTabOrPending(
       const content::WebContents* web_contents) override;
+  // Pointer and keyboard lock (ui-requests.md 5.12, T-UIR-15), with
+  // Chrome's rules: a pointer lock needs a gesture unless the page unlocked
+  // it itself, and is refused just after the person pressed Escape; a
+  // keyboard lock only in fullscreen. Each raises the exclusive_access notice
+  // (ui_exclusive_access.h); Escape unlocks the pointer, and held, exits a
+  // keyboard lock that includes it.
+  void RequestPointerLock(content::WebContents* web_contents,
+                          bool user_gesture,
+                          bool last_unlocked_by_target) override;
+  void LostPointerLock() override;
+  void RequestKeyboardLock(content::WebContents* web_contents,
+                           bool esc_key_locked) override;
+  void CancelKeyboardLockRequest(content::WebContents* web_contents) override;
   // A hung renderer is a page_health request (ui_page_health.h).
   void RendererUnresponsive(
       content::WebContents* source,
@@ -355,6 +370,12 @@ class EngineContents : public bdkcore::BackendData,
   bool auto_discardable_ = true;
   bool discarded_ = false;
   bool fullscreen_ = false;
+  // Exclusive access: the pointer is locked; the keyboard is, with Escape;
+  // when the person last pressed Escape to unlock; Escape held down.
+  bool pointer_locked_ = false;
+  bool keyboard_locked_with_escape_ = false;
+  base::TimeTicks last_escape_;
+  base::OneShotTimer escape_held_;
   bool close_reported_ = false;
   bool focused_ = false;
   bool closing_ = false;

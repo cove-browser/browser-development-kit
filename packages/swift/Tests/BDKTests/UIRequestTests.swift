@@ -40,6 +40,7 @@ extension BDKStubTests {
                 .extensionUninstalls: BDK_SURFACE_EXTENSION_UNINSTALLS,
                 .pageHealth: BDK_SURFACE_PAGE_HEALTH,
                 .payments: BDK_SURFACE_PAYMENTS,
+                .identity: BDK_SURFACE_IDENTITY,
                 .webAppInstalls: BDK_SURFACE_WEB_APP_INSTALLS,
             ]
             #expect(expected.count == BDKUISurface.allCases.count)

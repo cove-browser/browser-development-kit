@@ -22,6 +22,7 @@
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_auth.h"
 #include "bdk/engine/ui_browser_dialogs.h"
+#include "bdk/engine/ui_identity.h"
 #include "bdk/engine/ui_select_file.h"
 #include "chrome/browser/chrome_browser_main.h"
 #include "chrome/browser/chrome_browser_main_extra_parts.h"
@@ -37,6 +38,7 @@
 #include "content/public/browser/url_loader_request_interceptor.h"
 #include "content/public/browser/usb_delegate.h"
 #include "content/public/browser/web_ui_browser_interface_broker_registry.h"
+#include "content/public/browser/webid/identity_request_dialog_controller.h"
 #include "extensions/common/constants.h"
 #include "net/ssl/client_cert_store.h"
 #include "services/device/public/cpp/geolocation/location_provider.h"
@@ -229,6 +231,12 @@ content::HidDelegate* BdkContentBrowserClient::GetHidDelegate() {
     hid_delegate_ = CreateHidDelegate();
   }
   return hid_delegate_.get();
+}
+
+std::unique_ptr<content::IdentityRequestDialogController>
+BdkContentBrowserClient::CreateIdentityRequestDialogController(
+    content::WebContents* web_contents) {
+  return CreateIdentityDialogController(web_contents);
 }
 
 std::unique_ptr<net::ClientCertStore>

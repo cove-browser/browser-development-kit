@@ -1009,6 +1009,115 @@ static void test_ui_a_disabled_fullscreen_surface_rejects_the_api(void) {
     finish(c);
 }
 
+/* ---- exclusive access (5.12, T-UIR-15) ---- */
+
+static const char* pointer_lock_script =
+    "document.onpointerlockchange=()=>{document.title=document.pointerLockElement?'locked':"
+    "'unlocked'};document.onpointerlockerror=()=>{document.title='refused'};"
+    "document.body.style.height='400px';document.body.requestPointerLock()";
+
+int bdk_harness_engine_window_is_key(bdk_contents_t contents);
+
+/* Pointer lock and the keyboard reach only the key window (RenderWidgetHostViewMac): with
+   BDK_ENGINE_SILENT the harness is never active, so these scenarios say so and stop. */
+static int needs_key_window(bdk_contents_t c) {
+    /* BDK_TEST_WAIT_FOR_KEY: someone clicks the harness window to make it key (macOS does not
+       let an application bring itself forward). */
+    const int wait = getenv("BDK_TEST_WAIT_FOR_KEY") != NULL;
+    if (wait)
+        printf("    waiting for the harness window to be clicked\n");
+    for (int i = 0; wait && i < 800 && !bdk_harness_engine_window_is_key(c); ++i) {
+        t_pump();
+        bdk_testing_run_for(0.05);
+    }
+    if (bdk_harness_engine_window_is_key(c))
+        return 1;
+    printf("    skipped: the harness window is not the key window\n");
+    finish(c);
+    return 0;
+}
+
+/* Sends Escape through the page's render widget host, as a key press reaches it. */
+static void press_escape(bdk_contents_t c) {
+    char args[96];
+    snprintf(args, sizeof args, "{\"contents\":\"%llu\",\"key\":\"Escape\",\"type\":\"down\"}",
+             (unsigned long long)c);
+    ui("input.key", args, NULL, 0);
+    snprintf(args, sizeof args, "{\"contents\":\"%llu\",\"key\":\"Escape\",\"type\":\"up\"}",
+             (unsigned long long)c);
+    ui("input.key", args, NULL, 0);
+    t_pump();
+}
+
+/* A pointer lock with the gesture locks and raises the notice with Chromium's instruction, which
+   the handler acknowledges; Escape unlocks it, as BDK keeps Escape for itself. */
+static void test_ui_a_pointer_lock_raises_the_notice_and_escape_unlocks(void) {
+    bdk_contents_t c = start_page(BDK_SURFACE_EXCLUSIVE_ACCESS, NULL);
+    if (!needs_key_window(c))
+        return;
+    g_log.complete = "accept";
+    run_script(c, pointer_lock_script, 1);
+    CHECK(wait_for_title(c, "locked"));
+    CHECK(g_log.calls == 1);
+    CHECK(strstr(g_log.payload, "\"kind\":\"pointerLock\"") != NULL);
+    CHECK(strstr(g_log.payload, "\"origin\":\"https://bdk.test\"") != NULL);
+    CHECK(strstr(g_log.payload, "Esc") != NULL);
+    press_escape(c);
+    CHECK(wait_for_title(c, "unlocked"));
+    finish(c);
+}
+
+/* Without a gesture the page is refused, and no notice is raised. */
+static void test_ui_a_pointer_lock_without_a_gesture_is_refused(void) {
+    bdk_contents_t c = start_page(BDK_SURFACE_EXCLUSIVE_ACCESS, NULL);
+    g_log.complete = "accept";
+    run_script(c, pointer_lock_script, 0);
+    CHECK(wait_for_title(c, "refused"));
+    CHECK(g_log.calls == 0);
+    finish(c);
+}
+
+/* With no handler the default presenter shows the instruction. */
+static void test_ui_the_default_presenter_shows_the_exit_instruction(void) {
+    bdk_contents_t c = start_page(0, NULL);
+    if (!needs_key_window(c))
+        return;
+    script("exclusive_access", "{\"none\":true}");
+    run_script(c, pointer_lock_script, 1);
+    CHECK(wait_for_title(c, "locked"));
+    for (int i = 0; i < 20 && shown("exclusive_access") == 0; ++i)
+        t_pump();
+    CHECK(shown("exclusive_access") == 1);
+    run_script(c, "document.exitPointerLock()", 0);
+    CHECK(wait_for_title(c, "unlocked"));
+    finish(c);
+}
+
+/* A keyboard lock of a page in fullscreen raises the notice; one that includes Escape exits
+   fullscreen when Escape is held. */
+static void test_ui_a_keyboard_lock_in_fullscreen_raises_the_notice(void) {
+    bdk_contents_t c = start_page(BDK_SURFACE_EXCLUSIVE_ACCESS, NULL);
+    if (!needs_key_window(c))
+        return;
+    g_log.complete = "accept";
+    run_script(c, fullscreen_script, 1);
+    REQUIRE(wait_for_title(c, "in"));
+    run_script(c,
+               "navigator.keyboard.lock(['Escape']).then(()=>{document.title='keys'},"
+               "e=>{document.title='keys '+e.name})",
+               1);
+    CHECK(wait_for_title(c, "keys"));
+    for (int i = 0; i < 20 && g_log.calls == 0; ++i)
+        t_pump();
+    CHECK(strstr(g_log.payload, "\"kind\":\"keyboardLock\"") != NULL);
+    char args[96];
+    snprintf(args, sizeof args, "{\"contents\":\"%llu\",\"key\":\"Escape\",\"type\":\"down\"}",
+             (unsigned long long)c);
+    ui("input.key", args, NULL, 0);
+    CHECK(wait_for_title(c, "out"));
+    finish(c);
+}
+
 /* ---- notifications ---- */
 
 static const char* show_notification =
@@ -1161,6 +1270,14 @@ const t_test_t t_engine_ui_tests[] = {
      test_ui_a_page_that_goes_withdraws_its_permission_request},
     {"engine_ui_the_default_prompt_is_taken_down_when_withdrawn",
      test_ui_the_default_prompt_is_taken_down_when_withdrawn},
+    {"engine_ui_a_pointer_lock_raises_the_notice_and_escape_unlocks",
+     test_ui_a_pointer_lock_raises_the_notice_and_escape_unlocks},
+    {"engine_ui_a_pointer_lock_without_a_gesture_is_refused",
+     test_ui_a_pointer_lock_without_a_gesture_is_refused},
+    {"engine_ui_the_default_presenter_shows_the_exit_instruction",
+     test_ui_the_default_presenter_shows_the_exit_instruction},
+    {"engine_ui_a_keyboard_lock_in_fullscreen_raises_the_notice",
+     test_ui_a_keyboard_lock_in_fullscreen_raises_the_notice},
     {"engine_ui_permissions_are_kept_per_profile_and_a_private_one_stays_separate",
      test_ui_permissions_are_kept_per_profile_and_a_private_one_stays_separate},
     {"engine_ui_find_with_no_handler_shows_the_default_find_bar_and_searches",

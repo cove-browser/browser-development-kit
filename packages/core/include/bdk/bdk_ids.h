@@ -161,6 +161,7 @@ extern "C" {
 #define BDK_SURFACE_EXTENSION_UNINSTALLS 32u
 #define BDK_SURFACE_PAGE_HEALTH 33u
 #define BDK_SURFACE_PAYMENTS 34u
+#define BDK_SURFACE_IDENTITY 35u
 #define BDK_SURFACE_WEB_APP_INSTALLS 37u
 
 /* bdk_page_handler_register's mode: how a logical route is served (architecture.md 8.1) */

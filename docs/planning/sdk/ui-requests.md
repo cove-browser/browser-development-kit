@@ -86,7 +86,7 @@ The key is what goes in `[ui.surfaces]`. "Modes" lists what the surface allows: 
 | `translation` | Offer, progress, result, errors, preferences | D C X | Built (M6) | M6, T-PRV-03 |
 | `find` | Find bar | D C | Built (M3) | M3, T-UIR-06 |
 | `fullscreen` | HTML fullscreen | D C X | Built (M2, M3) | M2, T-MAC-05; M3, T-UIR-06 |
-| `exclusive_access` | Keyboard-lock and pointer-lock notices | D C | In the schema, the core, the stub and Swift (T-UIR-15, 2026-11-25); the engine raises none yet (T-UIR-15) | T-UIR-15, M9 |
+| `exclusive_access` | Keyboard-lock and pointer-lock notices | D C | Built (T-UIR-15; engine 2026-11-27, 5.12) | T-UIR-15, M9 |
 | `notifications` | Web notifications | D C X | Built (M3) | M3, T-UIR-06 |
 | `certificate_errors` | Certificate interstitials | D C | Built (M3) | M3, T-UIR-05 |
 | `reputation_warnings` | Malware, phishing and download warnings | D C | Built (M3, M6) | M3, T-UIR-05 |
@@ -97,7 +97,7 @@ The key is what goes in `[ui.surfaces]`. "Modes" lists what the surface allows: 
 | `external_protocols` | "Open this link in another application?" | D C X | Built (T-UIR-13, 2026-11-25; 5.17): a request once Chrome decides to ask, with BDK's sheet as default | T-UIR-10, M4; T-UIR-13, M9 |
 | `page_health` | Unresponsive page; blocked popups | D C | Built (T-UIR-15, 2026-11-25; 5.19): surface 33, a hung page and blocked popups, with default presenters | T-UIR-15, M9 |
 | `payments` (`BDK_SURFACE_PAYMENTS` 34) | Payment Request sheet and Secure Payment Confirmation | D C X | Payment Request built on the engine (2026-11-27, 5.22); Secure Payment Confirmation off at start until T-UIR-11 (8.2) | T-UIR-14, M9 |
-| `identity` | FedCM account chooser | D C X | Designed in 5.22 and reviewed (product owner, 2026-11-27); not built; off at start until built (8.2) | T-UIR-14, M9 |
+| `identity` (`BDK_SURFACE_IDENTITY` 35) | FedCM account chooser | D C X | Built (T-UIR-14, 2026-11-27; 5.22) | T-UIR-14, M9 |
 | `digital_credentials` | Digital Credentials API dialogs | D C X | Designed in 5.22 and reviewed (product owner, 2026-11-27), following `[services.webauthn] phones`; not built; off at start until built (8.2) | T-UIR-14, M9 |
 | `web_app_installs` | The install prompt of an installable web app | D C | Built (T-PWA-04, 2026-11-26); raised only with `[web_apps] enabled = true`, which is how it is turned off ([web-apps.md](web-apps.md) 4.1). Surface 37 | T-PWA-03, T-PWA-04, M9 |
 | Extension surfaces | Actions, popups, side panels, menus, options, install prompts | See [extensions.md](extensions.md) | Built (M5) | M5: surfaces 25 to 32 (`extension_actions` … `extension_uninstalls`), configured under `[extensions.ui]`; see `packages/core/docs/conventions.md`, "Extensions (M5)" |
@@ -435,7 +435,7 @@ public final class ExclusiveAccessRequest: BDKUIRequest {         // Added
 | Rule | The exit instruction must be shown, and Escape must exit. BDK handles Escape itself; a custom presenter cannot prevent it. |
 | `disabled` (fullscreen) | The Fullscreen API rejects |
 
-Exclusive access, checked against this section in T-UIR-15 (2026-11-25; core, stub and Swift): payload `kind` (`keyboardLock`, `pointerLock`), `origin`, `exitInstruction`. It is a notice: `accept` (Swift `acknowledge()`) is its only completion (`ui.completionNotAllowed` otherwise). Because the instruction must be shown, a notice the handler rejects or drops goes to the default presenter (`kDefaulted`), the way an interstitial that is rejected goes back. The surface cannot be disabled. Not built: the engine raises no request yet; `HostExclusiveAccessContext` in `engine/bdk_browser_window.cc` shows no bubble (T-UIR-15, M9).
+Exclusive access, checked against this section in T-UIR-15 (2026-11-25; core, stub and Swift): payload `kind` (`keyboardLock`, `pointerLock`), `origin`, `exitInstruction`. It is a notice: `accept` (Swift `acknowledge()`) is its only completion (`ui.completionNotAllowed` otherwise). Because the instruction must be shown, a notice the handler rejects or drops goes to the default presenter (`kDefaulted`), the way an interstitial that is rejected goes back. The surface cannot be disabled. On the engine (T-UIR-15, 2026-11-27; `engine/ui_exclusive_access.cc`): a BDK page is its own `WebContentsDelegate`, and Chromium's defaults refused both locks, so the page delegate applies Chrome's rules itself. A pointer lock needs a gesture unless the page unlocked it itself, and is refused for 1.25 seconds after the person pressed Escape; a keyboard lock is granted only to a page in fullscreen. Each lock raises the notice with Chromium's instruction (`GetInstructionTextForType`); the default presenter shows it across the top of the window for four seconds. Escape unlocks the pointer, and a keyboard lock that includes Escape ends when Escape is held for 1.5 seconds. Engine scenarios in `tests_engine_ui.c` (4); macOS gives pointer lock and keys only to the key window, so three of them need the harness window clicked to the front (`BDK_TEST_WAIT_FOR_KEY=1`) and otherwise say they were skipped, as the extension popup scenarios do.
 
 ### 5.13 Notifications
 
@@ -713,7 +713,20 @@ presenter: a sheet with the total and who asks, Cancel (Return and Escape) and o
 its origin. Engine scenarios `tests_engine_payments.c` (4, and one launch): a handler that pays through a payment
 handler installed just in time from a payment method manifest on the loopback server, a deny, the default sheet,
 shipping and payer details refused, and `disabled`. Not built: Secure Payment Confirmation (its credential is in a
-keychain group compiled into Chromium, T-UIR-11), `identity` (FedCM) and `digital_credentials`.
+keychain group compiled into Chromium, T-UIR-11) and `digital_credentials`.
+
+**FedCM, built (2026-11-27, Chromium 158).** `identity` is `BDK_SURFACE_IDENTITY` (35); Swift `IdentityRequest`
+(`signIn(as:confirmedBy:)`, `allowRegistration(confirmedBy:)`, `signInToIdentityProvider(_:)`, `showMoreDetails()`,
+`cancel()`) and `NewWindowRequest.Kind.identityProvider`. No patch: `BdkContentBrowserClient` returns its own
+`IdentityRequestDialogController` (`ui_identity.cc`), which raises one request per step (`chooseAccount`, `loading`,
+`verifying`, `failure`, `error`, `registerIdP`) and withdraws the open one when Chromium moves on. A registration is
+allowed with `grant` and the gesture (the router has one granting completion per surface), not `accept` as proposed
+above. An identity provider's pages (its sign-in page, an error's details, a privacy policy) are `new_windows`
+requests of kind `identityProvider`. With `identity = "disabled"` pages have no `IdentityCredential` (`FedCm` off at
+start). Default presenter: a sheet with Cancel and one "Continue as <name> (<email>)" button per account, and sheets
+for a failure, an error and a registration. Engine scenarios `tests_engine_identity.c` (3, and one launch): a site
+and an identity provider on the loopback server; a handler signs in and the site gets the provider's token, a deny
+sends no assertion, the default sheet signs in, and `disabled`.
 
 ## 6. Default presenters
 
@@ -786,7 +799,7 @@ reading the source, not from a test.
 | Screen-capture picker, "share this tab", capture-policy confirmation | `getDisplayMedia()` | A `screen_capture` request since T-UIR-13 (5.16); patch `bdk-let-an-embedder-supply-the-screen-capture-ui` |
 | HTTPS-First's "ask before HTTP" dialog | An HTTP navigation with HTTPS-First on | Off (`HttpsFirstDialogUi`): the interstitial page asks instead (5.14) |
 | Secure Payment Confirmation | `new PaymentRequest(...)` with the `secure-payment-confirmation` method | Off (`SecurePaymentConfirmation`) until T-UIR-11. Payment Request itself is routed since T-UIR-14 (5.22) |
-| FedCM account chooser | `navigator.credentials.get({identity})` | Off (`FedCm`): `IdentityCredential` is absent |
+| FedCM account chooser | `navigator.credentials.get({identity})` | `identity` requests since T-UIR-14 (5.22); BDK's browser client supplies the dialog controller, no patch |
 | Digital Credentials dialogs | `navigator.credentials.get({digital})` | Off (`WebIdentityDigitalCredentials`, `...Creation`) |
 | Web application install dialogs | `beforeinstallprompt`'s `prompt()` | Off: `profile.web_app.install_by_user_enabled` defaults to false, so no page offers itself for installation. From M9 that is the behaviour of `[web_apps] enabled = false`, the default; with `true` the dialog becomes a `web_app_installs` request (T-PWA-04, [web-apps.md](web-apps.md)) |
 | Web Install API dialogs (found by T-PWA-01, 2026-11-25; not in the T-UIR-10 list) | `navigator.install()`, the `<install>` element | Off at start (T-PWA-06): `WebAppInstallation` and `InstallElement` are disabled with the features T-UIR-10 turns off, so `navigator.install` is undefined and `<install>` is an unknown element whether `[web_apps] enabled` is false or true ([web-apps.md](web-apps.md) 10.2). Before, `navigator.install()` reached the views "not supported" dialog, the kind of dialog that ended the application before T-UIR-10. Scenario `engine_dialogs_page_initiated_install_apis_are_absent` |

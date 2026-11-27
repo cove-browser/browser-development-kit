@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "bdk_version": "0.0.0",
-  "config_digest": "sha256:cd11781d681dfdac0968907cf8ed23cfaa3f02b7b50b9159d96420a7bbbb7efc",
+  "config_digest": "sha256:545285eadbfd3f5ccea2085bfa1753795259474e0cae18ccd11efac077e81f91",
   "browser": {
     "name": "Harbour",
     "internal_scheme": "harbour",
@@ -45,6 +45,7 @@
     "webauthn": "default",
     "external_protocols": "default",
     "page_health": "default",
+    "identity": "default",
     "payments": "default",
     "web_app_installs": "default"
   },

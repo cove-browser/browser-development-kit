@@ -64,6 +64,7 @@ constexpr SurfaceInfo kSurfaces[] = {
     {"extension_uninstalls", BDK_SURFACE_EXTENSION_UNINSTALLS, kDC, ""},
     {"page_health", BDK_SURFACE_PAGE_HEALTH, kDC, ""},
     {"payments", BDK_SURFACE_PAYMENTS, kDCX, "grant"},
+    {"identity", BDK_SURFACE_IDENTITY, kDCX, "grant"},
     {"web_app_installs", BDK_SURFACE_WEB_APP_INSTALLS, kDC, "install"},
 };
 // clang-format on

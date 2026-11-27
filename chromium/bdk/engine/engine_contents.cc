@@ -3,6 +3,8 @@
 // found in the LICENSE file.
 
 #include "bdk/engine/engine_contents.h"
+#include "bdk/engine/ui_exclusive_access.h"
+#include "ui/events/keycodes/keyboard_codes.h"
 
 #include <algorithm>
 #include <array>
@@ -1208,6 +1210,36 @@ void EngineContents::PerformMenuItem(const content::ContextMenuParams& params,
 content::KeyboardEventProcessingResult EngineContents::PreHandleKeyboardEvent(
     content::WebContents* source,
     const input::NativeWebKeyboardEvent& event) {
+  // Escape belongs to BDK while the page has exclusive access (5.12): a
+  // custom presenter cannot keep it.
+  if (event.windows_key_code == ui::VKEY_ESCAPE) {
+    const bool down =
+        event.GetType() == blink::WebInputEvent::Type::kRawKeyDown;
+    if (down && pointer_locked_) {
+      if (content::RenderWidgetHostView* view =
+              web_contents_->GetRenderWidgetHostView()) {
+        view->UnlockPointer();
+      }
+      last_escape_ = base::TimeTicks::Now();
+      return content::KeyboardEventProcessingResult::HANDLED;
+    }
+    if (keyboard_locked_with_escape_) {
+      // The page gets Escape; held for as long as Chrome asks, it exits.
+      if (down && !escape_held_.IsRunning()) {
+        escape_held_.Start(
+            FROM_HERE, base::Milliseconds(1500),
+            base::BindOnce(
+                [](base::WeakPtr<EngineContents> page) {
+                  if (page) {
+                    page->ExitFullscreenModeForTab(page->web_contents());
+                  }
+                },
+                GetWeakPtr()));
+      } else if (event.GetType() == blink::WebInputEvent::Type::kKeyUp) {
+        escape_held_.Stop();
+      }
+    }
+  }
   std::shared_ptr<bdkcore::Contents> c = core();
   if (c && bdkcore::reserve_key(*c, HostView::KeyEvent(event))) {
     return content::KeyboardEventProcessingResult::HANDLED;
@@ -1278,7 +1310,58 @@ void EngineContents::EnterFullscreenModeForTab(
           weak_factory_.GetWeakPtr()));
 }
 
+void EngineContents::RequestPointerLock(content::WebContents* web_contents,
+                                        bool user_gesture,
+                                        bool last_unlocked_by_target) {
+  // Chrome's PointerLockController's rules.
+  constexpr base::TimeDelta kEscapeCooldown = base::Milliseconds(1250);
+  if (!last_unlocked_by_target) {
+    if (!user_gesture) {
+      web_contents->GotResponseToPointerLockRequest(
+          blink::mojom::PointerLockResult::kRequiresUserGesture);
+      return;
+    }
+    if (base::TimeTicks::Now() < last_escape_ + kEscapeCooldown) {
+      web_contents->GotResponseToPointerLockRequest(
+          blink::mojom::PointerLockResult::kUserEscapeCooldown);
+      return;
+    }
+  }
+  web_contents->Focus();
+  pointer_locked_ = web_contents->GotResponseToPointerLockRequest(
+      blink::mojom::PointerLockResult::kSuccess);
+  // A page that unlocked and locks again (a game's menu) is not told again.
+  if (pointer_locked_ && !last_unlocked_by_target) {
+    NoteExclusiveAccess(*this, ExclusiveAccessKind::kPointerLock,
+                        /*escape_held=*/false);
+  }
+}
+
+void EngineContents::LostPointerLock() {
+  pointer_locked_ = false;
+}
+
+void EngineContents::RequestKeyboardLock(content::WebContents* web_contents,
+                                         bool esc_key_locked) {
+  // Chrome's KeyboardLockController: only a page in fullscreen.
+  const bool allowed = fullscreen_;
+  web_contents->GotResponseToKeyboardLockRequest(allowed);
+  keyboard_locked_with_escape_ = allowed && esc_key_locked;
+  if (allowed) {
+    NoteExclusiveAccess(*this, ExclusiveAccessKind::kKeyboardLock,
+                        esc_key_locked);
+  }
+}
+
+void EngineContents::CancelKeyboardLockRequest(
+    content::WebContents* web_contents) {
+  keyboard_locked_with_escape_ = false;
+  escape_held_.Stop();
+}
+
 void EngineContents::ExitFullscreenModeForTab(content::WebContents* source) {
+  keyboard_locked_with_escape_ = false;
+  escape_held_.Stop();
   if (!fullscreen_) {
     return;
   }
