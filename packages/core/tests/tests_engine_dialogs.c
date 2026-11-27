@@ -248,13 +248,13 @@ static void test_a_tab_modal_dialog_model_is_a_sheet(void) {
 }
 
 /* The APIs whose UI is views only are off at start, so a site finds them unsupported, and a page
-   never offers itself as an application to install. Payment Request is routed since T-UIR-14
-   (tests_engine_payments.c checks it absent when its surface is disabled). */
+   never offers itself as an application to install. Payment Request and FedCM are routed since
+   T-UIR-14 (tests_engine_payments.c and tests_engine_identity.c check each absent when its surface
+   is disabled). */
 static void test_apis_with_views_only_ui_are_absent(void) {
     bdk_contents_t c = start_page(PAGE);
-    run(c, "document.title = [typeof IdentityCredential, typeof DigitalCredential,"
-           " typeof navigator.bluetooth].join(',')");
-    CHECK(wait_for_title(c, "undefined,undefined,undefined"));
+    run(c, "document.title = [typeof DigitalCredential, typeof navigator.bluetooth].join(',')");
+    CHECK(wait_for_title(c, "undefined,undefined"));
     char args[256], handle[32], out[256];
     contents_arg(c, handle, sizeof handle);
     snprintf(args, sizeof args,
