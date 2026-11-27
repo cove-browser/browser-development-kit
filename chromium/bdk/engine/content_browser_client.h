@@ -75,6 +75,10 @@ class BdkContentBrowserClient : public ChromeContentBrowserClient {
   content::UsbDelegate* GetUsbDelegate() override;
   content::SerialDelegate* GetSerialDelegate() override;
   content::HidDelegate* GetHidDelegate() override;
+  // The engine scenarios' client identity when one is set
+  // (client_cert_testing.h), and otherwise Chrome's Keychain store.
+  std::unique_ptr<net::ClientCertStore> CreateClientCertStore(
+      content::BrowserContext* browser_context) override;
   base::OnceClosure SelectClientCertificate(
       content::BrowserContext* browser_context,
       content::ChildProcessId process_id,

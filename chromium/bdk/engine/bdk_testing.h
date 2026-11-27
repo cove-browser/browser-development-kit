@@ -195,6 +195,8 @@ BDK_EXPORT bdk_status_t bdk_testing_tab_info(bdk_contents_t,
    those devices on the page, shown as WebUSB's is (a device_choosers request);
    chooser.add {"name"} and chooser.remove {"name"} change its list;
    chooser.result -> {"ended", "chosen"? (the name; absent when cancelled)}.
+   clientcert.identity {"certificate", "key"} (PEM) -> {"set"}  the one client
+   identity every profile offers, instead of the Keychain's; {} clears it
    present.script on "device_choosers" answers {"device": name} or
    {"answer": "cancel"}
 

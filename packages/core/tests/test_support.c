@@ -270,11 +270,13 @@ static const t_test_t* const kTables[] = {
     t_engine_chooser_tests,         /* the device choosers (tests_engine_choosers.c) */
     t_engine_web_app_tests,         /* installable web apps (tests_engine_web_apps.c) */
     t_engine_payment_tests,         /* Payment Request (tests_engine_payments.c) */
-    t_engine_arc_tests,             /* the Arc-style layouts, M8 (tests_engine_arc.c) */
-    t_engine_navigation_policy_tests, /* the navigation policy on Chromium
-                                         (tests_engine_navigation_policy.c) */
-    t_engine_profile_version_tests,   /* the downgrade policy on Chromium, a launch each
-                                         (tests_engine_profile_versions.c) */
+    t_engine_client_certificate_tests, /* client certificates (tests_engine_client_certificates.c)
+                                        */
+    t_engine_arc_tests,                /* the Arc-style layouts, M8 (tests_engine_arc.c) */
+    t_engine_navigation_policy_tests,  /* the navigation policy on Chromium
+                                          (tests_engine_navigation_policy.c) */
+    t_engine_profile_version_tests,    /* the downgrade policy on Chromium, a launch each
+                                          (tests_engine_profile_versions.c) */
 #endif
 };
 

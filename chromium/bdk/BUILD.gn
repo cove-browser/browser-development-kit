@@ -115,6 +115,8 @@ source_set("bdk") {
       "engine/chromium_main_mac.mm",
       "engine/content_browser_client.cc",
       "engine/content_browser_client.h",
+      "engine/client_cert_testing.cc",
+      "engine/client_cert_testing.h",
       "engine/device_chooser_testing.cc",
       "engine/device_chooser_testing.h",
       "engine/devtools_frontend.cc",

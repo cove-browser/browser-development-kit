@@ -9,6 +9,7 @@
 #include "base/command_line.h"
 #include "bdk/core/include/bdk/bdk_ids.h"
 #include "bdk/core/runtime/core_internal.h"
+#include "bdk/engine/client_cert_testing.h"
 #include "bdk/engine/navigation_policy_throttle.h"
 #include "bdk/engine/pages/bundled_page_ui.h"
 #include "bdk/engine/pages/page_broker.mojom.h"
@@ -37,6 +38,7 @@
 #include "content/public/browser/usb_delegate.h"
 #include "content/public/browser/web_ui_browser_interface_broker_registry.h"
 #include "extensions/common/constants.h"
+#include "net/ssl/client_cert_store.h"
 #include "services/device/public/cpp/geolocation/location_provider.h"
 #include "ui/shell_dialogs/select_file_policy.h"
 
@@ -227,6 +229,16 @@ content::HidDelegate* BdkContentBrowserClient::GetHidDelegate() {
     hid_delegate_ = CreateHidDelegate();
   }
   return hid_delegate_.get();
+}
+
+std::unique_ptr<net::ClientCertStore>
+BdkContentBrowserClient::CreateClientCertStore(
+    content::BrowserContext* browser_context) {
+  if (std::unique_ptr<net::ClientCertStore> store =
+          CreateTestingClientCertStore()) {
+    return store;
+  }
+  return ChromeContentBrowserClient::CreateClientCertStore(browser_context);
 }
 
 base::OnceClosure BdkContentBrowserClient::SelectClientCertificate(

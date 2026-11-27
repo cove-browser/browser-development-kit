@@ -37,6 +37,7 @@
 #include "base/values.h"
 #include "bdk/core/runtime/core_internal.h"
 #include "bdk/engine/bdk_testing.h"
+#include "bdk/engine/client_cert_testing.h"
 #include "bdk/engine/device_chooser_testing.h"
 #include "bdk/engine/engine_contents.h"
 #include "bdk/engine/extensions/extension_testing.h"
@@ -375,6 +376,9 @@ bool Run(const std::string& name,
   }
   if (name.starts_with("webauthn.")) {
     return RunWebAuthnTestingCommand(name, args, result);
+  }
+  if (name.starts_with("clientcert.")) {
+    return RunClientCertTestingCommand(name, args, result);
   }
   if (name.starts_with("chooser.")) {
     return RunChooserTestingCommand(name, PageOf(args), args, result);
