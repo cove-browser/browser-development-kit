@@ -98,6 +98,7 @@ public final class BDKUIHandlers {
     }
     /// Receives `UnresponsivePageRequest` and `BlockedPopupRequest`.
     public var pageHealth: Surface<BDKUIRequest> { surface(.pageHealth) }
+    public var payments: Surface<PaymentRequest> { surface(.payments) }
     public var webAppInstalls: Surface<WebAppInstallRequest> { surface(.webAppInstalls) }
 
     private func surface<Request: BDKUIRequest>(_ kind: BDKUISurface) -> Surface<Request> {
@@ -258,6 +259,7 @@ extension BDKUIRequest {
             BDKUIPayload($0).string("kind") == "blockedPopups"
                 ? BlockedPopupRequest($0, runtime: $1) : UnresponsivePageRequest($0, runtime: $1)
         },
+        .payments: { PaymentRequest($0, runtime: $1) },
         .webAppInstalls: { WebAppInstallRequest($0, runtime: $1) },
     ]
 

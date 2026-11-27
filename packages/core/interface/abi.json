@@ -189,6 +189,7 @@
         "EXTENSION_INSTALLS": 31,
         "EXTENSION_UNINSTALLS": 32,
         "PAGE_HEALTH": 33,
+        "PAYMENTS": 34,
         "WEB_APP_INSTALLS": 37
       }
     },

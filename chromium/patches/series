@@ -28,3 +28,4 @@ bdk-let-an-embedder-supply-the-screen-capture-ui.patch
 bdk-let-an-embedder-present-the-web-app-install-dialog.patch
 bdk-let-an-embedder-turn-off-web-app-os-integration.patch
 bdk-let-an-embedder-give-pages-the-production-push-endpoint.patch
+bdk-let-an-embedder-present-the-payment-request-sheet.patch

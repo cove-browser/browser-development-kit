@@ -112,8 +112,9 @@ int t_http_start(const t_http_route_t* routes, int count) {
         snprintf(r->path, sizeof r->path, "%s", routes[i].path);
         int head = snprintf(r->reply, sizeof r->reply,
                             "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nCache-Control: no-store\r\n"
-                            "Connection: close\r\nContent-Length: %zu\r\n\r\n",
-                            routes[i].content_type, routes[i].length);
+                            "%sConnection: close\r\nContent-Length: %zu\r\n\r\n",
+                            routes[i].content_type, routes[i].headers ? routes[i].headers : "",
+                            routes[i].length);
         if (head <= 0 || (size_t)head + routes[i].length > sizeof r->reply)
             return 0;
         memcpy(r->reply + head, routes[i].body, routes[i].length);
@@ -181,4 +182,36 @@ int t_http_requested(const char* path) {
     }
     fclose(f);
     return found;
+}
+
+/* A 192 by 192 PNG. */
+static const char* kIcon =
+    "iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAIAAADdvvtQAAABZElEQVR42u3SQQ0AAAjEsPOEJzzhFguEd5MqWJbqgbdI"
+    "gIEwEAbCQGAgDISBMBAYCANhIAwEBsJAGAgDgYEwEAbCQBgIDISBMBAGAgNhIAyEgcBAGAgDYSAwEAbCQBgIA4GBMBAG"
+    "wkBgIAyEgTAQGAgDYSAMBAbCQBgIA4GBMBAGwkAYCAyEgTAQBgIDYSAMhIHAQBgIA2EgMBAGwkAYCAOBgTAQBsJAYCAM"
+    "hIEwEBgIA2EgDAQGwkAYCANhIDAQBsJAGAgMhIEwEAYCA2EgDISBwEAYCANhIDAQBsJAGAgDgYEwEAbCQGAgDISBMBAY"
+    "CANhIAwEBsJAGAgDYSAwEAbCQBgIDISBMBAGAgNhIAyEgcBAGAgDYSAMpAIGwkAYCAOBgTAQBsJAYCAMhIEwEBgIA2Eg"
+    "DAQGwkAYCANhIDAQBsJAGAgMhIEwEAYCA2EgDISBwEAYCANhIAwEBsJAGAgDwdUCCpUqFQe2NBgAAAAASUVORK5CYII=";
+
+static size_t decode_base64(const char* in, unsigned char* out, size_t cap) {
+    static const char* abc = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    size_t n = 0;
+    unsigned value = 0;
+    int bits = 0;
+    for (const char* c = in; *c && *c != '='; ++c) {
+        const char* at = strchr(abc, *c);
+        if (!at)
+            continue;
+        value = (value << 6) | (unsigned)(at - abc);
+        bits += 6;
+        if (bits >= 8 && n < cap) {
+            bits -= 8;
+            out[n++] = (unsigned char)((value >> bits) & 0xff);
+        }
+    }
+    return n;
+}
+
+size_t t_http_test_icon(unsigned char* out, size_t cap) {
+    return decode_base64(kIcon, out, cap);
 }

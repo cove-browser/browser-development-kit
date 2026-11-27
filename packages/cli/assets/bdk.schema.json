@@ -276,6 +276,10 @@
               "$ref": "#/$defs/surfaceModeDefaultCustom",
               "description": "An unresponsive page; blocked popups. Cannot be disabled."
             },
+            "payments": {
+              "$ref": "#/$defs/surfaceModeAny",
+              "description": "Payment Request: choosing the payment app that pays. disabled: pages have no PaymentRequest."
+            },
             "web_app_installs": {
               "$ref": "#/$defs/surfaceModeDefaultCustom",
               "description": "The install prompt of an installable web app. Turn installs off with [web_apps] enabled = false, not here."

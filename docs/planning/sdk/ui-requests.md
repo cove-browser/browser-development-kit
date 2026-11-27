@@ -96,7 +96,7 @@ The key is what goes in `[ui.surfaces]`. "Modes" lists what the surface allows: 
 | `webauthn` | Passkey and security-key dialogs | D C X | Accepted (S3, 2026-11-25); built and tested on the engine 2026-11-22; in the schema (T-UIR-15) | M4, T-UIR-09; key T-UIR-15, M9 |
 | `external_protocols` | "Open this link in another application?" | D C X | Accepted (S3, 2026-11-25); in the schema (T-UIR-15); default is a sheet of BDK's own, not routed yet (8.2) | T-UIR-10, M4; routing T-UIR-13, M9 |
 | `page_health` | Unresponsive page; blocked popups | D C | Accepted (S3, 2026-11-25); surface 33; in the schema, the core, the stub and Swift (T-UIR-15, 5.19); the engine raises none yet | T-UIR-15, M9 |
-| `payments` (name proposed in 5.22, waiting for review) | Payment Request sheet and Secure Payment Confirmation | D C X | Planned (product owner, 2026-11-25); designed in 5.22, not built; off at start until built (8.2) | T-UIR-14, M9 |
+| `payments` (`BDK_SURFACE_PAYMENTS` 34) | Payment Request sheet and Secure Payment Confirmation | D C X | Payment Request built on the engine (2026-11-27, 5.22); Secure Payment Confirmation off at start until T-UIR-11 (8.2) | T-UIR-14, M9 |
 | `identity` (name proposed in 5.22, waiting for review) | FedCM account chooser | D C X | Planned (product owner, 2026-11-25); designed in 5.22, not built; off at start until built (8.2) | T-UIR-14, M9 |
 | `digital_credentials` (name proposed in 5.22, waiting for review) | Digital Credentials API dialogs | D C X | Planned (product owner, 2026-11-25); designed in 5.22, not built; off at start until built (8.2) | T-UIR-14, M9 |
 | `web_app_installs` | The install prompt of an installable web app | D C | Planned (product owner, 2026-11-25); raised only with `[web_apps] enabled = true`, which is how it is turned off ([web-apps.md](web-apps.md) 4.1). Surface 37; stub, core and Swift built 2026-11-25 (T-PWA-03), engine T-PWA-04 | T-PWA-03, T-PWA-04, M9 |
@@ -645,7 +645,7 @@ Action state, popups, side panels, extension context-menu items, options pages, 
 
 The install prompt of an installable web app, and the window it is launched in, are in [web-apps.md](web-apps.md) section 4. They follow sections 1 to 3 of this document without exception: `install` is a granting completion (the ABI's `grant`; `install` is accepted as the same).
 
-### 5.22 Payments, identity and digital credentials (T-UIR-14; proposed 2026-11-25, waiting for review, not built)
+### 5.22 Payments, identity and digital credentials (T-UIR-14; reviewed 2026-11-27; Payment Request built)
 
 Payment Request, Secure Payment Confirmation, FedCM and the Digital Credentials API are off at start (8.2) and are to
 be turned on and routed (product owner, 2026-11-25). This section settles what T-UIR-14 asked to settle before
@@ -682,16 +682,38 @@ The names `payments`, `identity` and `digital_credentials` are kept. Each allows
 
 | Key | Kinds (payload `kind` or `step`) | Payload | Completions |
 |---|---|---|---|
-| `payments` | `kind` `paymentRequest` | `origin`, `topLevelOrigin`, `total` `{label, currency, value}`, `displayItems` `[{label, currency, value}]`, `apps` `[{id, name, origin, icon?}]` (the payment handlers that can pay), `requests` `{shipping, payerName, payerEmail, payerPhone}` | `grant` `{app}` pays with that handler and needs the gesture; the handler's page then opens as a `new_windows` request of a new kind `paymentHandler`, which the presenter shows and closes. `deny` aborts (`AbortError`). Open: shipping and payer details need address and contact pickers from autofill; proposed for v1 is to refuse a request that asks for them (`NotSupportedError`) |
+| `payments` | `kind` `paymentRequest` | `origin`, `topLevelOrigin`, `total` `{label, currency, value}`, `displayItems` `[{label, currency, value}]`, `apps` `[{id, name, origin, icon?}]` (the payment handlers that can pay), `requests` `{shipping, payerName, payerEmail, payerPhone}` | `grant` `{app}` pays with that handler and needs the gesture; the handler's page then opens as a `new_windows` request of a new kind `paymentHandler`, which the presenter shows and closes. `deny` aborts (`AbortError`). Shipping and payer details need address and contact pickers BDK does not have: a request that asks for them is refused before anyone is asked (`NotSupportedError`), as is one no app can pay |
 | `payments` | `kind` `securePaymentConfirmation` | `origin`, `payeeName`, `payeeOrigin`, `instrument` `{displayName, icon}`, `total`, `showOptOut` | `grant` `{}` verifies (Chromium then runs the platform authenticator, which is T-UIR-11's) and needs the gesture; `accept` `{"action":"optOut"}` where `showOptOut`; `deny` cancels |
 | `identity` | `step` `chooseAccount`, `loading`, `verifying`, `failure`, `error`, plus `registerIdP` for `RequestIdPRegistrationPermision`. One request per step, withdrawn when Chromium moves on, as WebAuthn (5.18) | `relyingParty` `{origin, iframeOrigin?}`, `context` (`signin`, `signup`, `use`, `continue`), `mode` (`passive`, `active`), `identityProviders` `[{id, configURL, name, icon?}]`, `accounts` `[{id, idp, name, email, givenName, picture, isReturning}]` (from `IdentityRequestAccount`, `identity_request_account.h:104` to `:122`), `error` `{code, url?}` | `grant` `{account}` signs in and needs the gesture (it releases an identity to the site); `accept` `{"action":"signInToIdP","idp"}` opens the IdP's sign-in page as a `new_windows` request of a new kind `identityProvider` (`ShowUrl`), `accept` `{"action":"moreDetails"}` opens the error URL; `accept` `{}` on `registerIdP` allows the registration and needs the gesture; `deny` dismisses |
 | `digital_credentials` | `step` `interstitial`, `connectPhone`, `error` | `origin`, `operation` (`get`, `create`), `risk` (`low`, `high`, from `IsLastCommittedOriginLowRisk`), `qrCode` (`connectPhone`), `error` | `grant` `{}` on `interstitial` continues and needs the gesture; `deny` cancels (`NotAllowedError`). `connectPhone` has nothing to answer but `deny`; it is withdrawn when the phone answers |
 
 Default presenters: sheets of BDK's own built from these payloads, as for WebAuthn, because each of Chromium's is a
-views dialog. Not built (T-UIR-14, M9): the ABI's surface numbers (after `page_health`, 33, and the web-app surface
-of T-PWA-03), the core's checks, the stub's requests, Swift's request types, the engine (the payments patch, the
-two browser-client overrides, the features turned on in `chromium_main_mac.mm`), the default presenters, and the
-scenarios of T-UIR-14 (a page sees each API as supported; no handler, a handler, and `disabled`; the network audit).
+views dialog.
+
+Reviewed by the product owner, 2026-11-27: the names and payloads above, and `digital_credentials` following
+`[services.webauthn] phones`.
+
+**Payment Request, built (2026-11-27, Chromium 158).** `payments` is `BDK_SURFACE_PAYMENTS` (34); Swift
+`PaymentRequest` (`pay(with:confirmedBy:)`, `cancel()`) and `NewWindowRequest.Kind.paymentHandler`. Patch
+`bdk-let-an-embedder-present-the-payment-request-sheet`: the delegate asks BDK for the dialog first, and `show()`
+follows the page's visibility instead of requiring the active tab of an active window of Chromium's (every BDK page
+is a background tab of a host context), as permission prompts do. The engine (`ui_payments.cc`) raises the request
+once Chromium has found the apps that can pay, and a grant selects the app and pays through Chromium's own flow.
+Two Chromium behaviours shape it:
+
+- Chromium skips its sheet and pays at once when one app can pay (`WebPaymentsSingleAppUiSkip`). BDK turns that off
+  at start, so a page never pays without the person choosing.
+- Chromium holds a payment handler's answer until the person has used the handler's own page
+  (`PaymentRequestMandatoryPaymentAppUi`): a handler that answers without opening its page never resolves. The
+  handler's page (`PaymentRequestEvent.openWindow()`) is a `new_windows` request of kind `paymentHandler` in the
+  page's profile; input in it counts as that use, closing it cancels the payment, and it closes when the payment ends.
+
+With `payments = "disabled"` pages have no `PaymentRequest` (the `WebPayments` feature is off at start). Default
+presenter: a sheet with the total and who asks, Cancel (Return and Escape) and one "Pay with" button per app, naming
+its origin. Engine scenarios `tests_engine_payments.c` (4, and one launch): a handler that pays through a payment
+handler installed just in time from a payment method manifest on the loopback server, a deny, the default sheet,
+shipping and payer details refused, and `disabled`. Not built: Secure Payment Confirmation (its credential is in a
+keychain group compiled into Chromium, T-UIR-11), `identity` (FedCM) and `digital_credentials`.
 
 ## 6. Default presenters
 
@@ -763,7 +785,7 @@ reading the source, not from a test.
 | Web Bluetooth chooser, scanning prompt, pairing dialogs | `navigator.bluetooth` | The chooser is a `device_choosers` request when the application declares its Bluetooth usage string, and Web Bluetooth is off without one (5.16); the scanning and pairing prompts are refused |
 | Screen-capture picker, "share this tab", capture-policy confirmation | `getDisplayMedia()` | A `screen_capture` request since T-UIR-13 (5.16); patch `bdk-let-an-embedder-supply-the-screen-capture-ui` |
 | HTTPS-First's "ask before HTTP" dialog | An HTTP navigation with HTTPS-First on | Off (`HttpsFirstDialogUi`): the interstitial page asks instead (5.14) |
-| Payment Request sheet, Secure Payment Confirmation | `new PaymentRequest(...).show()` | Off (`WebPayments`, `SecurePaymentConfirmation`): `PaymentRequest` is absent |
+| Secure Payment Confirmation | `new PaymentRequest(...)` with the `secure-payment-confirmation` method | Off (`SecurePaymentConfirmation`) until T-UIR-11. Payment Request itself is routed since T-UIR-14 (5.22) |
 | FedCM account chooser | `navigator.credentials.get({identity})` | Off (`FedCm`): `IdentityCredential` is absent |
 | Digital Credentials dialogs | `navigator.credentials.get({digital})` | Off (`WebIdentityDigitalCredentials`, `...Creation`) |
 | Web application install dialogs | `beforeinstallprompt`'s `prompt()` | Off: `profile.web_app.install_by_user_enabled` defaults to false, so no page offers itself for installation. From M9 that is the behaviour of `[web_apps] enabled = false`, the default; with `true` the dialog becomes a `web_app_installs` request (T-PWA-04, [web-apps.md](web-apps.md)) |

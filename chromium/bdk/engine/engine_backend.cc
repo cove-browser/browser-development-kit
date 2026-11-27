@@ -68,6 +68,7 @@
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_find.h"
 #include "bdk/engine/ui_notifications.h"
+#include "bdk/engine/ui_payments.h"
 #include "bdk/engine/ui_presenters.h"
 #include "bdk/engine/ui_screen_capture.h"
 #include "bdk/engine/ui_select_file.h"
@@ -248,6 +249,14 @@ class EngineBackend final : public bdkcore::Backend {
       if (rt.web_apps.push_provider != "google") {
         options.switches.push_back("disable-blink-features=PushMessaging");
       }
+      // Payment Request is a `payments` request (T-UIR-14); with the surface
+      // disabled, pages have no PaymentRequest. Chromium's shortcut that pays
+      // with a single app without showing the sheet is off, so a page never
+      // pays without the person choosing (ui-requests.md 5.22).
+      options.switches.push_back(
+          bdkcore::ui_surface_available(rt, BDK_SURFACE_PAYMENTS)
+              ? "disable-features=WebPaymentsSingleAppUiSkip"
+              : "disable-features=WebPaymentsSingleAppUiSkip,WebPayments");
       for (std::string& extra : ExtraSwitches()) {
         options.switches.push_back(std::move(extra));
       }
@@ -272,6 +281,7 @@ class EngineBackend final : public bdkcore::Backend {
       InstallSelectFileDialogs();
       InstallScreenCaptureUi();
       InstallWebAppHooks();
+      InstallPaymentHooks();
       chromium_tasks_.store(true);
       registry_writer_ = base::ThreadPool::CreateSequencedTaskRunner(
           {base::MayBlock(), base::TaskShutdownBehavior::BLOCK_SHUTDOWN});

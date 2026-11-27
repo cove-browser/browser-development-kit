@@ -360,6 +360,7 @@
       { "name": "EXTENSION_INSTALLS", "id": 31 },
       { "name": "EXTENSION_UNINSTALLS", "id": 32 },
       { "name": "PAGE_HEALTH", "id": 33 },
+      { "name": "PAYMENTS", "id": 34 },
       { "name": "WEB_APP_INSTALLS", "id": 37 }
     ],
     "pageModes": [

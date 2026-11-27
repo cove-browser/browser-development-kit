@@ -149,6 +149,9 @@ public final class NewWindowRequest: BDKUIRequest {
         case application
         /// An installed web app being launched, or opening a window inside its scope.
         case webApp
+        /// A payment handler's own page, while it takes a payment (`PaymentRequest`). It closes
+        /// when the payment ends.
+        case paymentHandler
     }
 
     public enum Disposition: String, Sendable {

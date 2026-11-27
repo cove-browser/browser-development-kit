@@ -7,12 +7,14 @@
 
 #include <stddef.h>
 
-/* A path the server answers with `body`, as `content_type`. */
+/* A path the server answers with `body`, as `content_type`, and with `headers` (header lines, each
+   ending in CRLF; NULL for none). */
 typedef struct t_http_route {
     const char* path;
     const char* content_type;
     const void* body;
     size_t length;
+    const char* headers;
 } t_http_route_t;
 
 /* Starts the server with up to 8 routes (copied: they need not outlive the call). Other paths:
@@ -25,5 +27,7 @@ const char* t_http_origin(void);
 const char* t_http_url(const char* path);
 /* Whether the server was asked for exactly `path`. */
 int t_http_requested(const char* path);
+/* A 192 by 192 PNG icon for fixtures, decoded into `out`: its length, or 0 when it does not fit. */
+size_t t_http_test_icon(unsigned char* out, size_t cap);
 
 #endif /* BDK_TEST_ENGINE_HTTP_SERVER_H_ */

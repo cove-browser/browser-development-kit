@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "bdk_version": "0.0.0",
-  "config_digest": "sha256:faa9955e80ce13dea510079d76da309921a5ee545540da873236269c1ef4bd1a",
+  "config_digest": "sha256:6efe46e539c51d026bf169f89561e20638389efaf0f097106da5fdf716554182",
   "browser": {
     "name": "Tide",
     "internal_scheme": "tide",
@@ -45,6 +45,7 @@
     "webauthn": "default",
     "external_protocols": "default",
     "page_health": "default",
+    "payments": "default",
     "web_app_installs": "default"
   },
   "extensions": {

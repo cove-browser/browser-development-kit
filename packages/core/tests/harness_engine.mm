@@ -40,6 +40,8 @@ void bdk_engine_launch_prepare(const char* name);
    with Google push, or with the application's Google key. */
 void bdk_engine_push_launch_prepare(const char* name);
 void bdk_engine_google_key_launch_prepare(const char* name);
+/* From tests_engine_payments.c: a start with the payments surface disabled. */
+void bdk_engine_payments_launch_prepare(const char* name);
 }
 
 @interface BDKHarnessApplication : BDKApplicationBase
@@ -814,6 +816,7 @@ void RunSuite(void*) {
             bdk_engine_launch_prepare(g_argv[i + 1]);
             bdk_engine_push_launch_prepare(g_argv[i + 1]);
             bdk_engine_google_key_launch_prepare(g_argv[i + 1]);
+            bdk_engine_payments_launch_prepare(g_argv[i + 1]);
         }
     }
     /* Starts Chromium with a first runtime. Its nested main loop is queued on the run loop; the

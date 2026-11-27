@@ -46,6 +46,7 @@ extern const t_test_t t_engine_webauthn_tests[];
 extern const t_test_t t_engine_dialogs_tests[];
 extern const t_test_t t_engine_chooser_tests[];
 extern const t_test_t t_engine_web_app_tests[];
+extern const t_test_t t_engine_payment_tests[];
 extern const t_test_t t_engine_arc_tests[];
 extern const t_test_t t_engine_navigation_policy_tests[];
 extern const t_test_t t_engine_profile_version_tests[];

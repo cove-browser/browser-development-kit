@@ -40,47 +40,20 @@ static const char* kWorker =
     "self.addEventListener('push', e => e.waitUntil(tell('pushed')"
     ".then(() => registration.showNotification('pushed'))));";
 
-static const char* kIcon =
-    "iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAIAAADdvvtQAAABZElEQVR42u3SQQ0AAAjEsPOEJzzhFguEd5MqWJbqgbdI"
-    "gIEwEAbCQGAgDISBMBAYCANhIAwEBsJAGAgDgYEwEAbCQBgIDISBMBAGAgNhIAyEgcBAGAgDYSAwEAbCQBgIA4GBMBAG"
-    "wkBgIAyEgTAQGAgDYSAMBAbCQBgIA4GBMBAGwkAYCAyEgTAQBgIDYSAMhIHAQBgIA2EgMBAGwkAYCAOBgTAQBsJAYCAM"
-    "hIEwEBgIA2EgDAQGwkAYCANhIDAQBsJAGAgMhIEwEAYCA2EgDISBwEAYCANhIDAQBsJAGAgDgYEwEAbCQGAgDISBMBAY"
-    "CANhIAwEBsJAGAgDYSAwEAbCQBgIDISBMBAGAgNhIAyEgcBAGAgDYSAMpAIGwkAYCAOBgTAQBsJAYCAMhIEwEBgIA2Eg"
-    "DAQGwkAYCANhIDAQBsJAGAgMhIEwEAYCA2EgDISBwEAYCANhIAwEBsJAGAgDwdUCCpUqFQe2NBgAAAAASUVORK5CYII=";
-
 /* ---- the loopback server (engine_http_server.h) ----
    The renderer fetches the manifest and the browser the icon, which the engine's interceptor does
    not serve, so the app comes from 127.0.0.1, a secure context. */
 
-static size_t decode_base64(const char* in, unsigned char* out, size_t cap) {
-    static const char* abc = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    size_t n = 0;
-    unsigned value = 0;
-    int bits = 0;
-    for (const char* c = in; *c && *c != '='; ++c) {
-        const char* at = strchr(abc, *c);
-        if (!at)
-            continue;
-        value = (value << 6) | (unsigned)(at - abc);
-        bits += 6;
-        if (bits >= 8 && n < cap) {
-            bits -= 8;
-            out[n++] = (unsigned char)((value >> bits) & 0xff);
-        }
-    }
-    return n;
-}
-
 static int start_server(void) {
     unsigned char icon[1024];
-    const size_t icon_length = decode_base64(kIcon, icon, sizeof icon);
+    const size_t icon_length = t_http_test_icon(icon, sizeof icon);
     static const char outside[] = "<html><head><title>outside</title></head></html>";
     const t_http_route_t routes[] = {
-        {"/app/index.html", "text/html", kPage, strlen(kPage)},
-        {"/manifest.json", "application/manifest+json", kManifest, strlen(kManifest)},
-        {"/icon.png", "image/png", icon, icon_length},
-        {"/elsewhere.html", "text/html", outside, sizeof outside - 1},
-        {"/app/sw.js", "text/javascript", kWorker, strlen(kWorker)},
+        {"/app/index.html", "text/html", kPage, strlen(kPage), NULL},
+        {"/manifest.json", "application/manifest+json", kManifest, strlen(kManifest), NULL},
+        {"/icon.png", "image/png", icon, icon_length, NULL},
+        {"/elsewhere.html", "text/html", outside, sizeof outside - 1, NULL},
+        {"/app/sw.js", "text/javascript", kWorker, strlen(kWorker), NULL},
     };
     return t_http_start(routes, 5);
 }
