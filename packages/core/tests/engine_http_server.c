@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -48,59 +49,75 @@ static void append_int(char* buf, size_t cap, int v) {
     append(buf, cap, digits + i);
 }
 
-/* Only system calls and string functions: it runs in a child forked from a threaded process. */
+/* Answers one connection. Only system calls and string functions: it runs in a child forked from
+   a threaded process. */
+static void answer(int fd) {
+    char request[4096];
+    ssize_t n = read(fd, request, sizeof request - 1);
+    request[n > 0 ? n : 0] = '\0';
+    char path[1024] = "/";
+    const char* sp = strchr(request, ' ');
+    if (sp) {
+        size_t len = strcspn(sp + 1, " \r\n");
+        if (len > 0 && len < sizeof path) {
+            memcpy(path, sp + 1, len);
+            path[len] = '\0';
+        }
+    }
+    int log = open(g_log, O_WRONLY | O_APPEND | O_CREAT, 0600);
+    if (log >= 0) {
+        char line[1100] = "";
+        append(line, sizeof line, path);
+        append(line, sizeof line, "\n");
+        (void)!write(log, line, strlen(line));
+        close(log);
+    }
+    const route_t* found = NULL;
+    for (int i = 0; i < g_route_count; ++i) {
+        if (strcmp(path, g_routes[i].path) == 0)
+            found = &g_routes[i];
+    }
+    if (found) {
+        (void)!write(fd, found->reply, found->length);
+        close(fd);
+        return;
+    }
+    char reply[2048] = "";
+    if (strncmp(path, "/redirect/", 10) == 0) {
+        append(reply, sizeof reply, "HTTP/1.1 302 Found\r\nLocation: /");
+        append(reply, sizeof reply, path + 10);
+        append(reply, sizeof reply, "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+    } else {
+        char body[1200] = "<!doctype html><meta charset=utf-8><title>";
+        append(body, sizeof body, path);
+        append(body, sizeof body, "</title><body>");
+        append(reply, sizeof reply,
+               "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nCache-Control: no-store\r\n"
+               "Connection: close\r\nContent-Length: ");
+        append_int(reply, sizeof reply, (int)strlen(body));
+        append(reply, sizeof reply, "\r\n\r\n");
+        append(reply, sizeof reply, body);
+    }
+    (void)!write(fd, reply, strlen(reply));
+    close(fd);
+}
+
+/* Each connection in a process of its own: Chromium opens connections before it has a request
+   for them (preconnects), and one left idle would hold every other request behind it. An idle
+   connection is given up after a few seconds. */
 static void serve(int listener) {
+    signal(SIGCHLD, SIG_IGN);
     for (;;) {
         int fd = accept(listener, NULL, NULL);
         if (fd < 0)
             continue;
-        char request[4096];
-        ssize_t n = read(fd, request, sizeof request - 1);
-        request[n > 0 ? n : 0] = '\0';
-        char path[1024] = "/";
-        const char* sp = strchr(request, ' ');
-        if (sp) {
-            size_t len = strcspn(sp + 1, " \r\n");
-            if (len > 0 && len < sizeof path) {
-                memcpy(path, sp + 1, len);
-                path[len] = '\0';
-            }
+        if (fork() == 0) {
+            close(listener);
+            struct timeval idle = {5, 0};
+            setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &idle, sizeof idle);
+            answer(fd);
+            _exit(0);
         }
-        int log = open(g_log, O_WRONLY | O_APPEND | O_CREAT, 0600);
-        if (log >= 0) {
-            char line[1100] = "";
-            append(line, sizeof line, path);
-            append(line, sizeof line, "\n");
-            (void)!write(log, line, strlen(line));
-            close(log);
-        }
-        const route_t* found = NULL;
-        for (int i = 0; i < g_route_count; ++i) {
-            if (strcmp(path, g_routes[i].path) == 0)
-                found = &g_routes[i];
-        }
-        if (found) {
-            (void)!write(fd, found->reply, found->length);
-            close(fd);
-            continue;
-        }
-        char reply[2048] = "";
-        if (strncmp(path, "/redirect/", 10) == 0) {
-            append(reply, sizeof reply, "HTTP/1.1 302 Found\r\nLocation: /");
-            append(reply, sizeof reply, path + 10);
-            append(reply, sizeof reply, "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
-        } else {
-            char body[1200] = "<!doctype html><meta charset=utf-8><title>";
-            append(body, sizeof body, path);
-            append(body, sizeof body, "</title><body>");
-            append(reply, sizeof reply,
-                   "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nCache-Control: no-store\r\n"
-                   "Connection: close\r\nContent-Length: ");
-            append_int(reply, sizeof reply, (int)strlen(body));
-            append(reply, sizeof reply, "\r\n\r\n");
-            append(reply, sizeof reply, body);
-        }
-        (void)!write(fd, reply, strlen(reply));
         close(fd);
     }
 }

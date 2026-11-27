@@ -136,11 +136,11 @@ class PaymentSheet : public payments::PaymentRequestDialog,
     }
     request_->state()->AddObserver(this);
     if (request_->state()->is_get_all_apps_finished()) {
-      Raise();
+      RaiseSoon();
     }
   }
 
-  void RetryDialog() override { Raise(); }
+  void RetryDialog() override { RaiseSoon(); }
 
   void CloseDialog() override {
     if (closed_) {
@@ -216,10 +216,19 @@ class PaymentSheet : public payments::PaymentRequestDialog,
   bool ClickOptOutForTesting() override { return false; }
 
   // payments::PaymentRequestState::Observer:
-  void OnGetAllPaymentAppsFinished() override { Raise(); }
+  void OnGetAllPaymentAppsFinished() override { RaiseSoon(); }
   void OnSelectedInformationChanged() override {}
 
  private:
+  // Chromium is still inside ShowDialog() or its observers here: a refusal
+  // made there is lost (the page's show() never settles), so the request is
+  // raised, or the payment refused, from a task of its own.
+  void RaiseSoon() {
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE,
+        base::BindOnce(&PaymentSheet::Raise, weak_factory_.GetWeakPtr()));
+  }
+
   // Raises the request, or refuses what BDK does not ask for.
   void Raise() {
     if (closed_ || request_ui_ || dismiss_ || !request_ || !request_->spec() ||
