@@ -651,8 +651,9 @@ Implement `tests/harness.h` for the runtime (pump the UI thread, run a function 
 navigation, raise and withdraw a UI request, simulate a key) and, if it has the broker test hooks,
 `tests/harness_broker.h` (otherwise link `tests/harness_broker_unsupported.c`, which skips those tests), then
 configure with
-`-DBDK_RUNTIME_LIBRARY=<library> -DBDK_HARNESS_SOURCES=<harness.cc>`. `bdk_conformance --list` and `--run <name>`
-select tests.
+`-DBDK_RUNTIME_LIBRARY=<library> -DBDK_HARNESS_SOURCES=<harness.cc>`. `bdk_conformance --list` and `--run <pattern>`
+select tests: a name, a prefix ending in `*`, several of those separated by commas (run in the suite's order,
+to reproduce what one scenario leaves for another), or `!` before any of them for every test that matches none.
 
 ## Cross-platform checklist (c-abi.md section 11) for this skeleton
 
