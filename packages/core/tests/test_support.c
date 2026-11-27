@@ -299,15 +299,29 @@ static int run_one(const t_test_t* t) {
     return g_failures_in_test == 0;
 }
 
-/* `pattern` is a test name, or a prefix followed by '*' for every test that starts with it; a
-   leading '!' selects every test that does not match the rest. */
+/* One pattern of `--run` (`pattern` of `n` bytes): a test name, or a prefix followed by '*' for
+   every test that starts with it. */
+static int t_one_matches(const char* pattern, size_t n, const char* name) {
+    if (n > 0 && pattern[n - 1] == '*')
+        return strncmp(pattern, name, n - 1) == 0;
+    return strlen(name) == n && strncmp(pattern, name, n) == 0;
+}
+
+/* `pattern` is one pattern or several separated by commas, run in the suite's order (to reproduce
+   what one scenario leaves for a later one); a leading '!' selects every test that matches none
+   of the rest. */
 static int t_name_matches(const char* pattern, const char* name) {
     if (pattern[0] == '!')
         return !t_name_matches(pattern + 1, name);
-    size_t n = strlen(pattern);
-    if (n > 0 && pattern[n - 1] == '*')
-        return strncmp(pattern, name, n - 1) == 0;
-    return strcmp(pattern, name) == 0;
+    for (const char* p = pattern;;) {
+        const char* comma = strchr(p, ',');
+        const size_t n = comma ? (size_t)(comma - p) : strlen(p);
+        if (t_one_matches(p, n, name))
+            return 1;
+        if (!comma)
+            return 0;
+        p = comma + 1;
+    }
 }
 
 /* A harness whose runtime must own the process's main thread first (an application event loop)

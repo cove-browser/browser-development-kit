@@ -26,10 +26,10 @@ build).
 
 ### Reporting a vulnerability in BDK
 
-Not set up yet: the repository has no `SECURITY.md` and no private reporting channel. Until it does, BDK cannot
-receive private reports. To do before v1 (T-REL-01): enable GitHub private vulnerability reporting on the
-repository, add `SECURITY.md` naming it, and publish fixes with a GitHub security advisory. Bugs in Chromium
-itself go to Chromium's tracker, not here.
+[SECURITY.md](../../SECURITY.md) (2026-11-27) asks for reports through GitHub's private vulnerability reporting
+and says fixes are published with a GitHub security advisory. Bugs in Chromium itself go to Chromium's tracker,
+not here. Turning private vulnerability reporting on is a repository setting (T-REL-01): until it is on, the
+"Report a vulnerability" button that SECURITY.md names is absent.
 
 ## 2. Process
 
@@ -90,6 +90,6 @@ Checklist before calling it done:
       (for example, pre-building the next milestone's beta to fill ccache, tooling/README.md).
 - [ ] The published runtime resolves on a second machine (`pnpm exec nx run chromium:runtime` with an empty
       `BDK_HOME`), and `chromium:release-check` passes on the tagged commit.
-- [ ] `SECURITY.md` exists and private reporting is on.
+- [ ] Private vulnerability reporting is on (`SECURITY.md` exists since 2026-11-27).
 
 What would close T-REL-01: the table above filled from a real run, committed.
