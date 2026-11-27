@@ -249,7 +249,7 @@ Asked in this order. A question is skipped when its flag was given or when an ea
 | `Package.resolved` pinning BDK | Not written; the Xcode project references the package at the CLI's exact version (`--bdk-package <url\|path>` for another URL or a local checkout), and Xcode writes `Package.resolved` | No BDK version is published to resolve, and a resolved file without a revision is invalid |
 | Frameworks vanilla, react, vue, svelte, solid, preact, lit | vanilla, react, preact | The internal-page policy allows no Trusted Types policy (`chromium/bdk/engine/pages/bundled_page_source.cc`); the others assign template strings to `innerHTML`. Their run-time behaviour in Chromium is unverified for all three (no runtime can be embedded yet). |
 | A directory per combination of framework, language and styling | Composed: shared starter loaders, a component per framework and language, a stylesheet per styling, versions in one `versions.json` | 12 combinations times 5 pages would repeat the same loaders |
-| The result runs from Xcode with the runtime | It builds and runs on the stub runtime: the application links `BDKTestSupport`, because `bdk build runtime` and `embed` are not built (T-CLI-04). The sign phase skips when no runtime is embedded. | `RuntimeSource.swift` is the one file to change when they are |
+| The result runs from Xcode with the runtime | It builds and runs on the stub runtime: the application links `BDKTestSupport`. `bdk build runtime` and `embed` are built (section 7.2), but no prebuilt runtime is published for them to resolve. The sign phase skips when no runtime is embedded. | `RuntimeSource.swift` is the one file to change when they are |
 | Phases with input and output file lists | Every phase runs on every build (each step is incremental by digest) | `DERIVED_FILE_DIR` is per target, so `BDKRuntime`'s lists are not where the application target looks |
 | An empty `AppIcon` set | Kept; `CFBundleURLTypes` for http and https and camera, microphone and location usage strings are in `Info.plist` | |
 
@@ -327,7 +327,7 @@ Not verified:
 | Signing with a real identity, and the hardened options and library validation with a real team | As above. Only the planned `codesign` arguments are unit-tested. |
 | Xcode's "Embed & Sign" not re-signing nested helpers (the premise of this step) | Xcode was not run (see section 2.3). |
 | `--team` on a real signature | Unit-tested with a fake `codesign` only. |
-| `bdk build embed` | Not built. The test copies the runtime with `ditto`. |
+| `bdk build embed` with a signed application | Built (section 7.2) and run on the packaged runtime, but the opt-in signing test still copies the runtime with `ditto`. |
 
 The opt-in end-to-end test is `packages/cli/src/platform/xcode/sign.runtime.test.ts`; see `packages/cli/README.md`.
 
@@ -374,7 +374,7 @@ Added by T-CLI-07 (2026-11-25):
 | Template-pinned dependencies | Each dependency in the pages' `package.json` that `@bdk/vite` declares a range for (`SUPPORTED_DEPENDENCIES`: Vite 8, `@vitejs/plugin-react` 6, `@preact/preset-vite` 2.10 on, `@tailwindcss/vite` 4), pinned outside it. A test keeps every pin of `apps/templates/pages/versions.json` inside its range. | `doctor.vite_dependency_unsupported` (warning) |
 | Page digests | Every bundled route of the bundle's resolved file is at `Contents/Resources/<path>`. A page `bdk build pages` copies is compared file by file with its source when the route's digest shows the source is the one built. A page Vite builds is reported as not checked: the build records no digest of Vite's output. | `doctor.page_missing`, `doctor.page_modified` (errors), `doctor.page_unverified` (note) |
 | Script digests | Each script of an enabled `[automation]` has the `bundle` and `bundle_digest` `bdk build automation` records, and the file has that digest. `doctor.bundle_config_stale` now leaves those two fields out, so a bundle with scripts is not reported stale. | `doctor.script_not_bundled`, `doctor.script_missing`, `doctor.script_modified` (errors) |
-| Framework files | Each top-level entry of the resolved runtime's manifest at `Contents/Frameworks/<entry>`, where `bdk build embed` is to copy it. Signing rewrites executables, libraries and `Info.plist` files and adds `_CodeSignature`, so those are compared by kind and executable bit only. `embed` is not built, so a bundle today embeds no runtime. | `doctor.framework_modified` (error), `doctor.runtime_not_embedded` (note) |
+| Framework files | Each entry of the resolved runtime's `Chromium.app/Contents/Frameworks` at `Contents/Frameworks/<entry>`, where `bdk build embed` copies it. Signing rewrites executables, libraries and `Info.plist` files and adds `_CodeSignature`, so those are compared by kind and executable bit only. | `doctor.framework_modified` (error), `doctor.runtime_not_embedded` (note) |
 | Developer ID and notarization | The signing certificate (`codesign -dvv`, first `Authority=`) and Gatekeeper's assessment (`spctl --assess --type execute -vv`). A team signature that is not `Developer ID Application:` is refused on other Macs; on a Developer ID one, Gatekeeper's answer is reported. | `doctor.not_developer_id`, `doctor.gatekeeper_rejected` (warnings), `doctor.gatekeeper_accepted` (note) |
 
 The signature checks are tested with the inspection faked. They were run once for real, on a third-party application
@@ -441,7 +441,19 @@ take the managed checkout's lock.
 |---|---|---|
 | `new <name>` records the checkout state as the base | `new` applies both series (or finds them applied) and says where to commit; `export` takes the commit after BDK's series as the base, checked by patch id | The base is always "the pin plus BDK's series", which can be computed; a recorded ref could go stale |
 | `status` says which patches apply cleanly to the pin | `status` lists the patches, their files and the checkout's state; `check` applies them to a sparse checkout of the pin | Telling whether a patch applies needs the pinned files, which `check` fetches |
-| A runtime whose manifest records the application's patches | The identity and the manifest record `application.patches` and `patches_digest` (`tooling/src/runtime/`); `chromium:build` and `chromium:package` take `--app-patches` | `bdk build runtime` is not built (T-CLI-04); no source build with an application patch has been run |
+| A runtime whose manifest records the application's patches | The identity and the manifest record `application.patches` and `patches_digest` (`tooling/src/runtime/`); `chromium:build` and `chromium:package` take `--app-patches` | `bdk build runtime --allow-source-build` passes the patches as `--app-patches` (section 7.2); no source build with an application patch has been run |
+
+### 7.2 `bdk build runtime` and `bdk build embed` as built (2026-11-27)
+
+`packages/cli/src/core/steps/runtime.ts` and `embed.ts`; details in `packages/cli/README.md` ("Runtime and embed").
+
+| Planned | Built | Why |
+|---|---|---|
+| Source mode runs the steps of section 7 itself | It runs `chromium:build` and `chromium:package` in the BDK checkout named by `BDK_SOURCE_ROOT`, with `--app-patches`; they take the lock, apply both series, build and package into the store | One implementation of the build. The executable embeds BDK's series and the pin but not the overlay, so it needs a checkout to build from |
+| Step 4, `gclient sync` | Not run by the step: the checkout must have been synced (`pnpm chromium:sync`), and `chromium:build` says so when it is not | A sync is the long, network-bound part, and its first run needs the developer's attention |
+| The build's progress shown | The build's output is collected and its last lines shown when it fails | `Context.exec` collects output; streaming it is left for when a source build with an application patch is first run |
+| Prebuilt download | Built on the tooling's `fetchRuntime`: archive SHA-256, manifest, manifest digest and ABI hash checked before anything is installed | No runtime is published yet (`chromium/pin.json` has none), so it is tested on a fixture archive only |
+| `embed` copies the framework | Each entry of the runtime's `Chromium.app/Contents/Frameworks` (the framework and anything beside it), symlinks kept, made writable, checked against the manifest; a copy that matches is left | Leaving a matching copy keeps a signed bundle signed across builds |
 
 ## 8. Xcode integration
 

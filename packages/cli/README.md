@@ -160,10 +160,29 @@ embedded assets. The application's series is `[chromium] patches` (a directory w
 `apply`, `new` and `export` run again as a child holding the checkout lock (`Context.underCheckoutLock`, with
 `BDK_CHECKOUT_LOCKED=1`); a held lock is `patch.checkout_locked`, exit 3, naming the holder. Not in source mode:
 `patch.not_source_mode`; no checkout: `patch.checkout_missing`, exit 3. A runtime built with the application's
-patches records them in its manifest (`application.patches` and `patches_digest`, `tooling/src/runtime/`); the CLI
-cannot build one yet (`bdk build runtime`, T-CLI-04), so `pnpm chromium:build -- --app-patches <dir>` and
-`pnpm chromium:package -- --app-patches <dir>` do it. Tests: `src/core/patch/patch.test.ts` on the tooling's fake
+patches records them in its manifest (`application.patches` and `patches_digest`, `tooling/src/runtime/`);
+`bdk build runtime --allow-source-build` builds one (see "Runtime and embed"). Tests: `src/core/patch/patch.test.ts` on the tooling's fake
 upstream (`tooling/src/chromium/test-support.ts`), never a real checkout.
+
+## Runtime and embed
+
+`bdk build runtime` (`src/core/steps/runtime.ts`) resolves the runtime the project runs on into the store under
+`BDK_HOME` and records it in `.bdk/runtime.json` (`source_key`, `manifest_sha256`; `src/core/runtime/project-runtime.ts`).
+`bdk build embed` (`src/core/steps/embed.ts`) copies it into the application.
+
+| Mode | What `runtime` does |
+|---|---|
+| Prebuilt (default) | The runtime of the embedded release facts (`bdk-release.json`, `runtime`). In the store: verified against its manifest and the release's manifest digest. Not in the store: downloaded with the tooling's `fetchRuntime`, which checks the archive's SHA-256, the manifest and the ABI hash before installing anything. `--offline` refuses to download (`runtime.offline`, exit 3). A release with no runtime: `runtime.unpublished`. |
+| Source (`runtime.mode = "source"`, or `BDK_RUNTIME_MODE=source`) | The source key of the BDK checkout named by `BDK_SOURCE_ROOT` plus the application's patches (`[chromium] patches`). In the store: verified and used. Not in the store: only with `--allow-source-build` or `BDK_RUNTIME_MODE=source` (else `runtime.source_build_not_allowed`), it runs `chromium:build` and `chromium:package` in that checkout with `--app-patches`, which take the checkout lock and apply both series. The checkout must have been synced (`pnpm chromium:sync`). |
+
+`embed` copies each entry of the runtime's `Chromium.app/Contents/Frameworks` to the bundle's `Contents/Frameworks`,
+symlinks as they are, makes the copy writable (the store is read-only) and checks it against the manifest. A copy
+that already matches, allowing for what signing rewrites, is left alone, so a signed bundle is not unsigned by the
+next build. Other frameworks in the bundle are not touched. With no step, `bdk build` runs `runtime` when there is a
+runtime to resolve, and `embed` when there is also a bundle; a release with no runtime builds for the stub.
+
+Tests: `src/core/steps/runtime.test.ts` and `embed.test.ts`, on fixture runtimes in a temporary `BDK_HOME`; the
+download test unpacks a real archive made with the tooling's `createArchive`. The source build is a fake `exec`.
 
 ## Pages
 

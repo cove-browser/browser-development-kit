@@ -15,11 +15,13 @@ Usage:
   bdk patch rebase <tag>
   bdk build [<step>...]
   bdk build config [--out <file>]
+  bdk build runtime [--allow-source-build] [--offline]
   bdk build codegen [--out <dir>] [--commands <file>] [--resolved <file>]
   bdk build pages [--bundle <App.app>] [--resolved <file>]
   bdk build automation --bundle <App.app> [--out <file>] [--watch]
   bdk build devtools --bundle <App.app> [--out <file>]
   bdk build extensions --bundle <App.app> [--out <file>]
+  bdk build embed --bundle <App.app>
   bdk build sign --bundle <App.app> --identity <name|-> [--team <id>] [--entitlements <file>]
   bdk --help | --version
 
@@ -34,9 +36,10 @@ Commands:
                 BDK's series into the project), check (against the pinned Chromium, no build), rebase
                 (against another tag)
   build         Run build steps. Steps: ${steps.join(", ")}.
-                With no step, runs those that apply, in that order: pages, automation, devtools and
-                extensions need a bundle (--bundle, or an Xcode build); sign needs an Xcode build or
-                --identity
+                With no step, runs those that apply, in that order: runtime needs a published runtime
+                or a source build asked for; pages, automation, devtools, extensions and embed need a
+                bundle (--bundle, or an Xcode build), and embed a runtime; sign needs an Xcode build
+                or --identity
 
 Options:
   --project <dir>         Use the project in <dir> instead of the nearest ancestor with bdk.toml
@@ -56,11 +59,15 @@ Options:
                           CODESIGNING_FOLDER_PATH, else TARGET_BUILD_DIR/WRAPPER_NAME) and the resolved
                           configuration to read (default: bdk.resolved.json next to bdk.toml; \`build codegen\`
                           reads the same file). --bundle is also the application for \`build automation\`,
-                          \`build devtools\`, \`build extensions\`, \`build sign\` and \`doctor\`
+                          \`build devtools\`, \`build extensions\`, \`build embed\`, \`build sign\` and
+                          \`doctor\`
   --identity, --team, --entitlements
                           For \`build sign\`. In an Xcode build they default to CODESIGNING_FOLDER_PATH,
                           EXPANDED_CODE_SIGN_IDENTITY, DEVELOPMENT_TEAM and CODE_SIGN_ENTITLEMENTS.
                           BDK_SKIP_SIGNING=1 skips the step
+  --allow-source-build    For \`build runtime\` in source mode: build Chromium from BDK_SOURCE_ROOT
+                          (hours) when the store has no runtime for these inputs. BDK_RUNTIME_MODE=source
+                          does the same, and overrides runtime.mode
   --watch                 For \`build automation\`: build once, then rebuild when a script changes, until Ctrl-C
   -h, --help              Show this help
   -V, --version           Show the version

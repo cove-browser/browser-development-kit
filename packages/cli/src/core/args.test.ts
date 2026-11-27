@@ -32,6 +32,7 @@ describe("parseCliArgs", () => {
       json: false,
       offline: false,
       watch: false,
+      allowSourceBuild: false,
       positionals: [],
     });
   });

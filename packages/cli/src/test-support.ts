@@ -1,9 +1,11 @@
-import { mkdir, mkdtemp, realpath, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import type { Assets } from "./assets.js";
+import { dirname, join } from "node:path";
+import { type Manifest, manifestDigest, scanFiles } from "@bdk/tooling/dist/runtime/manifest.js";
+import { type Assets, createAssets } from "./assets.js";
 import { loadBundler } from "./core/automation/loader.js";
 import type { Context } from "./core/context.js";
+import { RELEASE_ASSET, type ReleaseFacts } from "./core/doctor/release.js";
 import { run } from "./core/run.js";
 import type { WatchContext } from "./core/watch.js";
 import { genericPlatform } from "./platform/generic/index.js";
@@ -115,5 +117,69 @@ export function fakeWatch(): FakeWatch {
         };
       },
     },
+  };
+}
+
+/** The store entry the fixtures resolve, and the project's pointer to it (`.bdk/runtime.json`). */
+export const STORE_ENTRY = "fixture-runtime";
+export const FIXTURE_RUNTIME_POINTER = JSON.stringify({ source_key: STORE_ENTRY });
+
+/**
+ * A runtime in the test's store that verifies against its manifest (by default it has no files besides the
+ * manifest), resolved by the project. By default it is this BDK's pin and ABI. Returns the store directory.
+ */
+export async function storeRuntime(
+  dir: string,
+  over: {
+    abi?: object;
+    chromium?: { tag: string; commit: string };
+    minOs?: string;
+    /** Files of the runtime, by path, with their contents. */
+    files?: Record<string, string>;
+    /** Symbolic links of the runtime, by path, with their targets. */
+    links?: Record<string, string>;
+    /** The store key (default `STORE_ENTRY`). */
+    key?: string;
+  },
+): Promise<string> {
+  const release = JSON.parse(createAssets({ packaged: false }).readText("bdk-release.json"));
+  const key = over.key ?? STORE_ENTRY;
+  const store = join(dir, ".home", "runtimes", key);
+  await mkdir(store, { recursive: true });
+  for (const [path, content] of Object.entries(over.files ?? {})) {
+    await mkdir(dirname(join(store, path)), { recursive: true });
+    await writeFile(join(store, path), content);
+  }
+  for (const [path, target] of Object.entries(over.links ?? {})) {
+    await mkdir(dirname(join(store, path)), { recursive: true });
+    await symlink(target, join(store, path));
+  }
+  const files = await scanFiles(store);
+  const manifest = {
+    schema: 1,
+    source_key: key,
+    bdk_abi: over.abi ?? release.abi,
+    chromium: { ...(over.chromium ?? release.chromium), deps_digest: "d" },
+    target: { os: "macos", arch: "arm64", min_os: over.minOs ?? "14.0" },
+    files,
+  };
+  await writeFile(join(store, "manifest.json"), JSON.stringify(manifest));
+  await mkdir(join(dir, ".bdk"), { recursive: true });
+  await writeFile(
+    join(dir, ".bdk", "runtime.json"),
+    JSON.stringify({ source_key: key, manifest_sha256: manifestDigest(manifest as Manifest) }),
+  );
+  return store;
+}
+
+/** The release facts of this repository, with `runtime` replaced: the prebuilt runtime a release publishes. */
+export function withPublishedRuntime(runtime: ReleaseFacts["runtime"]): Assets {
+  const assets = createAssets({ packaged: false });
+  return {
+    ...assets,
+    readText: (name) =>
+      name === RELEASE_ASSET
+        ? JSON.stringify({ ...JSON.parse(assets.readText(name)), runtime })
+        : assets.readText(name),
   };
 }

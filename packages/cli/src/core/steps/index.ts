@@ -2,18 +2,22 @@ import { automationStep } from "./automation.js";
 import { codegenStep } from "./codegen.js";
 import { configStep } from "./config.js";
 import { devtoolsStep } from "./devtools.js";
+import { embedStep } from "./embed.js";
 import { extensionsStep } from "./extensions.js";
 import { pagesStep } from "./pages.js";
+import { runtimeStep } from "./runtime.js";
 import { signStep } from "./sign.js";
 import type { Step } from "./step.js";
 
 /** The `bdk build` steps that exist, in run order. Register a step only when it works. */
 export const BUILD_STEPS: readonly Step[] = [
   configStep,
+  runtimeStep,
   codegenStep,
   pagesStep,
   automationStep,
   devtoolsStep,
   extensionsStep,
+  embedStep,
   signStep,
 ];

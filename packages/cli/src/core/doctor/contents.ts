@@ -8,6 +8,7 @@ import { collectFiles } from "../pages/files.js";
 import { pagesDirectory } from "../pages/routes.js";
 import { builtWithVite, findViteConfig } from "../pages/vite.js";
 import type { Project } from "../project.js";
+import { embeddedFiles } from "../runtime/project-runtime.js";
 import type { Findings } from "./findings.js";
 
 /** How many problems a message lists before it says how many more there are. */
@@ -189,8 +190,9 @@ export function frameworkDifferences(
 }
 
 /**
- * The runtime in `Contents/Frameworks` against the manifest of the runtime the project resolved: every
- * top-level entry of the manifest is where `bdk build embed` copies it, `Contents/Frameworks/<entry>`.
+ * The runtime in `Contents/Frameworks` against the manifest of the runtime the project resolved: each entry
+ * of the runtime's `Chromium.app/Contents/Frameworks` is where `bdk build embed` copies it,
+ * `Contents/Frameworks/<entry>`.
  */
 export async function frameworkFindings(
   f: Findings,
@@ -199,7 +201,8 @@ export async function frameworkFindings(
 ): Promise<void> {
   if (manifest === undefined) return;
   const frameworks = join(appPath, "Contents", "Frameworks");
-  const tops = [...new Set(Object.keys(manifest.files).map((path) => path.split("/")[0] ?? path))];
+  const want = embeddedFiles(manifest.files);
+  const tops = [...new Set(Object.keys(want).map((path) => path.split("/")[0] ?? path))];
   const embedded = tops.filter((top) => existsSync(join(frameworks, top)));
   if (embedded.length === 0) {
     f.note(
@@ -214,7 +217,7 @@ export async function frameworkFindings(
   const copy = Object.fromEntries(
     Object.entries(scanned).filter(([path]) => tops.includes(path.split("/")[0] ?? path)),
   );
-  const problems = frameworkDifferences(manifest.files, copy);
+  const problems = frameworkDifferences(want, copy);
   if (problems.length > 0) {
     f.error(
       "doctor.framework_modified",

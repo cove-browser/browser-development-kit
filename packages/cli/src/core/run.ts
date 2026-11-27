@@ -85,6 +85,9 @@ function selectSteps(ctx: Context, args: ParsedArgs): Step[] {
       "Run `bdk build codegen` separately, with its own --out.",
     );
   }
+  if (args.allowSourceBuild && !chosen.some((s) => s.name === "runtime")) {
+    throw usageError("--allow-source-build applies to `bdk build runtime` only.");
+  }
   if (args.watch) {
     // One step at a time: a loop watches one directory (pages joins automation in T-CLI-06).
     const only = chosen.length === 1 ? chosen[0] : undefined;

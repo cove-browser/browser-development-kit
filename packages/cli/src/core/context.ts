@@ -53,8 +53,10 @@ export interface Context {
   loadBundler: (projectDir: string) => Promise<Bundler | undefined>;
   /** For `--watch`: the file watcher, the stop signal and the debounce. */
   watch: WatchContext;
-  /** Runs other programs: `git` and the package manager for `bdk init`. */
+  /** Runs other programs: `git` and the package manager for `bdk init`, the source build of `bdk build runtime`. */
   exec: Exec;
+  /** Downloads a published runtime's archive for `bdk build runtime`; the tooling's downloader when absent. */
+  downloadRuntime?: (url: string, destFile: string) => Promise<void>;
   /** Questions for `bdk init`; undefined when standard input is not a terminal. */
   prompter?: Prompter;
   /**

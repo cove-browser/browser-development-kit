@@ -6,7 +6,15 @@ import { SUPPORTED_DEPENDENCIES } from "@bdk/vite/tooling";
 import { describe, expect, it } from "vitest";
 import { type Assets, createAssets } from "../../assets.js";
 import type { HostToolchain, Platform, SignatureReport } from "../../platform/platform.js";
-import { tempDir, tempProject, testContext } from "../../test-support.js";
+import {
+  FIXTURE_RUNTIME_POINTER as RUNTIME_POINTER,
+  STORE_ENTRY,
+  storeRuntime,
+  tempDir,
+  tempProject,
+  testContext,
+  withPublishedRuntime,
+} from "../../test-support.js";
 import { directoryDigest, sha256 } from "../config/digest.js";
 import { resolveConfig } from "../config/index.js";
 import { configDigest } from "../config/resolve.js";
@@ -54,65 +62,10 @@ async function withDepotTools(dir: string): Promise<undefined> {
   return undefined;
 }
 
-/** The store entry the fixtures resolve, and the project's pointer to it (`.bdk/runtime.json`). */
-const STORE_ENTRY = "fixture-runtime";
-const RUNTIME_POINTER = JSON.stringify({ source_key: STORE_ENTRY });
-
-/**
- * A runtime in the test's store that verifies against its manifest (by default it has no files besides the
- * manifest), resolved by the project. By default it is this BDK's pin and ABI. Returns the store directory.
- */
-async function storeRuntime(
-  dir: string,
-  over: {
-    abi?: object;
-    chromium?: { tag: string; commit: string };
-    minOs?: string;
-    /** Files of the runtime, by path, with their contents. */
-    files?: Record<string, string>;
-  },
-): Promise<string> {
-  const release = JSON.parse(createAssets({ packaged: false }).readText("bdk-release.json"));
-  const key = STORE_ENTRY;
-  const store = join(dir, ".home", "runtimes", key);
-  await mkdir(store, { recursive: true });
-  for (const [path, content] of Object.entries(over.files ?? {})) {
-    await mkdir(dirname(join(store, path)), { recursive: true });
-    await writeFile(join(store, path), content);
-  }
-  const files = await scanFiles(store);
-  await writeFile(
-    join(store, "manifest.json"),
-    JSON.stringify({
-      schema: 1,
-      source_key: key,
-      bdk_abi: over.abi ?? release.abi,
-      chromium: { ...(over.chromium ?? release.chromium), deps_digest: "d" },
-      target: { os: "macos", arch: "arm64", min_os: over.minOs ?? "14.0" },
-      files,
-    }),
-  );
-  await mkdir(join(dir, ".bdk"), { recursive: true });
-  await writeFile(join(dir, ".bdk", "runtime.json"), JSON.stringify({ source_key: key }));
-  return store;
-}
-
 interface Doctor {
   code: number;
   diagnostics: Diagnostic[];
   result: { groups: Record<string, { codes: string[] }> };
-}
-
-/** The release facts of this repository, with `runtime` replaced: the prebuilt runtime a release publishes. */
-function withPublishedRuntime(runtime: ReleaseFacts["runtime"]): Assets {
-  const assets = createAssets({ packaged: false });
-  return {
-    ...assets,
-    readText: (name) =>
-      name === RELEASE_ASSET
-        ? JSON.stringify({ ...JSON.parse(assets.readText(name)), runtime })
-        : assets.readText(name),
-  };
 }
 
 /** Runs `bdk doctor --json` with the real schema and resolver. */
@@ -432,6 +385,10 @@ describe("bdk doctor: each failure mode has a fixture and a message", () => {
           source_key: "prebuilt",
           manifest_sha256: "0".repeat(64),
           abi_hash: "e".repeat(64),
+          url: "https://example.invalid/runtime.tar.gz",
+          archive_format: "tar.gz",
+          archive_sha256: "1".repeat(64),
+          size: 1,
         }),
     },
     {
@@ -917,7 +874,8 @@ describe("bdk doctor --bundle: pages, scripts and the runtime against what the b
 
   const RUNTIME_FILES = {
     "Chromium.app/Contents/Info.plist": "<plist/>",
-    "Chromium.app/Contents/Resources/resources.pak": "pak",
+    "Chromium.app/Contents/Frameworks/Lib.framework/Resources/Info.plist": "<plist/>",
+    "Chromium.app/Contents/Frameworks/Lib.framework/Resources/resources.pak": "pak",
   };
 
   it("doctor.runtime_not_embedded: a resolved runtime the application does not embed", async () => {
@@ -926,7 +884,7 @@ describe("bdk doctor --bundle: pages, scripts and the runtime against what the b
     await built(dir, {}, false);
     const d = await doctor(dir, { args: ["--bundle", APP] });
     const finding = d.diagnostics.find((x) => x.code === "doctor.runtime_not_embedded");
-    expect(finding?.message).toMatch(/embeds no runtime \(Chromium\.app is not in/);
+    expect(finding?.message).toMatch(/embeds no runtime \(Lib\.framework is not in/);
   });
 
   it("accepts an embedded runtime that signing changed only where it signs", async () => {
@@ -934,13 +892,14 @@ describe("bdk doctor --bundle: pages, scripts and the runtime against what the b
     const store = await storeRuntime(dir, { files: RUNTIME_FILES });
     await built(dir, {}, false);
     const frameworks = join(dir, APP, "Contents", "Frameworks");
-    await cp(join(store, "Chromium.app"), join(frameworks, "Chromium.app"), { recursive: true });
-    await writeFile(join(frameworks, "Chromium.app", "Contents", "Info.plist"), "<plist id/>");
-    await mkdir(join(frameworks, "Chromium.app", "Contents", "_CodeSignature"));
-    await writeFile(
-      join(frameworks, "Chromium.app", "Contents", "_CodeSignature", "CodeResources"),
-      "",
+    await cp(
+      join(store, "Chromium.app/Contents/Frameworks/Lib.framework"),
+      join(frameworks, "Lib.framework"),
+      { recursive: true },
     );
+    await writeFile(join(frameworks, "Lib.framework", "Resources", "Info.plist"), "<plist id/>");
+    await mkdir(join(frameworks, "Lib.framework", "_CodeSignature"));
+    await writeFile(join(frameworks, "Lib.framework", "_CodeSignature", "CodeResources"), "");
     await mkdir(join(frameworks, "Other.framework"));
     const d = await doctor(dir, { args: ["--bundle", APP] });
     expect(codes(d)).not.toContain("doctor.framework_modified");
@@ -952,15 +911,16 @@ describe("bdk doctor --bundle: pages, scripts and the runtime against what the b
     const store = await storeRuntime(dir, { files: RUNTIME_FILES });
     await built(dir, {}, false);
     const frameworks = join(dir, APP, "Contents", "Frameworks");
-    await cp(join(store, "Chromium.app"), join(frameworks, "Chromium.app"), { recursive: true });
-    await writeFile(
-      join(frameworks, "Chromium.app", "Contents", "Resources", "resources.pak"),
-      "x",
+    await cp(
+      join(store, "Chromium.app/Contents/Frameworks/Lib.framework"),
+      join(frameworks, "Lib.framework"),
+      { recursive: true },
     );
+    await writeFile(join(frameworks, "Lib.framework", "Resources", "resources.pak"), "x");
     const d = await doctor(dir, { args: ["--bundle", APP] });
     const finding = d.diagnostics.find((x) => x.code === "doctor.framework_modified");
     expect(finding?.message).toBe(
-      `The runtime in the application does not match the manifest of runtime ${STORE_ENTRY}: modified: Chromium.app/Contents/Resources/resources.pak.`,
+      `The runtime in the application does not match the manifest of runtime ${STORE_ENTRY}: modified: Lib.framework/Resources/resources.pak.`,
     );
     expect(d.code).toBe(ExitCode.ProjectFailure);
   });

@@ -1,3 +1,4 @@
+import type { RuntimeRecord } from "@bdk/tooling/dist/runtime/pin.js";
 import { AssetNotFoundError } from "../../assets.js";
 import type { Context } from "../context.js";
 import { CliError, ExitCode } from "../exit-codes.js";
@@ -9,7 +10,8 @@ export const RELEASE_ASSET = "bdk-release.json";
 export interface ReleaseFacts {
   chromium: { tag: string; commit: string };
   abi: { version: number; hash: string };
-  runtime: { source_key: string; manifest_sha256: string; abi_hash: string } | null;
+  /** The published runtime, as `chromium/pin.json` records it, or null while there is none. */
+  runtime: RuntimeRecord | null;
 }
 
 /** Reads the release facts; a `bdk` without them is an environment failure (exit 3). */

@@ -9,6 +9,8 @@ export interface ParsedArgs {
   offline: boolean;
   /** `--watch`: rebuild when the step's sources change, until interrupted. */
   watch: boolean;
+  /** `--allow-source-build`: `bdk build runtime` may build Chromium (hours) in source mode. */
+  allowSourceBuild: boolean;
   project?: string;
   /** Forced diagnostics form; undefined means detect from the environment. */
   diagnostics?: DiagnosticFormat;
@@ -70,6 +72,7 @@ const OPTIONS = {
   json: { type: "boolean" },
   offline: { type: "boolean" },
   watch: { type: "boolean" },
+  "allow-source-build": { type: "boolean" },
   project: { type: "string" },
   diagnostics: { type: "string" },
   out: { type: "string" },
@@ -95,6 +98,7 @@ export const FLAG_COMMANDS: Readonly<Record<string, readonly string[]>> = {
   resolved: ["build"],
   commands: ["build"],
   watch: ["build"],
+  "allow-source-build": ["build"],
   ...Object.fromEntries(
     [...INIT_VALUE_FLAGS, ...INIT_SWITCH_FLAGS].map((flag) => [flag, ["init"]]),
   ),
@@ -105,6 +109,7 @@ export function givenFlags(args: ParsedArgs): string[] {
   const given: string[] = [];
   for (const flag of STEP_FLAGS) if (args[flag] !== undefined) given.push(flag);
   if (args.watch) given.push("watch");
+  if (args.allowSourceBuild) given.push("allow-source-build");
   for (const flag of Object.keys(args.init ?? {})) given.push(flag);
   return given;
 }
@@ -141,6 +146,7 @@ export function parseCliArgs(argv: readonly string[]): ParsedArgs {
     json: values.json === true,
     offline: values.offline === true,
     watch: values.watch === true,
+    allowSourceBuild: values["allow-source-build"] === true,
     positionals,
   };
   if (values.project !== undefined) parsed.project = values.project;
