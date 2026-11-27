@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 /** Directory prefixes owned by the engine tests, which keep their own fixtures next to ours. */
-export const ENGINE_FIXTURE_PREFIXES = ["install-", "ui-", "panel-"] as const;
+export const ENGINE_FIXTURE_PREFIXES = ["install-", "ui-", "panel-", "capture-"] as const;
 
 type Json = Record<string, unknown>;
 

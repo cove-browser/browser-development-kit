@@ -16,7 +16,7 @@ today is "not run": the engine tests that prove the rows need a runtime rebuilt 
 | `fixtures/api-surface/` | Asks for every desktop API permission in the matrix and reports which namespaces exist. |
 | `fixtures/incognito-spanning/`, `fixtures/incognito-split/` | One manifest per `incognito` mode, with the same worker. extensions.md 10 requires both before the matrix claims support. |
 | `fixtures/blocker/`, `fixtures/passwords/`, `fixtures/devtool/` | One small extension for each class the M5 exit criteria name: a content blocker, a password manager, a developer tool. |
-| `fixtures/install-*`, `fixtures/ui-*`, `fixtures/panel-*` | Owned by the engine tests of the same areas. The suite's own checks skip them. |
+| `fixtures/install-*`, `fixtures/ui-*`, `fixtures/panel-*`, `fixtures/capture-*` | Owned by the engine tests of the same areas. The suite's own checks skip them. |
 | `matrix.json` | The source of truth for every row of the matrix. |
 | `expected-engine-tests.txt` | Generated: every engine test name the matrix expects. |
 | `src/` | The generator, the engine runner and their unit tests. |
