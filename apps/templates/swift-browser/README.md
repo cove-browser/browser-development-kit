@@ -23,15 +23,15 @@ at the CLI's exact version, or a local package with `bdk init --bdk-package <pat
 file they land in (Swift strings, property lists, pbxproj strings).
 
 The application links `BDK` and `BDKTestSupport` and starts the stub runtime: `bdk build runtime` and `bdk build
-embed`, which put the Chromium runtime in the bundle, are not built (T-CLI-04). `RuntimeSource.swift` says what to
-change when they are.
+embed` put the Chromium runtime in the bundle, but no prebuilt runtime is published for them to resolve, so the
+build phases leave them out with a warning (T-CLI-04). `RuntimeSource.swift` says what to change when one is.
 
 ## Build phases
 
 | Script | Target | Runs | Steps missing from this `bdk` today |
 |---|---|---|---|
-| `BuildPhases/bdk-runtime.sh` | `BDKRuntime` (aggregate, no sources) | `bdk build config runtime codegen` | `runtime` |
-| `BuildPhases/bdk-bundle.sh` | The application, after Copy Bundle Resources | `bdk build pages automation embed`, then copies `bdk.resolved.json` into `Contents/Resources` | `embed` |
+| `BuildPhases/bdk-runtime.sh` | `BDKRuntime` (aggregate, no sources) | `bdk build config runtime codegen`; when the release publishes no runtime, a warning instead of `runtime` | none |
+| `BuildPhases/bdk-bundle.sh` | The application, after Copy Bundle Resources | `bdk build pages automation embed`, `embed` only when a runtime is resolved (`.bdk/runtime.json`), then copies `bdk.resolved.json` into `Contents/Resources` | none |
 | `BuildPhases/bdk-sign.sh` | The application, the last phase | `bdk build sign`, only when a runtime framework is embedded | none |
 
 Each script sources `bdk-steps.sh`, which runs the steps the CLI has and prints an Xcode `warning:` for each one it
