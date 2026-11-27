@@ -89,7 +89,7 @@ All edges below are declared with `implicitDependencies`. Nx does not discover t
 | `minimal-browser` | `apps/examples/minimal-browser` | xcodebuild | `swift`, `chromium`, `cli` | `build`, `dev`, `test-e2e` |
 | `arc-style-browser` | `apps/examples/arc-style-browser` | xcodebuild | `swift`, `chromium`, `cli`, `js-internal` | `build`, `dev`, `test-e2e` |
 | `template-swift-browser` | `apps/templates/swift-browser` | xcodebuild | `swift`, `cli` | `build` |
-| `docs-site` | `apps/docs` | Fumadocs on Next.js, MDX content, static export; `build` checks every internal link of the export (built 2026-11-25, T-REP-06) | none | `build`, `dev`, `start`, `lint`, `test` |
+| `docs-site` | `apps/docs` | Fumadocs on Next.js, MDX content, static export; `build` checks every internal link of the export (built 2026-11-25, T-REP-06) | none | `build`, `dev`, `lint`, `test` |
 | `integration-tests` | `tests` | Swift test runner plus fixtures | `swift`, `chromium`, `js-automation` | `test-extensions`, `test-e2e` |
 | `tooling` | `tooling` | tsc, shell | none | `build`, `test`, `lint` |
 
@@ -118,8 +118,6 @@ Notes:
 | `pnpm dev:example` | `nx run minimal-browser:dev` | Builds and launches the minimal example. |
 | `pnpm dev:arc` | `nx run arc-style-browser:dev` | Builds and launches the Arc-style reference application (M8). |
 | `pnpm docs:build` | `nx run docs-site:build` | Builds the documentation site. |
-| `pnpm docs:dev` | `nx run docs-site:dev` | Runs the documentation site's development server. |
-| `pnpm docs:start` | `nx run docs-site:start` | Builds the documentation site and serves the export locally. |
 | `pnpm exec nx affected -t lint test build` | Nx | The PR check. |
 
 `pnpm build` switches to a source-built runtime only when `BDK_RUNTIME_MODE=source` is set or `chromium/pin.json` has no published runtime and the developer passes `--allow-source-build`. It fails with an explanatory message otherwise (verified behaviour of the prototype resolver, E9 cases 1 and 6).
