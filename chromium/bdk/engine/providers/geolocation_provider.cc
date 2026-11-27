@@ -210,8 +210,21 @@ class BdkGeolocationSource : public device::SystemGeolocationSource {
       : os_(std::move(os)) {}
 
   // Tells the permission's observers when the runtime that started has
-  // another provider.
-  void ProviderChanged() { Report(); }
+  // another provider. Chromium's provider keeps a "permission denied" result
+  // for any status but allowed (it treats an undetermined one as denied, even
+  // with no page asking), and drops it only when the last page stops or the
+  // status goes from denied to allowed. So a change to the application's
+  // provider passes through denied first: a later runtime's page is never
+  // answered with the earlier runtime's refusal (T-PRV-04).
+  void ProviderChanged() {
+    if (callback_ &&
+        Current() == device::LocationSystemPermissionStatus::kAllowed &&
+        reported_ != device::LocationSystemPermissionStatus::kAllowed) {
+      reported_ = device::LocationSystemPermissionStatus::kDenied;
+      callback_.Run(*reported_);
+    }
+    Report();
+  }
 
   void RegisterPermissionUpdateCallback(
       PermissionUpdateCallback callback) override {
@@ -245,11 +258,18 @@ class BdkGeolocationSource : public device::SystemGeolocationSource {
     Report();
   }
 
+  device::LocationSystemPermissionStatus Current() const {
+    return CurrentProviderSettings().geolocation == "app"
+               ? device::LocationSystemPermissionStatus::kAllowed
+               : os_status_;
+  }
+
+  // Only a change is reported: each report of a status but allowed makes
+  // Chromium cache a refusal again.
   void Report() {
-    if (callback_) {
-      callback_.Run(CurrentProviderSettings().geolocation == "app"
-                        ? device::LocationSystemPermissionStatus::kAllowed
-                        : os_status_);
+    if (callback_ && reported_ != Current()) {
+      reported_ = Current();
+      callback_.Run(*reported_);
     }
   }
 
@@ -257,6 +277,7 @@ class BdkGeolocationSource : public device::SystemGeolocationSource {
   PermissionUpdateCallback callback_;
   device::LocationSystemPermissionStatus os_status_ =
       device::LocationSystemPermissionStatus::kNotDetermined;
+  std::optional<device::LocationSystemPermissionStatus> reported_;
   base::WeakPtrFactory<BdkGeolocationSource> weak_factory_{this};
 };
 
