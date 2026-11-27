@@ -5,6 +5,7 @@
 #include "bdk/engine/chromium_main.h"
 
 #import <AppKit/AppKit.h>
+#include <Security/Security.h>
 
 #include <memory>
 #include <string>
@@ -12,6 +13,8 @@
 #include <utility>
 #include <variant>
 
+#include "base/apple/foundation_util.h"
+#include "base/apple/scoped_cftyperef.h"
 #include "base/check.h"
 #include "base/command_line.h"
 #include "base/functional/callback.h"
@@ -19,6 +22,7 @@
 #include "base/no_destructor.h"
 #include "base/sampling_heap_profiler/poisson_allocation_sampler.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/strings/sys_string_conversions.h"
 #include "base/time/time.h"
 #include "bdk/engine/content_browser_client.h"
 #include "chrome/app/chrome_main.h"
@@ -26,6 +30,7 @@
 #include "chrome/app/chrome_main_mac.h"
 #include "chrome/app/startup_timestamps.h"
 #include "chrome/browser/lifetime/browser_shutdown.h"
+#include "chrome/browser/webauthn/embedder_touch_id_keychain_group.h"  // nogncheck
 #include "components/keep_alive_registry/keep_alive_types.h"
 #include "components/keep_alive_registry/scoped_keep_alive.h"
 #include "content/public/app/content_main.h"
@@ -144,6 +149,29 @@ bool ApplicationDeclaresBluetoothUse() {
          nil;
 }
 
+std::string ApplicationTouchIdKeychainGroup() {
+  base::apple::ScopedCFTypeRef<SecCodeRef> code;
+  base::apple::ScopedCFTypeRef<SecStaticCodeRef> static_code;
+  base::apple::ScopedCFTypeRef<CFDictionaryRef> information;
+  if (SecCodeCopySelf(kSecCSDefaultFlags, code.InitializeInto()) !=
+          errSecSuccess ||
+      SecCodeCopyStaticCode(code.get(), kSecCSDefaultFlags,
+                            static_code.InitializeInto()) != errSecSuccess ||
+      SecCodeCopySigningInformation(static_code.get(), kSecCSSigningInformation,
+                                    information.InitializeInto()) !=
+          errSecSuccess) {
+    return std::string();
+  }
+  CFStringRef team = base::apple::GetValueFromDictionary<CFStringRef>(
+      information.get(), kSecCodeInfoTeamIdentifier);
+  NSString* bundle = NSBundle.mainBundle.bundleIdentifier;
+  if (!team || CFStringGetLength(team) == 0 || bundle.length == 0) {
+    return std::string();
+  }
+  return base::SysCFStringRefToUTF8(team) + "." +
+         base::SysNSStringToUTF8(bundle) + ".webauthn";
+}
+
 bool StartChromium(const ChromiumStartOptions& options, std::string* error) {
   CHECK([NSThread isMainThread]);
   State& state = GetState();
@@ -157,6 +185,10 @@ bool StartChromium(const ChromiumStartOptions& options, std::string* error) {
              "subclass of it";
     return false;
   }
+  // Touch ID passkeys are kept in the application's own keychain access group
+  // (T-UIR-11): Chromium offers the authenticator only to an executable
+  // entitled to it.
+  embedder_touch_id_keychain_group::SetGroup(ApplicationTouchIdKeychainGroup());
   state.started = true;
 
   state.args.push_back(options.program.value());

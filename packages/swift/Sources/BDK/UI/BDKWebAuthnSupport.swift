@@ -64,7 +64,8 @@ public struct BDKWebAuthnSupport: Sendable, Equatable {
             hasEntitlement: hasEntitlement,
             isHardenedRuntime: isHardenedRuntime,
             operatingSystem: ProcessInfo.processInfo.operatingSystemVersion,
-            phonesEnabled: BDKRuntime.isRunning && BDKRuntime.shared.offersPhonePasskeys)
+            phonesEnabled: BDKRuntime.isRunning && BDKRuntime.shared.offersPhonePasskeys,
+            touchIDGroup: touchIDGroup, keychainGroups: keychainGroups)
     }
 
     static let phonesSetting = "[services.webauthn] phones = true"
@@ -76,11 +77,13 @@ public struct BDKWebAuthnSupport: Sendable, Equatable {
     /// The rules, for facts read elsewhere: Chromium offers a phone when the application can use
     /// Bluetooth (the usage string, and under the hardened runtime the Bluetooth entitlement),
     /// and the system's passkeys on macOS 13.5 or later to a process with the browser passkey
-    /// entitlement. Touch ID needs a keychain access group compiled into Chromium, which a BDK
-    /// application cannot hold.
+    /// entitlement. Touch ID needs the application signed by a team and entitled to the keychain
+    /// access group `touchIDGroup`, "<team>.<bundle id>.webauthn" (nil when it is not signed by a
+    /// team), which the engine gives Chromium (T-UIR-11).
     init(
         infoPlist: [String: Any], hasEntitlement: (String) -> Bool, isHardenedRuntime: Bool,
-        operatingSystem: OperatingSystemVersion, phonesEnabled: Bool
+        operatingSystem: OperatingSystemVersion, phonesEnabled: Bool,
+        touchIDGroup: String? = nil, keychainGroups: [String] = []
     ) {
         securityKeys = Mechanism(kind: .securityKey, missing: [])
         var phone: [Requirement] = phonesEnabled ? [] : [.configuration(Self.phonesSetting)]
@@ -103,7 +106,28 @@ public struct BDKWebAuthnSupport: Sendable, Equatable {
             system.append(.entitlement(Self.browserPasskeysEntitlement))
         }
         systemPasskeys = Mechanism(kind: .iCloudKeychain, missing: system)
-        touchID = Mechanism(kind: .platform, missing: [.notInThisRuntime(task: "T-UIR-11")])
+        let group = touchIDGroup ?? "<team>.<bundle id>.webauthn"
+        touchID = Mechanism(
+            kind: .platform,
+            missing: touchIDGroup.map(keychainGroups.contains) == true
+                ? [] : [.entitlement("\(Self.keychainGroupsEntitlement) \(group)")])
+    }
+
+    static let keychainGroupsEntitlement = "keychain-access-groups"
+
+    /// "<team>.<bundle id>.webauthn" of the running application, or nil when it is not signed by
+    /// a team.
+    private static var touchIDGroup: String? {
+        guard let team = signingInformation?[kSecCodeInfoTeamIdentifier as String] as? String,
+            !team.isEmpty, let bundle = Bundle.main.bundleIdentifier
+        else { return nil }
+        return "\(team).\(bundle).webauthn"
+    }
+
+    private static var keychainGroups: [String] {
+        guard let task = SecTaskCreateFromSelf(nil) else { return [] }
+        return SecTaskCopyValueForEntitlement(task, keychainGroupsEntitlement as CFString, nil)
+            as? [String] ?? []
     }
 
     private static func hasEntitlement(_ name: String) -> Bool {
@@ -118,20 +142,26 @@ public struct BDKWebAuthnSupport: Sendable, Equatable {
         (value as? Bool) == true
     }
 
-    private static var isHardenedRuntime: Bool {
+    private static var signingInformation: [String: Any]? {
         var code: SecCode?
-        guard SecCodeCopySelf([], &code) == errSecSuccess, let code else { return false }
+        guard SecCodeCopySelf([], &code) == errSecSuccess, let code else { return nil }
         var staticCode: SecStaticCode?
         guard SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let staticCode else {
-            return false
+            return nil
         }
         var information: CFDictionary?
         guard
             SecCodeCopySigningInformation(
                 staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &information)
-                == errSecSuccess,
-            let flags = (information as? [String: Any])?[kSecCodeInfoFlags as String] as? UInt32
-        else { return false }
+                == errSecSuccess
+        else { return nil }
+        return information as? [String: Any]
+    }
+
+    private static var isHardenedRuntime: Bool {
+        guard let flags = signingInformation?[kSecCodeInfoFlags as String] as? UInt32 else {
+            return false
+        }
         return SecCodeSignatureFlags(rawValue: flags).contains(.runtime)
     }
 }

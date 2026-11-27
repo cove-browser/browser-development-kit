@@ -207,7 +207,10 @@ extension BDKStubTests {
                 bare.systemPasskeys.missing == [
                     .entitlement("com.apple.developer.web-browser.public-key-credential")
                 ])
-            #expect(bare.touchID.missing == [.notInThisRuntime(task: "T-UIR-11")])
+            #expect(
+                bare.touchID.missing == [
+                    .entitlement("keychain-access-groups <team>.<bundle id>.webauthn")
+                ])
             #expect(bare.all.map(\.kind) == [.securityKey, .phone, .iCloudKeychain, .platform])
 
             let configured = BDKWebAuthnSupport(
@@ -215,6 +218,18 @@ extension BDKStubTests {
                 hasEntitlement: { _ in true }, isHardenedRuntime: true, operatingSystem: sonoma,
                 phonesEnabled: true)
             #expect(configured.phones.isAvailable && configured.systemPasskeys.isAvailable)
+            // Touch ID: signed by a team, and entitled to that team's group for the bundle.
+            let group = "TEAM.app.example.webauthn"
+            let entitled = BDKWebAuthnSupport(
+                infoPlist: [:], hasEntitlement: { _ in false }, isHardenedRuntime: true,
+                operatingSystem: sonoma, phonesEnabled: false, touchIDGroup: group,
+                keychainGroups: [group])
+            #expect(entitled.touchID.isAvailable)
+            let other = BDKWebAuthnSupport(
+                infoPlist: [:], hasEntitlement: { _ in false }, isHardenedRuntime: true,
+                operatingSystem: sonoma, phonesEnabled: false, touchIDGroup: group,
+                keychainGroups: ["TEAM.other"])
+            #expect(other.touchID.missing == [.entitlement("keychain-access-groups \(group)")])
             // With the switch off, everything else in place still offers no phone.
             let switchedOff = BDKWebAuthnSupport(
                 infoPlist: ["NSBluetoothAlwaysUsageDescription": "Sign in with your phone."],
