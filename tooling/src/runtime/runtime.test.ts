@@ -727,6 +727,31 @@ describe("T-REL-02 third-party notices in the packaged runtime", () => {
     expect((error as MissingFilesError).missing).toEqual([NOTICES_FROM]);
   });
 
+  it("copies the notices into a declared directory too, the framework's Resources", async () => {
+    const alsoIn = "Chromium.app/Contents/Frameworks/Chromium Framework.framework/Resources";
+    const s = await sandbox("notices-also", { notices: true, noticesAlsoIn: alsoIn });
+    const file = join(s.repo, "chromium/runtime-files.json");
+    const rf = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+    const r = await packageRuntime(packageOptions(s));
+    // Resources is a link to Versions/Current/Resources: the copy lands in the version directory.
+    const inFramework =
+      "Chromium.app/Contents/Frameworks/Chromium Framework.framework/Versions/158.0.8127.37/Resources/THIRD_PARTY_NOTICES.html";
+    expect(r.manifest.files[inFramework]).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(readFileSync(join(r.runtimeDir, inFramework), "utf8")).toContain("libfoo");
+    writeFileSync(
+      file,
+      JSON.stringify({
+        ...rf,
+        notices: {
+          from: NOTICES_FROM,
+          to: "THIRD_PARTY_NOTICES.html",
+          also_in: "Elsewhere/Resources",
+        },
+      }),
+    );
+    expect(() => readRuntimeFiles(s.repo)).toThrow(/also_in/);
+  });
+
   it("declaring notices changes the source key; notices.to must be a top-level name", async () => {
     const plain = await sandbox("notices-key1");
     const noted = await sandbox("notices-key2", { notices: true });
@@ -739,6 +764,10 @@ describe("T-REL-02 third-party notices in the packaged runtime", () => {
 
   it("the repository's runtime declares its notices", () => {
     const rf = readRuntimeFiles(join(import.meta.dirname, "..", "..", ".."));
-    expect(rf.notices).toEqual({ from: NOTICES_FROM, to: "THIRD_PARTY_NOTICES.html" });
+    expect(rf.notices).toEqual({
+      from: NOTICES_FROM,
+      to: "THIRD_PARTY_NOTICES.html",
+      also_in: "Chromium.app/Contents/Frameworks/Chromium Framework.framework/Resources",
+    });
   });
 });

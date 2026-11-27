@@ -7,6 +7,7 @@
   "paths": ["Chromium.app"],
   "notices": {
     "from": "gen/components/resources/about_credits.html",
-    "to": "THIRD_PARTY_NOTICES.html"
+    "to": "THIRD_PARTY_NOTICES.html",
+    "also_in": "Chromium.app/Contents/Frameworks/Chromium Framework.framework/Resources"
   }
 }

@@ -220,6 +220,12 @@ export async function packageRuntime(opts: PackageOptions): Promise<PackageResul
     if (declared.notices !== undefined) {
       await copyFile(join(outDir, declared.notices.from), join(tmp, declared.notices.to));
       await chmod(join(tmp, declared.notices.to), 0o644);
+      if (declared.notices.also_in !== undefined) {
+        const copy = join(tmp, declared.notices.also_in, declared.notices.to);
+        await mkdir(dirname(copy), { recursive: true });
+        await copyFile(join(outDir, declared.notices.from), copy);
+        await chmod(copy, 0o644);
+      }
     }
     await checkLinks(tmp);
     await normaliseTimes(tmp);

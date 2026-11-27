@@ -175,8 +175,10 @@ change the key; that is the managed checkout's job to prevent (`chromium:sync` r
 repository's declares Chromium's credits page, `gen/components/resources/about_credits.html`, as
 `THIRD_PARTY_NOTICES.html` (T-REL-02, `docs/release/licence-review.md`). Packaging copies it to the top of the
 runtime, where the manifest lists it; a missing file fails as any declared file does, and Chromium's placeholder
-(written when `generate_about_credits` is false) is refused. The declaration is part of the runtime-files digest
-in the source key.
+(written when `generate_about_credits` is false) is refused. `also_in`, a directory inside a declared path, gets a
+copy too: the repository names the framework's `Resources`, so the notices travel with the framework an
+application embeds, and `bdk build sign` copies them into the application (2026-11-27). The declaration is part of
+the runtime-files digest in the source key.
 
 `pnpm exec tsx tooling/src/release/notices.ts --package <dir>... [--node] --out <file>` writes the notices for
 what BDK ships besides the runtime: the production dependency closure of workspace packages (workspace packages

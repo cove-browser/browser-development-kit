@@ -63,7 +63,9 @@ GPL or LGPL, and `WITH` exceptions, needs an entry in section 2 first. The list 
 ## 5. What would close T-REL-02
 
 1. L1 decided and the licence added.
-2. A release build whose runtime contains `THIRD_PARTY_NOTICES.html` from Chromium's credits (the packaging
-   tests show the mechanism on fixtures; the real file needs the build).
-3. `bdk build sign` copying the notices into the application, with a test in `packages/cli`.
+2. Done (2026-11-27): a release build whose runtime contains `THIRD_PARTY_NOTICES.html` from Chromium's credits
+   (runtime `a430afd1b6ab209c`: 5.5 MB, at the top of the runtime and in the framework's Resources).
+3. Done (2026-11-27): `bdk build sign` copies the notices into the application's `Contents/Resources` before it
+   signs, with tests in `packages/cli`; run once on an application embedding that runtime, whose signature then
+   verifies.
 4. Counsel's answers to L2, L3, L5, L6, L7 and L9 recorded in this file.

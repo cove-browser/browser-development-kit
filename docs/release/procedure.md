@@ -185,5 +185,4 @@ release, a fake `swift` and `git`).
 |---|---|
 | A run of this procedure from start to finish, with Developer ID signing, notarization, stapling and a published release | T-PKG-06 |
 | The SwiftPM binary target and its XCFramework archive; the dry run's `swift-manifest` check fails until then | T-PKG-04 |
-| Copying the runtime's `THIRD_PARTY_NOTICES.html` into an application by `bdk build sign` (or the Xcode build phase) | T-REL-02 |
 | `release.yml`, release-please, the `dev` branch and beta prereleases | deferred (amendments 2.8) |

@@ -26,6 +26,8 @@ export interface RepoFixture {
   readonly abiHash?: string;
   /** Declare third-party notices in runtime-files.json, as the repository does. */
   readonly notices?: boolean;
+  /** With `notices`: the declared directory that gets a copy too (notices.also_in). */
+  readonly noticesAlsoIn?: string;
 }
 
 export const NOTICES_FROM = "gen/components/resources/about_credits.html";
@@ -48,7 +50,13 @@ export function makeRepo(root: string, fixture: RepoFixture = {}): string {
       target: { os: "macos", min_os: "13.0" },
       paths: ["Chromium.app"],
       ...(fixture.notices
-        ? { notices: { from: NOTICES_FROM, to: "THIRD_PARTY_NOTICES.html" } }
+        ? {
+            notices: {
+              from: NOTICES_FROM,
+              to: "THIRD_PARTY_NOTICES.html",
+              ...(fixture.noticesAlsoIn ? { also_in: fixture.noticesAlsoIn } : {}),
+            },
+          }
         : {}),
     })}\n`,
   );
