@@ -14,10 +14,9 @@ build).
 - **BDK never updates itself** (architecture invariant 10). A release fixes nothing for users until each
   application ships an update with the new BDK version. Applications should be able to ship a browser update
   within days of a BDK security release.
-- Targets, proposed and to be confirmed by the product owner: a BDK release within **3 working days** of a
-  Chromium stable release that fixes a bug Google rates Critical or reports as exploited in the wild, and within
-  **10 working days** for other security releases. The roll bot opens an issue when the pin is 14 days behind
-  stable (risk R4), which is the outer bound.
+- No fixed response target (product owner, 2026-11-27): a security release ships as soon as it is ready, a
+  release Google rates Critical or reports as exploited in the wild first. The roll bot's daily pull request is
+  the alert, and the issue it opens when the pin is 14 days behind stable (risk R4) is the outer bound.
 - Security data that Chrome refreshes through its component updater (CRLSet, the Certificate Transparency log
   list, the root store) does not refresh in BDK between releases: the component updater is off (decision D5).
   The CT log list and the root store are compiled into each runtime; there is no CRLSet revocation. Each release
@@ -86,12 +85,11 @@ in a copy of this section committed with the result.
 
 Checklist before calling it done:
 
-- [ ] The total is compared with the targets in section 1 and the targets confirmed or changed by the product owner.
+- [ ] The total is recorded, with what made it longer than it had to be.
 - [ ] Each step that took longer than its estimate has a note saying why, and a task if it can be shortened
       (for example, pre-building the next milestone's beta to fill ccache, tooling/README.md).
 - [ ] The published runtime resolves on a second machine (`pnpm exec nx run chromium:runtime` with an empty
       `BDK_HOME`), and `chromium:release-check` passes on the tagged commit.
 - [ ] `SECURITY.md` exists and private reporting is on.
 
-What would close T-REL-01: the table above filled from a real run, committed, with the total within the
-confirmed target.
+What would close T-REL-01: the table above filled from a real run, committed.
