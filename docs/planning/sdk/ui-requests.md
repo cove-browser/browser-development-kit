@@ -71,36 +71,36 @@ The key is what goes in `[ui.surfaces]`. "Modes" lists what the surface allows: 
 
 | Key | Surface | Modes | Status | Milestone, task |
 |---|---|---|---|---|
-| `permissions` | Site permission prompts | D C | Plan | M3, T-UIR-02 |
-| `javascript_dialogs` | `alert`, `confirm`, `prompt`, `beforeunload` | D C | Plan | M3, T-UIR-02 |
-| `http_auth` | HTTP and proxy authentication | D C | Plan | M3, T-UIR-02 |
-| `client_certificates` | Client certificate selection | D C | Accepted (S3, 2026-11-25); in the schema (T-UIR-15); default is a sheet of BDK's own, not routed yet (8.2) | T-UIR-10, M4; routing T-UIR-13, M9 |
-| `file_pickers` | File and directory choosers | D C X | Plan | M3, T-UIR-02 |
-| `context_menus` | Page context menus | D C X | Plan | M3, T-UIR-03 |
-| `new_windows` | Popups, undocked DevTools, picture-in-picture, extension windows | D C | Plan | M2, T-ADP-05; M3, T-UIR-03 |
-| `downloads` | Download start, progress, warnings | D C X | Plan | M3, T-UIR-03 |
-| `passwords` | Save, update, generate; leaked-password warning (Added, S16) | D C X | Plan | M3, T-UIR-04 |
-| `autofill` | Save address or card; fill confirmation | D C X | Plan | M3, T-UIR-04 |
-| `autofill_suggestions` | The suggestion list under a form field | D C | Accepted (S3, 2026-11-25); in the schema; checked against 5.8 and completed in the core, stub and Swift (T-UIR-15); preview not in the engine | T-UIR-04, M3; T-UIR-15, M9 |
-| `printing` | Print preview and the system print dialog | D C X | Plan | M3, T-UIR-04 |
-| `translation` | Offer, progress, result, errors, preferences | D C X | Plan | M6, T-PRV-03 |
-| `find` | Find bar | D C | Plan | M3, T-UIR-06 |
-| `fullscreen` | HTML fullscreen | D C X | Plan | M2, T-MAC-05; M3, T-UIR-06 |
-| `exclusive_access` | Keyboard-lock and pointer-lock notices | D C | Accepted (S3, 2026-11-25); in the schema; core, stub and Swift (T-UIR-15); the engine raises none yet | T-UIR-15, M9 |
-| `notifications` | Web notifications | D C X | Plan | M3, T-UIR-06 |
-| `certificate_errors` | Certificate interstitials | D C | Plan | M3, T-UIR-05 |
-| `reputation_warnings` | Malware, phishing and download warnings | D C | Plan | M3, T-UIR-05 |
-| `devtools` | The DevTools front end | D C X | Plan; built in M7, engine pending (T-AUT-06) | M7, T-AUT-05 |
-| `device_choosers` | WebUSB, Web Bluetooth, WebHID, Web Serial | D C X | Accepted (S3, 2026-11-25); in the schema (T-UIR-15); refused until routed, Web Bluetooth off (8.2) | T-UIR-10, M4; routing T-UIR-13, M9 |
-| `screen_capture` | The `getDisplayMedia` source picker | D C X | Accepted (S3, 2026-11-25); in the schema (T-UIR-15); refused until routed (8.2) | T-UIR-10, M4; routing T-UIR-13, M9 |
-| `webauthn` | Passkey and security-key dialogs | D C X | Accepted (S3, 2026-11-25); built and tested on the engine 2026-11-22; in the schema (T-UIR-15) | M4, T-UIR-09; key T-UIR-15, M9 |
-| `external_protocols` | "Open this link in another application?" | D C X | Accepted (S3, 2026-11-25); in the schema (T-UIR-15); default is a sheet of BDK's own, not routed yet (8.2) | T-UIR-10, M4; routing T-UIR-13, M9 |
-| `page_health` | Unresponsive page; blocked popups | D C | Accepted (S3, 2026-11-25); surface 33; in the schema, the core, the stub and Swift (T-UIR-15, 5.19); the engine raises none yet | T-UIR-15, M9 |
+| `permissions` | Site permission prompts | D C | Built (M3) | M3, T-UIR-02 |
+| `javascript_dialogs` | `alert`, `confirm`, `prompt`, `beforeunload` | D C | Built (M3) | M3, T-UIR-02 |
+| `http_auth` | HTTP and proxy authentication | D C | Built (M3) | M3, T-UIR-02 |
+| `client_certificates` | Client certificate selection | D C | Built (T-UIR-13, 2026-11-25): a request after Chrome's automatic selection, with BDK's sheet as default | T-UIR-10, M4; T-UIR-13, M9 |
+| `file_pickers` | File and directory choosers | D C X | Built (M3; File System Access pickers since T-UIR-13) | M3, T-UIR-02 |
+| `context_menus` | Page context menus | D C X | Built (M3) | M3, T-UIR-03 |
+| `new_windows` | Popups, undocked DevTools, picture-in-picture, extension windows | D C | Built (M2, M3) | M2, T-ADP-05; M3, T-UIR-03 |
+| `downloads` | Download start, progress, warnings | D C X | Built (M3) | M3, T-UIR-03 |
+| `passwords` | Save, update, generate; leaked-password warning (Added, S16) | D C X | Built (M3) | M3, T-UIR-04 |
+| `autofill` | Save address or card; fill confirmation | D C X | Built (M3) | M3, T-UIR-04 |
+| `autofill_suggestions` | The suggestion list under a form field | D C | Built (M3; completed in T-UIR-15); the engine does not preview a suggestion in the field | T-UIR-04, M3; T-UIR-15, M9 |
+| `printing` | Print preview and the system print dialog | D C X | Built (M3) | M3, T-UIR-04 |
+| `translation` | Offer, progress, result, errors, preferences | D C X | Built (M6) | M6, T-PRV-03 |
+| `find` | Find bar | D C | Built (M3) | M3, T-UIR-06 |
+| `fullscreen` | HTML fullscreen | D C X | Built (M2, M3) | M2, T-MAC-05; M3, T-UIR-06 |
+| `exclusive_access` | Keyboard-lock and pointer-lock notices | D C | In the schema, the core, the stub and Swift (T-UIR-15, 2026-11-25); the engine raises none yet (T-UIR-15) | T-UIR-15, M9 |
+| `notifications` | Web notifications | D C X | Built (M3) | M3, T-UIR-06 |
+| `certificate_errors` | Certificate interstitials | D C | Built (M3) | M3, T-UIR-05 |
+| `reputation_warnings` | Malware, phishing and download warnings | D C | Built (M3, M6) | M3, T-UIR-05 |
+| `devtools` | The DevTools front end | D C X | Built (M7; engine verified, T-AUT-06) | M7, T-AUT-05 |
+| `device_choosers` | WebUSB, Web Bluetooth, WebHID, Web Serial | D C X | Built (T-UIR-13, 2026-11-26; 5.16): a request with a live device list and a default chooser sheet; Web Bluetooth on when the application declares its Bluetooth usage string | T-UIR-10, M4; T-UIR-13, M9 |
+| `screen_capture` | The `getDisplayMedia` source picker | D C X | Built (T-UIR-13, 2026-11-26; 5.16): `getDisplayMedia` and `chrome.desktopCapture`, with a default picker and a sharing bar | T-UIR-10, M4; T-UIR-13, M9 |
+| `webauthn` | Passkey and security-key dialogs | D C X | Built (M4, tested on the engine with a virtual key 2026-11-22); Touch ID with the application's keychain group (T-UIR-11, 2026-11-27) | M4, T-UIR-09; key T-UIR-15, M9 |
+| `external_protocols` | "Open this link in another application?" | D C X | Built (T-UIR-13, 2026-11-25; 5.17): a request once Chrome decides to ask, with BDK's sheet as default | T-UIR-10, M4; T-UIR-13, M9 |
+| `page_health` | Unresponsive page; blocked popups | D C | Built (T-UIR-15, 2026-11-25; 5.19): surface 33, a hung page and blocked popups, with default presenters | T-UIR-15, M9 |
 | `payments` (`BDK_SURFACE_PAYMENTS` 34) | Payment Request sheet and Secure Payment Confirmation | D C X | Payment Request built on the engine (2026-11-27, 5.22); Secure Payment Confirmation off at start until T-UIR-11 (8.2) | T-UIR-14, M9 |
-| `identity` (name proposed in 5.22, waiting for review) | FedCM account chooser | D C X | Planned (product owner, 2026-11-25); designed in 5.22, not built; off at start until built (8.2) | T-UIR-14, M9 |
-| `digital_credentials` (name proposed in 5.22, waiting for review) | Digital Credentials API dialogs | D C X | Planned (product owner, 2026-11-25); designed in 5.22, not built; off at start until built (8.2) | T-UIR-14, M9 |
-| `web_app_installs` | The install prompt of an installable web app | D C | Planned (product owner, 2026-11-25); raised only with `[web_apps] enabled = true`, which is how it is turned off ([web-apps.md](web-apps.md) 4.1). Surface 37; stub, core and Swift built 2026-11-25 (T-PWA-03), engine T-PWA-04 | T-PWA-03, T-PWA-04, M9 |
-| Extension surfaces | Actions, popups, side panels, menus, options, install prompts | See [extensions.md](extensions.md) | Plan | M5: surfaces 25 to 32 (`extension_actions` … `extension_uninstalls`), configured under `[extensions.ui]`; see `packages/core/docs/conventions.md`, "Extensions (M5)" |
+| `identity` | FedCM account chooser | D C X | Designed in 5.22 and reviewed (product owner, 2026-11-27); not built; off at start until built (8.2) | T-UIR-14, M9 |
+| `digital_credentials` | Digital Credentials API dialogs | D C X | Designed in 5.22 and reviewed (product owner, 2026-11-27), following `[services.webauthn] phones`; not built; off at start until built (8.2) | T-UIR-14, M9 |
+| `web_app_installs` | The install prompt of an installable web app | D C | Built (T-PWA-04, 2026-11-26); raised only with `[web_apps] enabled = true`, which is how it is turned off ([web-apps.md](web-apps.md) 4.1). Surface 37 | T-PWA-03, T-PWA-04, M9 |
+| Extension surfaces | Actions, popups, side panels, menus, options, install prompts | See [extensions.md](extensions.md) | Built (M5) | M5: surfaces 25 to 32 (`extension_actions` … `extension_uninstalls`), configured under `[extensions.ui]`; see `packages/core/docs/conventions.md`, "Extensions (M5)" |
 
 `[ui] default_browser_surfaces = false` sets every key above to `custom`, which means the application must register a handler for each before start.
 
@@ -540,7 +540,7 @@ public final class ExternalProtocolRequest: BDKUIRequest {
 
 Default presenter: BDK's sheet (below). `disabled`: external schemes are blocked. Routed since T-UIR-13 (2026-11-25, `engine/ui_browser_dialogs.cc`): once Chrome decides to ask, the engine raises an `external_protocols` request with `url`, `initiatingOrigin`, `handlerName` and `isUserGesture` (always `false`: Chrome does not pass the gesture to its dialog); `grant` opens the application, and with `{"remember": true}` opens the scheme from that origin without asking again (Chrome's per-origin "always allow"); `deny`, a rejection or a withdrawal opens nothing. Engine scenarios `engine_dialogs_an_external_protocol_is_a_request_to_a_handler` and `engine_dialogs_a_disabled_external_protocol_surface_asks_nothing`; the sheet's scenario is unchanged.
 
-Built so far (T-UIR-10, 2026-11-22, passes on Chromium 158; 8.2): no request is raised yet (S3, T-UIR-13). Chrome decides whether to ask: blocked schemes stay blocked, `mailto:` and schemes the person allowed open without asking, and policy applies. When it asks, a patch gives the question to the engine, which shows a sheet of BDK's own with Chromium's wording ("Open <application>?") and Cancel as the default button, and opens the application only on "Open". The "always allow" checkbox is not offered.
+Built in T-UIR-10 (2026-11-22, passes on Chromium 158; 8.2), before the request above existed: Chrome decides whether to ask: blocked schemes stay blocked, `mailto:` and schemes the person allowed open without asking, and policy applies. When it asks, a patch gives the question to the engine, which shows a sheet of BDK's own with Chromium's wording ("Open <application>?") and Cancel as the default button, and opens the application only on "Open". The "always allow" checkbox is not offered.
 
 ### 5.18 WebAuthn (Added; built, T-UIR-09)
 
@@ -647,8 +647,8 @@ The install prompt of an installable web app, and the window it is launched in, 
 
 ### 5.22 Payments, identity and digital credentials (T-UIR-14; reviewed 2026-11-27; Payment Request built)
 
-Payment Request, Secure Payment Confirmation, FedCM and the Digital Credentials API are off at start (8.2) and are to
-be turned on and routed (product owner, 2026-11-25). This section settles what T-UIR-14 asked to settle before
+Payment Request, Secure Payment Confirmation, FedCM and the Digital Credentials API were off at start (8.2) and are
+to be turned on and routed (product owner, 2026-11-25); Payment Request is, since 2026-11-27 (below). This section settles what T-UIR-14 asked to settle before
 building: the surface names, the payloads and completions, and where Chromium hands each to its views UI, read at
 the pin (`~/.bdk/chromium/managed/src`, tag `158.0.8127.37`; read, not run). Nothing here is in the ABI, the core,
 Swift or the engine yet, and the names stay proposals until the product owner reviews them.
@@ -777,10 +777,10 @@ reading the source, not from a test.
 
 | Chromium's dialog | Reached from a BDK page by | Now |
 |---|---|---|
-| External protocol (`ExternalProtocolDialog`) | A link to a scheme another application handles that Chrome asks about | A sheet (5.17); patch `bdk-let-an-embedder-present-the-external-protocol-dialog` |
+| External protocol (`ExternalProtocolDialog`) | A link to a scheme another application handles that Chrome asks about | An `external_protocols` request since T-UIR-13, with BDK's sheet as default (5.17); patch `bdk-let-an-embedder-present-the-external-protocol-dialog` |
 | Tab-modal dialog models: File System Access ("view files?", restricted directory, dangerous file), DevTools' folder permission, extension "install blocked" and "ask a parent" | `showDirectoryPicker()` and the save picker; DevTools workspaces; installing a blocked extension | A sheet: the model's title and paragraphs, OK and Cancel with the model's default first, and the model's own callbacks; a checkbox keeps its initial state; a model with a text field or combobox is closed as dismissed. Patch `bdk-let-an-embedder-present-tab-modal-dialog-models` |
 | Credential Management account chooser and auto sign-in notice | `navigator.credentials.get({password: true})` on a site with saved passwords | Sheets of the `passwords` surface: one button per account (the first eight); OK or Turn off. Patch `bdk-let-an-embedder-present-the-credential-manager-prompts` |
-| Client certificate selector | A server that asks for a certificate the Keychain has | A sheet (5.3); no patch |
+| Client certificate selector | A server that asks for a certificate the Keychain has | A `client_certificates` request since T-UIR-13, with BDK's sheet as default (5.3); no patch |
 | Device chooser bubbles (WebUSB, WebHID, Web Serial) | `requestDevice()`, `requestPort()` | `device_choosers` requests since T-UIR-13 (5.16); patch `bdk-let-an-embedder-keep-the-serial-chooser-from-asking-for-bluetooth` for Web Serial without a Bluetooth usage string |
 | Web Bluetooth chooser, scanning prompt, pairing dialogs | `navigator.bluetooth` | The chooser is a `device_choosers` request when the application declares its Bluetooth usage string, and Web Bluetooth is off without one (5.16); the scanning and pairing prompts are refused |
 | Screen-capture picker, "share this tab", capture-policy confirmation | `getDisplayMedia()` | A `screen_capture` request since T-UIR-13 (5.16); patch `bdk-let-an-embedder-supply-the-screen-capture-ui` |

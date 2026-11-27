@@ -1,7 +1,7 @@
 # Compatibility and known gaps
 
 What a browser built with BDK does differently from Google Chrome on the same Chromium version, and what BDK
-does not support. Written 2026-11-25, during M9, before 1.0; each gap that is planned names its task. The
+does not support. Written 2026-11-25 and brought up to date 2026-11-27, during M9, before 1.0; each gap that is planned names its task. The
 planning documents ([roadmap.md](../planning/roadmap.md), [risks.md](../planning/risks.md)) are the source;
 update this page in the same change as they move.
 
@@ -19,8 +19,12 @@ update this page in the same change as they move.
 |---|---|---|
 | H.264, AAC and HEVC do not play; pages are offered VP9, AV1 and Opus | No proprietary decoder is bundled (D7); decoding through macOS's decoders is not built | T-CHR-12 and the legal review ([licence-review.md](licence-review.md) L7) |
 | DRM (Widevine) content does not play | Not in v1 (product owner, 2026-11-25) | Nothing in the design rules out an application opt-in later |
-| Installable web apps are off unless `[web_apps] enabled = true`; installed apps get no Dock icon, file or protocol handlers | Product-owner decision (amendments 2.24) | T-PWA-01 to T-PWA-05 |
-| Push messages need `[services.push] provider = "google"` and the developer's own Google project | Chromium delivers push through Google's service, which BDK contacts only when asked | T-PWA-05 |
+| Installable web apps are off unless `[web_apps] enabled = true`; installed apps get no Dock icon, app shim, file or protocol handlers, and links do not open in an installed app | Product-owner decision (amendments 2.24); operating-system integration is not in v1 ([web-apps.md](../planning/sdk/web-apps.md) 8) | Not planned for v1 |
+| Push messages arrive only with `[services.push] provider = "google"`, and only while the browser runs | Chromium's push client registers the device with Google as Chrome does and keeps a connection to Google's messaging host; BDK contacts it only when asked. No Google project or key is needed. Whether Google's terms cover a browser that is not Chrome registering this way is the developer's question | Built (T-PWA-05) |
+| Periodic Background Sync events are at least 12 hours apart, and no sync event runs while the browser is closed | Chromium's minimum interval; BDK keeps no process in the background | As Chromium |
+| Payment Request works only with a payment handler (a service-worker payment app); there is no card form and no Google Pay, and a request for shipping or payer details is refused | BDK has no wallet, address book or contact picker of its own ([ui-requests.md](../planning/sdk/ui-requests.md) 5.22) | Built (T-UIR-14); a handler must show its own page, as Chromium requires |
+| Secure Payment Confirmation, FedCM (`IdentityCredential`) and the Digital Credentials API are absent | Their UI is Chromium's views dialogs; BDK's requests for them are designed and not built | T-UIR-14 |
+| Web Bluetooth is absent unless the application's `Info.plist` has `NSBluetoothAlwaysUsageDescription` | macOS ends a process that uses Bluetooth without declaring why | As designed ([ui-requests.md](../planning/sdk/ui-requests.md) 5.16) |
 
 ## Google services
 
@@ -55,9 +59,11 @@ invariant 9).
 
 - Chromium's own `browser_tests` for sandboxing, site isolation and process locks have not been run against
   BDK's browser window (T-ADP-09). Until they pass, the process-isolation gate is open.
-- A page whose view has never been in a window reports itself visible (T-ADP-11).
-- Touch ID passkeys, passkeys on a phone and iCloud Keychain passkeys need a signed application with Apple's
-  entitlements (T-UIR-11, T-UIR-12); passkeys on a phone are off by default (`[services.webauthn] phones`).
+- Touch ID passkeys are kept in the application's own keychain access group, `<team>.<bundle id>.webauthn`:
+  the application needs the `keychain-access-groups` entitlement for it and the provisioning profile macOS
+  requires for that entitlement (T-UIR-11; not yet run on a signed build). Passkeys on a phone and iCloud
+  Keychain passkeys need a signed application with Apple's entitlements (T-UIR-12); passkeys on a phone are off
+  by default (`[services.webauthn] phones`).
 
 ## Not planned
 

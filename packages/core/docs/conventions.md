@@ -283,9 +283,8 @@ the engine is T-PWA-04. Decided where it was silent (2026-11-25):
 
 1. Configuration. `runtime/web_apps.cc` reads `web_apps.enabled` (default false) and `services.push.provider` (`none`, the
    default, or `google`) into `Runtime::web_apps` at start, before the providers (a value of the wrong kind is
-   `config.resolvedInvalid`). Push through Google counts as a Google provider for the key rule of "Providers": no key is
-   `config.keyMissing`, and the key is then not `keyUnused`. This stands until T-PWA-05 finds what push really needs
-   (web-apps.md 10.6). The core adds `"webApps":{"enabled"}` and `"push":{"provider"}` to every `runtime.info` answer
+   `config.resolvedInvalid`). Push through Google takes no Google key (T-PWA-05, web-apps.md 7 and 10.6): it does not
+   count for the key rule of "Providers", so a key given for push alone is `config.keyUnused`. The core adds `"webApps":{"enabled"}` and `"push":{"provider"}` to every `runtime.info` answer
    (`CommandControl::AppendMembers`), so no backend reports them.
 2. Refusals for every runtime, before the backend (`web_apps_refuse`): every `webApps.*` command fails `webApps.disabled`
    while web apps are off; in a private profile `list` answers `[]`, `installability` not installable, `get`

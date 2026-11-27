@@ -1,6 +1,6 @@
 # Building a production browser on BDK
 
-Status: proposal, 2026-11-15. This is the map from "what a shippable browser needs" to the API that provides it, the work that stays with the application, and the milestone in [../roadmap.md](../roadmap.md) where it arrives. It introduces no API of its own; every entry points at another document in this directory. Nothing here has been built, and several rows depend on results that milestone M0 has not produced yet. Status labels are in [README.md](README.md) section 2.
+Status: proposal, 2026-11-15; the Status column brought up to date 2026-11-27, during M9 ("Built (M3)" means built and passing on the engine in that milestone). This is the map from "what a shippable browser needs" to the API that provides it, the work that stays with the application, and the milestone in [../roadmap.md](../roadmap.md) where it arrives. It introduces no API of its own; every entry points at another document in this directory. Nothing here has been built, and several rows depend on results that milestone M0 has not produced yet. Status labels are in [README.md](README.md) section 2.
 
 ## 1. The division of work
 
@@ -26,48 +26,48 @@ With no application UI code beyond a window and an address field, the result mus
 
 | Feature | BDK API | Application work | Status |
 |---|---|---|---|
-| Application lifecycle | `BDKApplication`, `BDKRuntime.start`, `terminate(replyingTo:)` ([swift-api.md](swift-api.md) 3, 4) | The delegate, menus, windows | Plan, M2 |
-| Showing a page | `profile.webContents.create()`, `page.view` (6, 7) | Layout | Plan, M2 |
-| Tabs, spaces, pinned pages, split view | None. BDK has no such types. Views attach anywhere; two visible pages in a window are both foreground. | The whole model and its UI | Plan; three or more panes depend on T-ADP-06 (risk R2) |
-| Several windows; moving a page between them | Add the view to another window (7) | Window management | Plan, M2 |
-| Popups and `target="_blank"` | `NewWindowRequest` ([ui-requests.md](ui-requests.md) 5.6) | Where the new page goes. Default: a plain window. | Plan, M2 to M3 |
-| Session restore | `page.sessionState()`, `Options.restoring` (6.8) | Saving and restoring layout and page state. Chromium restores nothing. | Plan, M2 |
+| Application lifecycle | `BDKApplication`, `BDKRuntime.start`, `terminate(replyingTo:)` ([swift-api.md](swift-api.md) 3, 4) | The delegate, menus, windows | Built (M2) |
+| Showing a page | `profile.webContents.create()`, `page.view` (6, 7) | Layout | Built (M2) |
+| Tabs, spaces, pinned pages, split view | None. BDK has no such types. Views attach anywhere; two visible pages in a window are both foreground. | The whole model and its UI | Built; three panes in one window each get their prompts, find and offers (T-ADP-06) |
+| Several windows; moving a page between them | Add the view to another window (7) | Window management | Built (M2) |
+| Popups and `target="_blank"` | `NewWindowRequest` ([ui-requests.md](ui-requests.md) 5.6) | Where the new page goes. Default: a plain window. | Built (M2, M3) |
+| Session restore | `page.sessionState()`, `Options.restoring` (6.8) | Saving and restoring layout and page state. Chromium restores nothing. | Built (M2) |
 | Recently closed pages | None | Keep the session state of closed pages | Application |
-| Crash recovery | `processGone` event; `reload()` (6.4) | What a crashed page looks like | Plan, M2 |
+| Crash recovery | `processGone` event; `reload()` (6.4) | What a crashed page looks like | Built (M2) |
 | Unresponsive pages | `UnresponsivePageRequest` (5.19) | None | Accepted (S3, 2026-11-25); core, stub and Swift built, engine not (T-UIR-15) |
-| Background-page throttling | Chromium's own, unchanged: timer throttling, lower process priority and freezing for pages whose view is hidden. It follows view visibility. | None | Plan, M2 |
+| Background-page throttling | Chromium's own, unchanged: timer throttling, lower process priority and freezing for pages whose view is hidden. It follows view visibility. | None | Built (M2) |
 | Discarding pages to save memory | Chromium discards a hidden page under critical memory pressure whether BDK plans for it or not, and its Memory Saver does so on a timer when switched on (off by default). BDK surfaces it: `page.isDiscarded`, a `discarded` event, `page.discard()`, `page.isAutoDiscardable`, and `performance.memorySaver.*` settings ([swift-api.md](swift-api.md) 6.1, 6.2) | Show a discarded page as such if the product wants to; mark pages that must never be discarded, such as pinned ones; choose the Memory Saver default | Added (S15) |
-| Menus and shortcuts | `BDKKeyboardDelegate`, `PageCommand` (9) | The menu bar and every shortcut | Plan, M2 |
-| Fullscreen video | `FullscreenRequest` (5.12) | None | Plan, M2 to M3 |
-| Picture-in-picture | Chromium's own window for video; `NewWindowRequest` for document picture-in-picture | None | Plan; unverified outside `BrowserView` |
+| Menus and shortcuts | `BDKKeyboardDelegate`, `PageCommand` (9) | The menu bar and every shortcut | Built (M2) |
+| Fullscreen video | `FullscreenRequest` (5.12) | None | Built (M2, M3) |
+| Picture-in-picture | Chromium's own window for video; `NewWindowRequest` for document picture-in-picture | None | Unverified outside `BrowserView` |
 
 ### 2.2 Navigation and the address bar
 
 | Feature | BDK API | Application work | Status |
 |---|---|---|---|
-| Back, forward, reload, stop, history list | `page.navigation` (6.3) | Buttons | Plan, M2 |
+| Back, forward, reload, stop, history list | `page.navigation` (6.3) | Buttons | Built (M2) |
 | Cancelling or redirecting a navigation | Navigation policy ([swift-api.md](swift-api.md) 6.3) | The rules | Product owner, 2026-11-25; built on the stub and the engine (T-SWF-10, T-SWF-11, M9) |
-| What to show in the address field | `page.displayURL`, `page.security` (6.2) | The field. Use `displayURL`, not `url`, or the field can be spoofed during a navigation. | Plan, M2 |
-| Security indicator and certificate viewer | `page.security`; `permissions.certificateExceptions` | The indicator and a details view | Plan, M3 |
+| What to show in the address field | `page.displayURL`, `page.security` (6.2) | The field. Use `displayURL`, not `url`, or the field can be spoofed during a navigation. | Built (M2) |
+| Security indicator and certificate viewer | `page.security`; `permissions.certificateExceptions` | The indicator and a details view | Built (M3) |
 | Typed text: URL or search | `search.classify` ([services.md](services.md) 5.13) | Call it on submit | Added (S1) |
 | Suggestions while typing | `search.suggestions` | The dropdown | Added (S1) |
 | Search engines | `[search]` in `bdk.toml`; `search.engines` and friends | A default engine. None is compiled in. | Added (S1) |
-| Loading progress, hovered link | `estimatedProgress`, `hoveredLinkChanged` | Indicators | Plan, M2 |
-| Find in page | `page.find`, `FindRequest` (5.11) | None | Plan, M3 |
-| Zoom | `page.zoom` | Menu items | Plan, M2 |
-| Error pages | Chromium's, with the browser's name | None. Replacing them is not planned. | Plan |
+| Loading progress, hovered link | `estimatedProgress`, `hoveredLinkChanged` | Indicators | Built (M2) |
+| Find in page | `page.find`, `FindRequest` (5.11) | None | Built (M3) |
+| Zoom | `page.zoom` | Menu items | Built (M2) |
+| Error pages | Chromium's, with the browser's name | None. Replacing them is not planned. | Built |
 
 ### 2.3 Browser data
 
 | Feature | BDK API | Application work | Status |
 |---|---|---|---|
-| Profiles | `runtime.profiles` (5) | A switcher, if the product has profiles | Plan, M2 |
-| Private browsing | `profile.openPrivate()` | A way to open one, and an indicator | Plan, M2; mapping unverified |
-| History | Recorded by Chromium; `history.*`; the `history` route | None with the built-in page | Plan, M3 |
-| Bookmarks | `bookmarks.*`; the `bookmarks` route | A "bookmark this page" control; a bookmarks bar if wanted | Plan, M3 |
-| Downloads | `downloads.*`; downloads surface (5.7); the `downloads` route | None | Plan, M3 |
+| Profiles | `runtime.profiles` (5) | A switcher, if the product has profiles | Built (M2) |
+| Private browsing | `profile.openPrivate()` | A way to open one, and an indicator | Built (M2) |
+| History | Recorded by Chromium; `history.*`; the `history` route | None with the built-in page | Built (M3) |
+| Bookmarks | `bookmarks.*`; the `bookmarks` route | A "bookmark this page" control; a bookmarks bar if wanted | Built (M3) |
+| Downloads | `downloads.*`; downloads surface (5.7); the `downloads` route | None | Built (M3) |
 | Favicons and most-visited | `favicons.get`, `topSites.list` (5.14) | Use them in its UI | Added (S12) |
-| Clear browsing data | `privacy.clear`; in the built-in settings page | None | Plan, M3 |
+| Clear browsing data | `privacy.clear`; in the built-in settings page | None | Built (M3) |
 | Import from another browser | `bookmarks.import` for HTML only | Anything more | Later |
 | Sync between devices | Read, write and change events on every service ([services.md](services.md) section 8) | The entire sync service, its accounts and its encryption | Application, by design |
 
@@ -75,11 +75,13 @@ With no application UI code beyond a window and an address field, the result mus
 
 | Feature | BDK API | Application work | Status |
 |---|---|---|---|
-| Save and fill passwords | Chromium's password manager; `passwords` surface (5.8); Keychain-protected storage | None | Plan, M3 |
-| Password management UI | `passwords.*` ([services.md](services.md) 5.9); the `passwords` route | None with the built-in page | Plan, M3 |
-| Address and card autofill | `autofill.*`; `autofill` and `autofill_suggestions` surfaces | None | Plan, M3; suggestions surface accepted (S3, 2026-11-25) |
+| Save and fill passwords | Chromium's password manager; `passwords` surface (5.8); Keychain-protected storage | None | Built (M3) |
+| Password management UI | `passwords.*` ([services.md](services.md) 5.9); the `passwords` route | None with the built-in page | Built (M3) |
+| Address and card autofill | `autofill.*`; `autofill` and `autofill_suggestions` surfaces | None | Built (M3); the suggestions surface built (T-UIR-15) |
 | Passkeys and security keys | `WebAuthnRequest` (5.18), one request per step; `BDKWebAuthnSupport` | None for security keys. Phones: `NSBluetoothAlwaysUsageDescription` and the Bluetooth entitlement. System passkeys: Apple's browser passkey entitlement | Built (M4, T-UIR-09; security keys tested with a virtual key). Phones and system passkeys unverified (T-UIR-12, M9); Touch ID passkeys need the application's keychain access group and a provisioning profile (T-UIR-11: built, the signed run left) |
-| HTTP authentication | `HTTPAuthRequest` (5.3) | None | Plan, M3 |
+| Paying on a site | `PaymentRequest` ([ui-requests.md](ui-requests.md) 5.22) on the `payments` surface; a payment handler's own page as a `.paymentHandler` new-window request | None; sites pay through a service-worker payment handler (no card form, no Google Pay) | Built (T-UIR-14). Shipping and payer details refused; Secure Payment Confirmation waits for T-UIR-11 |
+| Signing in with an identity provider (FedCM), digital credentials | `identity` and `digital_credentials` surfaces (5.22) | None | Designed and reviewed (2026-11-27); not built (T-UIR-14). The APIs are absent until then |
+| HTTP authentication | `HTTPAuthRequest` (5.3) | None | Built (M3) |
 | Its own credential store instead of Chromium's | `[services.credentials] provider = "app"`: Chromium still detects forms and fills, and the application's store supplies and receives the credentials ([swift-api.md](swift-api.md) 11.2) | The store, its unlock, and its sync | Added (S14); unverified |
 | Compromised-password check | None by default: Chromium's is a Google service and is removed. `[services.leak_check] provider = "app"` adds a check after sign-in and `passwords.check` for saved logins ([services.md](services.md) 5.9), with a warning on the `passwords` surface | The provider: which breach service it asks, that service's terms, and the privacy disclosure | Added (S16); unverified |
 
@@ -87,66 +89,66 @@ With no application UI code beyond a window and an address field, the result mus
 
 | Feature | BDK API | Application work | Status |
 |---|---|---|---|
-| Site permission prompts | `PermissionRequest` (5.1) | Usage strings in `Info.plist`; entitlements ([configuration.md](configuration.md) section 6) | Plan, M3 |
-| Site settings | `permissions.*`; built-in settings page | None | Plan, M3 |
-| Camera, microphone and screen-sharing indicators | `page.capture` (6.2); default "sharing" bar | An indicator in its own page UI, if it has one | Plan; the bar accepted (S3, 2026-11-25), not built (T-UIR-13) |
-| Sandbox, site isolation, process locks | Unchanged from Chromium (invariant 1) | Nothing, and it cannot turn them off | Plan |
-| Certificate errors | `CertificateErrorRequest` (5.14) | None | Plan, M3 |
-| Malware and phishing protection | `[services.reputation]`; `ReputationWarningRequest` | Decide whether the default's reduced protection is acceptable; otherwise configure Web Risk or its own provider | Plan, M6; decision D2 |
-| Dangerous-download warnings | `DangerousDownloadRequest` (5.7) | None | Plan, M3 |
-| HTTPS-only mode, secure DNS, third-party cookie policy | Settings keys ([services.md](services.md) section 6); `[settings.defaults]` | Choose product defaults | Plan and Added (S7) |
-| Revocation lists, Certificate Transparency list, root-store updates | Component data through the chosen route | Possibly a mirror | Conditional, D5, T-PRV-06 |
-| No Google account, sync, metrics or crash upload | Removed from the runtime; network audit is a release gate | Nothing | Plan, M6 |
-| Geolocation | `[services.geolocation]`, system provider by default | Usage string | Plan, M6 |
+| Site permission prompts | `PermissionRequest` (5.1) | Usage strings in `Info.plist`; entitlements ([configuration.md](configuration.md) section 6) | Built (M3) |
+| Site settings | `permissions.*`; built-in settings page | None | Built (M3) |
+| Camera, microphone and screen-sharing indicators | `page.capture` (6.2); default "sharing" bar | An indicator in its own page UI, if it has one | Built: `page.capture` and the default sharing bar (T-UIR-13) |
+| Sandbox, site isolation, process locks | Unchanged from Chromium (invariant 1) | Nothing, and it cannot turn them off | Unchanged; Chromium's own `browser_tests` not yet run against BDK's window (T-ADP-09) |
+| Certificate errors | `CertificateErrorRequest` (5.14) | None | Built (M3) |
+| Malware and phishing protection | `[services.reputation]`; `ReputationWarningRequest` | Decide whether the default's reduced protection is acceptable; otherwise configure Web Risk or its own provider | Built (M6); decision D2 |
+| Dangerous-download warnings | `DangerousDownloadRequest` (5.7) | None | Built (M3) |
+| HTTPS-only mode, secure DNS, third-party cookie policy | Settings keys ([services.md](services.md) section 6); `[settings.defaults]` | Choose product defaults | Built (settings keys, [services.md](services.md) 6) |
+| Revocation lists, Certificate Transparency list, root-store updates | Component data through the chosen route | Possibly a mirror | Off (D5): the CT list and root store are compiled into each runtime and there is no CRLSet; a mirror is T-PRV-06 |
+| No Google account, sync, metrics or crash upload | Removed from the runtime; network audit is a release gate | Nothing | Built (M6); the audit passes, also with web apps on |
+| Geolocation | `[services.geolocation]`, system provider by default | Usage string | Built (M6); the application-provider scenario fails in the full suite (T-PRV-04) |
 
 ### 2.6 Content features
 
 | Feature | BDK API | Application work | Status |
 |---|---|---|---|
-| Page translation | Default local provider; `TranslationRequest` (5.10); `page.translation` | None | Plan, M6; engine is a spike (risk R14) |
-| Printing and save as PDF | `page.print()`, `PrintRequest` (5.9), `page.capture.pdf` | A menu item | Plan, M3 |
-| Screenshots | `page.capture.screenshot` | A menu item | Plan, M3 |
-| Context menus | `ContextMenuRequest` (5.5) | None | Plan, M3 |
-| File upload and save | `FilePickerRequest` (5.4) | None | Plan, M3 |
-| Web notifications | `NotificationRequest` (5.13) | None | Plan, M3 |
-| Links to other applications | `ExternalProtocolRequest` (5.17) | None | Accepted (S3, 2026-11-25); not routed yet (T-UIR-13) |
-| Web Bluetooth, USB, HID, Serial | `DeviceChooserRequest` (5.16) | Usage strings and entitlements | Accepted (S3, 2026-11-25); not built (T-UIR-13) |
-| Screen sharing | `ScreenCaptureRequest` (5.16) | None | Accepted (S3, 2026-11-25); not built (T-UIR-13) |
+| Page translation | Default local provider; `TranslationRequest` (5.10); `page.translation` | None | Built (M6) with the application's provider; a default on-device engine is not built (risk R14) |
+| Printing and save as PDF | `page.print()`, `PrintRequest` (5.9), `page.capture.pdf` | A menu item | Built (M3) |
+| Screenshots | `page.capture.screenshot` | A menu item | Built (M3) |
+| Context menus | `ContextMenuRequest` (5.5) | None | Built (M3) |
+| File upload and save | `FilePickerRequest` (5.4) | None | Built (M3) |
+| Web notifications | `NotificationRequest` (5.13) | None | Built (M3) |
+| Links to other applications | `ExternalProtocolRequest` (5.17) | None | Built (T-UIR-13) |
+| Web Bluetooth, USB, HID, Serial | `DeviceChooserRequest` (5.16) | Usage strings and entitlements; Web Bluetooth needs `NSBluetoothAlwaysUsageDescription` | Built (T-UIR-13) |
+| Screen sharing | `ScreenCaptureRequest` (5.16) | None | Built (T-UIR-13) |
 | Spell checking | Expected to use the operating system's on macOS | None | Unverified |
 | H.264, AAC, HEVC | Through the operating system's decoders, if the spike holds; no bundled proprietary decoder | None expected; legal review pending | Decision D7, T-CHR-12 |
 | DRM video (Widevine) | Not available | Nothing it can do in v1 as planned | Deferred, decision D7 |
-| Installable web apps | `profile.webApps`, `WebAppInstallRequest`, a `.webApp` new-window request ([web-apps.md](web-apps.md)) | `[web_apps] enabled = true`; for push, `[services.push]` and a project in Google's console | Product owner, 2026-11-25; not built, T-PWA-01 to T-PWA-05, M9. No Dock icon per app in v1 |
+| Installable web apps | `profile.webApps`, `WebAppInstallRequest`, a `.webApp` new-window request ([web-apps.md](web-apps.md)) | `[web_apps] enabled = true`; for push, `[services.push] provider = "google"` (no Google project or key) | Built (T-PWA-01 to T-PWA-05). No Dock icon per app in v1 |
 
 ### 2.7 Extensions
 
 | Feature | BDK API | Application work | Status |
 |---|---|---|---|
-| Running extensions | Chromium's system, unchanged | None | Plan, M5 |
-| Finding and using actions with no toolbar | Default extensions menu ([extensions.md](extensions.md) 4.7) | None | Plan, M5 |
-| Actions, popups and side panels in the product's layout | `ActionState`, `ExtensionPopupRequest`, `ExtensionSidePanelRequest` | Buttons and containers | Plan, M5; side panel needs a patch |
-| Installing | `extensions.install`; sources in `[extensions.install]` | A way for users to get extensions: its own catalogue, CRX links, or a named store it enables after its own legal review (decision D4) | Plan, M5 |
-| Management page | The `extensions` route | None | Plan, M5 |
+| Running extensions | Chromium's system, unchanged | None | Built (M5) |
+| Finding and using actions with no toolbar | Default extensions menu ([extensions.md](extensions.md) 4.7) | None | Built (M5) |
+| Actions, popups and side panels in the product's layout | `ActionState`, `ExtensionPopupRequest`, `ExtensionSidePanelRequest` | Buttons and containers | Built (M5) |
+| Installing | `extensions.install`; sources in `[extensions.install]` | A way for users to get extensions: its own catalogue, CRX links, or a named store it enables after its own legal review (decision D4) | Built (M5) |
+| Management page | The `extensions` route | None | Built (M5) |
 | First-party extensions | `[extensions.bundled]` | The extensions | Added (S6) |
-| Extension keyboard shortcuts | `extensions.commands`, `performCommand` | Binding keys | Plan, M5 |
-| Knowing what will not work | `CompatibilityReport`; the published matrix | Tell users, where the matrix lists a gap | Plan, M5 |
+| Extension keyboard shortcuts | `extensions.commands`, `performCommand` | Binding keys | Built (M5) |
+| Knowing what will not work | `CompatibilityReport`; the published matrix | Tell users, where the matrix lists a gap | Built (M5) |
 
 ### 2.8 Product surface
 
 | Feature | BDK API | Application work | Status |
 |---|---|---|---|
-| Browser name and internal URLs | `[browser]` | A name and a scheme, fixed before the first release | Plan, M4 |
+| Browser name and internal URLs | `[browser]` | A name and a scheme, fixed before the first release | Built (M4) |
 | Application icon | None. It is the application's own `AppIcon` in Xcode, and macOS uses it for the Dock, Finder, system permission prompts and the default-browser list. | The icon | Application |
 | Logo inside built-in pages and default UI; helper names; notification icon | `[browser] logo`, defaulting to the application icon; helper names and the alerts-helper icon are set by `bdk build sign` ([configuration.md](configuration.md) 3.1.1) | None, or a logo file | Added (S13); unverified |
-| New-tab page | BDK's minimal default; or `Pages/NewTab` | Its own page, usually | Plan, M4 |
-| Settings | Chromium's page by default; or `Pages/Settings` with `@bdk/internal/settings` | Its own page, if wanted; plus settings for its own features, registered in Swift | Plan, M4 |
-| Any other internal page | `Pages/<Name>`; `native` routes | The pages | Plan, M4 |
-| Default browser | `system.defaultBrowser`; URL and document types in `Info.plist`; `application(_:open:)` | The prompt and the URL handler | Plan, M3 |
-| DevTools | `page.devTools`, `DevToolsRequest` (5.15) | Docking, if wanted | Plan, M7 |
-| Localisation | Chromium's strings for default UI, in the system language | Its own UI's strings | Plan |
-| Accessibility | Chromium's, with the accessibility parent set by BDK | Its own UI's accessibility | Plan, M2; VoiceOver pass in T-MAC-03 |
+| New-tab page | BDK's minimal default; or `Pages/NewTab` | Its own page, usually | Built (M4) |
+| Settings | Chromium's page by default; or `Pages/Settings` with `@bdk/internal/settings` | Its own page, if wanted; plus settings for its own features, registered in Swift | Built (M4) |
+| Any other internal page | `Pages/<Name>`; `native` routes | The pages | Built (M4) |
+| Default browser | `system.defaultBrowser`; URL and document types in `Info.plist`; `application(_:open:)` | The prompt and the URL handler | Built (M3) |
+| DevTools | `page.devTools`, `DevToolsRequest` (5.15) | Docking, if wanted | Built (M7) |
+| Localisation | Chromium's strings for default UI, in the system language | Its own UI's strings | Built (Chromium's strings) |
+| Accessibility | Chromium's, with the accessibility parent set by BDK | Its own UI's accessibility | Built (M2, T-MAC-03) |
 | Crash reports | `[diagnostics]`, `onCrashReport` ([swift-api.md](swift-api.md) 15) | A place to send them and the user's consent | Added (S4) |
 | Usage analytics | None | Its own, with consent | Application |
-| Agents and scripted automation | `runtime.automation`, `@bdk/automation` | Identity, consent, policy, gateway | Plan, M7 |
+| Agents and scripted automation | `runtime.automation`, `@bdk/automation` | Identity, consent, policy, gateway | Built (M7) |
 
 ## 3. What BDK will never supply
 
