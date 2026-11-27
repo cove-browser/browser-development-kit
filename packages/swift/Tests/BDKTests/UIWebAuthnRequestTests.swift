@@ -218,18 +218,6 @@ extension BDKStubTests {
                 hasEntitlement: { _ in true }, isHardenedRuntime: true, operatingSystem: sonoma,
                 phonesEnabled: true)
             #expect(configured.phones.isAvailable && configured.systemPasskeys.isAvailable)
-            // Touch ID: signed by a team, and entitled to that team's group for the bundle.
-            let group = "TEAM.app.example.webauthn"
-            let entitled = BDKWebAuthnSupport(
-                infoPlist: [:], hasEntitlement: { _ in false }, isHardenedRuntime: true,
-                operatingSystem: sonoma, phonesEnabled: false, touchIDGroup: group,
-                keychainGroups: [group])
-            #expect(entitled.touchID.isAvailable)
-            let other = BDKWebAuthnSupport(
-                infoPlist: [:], hasEntitlement: { _ in false }, isHardenedRuntime: true,
-                operatingSystem: sonoma, phonesEnabled: false, touchIDGroup: group,
-                keychainGroups: ["TEAM.other"])
-            #expect(other.touchID.missing == [.entitlement("keychain-access-groups \(group)")])
             // With the switch off, everything else in place still offers no phone.
             let switchedOff = BDKWebAuthnSupport(
                 infoPlist: ["NSBluetoothAlwaysUsageDescription": "Sign in with your phone."],
@@ -250,6 +238,22 @@ extension BDKStubTests {
             #expect(old.systemPasskeys.missing.first == .macOS("13.5"))
             #expect("\(BDKWebAuthnSupport.Requirement.macOS("13.5"))" == "macOS 13.5 or later")
             #expect(BDKWebAuthnSupport.current.securityKeys.isAvailable)
+        }
+
+        /// Touch ID: signed by a team, and entitled to that team's group for the bundle.
+        @Test func touchIDNeedsTheApplicationsKeychainGroup() {
+            let sonoma = OperatingSystemVersion(majorVersion: 14, minorVersion: 0, patchVersion: 0)
+            let group = "TEAM.app.example.webauthn"
+            let entitled = BDKWebAuthnSupport(
+                infoPlist: [:], hasEntitlement: { _ in false }, isHardenedRuntime: true,
+                operatingSystem: sonoma, phonesEnabled: false, touchIDGroup: group,
+                keychainGroups: [group])
+            #expect(entitled.touchID.isAvailable)
+            let other = BDKWebAuthnSupport(
+                infoPlist: [:], hasEntitlement: { _ in false }, isHardenedRuntime: true,
+                operatingSystem: sonoma, phonesEnabled: false, touchIDGroup: group,
+                keychainGroups: ["TEAM.other"])
+            #expect(other.touchID.missing == [.entitlement("keychain-access-groups \(group)")])
         }
 
         @Test func phonesFollowTheConfigurationOfTheRunningRuntime() async throws {
