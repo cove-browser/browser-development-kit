@@ -86,6 +86,24 @@ describe("bdk build embed", () => {
     await expect(stat(join(frameworks(dir), "Lib.framework/Versions/1/stray"))).rejects.toThrow();
   });
 
+  it("replaces a signed copy of another runtime whose engine alone differs", async () => {
+    const { dir } = await tempProject();
+    const engine = `${FW}/Lib.framework/Versions/1/Libraries/libengine.dylib`;
+    await storeRuntime(dir, { files: { ...RUNTIME.files, [engine]: "old" }, links: RUNTIME.links });
+    await embed(dir);
+    // A new runtime whose only change is a library, which signing rewrites and the comparison ignores.
+    await storeRuntime(dir, {
+      files: { ...RUNTIME.files, [engine]: "new" },
+      links: RUNTIME.links,
+      key: "other",
+    });
+    const { code, result } = await embed(dir);
+    expect(code).toBe(0);
+    expect(result).toMatchObject({ sourceKey: "other", unchanged: false });
+    const copied = join(frameworks(dir), "Lib.framework/Versions/1/Libraries/libengine.dylib");
+    expect(await readFile(copied, "utf8")).toBe("new");
+  });
+
   it("embed.no_runtime: needs the runtime step first", async () => {
     const { dir } = await tempProject();
     const { code, codes } = await embed(dir);

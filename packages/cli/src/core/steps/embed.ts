@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { chmod, cp, lstat, mkdir, readdir, rm } from "node:fs/promises";
+import { chmod, cp, lstat, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { BdkHomeError, currentBdkPaths } from "@bdk/tooling/dist/paths.js";
 import { scanFiles, verifyRuntimeDir } from "@bdk/tooling/dist/runtime/manifest.js";
@@ -28,6 +28,31 @@ async function makeWritable(path: string): Promise<void> {
   }
 }
 
+/**
+ * The runtime each bundle was last embedded from: resolved bundle path → the runtime's manifest digest.
+ * Signing rewrites every executable and library, so their content cannot show which runtime a signed copy
+ * is; this record does.
+ */
+const EMBEDDED_RECORD = join(".bdk", "embedded.json");
+
+async function readEmbedded(projectDir: string): Promise<Record<string, string>> {
+  try {
+    const parsed: unknown = JSON.parse(await readFile(join(projectDir, EMBEDDED_RECORD), "utf8"));
+    if (typeof parsed !== "object" || parsed === null) return {};
+    return Object.fromEntries(
+      Object.entries(parsed).filter(([, digest]) => typeof digest === "string"),
+    ) as Record<string, string>;
+  } catch {
+    // None, or unreadable: every copy is made again.
+    return {};
+  }
+}
+
+async function writeEmbedded(projectDir: string, record: Record<string, string>): Promise<void> {
+  await mkdir(join(projectDir, ".bdk"), { recursive: true });
+  await writeFile(join(projectDir, EMBEDDED_RECORD), `${JSON.stringify(record, null, 2)}\n`);
+}
+
 /** What the bundle holds of the runtime's entries, as `scanFiles` describes files. */
 async function copiedFiles(frameworks: string, tops: readonly string[]) {
   if (!existsSync(frameworks)) return {};
@@ -40,7 +65,8 @@ async function copiedFiles(frameworks: string, tops: readonly string[]) {
 /**
  * `bdk build embed`: copy the frameworks of the runtime the project resolved (`.bdk/runtime.json`) into the
  * application's `Contents/Frameworks`, symlinks as they are, and check the copy against the runtime's
- * manifest (sdk/cli.md section 5). Incremental: a copy that already matches, signed or not, is left.
+ * manifest (sdk/cli.md section 5). Incremental: a copy recorded as this runtime's that still matches, signed or
+ * not, is left.
  */
 export const embedStep: Step = {
   name: "embed",
@@ -110,14 +136,25 @@ export const embedStep: Step = {
     const appPath = resolve(ctx.cwd, bundle);
     const frameworks = join(appPath, "Contents", "Frameworks");
 
-    // A copy that matches the manifest (allowing for what signing rewrites) is this runtime already.
-    if (frameworkDifferences(want, await copiedFiles(frameworks, tops)).length === 0) {
+    // A copy recorded as this runtime's, that still matches the manifest (allowing for what signing
+    // rewrites), is this runtime already. The record is needed: the comparison ignores the content of
+    // executables and libraries, which is where one runtime's engine differs from another's.
+    const embedded = await readEmbedded(project.dir);
+    if (
+      embedded[appPath] === pointer.manifest_sha256 &&
+      frameworkDifferences(want, await copiedFiles(frameworks, tops)).length === 0
+    ) {
       return {
         diagnostics: [],
         exitCode: ExitCode.Success,
         data: { sourceKey: pointer.source_key, frameworks: tops, unchanged: true },
       };
     }
+    // Forget the copy before replacing it, so one interrupted part-way is never taken for this runtime.
+    const others = Object.fromEntries(
+      Object.entries(embedded).filter(([path]) => path !== appPath),
+    );
+    await writeEmbedded(project.dir, others);
     await mkdir(frameworks, { recursive: true });
     for (const top of tops) {
       const target = join(frameworks, top);
@@ -142,6 +179,7 @@ export const embedStep: Step = {
         ExitCode.Integrity,
       );
     }
+    await writeEmbedded(project.dir, { ...others, [appPath]: pointer.manifest_sha256 });
     return {
       diagnostics: [],
       exitCode: ExitCode.Success,
