@@ -158,7 +158,11 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
     snapshots are kept, Chromium's default retention); an older milestone restores the newest snapshot no newer
     than the engine, and with none fails start with `runtime.downgradeRefused` (`refuse`) or renames the
     directory to `<name>.newer-<version>` beside it and starts empty (`fresh-profile`). A change within a
-    milestone does nothing, as in Chromium. Other failures are `runtime.profileMigrationFailed`. The codes are
+    milestone does nothing, as in Chromium. The core first takes `<data dir>.bdk-lock` (`data_directory_lock.h`,
+    `flock` in `data_directory_lock_posix.cc`, kept for the rest of the process); held by another process it is
+    `runtime.dataDirectoryInUse`. A restore is journalled in `.bdk-restore` (phase, snapshot, engine) and resumed
+    by the next start; the process singleton and crash state stay in place. Other failures are
+    `runtime.profileMigrationFailed`. The codes are
     strings, not `bdk_ids.h` constants, like `noDataDirectory`. The stub applies it to `user_data_path_override`
     as engine version `1.0.0.0`. The Chromium engine reports the directory it will open and its version, at the
     first start of the process only (Chromium has the directory open after that). `bdk_harness_own_data_directory`
@@ -485,7 +489,7 @@ taken where the specification was silent (2026-11-20):
    application gets it through its callback with a `bdk_context_t` and answers once, now or later, with
    `bdk_automation_hello_accept` (a live session) or `_refuse` (a `closed` frame with `capability.denied` and its
    message). At most 64 connections at a time. A transport thread (`std::thread`, `poll`) moves bytes; everything
-   else is on the UI thread. `local_socket_posix.cc` is the core's one platform file; Windows replaces it.
+   else is on the UI thread. `local_socket_posix.cc` and `data_directory_lock_posix.cc` are the core's platform files; Windows replaces them.
 
    A client that does not read keeps its connection (T-AUT-07). The transport queues each connection's frames
    (under the one mutex the UI thread and the transport thread share) and takes them from the queue 256 KiB at a

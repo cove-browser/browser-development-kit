@@ -9,6 +9,7 @@
 
 #include "broker_internal.h"
 #include "core_internal.h"
+#include "data_directory_lock.h"
 
 namespace bdkcore {
 
@@ -46,6 +47,13 @@ constexpr const char* kCaches[] = {
 /* Where the newer data goes while a snapshot is restored, before it is removed. */
 constexpr const char* kDiscardDir = ".bdk-discard";
 
+/* The record of a restore in progress, "<phase> <snapshot version> <engine version>": phase
+   "discard" while the newer data moves into .bdk-discard, "restore" while the snapshot's entries
+   move in; the engine is the one that started it. While it exists the
+   snapshot and .bdk-discard together hold every file, and the next start finishes the restore
+   before anything reads the directory. */
+constexpr const char* kRestoreJournal = ".bdk-restore";
+
 template <size_t N> bool listed(const char* const (&names)[N], const std::string& name) {
     return std::any_of(std::begin(names), std::end(names),
                        [&](const char* n) { return name == n; });
@@ -75,15 +83,15 @@ std::optional<EngineVersion> read_version_file(const fs::path& file) {
     return parse_engine_version(text);
 }
 
-/* Written beside the target and renamed over it, so a crash leaves the old value or the new one. */
-bool write_version_file(const fs::path& file, const std::string& version) {
+/* Written beside the target and renamed over it, so a crash leaves the old text or the new one. */
+bool write_text_file(const fs::path& file, const std::string& text) {
     fs::path tmp = file;
     tmp += ".tmp";
     {
         std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
         if (!out)
             return false;
-        out << version;
+        out << text;
         if (!out)
             return false;
     }
@@ -172,7 +180,7 @@ bdk_status_t take_snapshot(const fs::path& dir, const EngineVersion& last, size_
         if (ec)
             break;
     }
-    if (ec || !write_version_file(tmp / kLastVersionFile, name)) {
+    if (ec || !write_text_file(tmp / kLastVersionFile, name)) {
         std::error_code ignored;
         fs::remove_all(tmp, ignored);
         return migration_failed(out_error, "cannot snapshot " + display(dir), ec);
@@ -191,37 +199,86 @@ bdk_status_t take_snapshot(const fs::path& dir, const EngineVersion& last, size_
     return BDK_OK;
 }
 
-/* Moves the newer data aside, moves the snapshot's entries in, and removes both the snapshot and
-   the newer data (Chromium's ProcessDowngrade followed by RestoreSnapshot). */
-bdk_status_t restore_snapshot(const fs::path& dir, const EngineVersion& version,
-                              bdk_error_t* out_error) {
-    const fs::path snapshot = dir / kSnapshotsDir / engine_version_string(version);
-    const fs::path discard = dir / kDiscardDir;
+/* Entries a restore leaves where they are: the snapshots, BDK's own files, and what Chromium's
+   MoveUserData keeps in place (the process singleton, crash and metrics state). */
+bool kept_in_place(const std::string& entry) {
+    return entry == kSnapshotsDir || entry.starts_with(".bdk-") ||
+           (entry != kLastVersionFile && listed(kNotSnapshotted, entry));
+}
+
+/* Renames each entry of `from` that `take` accepts into `to`. A `from` that is gone has none. */
+template <typename Take>
+bool move_entries(const fs::path& from, const fs::path& to, Take take, std::error_code& ec) {
+    if (!fs::exists(from, ec))
+        return !ec;
+    std::vector<fs::path> entries;
+    for (fs::directory_iterator it(from, ec), end; !ec && it != end; it.increment(ec)) {
+        if (take(name_of(it->path())))
+            entries.push_back(it->path());
+    }
+    for (const fs::path& p : entries) {
+        if (!ec)
+            fs::rename(p, to / p.filename(), ec);
+    }
+    return !ec;
+}
+
+struct RestoreJournal {
+    bool restoring = false; /* past the "discard" phase */
+    EngineVersion version;  /* the snapshot's */
+    EngineVersion engine;   /* the engine that started it */
+};
+
+/* The restore in progress, if any. False when the record exists but cannot be read. */
+bool read_journal(const fs::path& dir, std::optional<RestoreJournal>* out) {
+    *out = std::nullopt;
     std::error_code ec;
-    fs::remove_all(discard, ec);
-    fs::create_directory(discard, ec);
-    if (ec)
-        return migration_failed(out_error, "cannot create " + display(discard), ec);
-    std::vector<fs::path> newer;
-    for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
-        const std::string entry = name_of(it->path());
-        if (entry != kSnapshotsDir && entry != kDiscardDir)
-            newer.push_back(it->path());
+    if (!fs::exists(dir / kRestoreJournal, ec))
+        return !ec;
+    std::ifstream in(dir / kRestoreJournal, std::ios::binary);
+    std::string phase, version, engine;
+    in >> phase >> version >> engine;
+    std::optional<EngineVersion> v = parse_engine_version(version);
+    std::optional<EngineVersion> e = parse_engine_version(engine);
+    if (!v || !e || (phase != "discard" && phase != "restore"))
+        return false;
+    *out = RestoreJournal{phase == "restore", *v, *e};
+    return true;
+}
+
+/* Moves the newer data into .bdk-discard, moves the snapshot's entries in, and removes both the
+   snapshot and the newer data (Chromium's ProcessDowngrade followed by RestoreSnapshot). Each phase
+   is recorded before it starts (kRestoreJournal) and can run again, so a restore that stops
+   part-way is finished by the next start with nothing lost; `restoring` resumes one past its first
+   phase. */
+bdk_status_t restore_snapshot(const fs::path& dir, const EngineVersion& version,
+                              const EngineVersion& engine, bool restoring, bdk_error_t* out_error) {
+    const std::string name = engine_version_string(version);
+    const std::string by = " " + engine_version_string(engine);
+    const fs::path snapshot = dir / kSnapshotsDir / name;
+    const fs::path discard = dir / kDiscardDir;
+    const fs::path journal = dir / kRestoreJournal;
+    std::error_code ec;
+    if (!restoring) {
+        if (!write_text_file(journal, "discard " + name + by))
+            return migration_failed(out_error, "cannot write " + display(journal), ec);
+        fs::create_directory(discard, ec);
+        if (ec)
+            return migration_failed(out_error, "cannot create " + display(discard), ec);
+        if (!move_entries(dir, discard, [](const std::string& e) { return !kept_in_place(e); }, ec))
+            return migration_failed(out_error,
+                                    "cannot move the newer data into " + display(discard), ec);
+        if (!write_text_file(journal, "restore " + name + by))
+            return migration_failed(out_error, "cannot write " + display(journal), ec);
     }
-    for (const fs::path& p : newer) {
-        if (!ec)
-            fs::rename(p, discard / p.filename(), ec);
-    }
-    std::vector<fs::path> restored;
-    for (fs::directory_iterator it(snapshot, ec), end; !ec && it != end; it.increment(ec))
-        restored.push_back(it->path());
-    for (const fs::path& p : restored) {
-        if (!ec)
-            fs::rename(p, dir / p.filename(), ec);
-    }
-    if (ec)
+    if (!move_entries(snapshot, dir, [](const std::string&) { return true; }, ec))
         return migration_failed(out_error, "cannot restore the snapshot " + display(snapshot), ec);
     fs::remove_all(snapshot, ec);
+    if (!ec)
+        fs::remove(journal, ec);
+    if (ec)
+        return migration_failed(out_error, "cannot finish restoring " + display(snapshot), ec);
+    /* The restore is done; a .bdk-discard left behind is removed at the next start. */
     fs::remove_all(discard, ec);
     return BDK_OK;
 }
@@ -361,8 +418,44 @@ bdk_status_t profile_versions_apply(const std::string& data_dir, const std::stri
     if (ec)
         return fail(out_error, BDK_DOMAIN_RUNTIME, "noDataDirectory",
                     "cannot create " + data_dir + ": " + ec.message());
+    /* Another copy of the application may have the directory open: nothing is read or changed
+       without the lock, which the process keeps through Chromium's start. */
+    const fs::path canonical = fs::canonical(dir, ec);
+    if (ec)
+        return migration_failed(out_error, "cannot resolve " + data_dir, ec);
+    std::string lock_error;
+    switch (lock_data_directory(display(canonical), &lock_error)) {
+    case DataDirectoryLock::kHeld:
+        break;
+    case DataDirectoryLock::kInUse:
+        return fail(out_error, BDK_DOMAIN_RUNTIME, "dataDirectoryInUse",
+                    "the data directory " + data_dir +
+                        " is in use by another process; quit it, or give this one a data "
+                        "directory of its own");
+    case DataDirectoryLock::kFailed:
+        return fail(out_error, BDK_DOMAIN_RUNTIME, "profileMigrationFailed", lock_error);
+    }
+    /* A restore an earlier start did not finish is finished first: until it is, the directory is
+       part newer data and part snapshot. Finished for the engine that started it, it ends as it
+       would have; for another, what it restored is judged as any last version is. */
+    std::optional<RestoreJournal> journal;
+    if (!read_journal(dir, &journal))
+        return fail(out_error, BDK_DOMAIN_RUNTIME, "profileMigrationFailed",
+                    "cannot read " + display(dir / kRestoreJournal) +
+                        ", the record of a restore that did not finish");
+    bool resumed_for_this_engine = false;
+    if (journal) {
+        if (bdk_status_t s = restore_snapshot(dir, journal->version, journal->engine,
+                                              journal->restoring, out_error))
+            return s;
+        resumed_for_this_engine = compare_engine_versions(journal->engine, *now) == 0;
+    } else {
+        fs::remove_all(dir / kDiscardDir, ec); /* what a finished restore left */
+    }
     const std::optional<EngineVersion> last = read_version_file(dir / kLastVersionFile);
-    const ProfileDecision d = decide_profile_action(*now, last, policy, list_snapshots(dir));
+    const ProfileDecision d = resumed_for_this_engine
+                                  ? ProfileDecision{}
+                                  : decide_profile_action(*now, last, policy, list_snapshots(dir));
     bdk_status_t s = BDK_OK;
     switch (d.action) {
     case ProfileAction::kNone:
@@ -371,7 +464,7 @@ bdk_status_t profile_versions_apply(const std::string& data_dir, const std::stri
         s = take_snapshot(dir, d.version, policy.max_snapshots, out_error);
         break;
     case ProfileAction::kRestore:
-        s = restore_snapshot(dir, d.version, out_error);
+        s = restore_snapshot(dir, d.version, *now, /*restoring=*/false, out_error);
         break;
     case ProfileAction::kFreshProfile:
         s = start_fresh(dir, d.version, out_error);
@@ -385,7 +478,7 @@ bdk_status_t profile_versions_apply(const std::string& data_dir, const std::stri
     }
     if (s != BDK_OK)
         return s;
-    if (!write_version_file(dir / kLastVersionFile, engine_version_string(*now)))
+    if (!write_text_file(dir / kLastVersionFile, engine_version_string(*now)))
         return fail(out_error, BDK_DOMAIN_RUNTIME, "profileMigrationFailed",
                     "cannot write " + display(dir / kLastVersionFile));
     return BDK_OK;

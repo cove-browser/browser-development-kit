@@ -82,6 +82,7 @@ add_custom_target(bdk_abi_hash_check ALL
 add_library(bdk_stub STATIC runtime/core.cc runtime/core_host.cc runtime/core_windows.cc runtime/ui_router.cc
   runtime/extension_policy.cc runtime/app_settings.cc runtime/broker.cc runtime/routes.cc
   runtime/broker_args.cc runtime/automation.cc runtime/contents_commands.cc runtime/local_socket_posix.cc
+  runtime/data_directory_lock_posix.cc
   runtime/providers.cc runtime/translation.cc runtime/reputation_lists.cc runtime/navigation_policy.cc
   runtime/profile_versions.cc runtime/web_apps.cc
   stub/stub_backend.cc stub/stub_services.cc stub/stub_extensions.cc stub/stub_broker.cc stub/stub_automation.cc

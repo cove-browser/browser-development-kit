@@ -1,8 +1,8 @@
 /* The external automation endpoint's transport (T-AUT-04): a local stream socket that only the user
-   who runs the application can connect to, carrying length-prefixed frames. The only platform code
-   of the runtime core; local_socket_posix.cc implements it with a Unix-domain socket for macOS and
-   Linux. A Windows implementation (an AF_UNIX socket or a named pipe with a user-only security
-   descriptor) replaces that one file. Nothing here ever opens a network socket. */
+   who runs the application can connect to, carrying length-prefixed frames. Platform code of the
+   runtime core, as data_directory_lock.h is: local_socket_posix.cc implements it with a Unix-domain
+   socket for macOS and Linux. A Windows implementation (an AF_UNIX socket or a named pipe with a
+   user-only security descriptor) replaces that one file. It never opens a network socket. */
 #ifndef BDK_LOCAL_SOCKET_H_
 #define BDK_LOCAL_SOCKET_H_
 

@@ -5,7 +5,10 @@
    "9999.0.0.0" a newer one. POSIX file calls; skipped where the harness cannot give a start its own
    data directory. */
 #define _XOPEN_SOURCE 700
+#define _DARWIN_C_SOURCE /* flock */
 #include <dirent.h>
+#include <fcntl.h>
+#include <sys/file.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -245,6 +248,99 @@ static void test_a_downgrade_restores_the_newest_usable_snapshot(void) {
     teardown();
 }
 
+/* A downgrade keeps the process singleton and crash state where they are, as Chromium does. */
+static void test_a_restore_leaves_the_process_singleton_in_place(void) {
+    if (!setup())
+        return;
+    put("Last Version", "9999.0.0.0");
+    put("SingletonLock", "lock");
+    put("Snapshots/0.9.0.0/Last Version", "0.9.0.0");
+    start_ok(NULL);
+    CHECK(strcmp(text_of(at("SingletonLock")), "lock") == 0);
+    teardown();
+}
+
+/* A restore stopped while the newer data was moving aside: the next start finishes it. */
+static void test_a_restore_stopped_while_discarding_is_finished(void) {
+    if (!setup())
+        return;
+    put(".bdk-restore", "discard 0.9.0.0 1.0.0.0");   /* started by this engine */
+    put(".bdk-discard/Default/Preferences", "newer"); /* moved before it stopped */
+    put("Last Version", "9999.0.0.0");                /* not moved yet */
+    put("Local State", "newer state");
+    put("Snapshots/0.9.0.0/Last Version", "0.9.0.0");
+    put("Snapshots/0.9.0.0/Default/Preferences", "snapshot");
+    put("Snapshots/0.9.0.0/Local State", "snapshot state");
+    start_ok(NULL);
+    CHECK(strcmp(text_of(at("Default/Preferences")), "snapshot") == 0);
+    CHECK(strcmp(text_of(at("Local State")), "snapshot state") == 0);
+    CHECK(!exists(at(".bdk-restore")));
+    CHECK(!exists(at(".bdk-discard")));
+    CHECK(!exists(at("Snapshots/0.9.0.0")));
+    CHECK(strcmp(text_of(at("Last Version")), "1.0.0.0") == 0);
+    teardown();
+}
+
+/* A restore stopped while the snapshot was moving in, with no version in place: the next start
+   finishes it rather than opening a part profile, and keeps the newer data until it has. */
+static void test_a_restore_stopped_while_restoring_is_finished(void) {
+    if (!setup())
+        return;
+    put(".bdk-restore", "restore 0.9.0.0 1.0.0.0");
+    put(".bdk-discard/Last Version", "9999.0.0.0");
+    put(".bdk-discard/Default/Preferences", "newer");
+    put("Default/Preferences", "snapshot"); /* moved in before it stopped */
+    put("Snapshots/0.9.0.0/Last Version", "0.9.0.0");
+    put("Snapshots/0.9.0.0/Local State", "snapshot state");
+    start_ok(NULL);
+    CHECK(strcmp(text_of(at("Default/Preferences")), "snapshot") == 0);
+    CHECK(strcmp(text_of(at("Local State")), "snapshot state") == 0);
+    CHECK(!exists(at(".bdk-restore")));
+    CHECK(!exists(at(".bdk-discard")));
+    CHECK(!exists(at("Snapshots/0.9.0.0")));
+    CHECK(strcmp(text_of(at("Last Version")), "1.0.0.0") == 0);
+    teardown();
+}
+
+/* An unreadable restore record fails start and touches nothing. */
+static void test_an_unreadable_restore_record_fails_start(void) {
+    if (!setup())
+        return;
+    put(".bdk-restore", "garbage");
+    put(".bdk-discard/Default/Preferences", "newer");
+    char domain[48] = "", code[48] = "";
+    CHECK(start_in_data(NULL, domain, code) == BDK_ERR_FAILED);
+    CHECK(strcmp(code, "profileMigrationFailed") == 0);
+    CHECK(strcmp(text_of(at(".bdk-discard/Default/Preferences")), "newer") == 0);
+    t_start();
+    teardown();
+}
+
+/* Another process holds the data directory: start fails and changes nothing in it. */
+static void test_a_data_directory_in_use_is_left_alone(void) {
+    if (!setup())
+        return;
+    put("Last Version", "9999.0.0.0");
+    put("Default/Preferences", "newer");
+    put("Snapshots/0.9.0.0/Last Version", "0.9.0.0");
+    char lock[T_PATH];
+    snprintf(lock, sizeof lock, "%s.bdk-lock", t_data);
+    int fd = open(lock, O_RDWR | O_CREAT, 0600);
+    REQUIRE(fd >= 0);
+    REQUIRE(flock(fd, LOCK_EX | LOCK_NB) == 0); /* another open file, as another process has */
+    char domain[48] = "", code[48] = "";
+    CHECK(start_in_data(NULL, domain, code) == BDK_ERR_FAILED);
+    CHECK(strcmp(domain, "runtime") == 0);
+    CHECK(strcmp(code, "dataDirectoryInUse") == 0);
+    CHECK(strcmp(text_of(at("Default/Preferences")), "newer") == 0);
+    CHECK(strcmp(text_of(at("Last Version")), "9999.0.0.0") == 0);
+    CHECK(exists(at("Snapshots/0.9.0.0")));
+    close(fd);
+    start_ok(NULL); /* released: the restore runs */
+    CHECK(strcmp(text_of(at("Last Version")), "1.0.0.0") == 0);
+    teardown();
+}
+
 static void test_a_downgrade_within_a_milestone_is_allowed(void) {
     if (!setup())
         return;
@@ -295,6 +391,14 @@ const t_test_t t_profile_version_tests[] = {
      test_fresh_profile_moves_the_newer_data_aside_untouched},
     {"profile_versions.downgrade_restores_snapshot",
      test_a_downgrade_restores_the_newest_usable_snapshot},
+    {"profile_versions.restore_keeps_the_singleton",
+     test_a_restore_leaves_the_process_singleton_in_place},
+    {"profile_versions.restore_resumes_while_discarding",
+     test_a_restore_stopped_while_discarding_is_finished},
+    {"profile_versions.restore_resumes_while_restoring",
+     test_a_restore_stopped_while_restoring_is_finished},
+    {"profile_versions.unreadable_restore_record", test_an_unreadable_restore_record_fails_start},
+    {"profile_versions.data_directory_in_use", test_a_data_directory_in_use_is_left_alone},
     {"profile_versions.minor_downgrade_allowed", test_a_downgrade_within_a_milestone_is_allowed},
     {"profile_versions.unreadable_last_version",
      test_an_unreadable_last_version_counts_as_a_first_start},

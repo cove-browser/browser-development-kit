@@ -31,6 +31,8 @@ source_set("core") {
     "core/runtime/contents_commands.cc",
     "core/runtime/core_internal.h",
     "core/runtime/core_windows.cc",
+    "core/runtime/data_directory_lock.h",
+    "core/runtime/data_directory_lock_posix.cc",
     "core/runtime/extension_policy.cc",
     "core/runtime/extension_policy.h",
     "core/runtime/local_socket.h",

@@ -34,7 +34,7 @@ let package = Package(
                 "runtime/extension_policy.cc",
                 "runtime/app_settings.cc", "runtime/broker.cc", "runtime/broker_args.cc",
                 "runtime/automation.cc", "runtime/contents_commands.cc",
-                "runtime/local_socket_posix.cc",
+                "runtime/local_socket_posix.cc", "runtime/data_directory_lock_posix.cc",
                 "runtime/providers.cc", "runtime/translation.cc", "runtime/reputation_lists.cc",
                 "runtime/routes.cc", "runtime/navigation_policy.cc", "runtime/profile_versions.cc",
                 "runtime/web_apps.cc",

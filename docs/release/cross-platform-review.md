@@ -28,7 +28,9 @@ Each finding is **resolved** (fixed in this change, or already right and now wri
 - No callback runs synchronously from the call that causes it, so a managed caller never re-enters BDK from
   inside a P/Invoke.
 - The ABI hash normalises CRLF to LF, so a Windows checkout with `core.autocrlf` hashes the same.
-- The core is C++23 with no platform header except `local_socket_posix.cc`, behind `local_socket.h`; the stub
+- The core is C++23 with no platform header except `local_socket_posix.cc`, behind `local_socket.h`, and
+  `data_directory_lock_posix.cc` (`flock`), behind `data_directory_lock.h`, which Windows replaces with
+  `LockFileEx`; the stub
   builds on macOS and Linux; the headers compile as C11 and C++23.
 
 ## Findings

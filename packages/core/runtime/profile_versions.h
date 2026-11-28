@@ -14,6 +14,10 @@
    DowngradeManager takes snapshots only for managed devices; with them off it starts an older
    milestone on newer data ("unsupported"), which this module prevents by running first.
 
+   Nothing is read or changed before this process holds the data directory's lock
+   (data_directory_lock.h): another holder is runtime.dataDirectoryInUse. A restore is journalled
+   and finished by the next start if it stops part-way.
+
    Platform neutral C++23 (std::filesystem with error codes, no exceptions). A backend supplies the
    data directory and the engine version (Backend::ProfileDataDirectory, Backend::EngineVersion);
    when either is empty nothing here runs. */
@@ -75,8 +79,9 @@ ProfileDecision decide_profile_action(const EngineVersion& current,
                                       const ProfileVersionPolicy& policy,
                                       const std::vector<EngineVersion>& snapshots);
 
-/* Applies the decision to `data_dir` and records `current` in `Last Version`. A failure leaves the
-   data directory as it was where it can (a snapshot is written aside and renamed into place) and is
+/* Takes the data directory's lock, finishes a restore an earlier start left, applies the decision
+   to `data_dir` and records `current` in `Last Version`. A failure leaves the data directory as it
+   was where it can (a snapshot is written aside and renamed into place) and is
    runtime.downgradeRefused for kRefuse, runtime.profileMigrationFailed otherwise. */
 bdk_status_t profile_versions_apply(const std::string& data_dir, const std::string& current,
                                     const ProfileVersionPolicy& policy, bdk_error_t* out_error);
