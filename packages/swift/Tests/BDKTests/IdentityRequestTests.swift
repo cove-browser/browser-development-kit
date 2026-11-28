@@ -34,8 +34,17 @@ extension BDKStubTests {
                 #expect(throws: BDKError.self) {
                     try request.signIn(as: stranger, confirmedBy: try confirmingEvent())
                 }
+                // The same id from another provider is not this account.
+                let elsewhere = IdentityRequest.Account(
+                    id: "1", identityProvider: "https://other.test/config.json", name: "",
+                    email: "", givenName: "", picture: nil, isReturning: false)
+                #expect(throws: BDKError.self) {
+                    try request.signIn(as: elsewhere, confirmedBy: try confirmingEvent())
+                }
                 try request.signIn(as: request.accounts[0], confirmedBy: try confirmingEvent())
-                try fixture.expectOutcome(.completed, "grant", "{\"account\":\"1\"}")
+                try fixture.expectOutcome(
+                    .completed, "grant",
+                    "{\"account\":\"1\",\"idp\":\"https://idp.test/config.json\"}")
             }
         }
 

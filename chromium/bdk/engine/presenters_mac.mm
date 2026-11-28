@@ -1223,6 +1223,10 @@ class PresentersMac : public UiPresenters {
         choice.Set("completion", account ? "grant" : "accept");
         choice.Set(account ? "account" : "mechanism",
                    entry.FindString("id") ? *entry.FindString("id") : "");
+        // An identity account is its provider's: two may offer the same id.
+        if (account && entry.FindString("idp")) {
+          choice.Set("idp", *entry.FindString("idp"));
+        }
         add(name, std::move(choice));
       }
     }

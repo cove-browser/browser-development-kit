@@ -102,7 +102,8 @@ class Controller : public IdentityRequestDialogController {
               : std::string();
       const bool returning = account->browser_trusted_login_state ==
                              IdentityRequestAccount::LoginState::kSignIn;
-      accounts_[account->id] = {GURL(idp), returning};
+      // Two providers may both offer an account "1": a choice is the pair.
+      accounts_.push_back({GURL(idp), account->id, returning});
       base::DictValue entry;
       entry.Set("id", account->id);
       entry.Set("idp", idp);
@@ -320,10 +321,12 @@ class Controller : public IdentityRequestDialogController {
               const base::DictValue& args) {
     if (completion == "grant" && step == "chooseAccount") {
       const std::string* account = args.FindString("account");
-      auto it = account ? accounts_.find(*account) : accounts_.end();
-      if (it != accounts_.end() && on_selected_) {
-        std::move(on_selected_)
-            .Run(it->second.idp, it->first, it->second.returning);
+      const AccountChoice* chosen =
+          account ? FindAccount(*account, args.FindString("idp")) : nullptr;
+      if (chosen && on_selected_) {
+        // Running the callback may destroy this controller and its accounts.
+        const AccountChoice choice = *chosen;
+        std::move(on_selected_).Run(choice.idp, choice.id, choice.returning);
         return;
       }
     }
@@ -373,9 +376,10 @@ class Controller : public IdentityRequestDialogController {
                                  "Continue as " + *account.FindString("name") +
                                      " (" + *account.FindString("email") +
                                      ")"});
-        answers.emplace_back(
-            "grant",
-            base::DictValue().Set("account", *account.FindString("id")));
+        answers.emplace_back("grant",
+                             base::DictValue()
+                                 .Set("account", *account.FindString("id"))
+                                 .Set("idp", *account.FindString("idp")));
       }
     } else if (step == "failure") {
       const base::DictValue& idp =
@@ -462,15 +466,33 @@ class Controller : public IdentityRequestDialogController {
 
   struct AccountChoice {
     GURL idp;
+    std::string id;  // the provider's own account id
     bool returning = false;
   };
+
+  // The offered account a grant names: `id` of the provider `idp`. Without
+  // `idp`, only an id that one provider alone offers names an account.
+  const AccountChoice* FindAccount(const std::string& id,
+                                   const std::string* idp) const {
+    const AccountChoice* found = nullptr;
+    for (const AccountChoice& choice : accounts_) {
+      if (choice.id != id || (idp && choice.idp.spec() != *idp)) {
+        continue;
+      }
+      if (found) {
+        return nullptr;  // ambiguous: the grant must name the provider
+      }
+      found = &choice;
+    }
+    return found;
+  }
 
   base::WeakPtr<content::WebContents> rp_;
   base::WeakPtr<EngineContents> page_;
   base::WeakPtr<EngineContents> modal_page_;
   std::shared_ptr<bdkcore::Request> request_;
   Dismisser sheet_;
-  std::map<std::string, AccountChoice> accounts_;
+  std::vector<AccountChoice> accounts_;
   std::map<std::string, GURL> login_urls_;
   AccountSelectionCallback on_selected_;
   LoginToIdPCallback login_;

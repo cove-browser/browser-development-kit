@@ -7,8 +7,8 @@ import AppKit
 // `.error` (the provider refused), and `.registerIdentityProvider` (a site asks to become an
 // identity provider).
 //
-// Completions: "grant" with `{"account": id}` and the confirming event signs in (it releases an
-// identity to the site); "grant" `{}` with the event allows a registration; "accept"
+// Completions: "grant" with `{"account": id, "idp": id}` and the confirming event signs in (it
+// releases an identity to the site; two providers may offer the same account id); "grant" `{}` with the event allows a registration; "accept"
 // `{"action": "signInToIdP", "idp": id}` opens the provider's sign-in page as a new-window
 // request of kind `.identityProvider`; "accept" `{"action": "moreDetails"}` opens the error's
 // page; "deny" dismisses.
@@ -90,12 +90,20 @@ public final class IdentityRequest: BDKUIRequest {
     /// it: without one it throws `ui.gestureRequired`. Throws `ui.accountNotOffered` for an
     /// account not on offer.
     public func signIn(as account: Account, confirmedBy event: NSEvent) throws {
-        guard accounts.contains(where: { $0.id == account.id }) else {
+        // Two providers may offer the same account id, so the grant names the provider too.
+        guard
+            accounts.contains(where: {
+                $0.id == account.id && $0.identityProvider == account.identityProvider
+            })
+        else {
             throw BDKError(
                 domain: .ui, code: "accountNotOffered",
                 message: "the request does not offer this account")
         }
-        try submit("grant", ["account": .string(account.id)], gesture: event)
+        try submit(
+            "grant",
+            ["account": .string(account.id), "idp": .string(account.identityProvider)],
+            gesture: event)
     }
 
     /// Allows a site to register as an identity provider, at `.registerIdentityProvider`.
