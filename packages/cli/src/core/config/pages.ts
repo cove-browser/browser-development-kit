@@ -4,10 +4,11 @@
  * capability grants. Swift registrations are applied by the application at run time and are
  * not part of this step.
  */
-import { existsSync, lstatSync, readdirSync, realpathSync, statSync } from "node:fs";
-import { join, sep } from "node:path";
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { checkRouteName, ROUTE_MODES } from "./checks.js";
 import { directoryDigest } from "./digest.js";
+import { isInsideProject, nestedLinkProblem } from "./links.js";
 import { normaliseProjectPath } from "./paths.js";
 import { isRecord, type Reporter } from "./reporter.js";
 import { hasBuiltin, normaliseRouteName } from "./routes.js";
@@ -25,13 +26,6 @@ function byCodeUnit(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-/** Whether `absolute` resolves, through symlinks, to a place inside the project. */
-export function isInsideProject(projectDir: string, absolute: string): boolean {
-  const root = realpathSync(projectDir);
-  const real = realpathSync(absolute);
-  return real === root || real.startsWith(root + sep);
-}
-
 function isDirectory(path: string): boolean {
   return existsSync(path) && statSync(path).isDirectory();
 }
@@ -40,39 +34,9 @@ function isFile(path: string): boolean {
   return existsSync(path) && statSync(path).isFile();
 }
 
-type LinkProblem = { path: string; kind: "outside" | "broken" | "loop" };
-
-/**
- * The first link inside a page directory that the page cannot carry: one that leaves the project,
- * points nowhere, or leads back to a directory it is already inside. The page directory itself
- * was checked by the caller.
- */
-function nestedLinkProblem(projectDir: string, path: string): LinkProblem | undefined {
-  const walk = (relative: string, ancestors: Set<string>): LinkProblem | undefined => {
-    for (const name of readdirSync(join(projectDir, relative)).sort(byCodeUnit)) {
-      const child = `${relative}/${name}`;
-      const absolute = join(projectDir, child);
-      if (lstatSync(absolute).isSymbolicLink()) {
-        if (!existsSync(absolute)) return { path: child, kind: "broken" };
-        if (!isInsideProject(projectDir, absolute)) return { path: child, kind: "outside" };
-      }
-      if (!isDirectory(absolute)) continue;
-      const real = realpathSync(absolute);
-      if (ancestors.has(real)) return { path: child, kind: "loop" };
-      const found = walk(child, new Set([...ancestors, real]));
-      if (found) return found;
-    }
-    return undefined;
-  };
-  // The page is inside the project and each directory above it, up to the project itself.
-  const segments = path.split("/");
-  const above = segments.map((_, i) => realpathSync(join(projectDir, ...segments.slice(0, i + 1))));
-  return walk(path, new Set([realpathSync(projectDir), ...above]));
-}
-
 /** Reports a link the page at `path` cannot carry; returns whether there was none. */
 function checkNestedLinks(projectDir: string, path: string, reporter: Reporter): boolean {
-  const problem = nestedLinkProblem(projectDir, path);
+  const problem = nestedLinkProblem(projectDir, join(projectDir, path));
   if (problem === undefined) return true;
   if (problem.kind === "outside") {
     reporter.errorAt(

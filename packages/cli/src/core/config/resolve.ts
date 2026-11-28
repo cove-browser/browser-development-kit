@@ -7,7 +7,8 @@ import { join } from "node:path";
 import { deriveScheme } from "./checks.js";
 import { directoryDigest, fileDigest, sha256 } from "./digest.js";
 import type { BundleFacts } from "./index.js";
-import { buildRouteTable, isInsideProject } from "./pages.js";
+import { isInsideProject, nestedLinkProblem } from "./links.js";
+import { buildRouteTable } from "./pages.js";
 import { normaliseProjectPath } from "./paths.js";
 import { isRecord, type Reporter } from "./reporter.js";
 
@@ -158,6 +159,28 @@ function bundledExtensions(
         keyPath,
         "Point it at an unpacked extension directory with a manifest.json.",
       );
+      continue;
+    }
+    // Hashing follows links, so one that loops or leaves the extension is reported, not followed.
+    const link = nestedLinkProblem(directory, directory);
+    if (link !== undefined) {
+      if (link.kind === "outside") {
+        reporter.error(
+          "config.path_escape",
+          `"${path}/${link.path}" in the bundled extension "${name}" is a link that leaves the extension's directory.`,
+          keyPath,
+          "Remove the link, or copy the extension into the project.",
+        );
+      } else {
+        reporter.error(
+          "extensions.bad_link",
+          link.kind === "broken"
+            ? `"${path}/${link.path}" in the bundled extension "${name}" is a link to nothing.`
+            : `"${path}/${link.path}" in the bundled extension "${name}" links back to a directory it is inside.`,
+          keyPath,
+          "Remove the link, or replace it with the files it should contain.",
+        );
+      }
       continue;
     }
     out.set(name, {

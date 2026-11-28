@@ -1,8 +1,8 @@
-import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { cp, mkdir, readdir, readFile, rm, rmdir, writeFile } from "node:fs/promises";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { directoryDigest } from "../config/digest.js";
-import { isInsideProject } from "../config/pages.js";
+import { isInsideProject, nestedLinkProblem } from "../config/links.js";
 import { pathProblem } from "../config/paths.js";
 import type { Diagnostic } from "../diagnostics.js";
 import { hasErrors } from "../diagnostics-format.js";
@@ -233,7 +233,7 @@ function checkEntry(
   if (!isInsideProject(projectDir, source)) {
     return pathEscape(`"extensions.bundled.${name}" resolves to a place outside the project.`);
   }
-  const link = linkProblem(source);
+  const link = nestedLinkProblem(source, source);
   if (link !== undefined) {
     if (link.kind === "outside") {
       return pathEscape(
@@ -263,32 +263,6 @@ function checkEntry(
     return undefined;
   }
   return { name, path, required: value.required === true, digest, source };
-}
-
-type LinkProblem = { path: string; kind: "outside" | "broken" | "loop" };
-
-/**
- * The first link under `root` the copy cannot carry: one that leaves `root`, points nowhere, or leads
- * back to a directory it is already inside. Links are copied as what they point at.
- */
-function linkProblem(root: string): LinkProblem | undefined {
-  const walk = (directory: string, ancestors: Set<string>): LinkProblem | undefined => {
-    for (const name of readdirSync(directory).sort()) {
-      const absolute = join(directory, name);
-      const child = relative(root, absolute);
-      if (lstatSync(absolute).isSymbolicLink()) {
-        if (!existsSync(absolute)) return { path: child, kind: "broken" };
-        if (!isInsideProject(root, absolute)) return { path: child, kind: "outside" };
-      }
-      if (!isDirectory(absolute)) continue;
-      const real = realpathSync(absolute);
-      if (ancestors.has(real)) return { path: child, kind: "loop" };
-      const found = walk(absolute, new Set([...ancestors, real]));
-      if (found) return found;
-    }
-    return undefined;
-  };
-  return walk(root, new Set([realpathSync(root)]));
 }
 
 /** What the manifest declares under each permission key; a key it does not have is an empty list. */

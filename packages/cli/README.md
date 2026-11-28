@@ -12,7 +12,7 @@ Tasks: T-CLI-05 (the executable), T-CLI-04 (`bdk build`), T-CLI-01, T-CLI-02 and
 | `bdk doctor [--bundle <App.app>]` | T-CLI-01, see "Doctor" below. Findings in the groups machine, project, compatibility and, with `--bundle`, bundle; exit 1 when one is an error. |
 | `bdk patch status\|apply\|new <name>\|export\|check\|rebase <tag>` | T-CLI-03, see "Patch" below. Source mode only. |
 | `bdk build config [--out <file>]` | Resolves `bdk.toml` against the embedded schema (`assets/bdk.schema.json`) and, on macOS inside Xcode, the `Info.plist` and entitlements Xcode names. Writes `bdk.resolved.json` next to `bdk.toml` (or to `--out`) only when there are no errors. In Xcode it also writes the build phases' `.xcfilelist` files (see "Xcode" below). The resolver itself is T-CFG-02 (`src/core/config/`). |
-| `bdk build` | With no step, runs the steps that apply, in order: `config` and `codegen` always (`codegen` does nothing without `Pages/` or `Automation/`), `pages`, `automation`, `devtools` and `extensions` when a bundle is named (`--bundle`, or an Xcode build), `sign` in an Xcode build or with `--identity`. `--out` is a file for `config`, `automation`, `devtools` and `extensions` and a directory for `codegen`, so it is refused when `codegen` and another of them run. Not built: `runtime`, `embed`. |
+| `bdk build` | With no step, runs the steps that apply, in order: `config` always, `runtime` when there is a runtime to resolve (see "Runtime and embed"), `codegen` always (it does nothing without `Pages/` or `Automation/`), `pages`, `automation`, `devtools` and `extensions` when a bundle is named (`--bundle`, or an Xcode build), `embed` when there is also a runtime, `sign` in an Xcode build or with `--identity`. `--out` is a file for `config`, `automation`, `devtools` and `extensions` and a directory for `codegen`, so it is refused when `codegen` and another of them run. |
 | `bdk build codegen [--out <dir>] [--commands <file>] [--resolved <file>]` | Writes the `@bdk` packages for editors, `tsc` and Vite (T-CLI-04, see "Codegen" below). |
 | `bdk build pages [--bundle <App.app>] [--resolved <file>]` | Packages the bundled pages and the SDK into the application (T-CLI-04, see "Pages" below). Reads the `mode: "bundled"` routes of `bdk.resolved.json` (next to `bdk.toml`, or `--resolved`; missing means run `bdk build config` first) and writes each page to `<App.app>/Contents/Resources/<route path>`, replacing what was there. With `Pages/vite.config.*` it runs the project's own Vite once per page; otherwise it copies the page directory as it is. Refuses output the content security policy would block (`pages.csp`) and any file over 16 MiB (`pages.too_large`). Copies the `@bdk/internal` modules to `Contents/Resources/BDK/js/internal/`. In Xcode `--bundle` defaults to `CODESIGNING_FOLDER_PATH`, else `TARGET_BUILD_DIR/WRAPPER_NAME`. `--watch` is not built (T-CLI-06). |
 | `bdk build sign --bundle <App.app> --identity <name\|-> [--team <id>] [--entitlements <file>]` | Re-signs the application and the runtime nested in it with the application's identity (T-PKG-03): rewrites each helper's `CFBundleIdentifier` to `<app id>.helper[.renderer]` (Alerts: `<app id>.framework.AlertNotificationService`), then signs inside-out (libraries, loose executables, helpers with the JIT entitlement for renderer and GPU, framework, application) and verifies with `codesign --verify --deep --strict`. Refuses an application entitlement on the deny list. Before signing, copies the runtime's `THIRD_PARTY_NOTICES.html` (from the framework's `Resources`) to the application's `Contents/Resources`, so the signature covers it; a runtime without one is the warning `sign.notices_missing` (T-REL-02). `BDK_SKIP_SIGNING=1` skips it. In Xcode the flags default to `CODESIGNING_FOLDER_PATH`, `EXPANDED_CODE_SIGN_IDENTITY`, `DEVELOPMENT_TEAM` and `CODE_SIGN_ENTITLEMENTS`. An ad hoc identity (`-`) gets no `--options`; see [sdk/cli.md](../../docs/planning/sdk/cli.md) section 5.1. |
@@ -177,8 +177,9 @@ upstream (`tooling/src/chromium/test-support.ts`), never a real checkout.
 
 `embed` copies each entry of the runtime's `Chromium.app/Contents/Frameworks` to the bundle's `Contents/Frameworks`,
 symlinks as they are, makes the copy writable (the store is read-only) and checks it against the manifest. A copy
-that already matches, allowing for what signing rewrites, is left alone, so a signed bundle is not unsigned by the
-next build. Other frameworks in the bundle are not touched. With no step, `bdk build` runs `runtime` when there is a
+that `.bdk/embedded.json` records as this runtime's (bundle path → manifest digest) and that still matches, allowing
+for what signing rewrites, is left alone, so a signed bundle is not unsigned by the next build. The record is needed
+because that comparison ignores the content of executables and libraries, where two runtimes' engines differ. Other frameworks in the bundle are not touched. With no step, `bdk build` runs `runtime` when there is a
 runtime to resolve, and `embed` when there is also a bundle; a release with no runtime builds for the stub.
 
 Tests: `src/core/steps/runtime.test.ts` and `embed.test.ts`, on fixture runtimes in a temporary `BDK_HOME`; the
@@ -238,7 +239,7 @@ phase scripts. Not verified in Xcode itself.
 
 ## Signing
 
-The plan (`src/core/signing/`) is pure and unit-tested against a fake bundle tree with a fake `codesign` and `plutil` runner (`src/platform/xcode/tools.ts` is the only place either is started). Not built: `bdk build embed`.
+The plan (`src/core/signing/`) is pure and unit-tested against a fake bundle tree with a fake `codesign` and `plutil` runner (`src/platform/xcode/tools.ts` is the only place either is started).
 
 ### The end-to-end signing test (opt in)
 

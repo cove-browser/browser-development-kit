@@ -98,11 +98,16 @@ own files, so a snapshot BDK takes is one Chromium would restore:
 | Nothing (no `Last Version`, or one that does not parse) | Records the engine's version |
 | The same version, or another version of the same milestone | Nothing (Chromium supports a change within a milestone) |
 | An older milestone | With `snapshot_on_upgrade`, copies the directory to `Snapshots/<that version>/`, leaving out caches and the process lock, and keeps the three newest snapshots |
-| A newer milestone, and a snapshot no newer than this engine exists | Restores the newest such snapshot; the newer data is removed |
+| A newer milestone, and a snapshot no newer than this engine exists | Restores the newest such snapshot; the newer data is removed. The process singleton and crash state stay where they are, as in Chromium |
 | A newer milestone and no usable snapshot | `refuse`: start fails with `runtime.downgradeRefused` and nothing is touched. `fresh-profile`: the directory is renamed to `<name>.newer-<version>` beside it, untouched, and start continues with an empty one |
 
-A failure to copy or move is `runtime.profileMigrationFailed`; a snapshot is written beside its final name and
-renamed into place, so a crash leaves no half snapshot. Swift sees both as a `BDKError` of domain `runtime`.
+Before it reads or changes the directory, start takes a lock on `<name>.bdk-lock` beside it and keeps it for
+the rest of the process, through Chromium's start; while another copy of the application holds it, start fails
+with `runtime.dataDirectoryInUse` and nothing is touched. A failure to copy or move is
+`runtime.profileMigrationFailed`; a snapshot is written beside its final name and renamed into place, so a crash
+leaves no half snapshot. A restore records each phase in `.bdk-restore` before it starts it (the newer data moves
+into `.bdk-discard`, then the snapshot's entries move in), and the newer data is removed only when it is done,
+so a restore that stops part-way is finished by the next start before anything opens the directory. Swift sees both as a `BDKError` of domain `runtime`.
 Built in `packages/core/runtime/profile_versions.cc`, tested in `packages/core/tests/tests_profile_versions.c`
 on the stub. The Chromium engine reports the directory it will open and its version (`engine_backend.cc`), and
 applies the policy at the first start of the process only, before Chromium opens the directory; a later
@@ -683,6 +688,7 @@ Each has a stable code, used by fixtures in `tests/config/`. Messages name the f
 | `ui.surface_mode` | A mode the surface does not allow, such as `disabled` for interstitials. The runtime core checks the resolved file again at start and reports the same condition as `ui.surfaceMode` (and an unknown surface as `ui.surfaceUnknown`, a custom surface without a handler at the freeze as `config.handlerMissing`) |
 | `extensions.store_unknown` | A store name BDK does not ship |
 | `extensions.bundled_invalid` | A bundled extension whose directory does not exist, is not a directory, or has no `manifest.json` with `name`, `version` and a numeric `manifest_version` (T-EXT-14) |
+| `extensions.bad_link` | A link inside a bundled extension points nowhere or back to a directory that contains it; one that leaves the extension is `config.path_escape`. Checked before the directory's digest is taken |
 | `services.provider_unknown` | A provider name BDK does not ship |
 | `search.default_missing` | `default` names an engine that is not defined |
 | `search.url_invalid` | A search URL with no `{searchTerms}` |
