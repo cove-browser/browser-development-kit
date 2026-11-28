@@ -604,7 +604,7 @@ bool CanCallBluetooth() {
 
 }  // namespace
 
-void InstallWebAuthnDialogHook() {
+void InstallWebAuthnDialogHook(bool phones) {
   // macOS ends a process that calls a Bluetooth API without Bluetooth metadata
   // in the responsible application's Info.plist. Chrome checks that before its
   // Bluetooth power manager (and there assumes its own Info.plist when the
@@ -613,8 +613,12 @@ void InstallWebAuthnDialogHook() {
   // IsLowEnergySupported(). Without the metadata, Bluetooth is reported as
   // unsupported: no WebAuthn path calls it, security keys over USB still work,
   // and passkeys on a phone are not offered (BDKWebAuthnSupport says what they
-  // need).
-  if (!CanCallBluetooth()) {
+  // need). The same is done while [services.webauthn] phones is false
+  // (T-UIR-12, configuration.md 3.8): Chrome offers a phone, and contacts the
+  // phone's tunnel service, only where Bluetooth Low Energy is supported. It
+  // is read once, as Chromium starts: a later runtime of the process keeps the
+  // first one's choice.
+  if (!CanCallBluetooth() || !phones) {
     static base::NoDestructor<
         std::unique_ptr<device::BluetoothAdapterFactory::GlobalOverrideValues>>
         no_bluetooth(

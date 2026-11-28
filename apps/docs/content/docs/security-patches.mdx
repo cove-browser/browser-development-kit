@@ -1,0 +1,29 @@
+---
+title: Security patches
+description: How Chromium security fixes reach a BDK-based browser, and the gap you must plan for.
+---
+
+A BDK-based browser is exposed between an upstream Chromium security release and the moment your users
+run your update with the new runtime. No process removes that gap; this page says how BDK keeps it short
+and what is yours to do. The risk is R4 in
+[risks.md](https://github.com/cove-browser/browser-development-kit/blob/main/docs/planning/risks.md).
+
+## What BDK does
+
+| Step | Detail |
+| --- | --- |
+| Watch | A roll job checks for a newer stable Chromium every day and opens a pull request that moves the pin, with the result of applying BDK's patch series to it, and an issue when the pin has fallen behind. |
+| Release | A Chromium point or security release in the same milestone is a BDK patch release; a new milestone is a minor release. The Chromium version is in the runtime manifest and the release notes. |
+| Target | A runtime security release within a stated number of days of each upstream stable security update. The roll is built, tested and published by hand until a builder exists. |
+
+## What the application does
+
+| Step | Detail |
+| --- | --- |
+| Ship updates | BDK never updates itself or your application. Your updater delivers each new runtime with your application. |
+| Stay current | Move to each BDK patch release promptly; it carries the security fixes and nothing that breaks the API. |
+| Source mode | A runtime you build from source with your own patches is yours to rebuild for every security release. `bdk patch rebase <tag>` tells you which of your patches conflict with the new Chromium before you build. |
+| Disclose it | Tell your users that fixes reach them through your updates, after Chrome's. |
+
+`bdk doctor` is to warn when the pinned Chromium is behind the newest BDK release's, with the number of
+days; that check is not built yet.

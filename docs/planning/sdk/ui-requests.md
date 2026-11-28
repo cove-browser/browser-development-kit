@@ -71,36 +71,36 @@ The key is what goes in `[ui.surfaces]`. "Modes" lists what the surface allows: 
 
 | Key | Surface | Modes | Status | Milestone, task |
 |---|---|---|---|---|
-| `permissions` | Site permission prompts | D C | Plan | M3, T-UIR-02 |
-| `javascript_dialogs` | `alert`, `confirm`, `prompt`, `beforeunload` | D C | Plan | M3, T-UIR-02 |
-| `http_auth` | HTTP and proxy authentication | D C | Plan | M3, T-UIR-02 |
-| `client_certificates` | Client certificate selection | D C | Accepted (S3, 2026-11-25); default is a sheet of BDK's own, not routed yet (8.2) | T-UIR-10, M4; routing T-UIR-13, M9 |
-| `file_pickers` | File and directory choosers | D C X | Plan | M3, T-UIR-02 |
-| `context_menus` | Page context menus | D C X | Plan | M3, T-UIR-03 |
-| `new_windows` | Popups, undocked DevTools, picture-in-picture, extension windows | D C | Plan | M2, T-ADP-05; M3, T-UIR-03 |
-| `downloads` | Download start, progress, warnings | D C X | Plan | M3, T-UIR-03 |
-| `passwords` | Save, update, generate; leaked-password warning (Added, S16) | D C X | Plan | M3, T-UIR-04 |
-| `autofill` | Save address or card; fill confirmation | D C X | Plan | M3, T-UIR-04 |
-| `autofill_suggestions` | The suggestion list under a form field | D C | Accepted (S3, 2026-11-25) | T-UIR-15, M9 |
-| `printing` | Print preview and the system print dialog | D C X | Plan | M3, T-UIR-04 |
-| `translation` | Offer, progress, result, errors, preferences | D C X | Plan | M6, T-PRV-03 |
-| `find` | Find bar | D C | Plan | M3, T-UIR-06 |
-| `fullscreen` | HTML fullscreen | D C X | Plan | M2, T-MAC-05; M3, T-UIR-06 |
-| `exclusive_access` | Keyboard-lock and pointer-lock notices | D C | Accepted (S3, 2026-11-25) | T-UIR-15, M9 |
-| `notifications` | Web notifications | D C X | Plan | M3, T-UIR-06 |
-| `certificate_errors` | Certificate interstitials | D C | Plan | M3, T-UIR-05 |
-| `reputation_warnings` | Malware, phishing and download warnings | D C | Plan | M3, T-UIR-05 |
-| `devtools` | The DevTools front end | D C X | Plan; built in M7, engine pending (T-AUT-06) | M7, T-AUT-05 |
-| `device_choosers` | WebUSB, Web Bluetooth, WebHID, Web Serial | D C X | Accepted (S3, 2026-11-25); refused until routed, Web Bluetooth off (8.2) | T-UIR-10, M4; routing T-UIR-13, M9 |
-| `screen_capture` | The `getDisplayMedia` source picker | D C X | Accepted (S3, 2026-11-25); refused until routed (8.2) | T-UIR-10, M4; routing T-UIR-13, M9 |
-| `webauthn` | Passkey and security-key dialogs | D C X | Accepted (S3, 2026-11-25); built and tested on the engine 2026-11-22; the `bdk.toml` key is T-UIR-15 | M4, T-UIR-09; key T-UIR-15, M9 |
-| `external_protocols` | "Open this link in another application?" | D C X | Accepted (S3, 2026-11-25); default is a sheet of BDK's own, not routed yet (8.2) | T-UIR-10, M4; routing T-UIR-13, M9 |
-| `page_health` | Unresponsive page; blocked popups | D C | Accepted (S3, 2026-11-25) | T-UIR-15, M9 |
-| `payments` (name settled in T-UIR-14) | Payment Request sheet and Secure Payment Confirmation | D C X | Planned (product owner, 2026-11-25); off at start until built (8.2) | T-UIR-14, M9 |
-| `identity` (name settled in T-UIR-14) | FedCM account chooser | D C X | Planned (product owner, 2026-11-25); off at start until built (8.2) | T-UIR-14, M9 |
-| `digital_credentials` (name settled in T-UIR-14) | Digital Credentials API dialogs | D C X | Planned (product owner, 2026-11-25); off at start until built (8.2) | T-UIR-14, M9 |
-| `web_app_installs` | The install prompt of an installable web app | D C | Planned (product owner, 2026-11-25); raised only with `[web_apps] enabled = true`, which is how it is turned off ([web-apps.md](web-apps.md) 4.1) | T-PWA-03, T-PWA-04, M9 |
-| Extension surfaces | Actions, popups, side panels, menus, options, install prompts | See [extensions.md](extensions.md) | Plan | M5: surfaces 25 to 32 (`extension_actions` … `extension_uninstalls`), configured under `[extensions.ui]`; see `packages/core/docs/conventions.md`, "Extensions (M5)" |
+| `permissions` | Site permission prompts | D C | Built (M3) | M3, T-UIR-02 |
+| `javascript_dialogs` | `alert`, `confirm`, `prompt`, `beforeunload` | D C | Built (M3) | M3, T-UIR-02 |
+| `http_auth` | HTTP and proxy authentication | D C | Built (M3) | M3, T-UIR-02 |
+| `client_certificates` | Client certificate selection | D C | Built (T-UIR-13, 2026-11-25): a request after Chrome's automatic selection, with BDK's sheet as default | T-UIR-10, M4; T-UIR-13, M9 |
+| `file_pickers` | File and directory choosers | D C X | Built (M3; File System Access pickers since T-UIR-13) | M3, T-UIR-02 |
+| `context_menus` | Page context menus | D C X | Built (M3) | M3, T-UIR-03 |
+| `new_windows` | Popups, undocked DevTools, picture-in-picture, extension windows | D C | Built (M2, M3) | M2, T-ADP-05; M3, T-UIR-03 |
+| `downloads` | Download start, progress, warnings | D C X | Built (M3) | M3, T-UIR-03 |
+| `passwords` | Save, update, generate; leaked-password warning (Added, S16) | D C X | Built (M3) | M3, T-UIR-04 |
+| `autofill` | Save address or card; fill confirmation | D C X | Built (M3) | M3, T-UIR-04 |
+| `autofill_suggestions` | The suggestion list under a form field | D C | Built (M3; completed in T-UIR-15); the engine does not preview a suggestion in the field | T-UIR-04, M3; T-UIR-15, M9 |
+| `printing` | Print preview and the system print dialog | D C X | Built (M3) | M3, T-UIR-04 |
+| `translation` | Offer, progress, result, errors, preferences | D C X | Built (M6) | M6, T-PRV-03 |
+| `find` | Find bar | D C | Built (M3) | M3, T-UIR-06 |
+| `fullscreen` | HTML fullscreen | D C X | Built (M2, M3) | M2, T-MAC-05; M3, T-UIR-06 |
+| `exclusive_access` | Keyboard-lock and pointer-lock notices | D C | Built (T-UIR-15; engine 2026-11-27, 5.12) | T-UIR-15, M9 |
+| `notifications` | Web notifications | D C X | Built (M3) | M3, T-UIR-06 |
+| `certificate_errors` | Certificate interstitials | D C | Built (M3) | M3, T-UIR-05 |
+| `reputation_warnings` | Malware, phishing and download warnings | D C | Built (M3, M6) | M3, T-UIR-05 |
+| `devtools` | The DevTools front end | D C X | Built (M7; engine verified, T-AUT-06) | M7, T-AUT-05 |
+| `device_choosers` | WebUSB, Web Bluetooth, WebHID, Web Serial | D C X | Built (T-UIR-13, 2026-11-26; 5.16): a request with a live device list and a default chooser sheet; Web Bluetooth on when the application declares its Bluetooth usage string | T-UIR-10, M4; T-UIR-13, M9 |
+| `screen_capture` | The `getDisplayMedia` source picker | D C X | Built (T-UIR-13, 2026-11-26; 5.16): `getDisplayMedia` and `chrome.desktopCapture`, with a default picker and a sharing bar | T-UIR-10, M4; T-UIR-13, M9 |
+| `webauthn` | Passkey and security-key dialogs | D C X | Built (M4, tested on the engine with a virtual key 2026-11-22); Touch ID with the application's keychain group (T-UIR-11, 2026-11-27) | M4, T-UIR-09; key T-UIR-15, M9 |
+| `external_protocols` | "Open this link in another application?" | D C X | Built (T-UIR-13, 2026-11-25; 5.17): a request once Chrome decides to ask, with BDK's sheet as default | T-UIR-10, M4; T-UIR-13, M9 |
+| `page_health` | Unresponsive page; blocked popups | D C | Built (T-UIR-15, 2026-11-25; 5.19): surface 33, a hung page and blocked popups, with default presenters | T-UIR-15, M9 |
+| `payments` (`BDK_SURFACE_PAYMENTS` 34) | Payment Request sheet and Secure Payment Confirmation | D C X | Payment Request built on the engine (2026-11-27, 5.22); Secure Payment Confirmation off at start until T-UIR-11 (8.2) | T-UIR-14, M9 |
+| `identity` (`BDK_SURFACE_IDENTITY` 35) | FedCM account chooser | D C X | Built (T-UIR-14, 2026-11-27; 5.22) | T-UIR-14, M9 |
+| `digital_credentials` | Digital Credentials API dialogs | D C X | Designed in 5.22 and reviewed (product owner, 2026-11-27), following `[services.webauthn] phones`; not built; off at start until built (8.2) | T-UIR-14, M9 |
+| `web_app_installs` | The install prompt of an installable web app | D C | Built (T-PWA-04, 2026-11-26); raised only with `[web_apps] enabled = true`, which is how it is turned off ([web-apps.md](web-apps.md) 4.1). Surface 37 | T-PWA-03, T-PWA-04, M9 |
+| Extension surfaces | Actions, popups, side panels, menus, options, install prompts | See [extensions.md](extensions.md) | Built (M5) | M5: surfaces 25 to 32 (`extension_actions` … `extension_uninstalls`), configured under `[extensions.ui]`; see `packages/core/docs/conventions.md`, "Extensions (M5)" |
 
 `[ui] default_browser_surfaces = false` sets every key above to `custom`, which means the application must register a handler for each before start.
 
@@ -174,7 +174,7 @@ public final class ClientCertificateRequest: BDKUIRequest {       // Added
 }
 ```
 
-Default presenters: a sheet on the page view for credentials; Chromium's certificate selector for client certificates.
+Default presenters: a sheet on the page view for credentials; BDK's certificate sheet (below) for client certificates. Client certificates are routed since T-UIR-13 (2026-11-25): after Chrome's automatic selection, a `client_certificates` request with `host` and `certificates` `[{id, subject, issuer}]`; `accept` `{"certificate": id}` continues with it, and `deny`, a rejection or `disabled` goes on without one, as Chrome's selector does on Cancel. Run on the engine (2026-11-27, `tests_engine_client_certificates.c`): against `openssl s_server` requiring a client certificate, with the identity offered from memory by the testing command `clientcert.identity` (no Keychain involved), an accepted request sends the certificate and a denied one sends none.
 
 Built for client certificates (T-UIR-10, 2026-11-22; built, with no engine scenario yet; 8.2): no request is raised yet (S3, T-UIR-13). Chrome's automatic selection (`AutoSelectCertificateForUrls`) runs first; otherwise a sheet of BDK's own lists the first eight certificates by subject and issuer, with Cancel, which goes on without one, as Chromium's selector does. Chromium's selector is a views dialog and is never shown on a BDK page.
 
@@ -243,7 +243,7 @@ public final class NewWindowRequest: BDKUIRequest {
     public let features: WindowFeatures          // requested size and position, from window.open
     public let isUserGesture: Bool
     public let initiatorExtensionID: String?     // the extension that asked (an options page, a link in its popup)
-    public let webApp: WebAppInfo?               // kind .webApp only: the installed app being launched (not built: T-PWA-03, M9)
+    public let webApp: WebAppInfo?               // kind .webApp only: the installed app being launched (stub and Swift built, T-PWA-03; engine T-PWA-04)
     public let newContents: BDKWebContents       // already created; has an opener relationship where the web requires one
     public func accept()                         // the application has placed newContents.view, or will
     public func reject()                         // destroys newContents
@@ -258,7 +258,7 @@ public final class NewWindowRequest: BDKUIRequest {
 | `.pictureInPicture` | Document picture-in-picture |
 | `.extensionWindow` | `chrome.windows.create` |
 | `.application` | Chromium's own code asking for a page, such as a link in a built-in settings page |
-| `.webApp` | An installed web app being launched, or opening another window inside its scope ([web-apps.md](web-apps.md) 4.2). Not built: T-PWA-03, T-PWA-04, M9 |
+| `.webApp` | An installed web app being launched, or opening another window inside its scope ([web-apps.md](web-apps.md) 4.2). Built on the stub and in Swift (T-PWA-03, launch only); the engine, and a window opened from an app page, are T-PWA-04 |
 
 | | |
 |---|---|
@@ -349,6 +349,8 @@ Autofill save and update prompts (`autofill`). Chromium asks the window for an `
 
 The suggestion popup (`autofill_suggestions`). Chromium builds its popup in `AutofillPopupView::Create`; a patch lets BDK supply a factory. With a handler for the surface the suggestions are a request. Payload: `fieldRect` (`x`, `y`, `width`, `height`, in the page view's coordinates, which is also where the request is anchored) and `suggestions`, each `id` (the popup's row, as a decimal string), `label`, `sublabel`, `kind` (`password`, `address`, `card`, `generatedPassword`); titles, separators and footers are not listed. `grant` (Swift `accept`; `accept` is taken too) with `suggestion` set to an id fills the form and needs the gesture. Chromium ignores a choice made in the half second after the popup appeared; BDK delays an earlier one until then. `deny` closes the popup. A new list (the field changed) withdraws the request and raises another. With no handler, or `.useDefault`, the default presenter is Chromium's own popup, which needs no toolbar: on macOS it is a child window of the page's window (`CanShowRootPopup` asks only for the native view's window), so a window that is not a `BrowserView` hosts it. The engine scenarios create it for the page. Chromium shows suggestions only to a view that has keyboard focus, which on macOS includes being in the key window; the conformance harness turns that requirement off (`RWHVMacHasFocusReturnsFalseForNonKeyWindow`), as it does for fullscreen, because it cannot rely on its windows being key. The surface has no `disabled` mode (D C); a disabled `autofill` surface turns the offers and the popup off, so nothing is offered and nothing is filled.
 
+Checked against this section and completed in T-UIR-15 (2026-11-25; core, stub and Swift, conformance and Swift tests): the core now refuses a `grant` or `accept` whose `suggestion` is not one of the payload's (`ui.widensRequest`) and any completion but `grant`, `accept` and `deny` (`ui.completionNotAllowed`), so the stub and the engine refuse the same answers. `preview(_:)` is built as an update of the open request (`bdk_ui_update` `{"preview": id}` or `{"preview": null}`), which the core checks against the offered suggestions; it fills nothing. Not built: the engine acting on a preview (Chromium's `AutofillPopupController::SelectSuggestion`), and a suggestion's `icon` (the engine sends none) (T-UIR-15, M9).
+
 ### 5.9 Printing
 
 ```swift
@@ -433,6 +435,8 @@ public final class ExclusiveAccessRequest: BDKUIRequest {         // Added
 | Rule | The exit instruction must be shown, and Escape must exit. BDK handles Escape itself; a custom presenter cannot prevent it. |
 | `disabled` (fullscreen) | The Fullscreen API rejects |
 
+Exclusive access, checked against this section in T-UIR-15 (2026-11-25; core, stub and Swift): payload `kind` (`keyboardLock`, `pointerLock`), `origin`, `exitInstruction`. It is a notice: `accept` (Swift `acknowledge()`) is its only completion (`ui.completionNotAllowed` otherwise). Because the instruction must be shown, a notice the handler rejects or drops goes to the default presenter (`kDefaulted`), the way an interstitial that is rejected goes back. The surface cannot be disabled. On the engine (T-UIR-15, 2026-11-27; `engine/ui_exclusive_access.cc`): a BDK page is its own `WebContentsDelegate`, and Chromium's defaults refused both locks, so the page delegate applies Chrome's rules itself. A pointer lock needs a gesture unless the page unlocked it itself, and is refused for 1.25 seconds after the person pressed Escape; a keyboard lock is granted only to a page in fullscreen. Each lock raises the notice with Chromium's instruction (`GetInstructionTextForType`); the default presenter shows it across the top of the window for four seconds. Escape unlocks the pointer, and a keyboard lock that includes Escape ends when Escape is held for 1.5 seconds. Engine scenarios in `tests_engine_ui.c` (4); macOS gives pointer lock and keys only to the key window, so three of them need the harness window clicked to the front (`BDK_TEST_WAIT_FOR_KEY=1`) and otherwise say they were skipped, as the extension popup scenarios do.
+
 ### 5.13 Notifications
 
 ```swift
@@ -498,23 +502,28 @@ Default presenter: an undocked window. Custom: the application docks `frontend.v
 public final class DeviceChooserRequest: BDKUIRequest {
     public let kind: Kind                        // .usb, .bluetooth, .hid, .serial
     public let origin: URL
-    public var devices: Devices { get }          // AsyncSequence; devices appear and disappear while the chooser is open
+    public private(set) var devices: [Device]    // what is on offer now (id, name, isPaired, isConnected)
+    public var deviceChanges: BDKEventSequence<[Device]> { get }  // each new list while the chooser is open
+    public private(set) var isAdapterEnabled: Bool
+    public private(set) var isScanning: Bool
     public func select(_ device: Device, confirmedBy event: NSEvent) throws
     public func cancel()
 }
 
 public final class ScreenCaptureRequest: BDKUIRequest {
     public let origin: URL
+    public let extensionName: String?            // chrome.desktopCapture for the extension's tab
     public let requestsAudio: Bool
-    public let sources: Sources                  // AsyncSequence of screens, windows and pages, with thumbnails
-    public func share(_ source: CaptureSource, audio: Bool, confirmedBy event: NSEvent) throws
+    public private(set) var sources: [Source]    // screens, windows and pages (id, kind, name, thumbnail)
+    public var sourceChanges: BDKEventSequence<[Source]> { get }
+    public func share(_ source: Source, audio: Bool = false, confirmedBy event: NSEvent) throws
     public func cancel()
 }
 ```
 
 Default presenters: Chromium's chooser dialogs and media picker. `disabled`: the API rejects. Chromium's choosers and picker are views and cannot be shown on a BDK page (8.2), so T-UIR-13 (M9) writes BDK's own default presenters for both, and Web Bluetooth is turned on with them (product owner, 2026-11-25). While a page is capturing, `page.capture` reports it, and the application must show an indicator; the default presenter for that is a small "sharing" bar in the page's window.
 
-Built so far (T-UIR-10, 2026-11-22, passes on Chromium 158; 8.2): neither surface is routed (S3, T-UIR-13), and Chromium's chooser bubbles and picker cannot be shown on a BDK page, so both behave as `disabled` does. `navigator.usb.requestDevice()` and `navigator.serial.requestPort()` reject with NotFoundError, `navigator.hid.requestDevice()` resolves with no device, and `getDisplayMedia` rejects with NotAllowedError. Web Bluetooth is off at start (`navigator.bluetooth` is absent): nothing could choose a device, and its adapter would need the application's Bluetooth usage string.
+Device choosers built (T-UIR-13, 2026-11-26, on Chromium 158; payload in 8.1): Chrome's own chooser controllers find the devices, and BDK shows their list as the request instead of Chrome's views dialog. The default presenter is a sheet with the devices in a pop-up menu, which follows the list. Web Bluetooth is on when the application's `Info.plist` has `NSBluetoothAlwaysUsageDescription`, and absent (`navigator.bluetooth` undefined) when it has not, since macOS ends a process that uses Bluetooth without it; its scanning prompt (`requestLEScan`, behind Chromium's experimental features) and its pairing prompts are refused. The scenarios that choose a device use a fake chooser of the engine's (`chooser.open`), which goes through the same session: no Mac in the suite has a known USB, HID or serial device. Screen capture built (T-UIR-13, 2026-11-26; payload in 8.1): Chrome's access handler, source lists, streams and capture indicator are used as they are, and patch `bdk-let-an-embedder-supply-the-screen-capture-ui` lets BDK supply the two views pieces, the picker and the sharing notification. The picker is the `screen_capture` request; the default presenter is a sheet of BDK's with the sources in a pop-up menu and Share audio when the page asked for it. `chrome.desktopCapture.chooseDesktopMedia` with the extension's tab asks on that page, naming the extension (`extensionName`); without a tab there is no page to ask in and the call gets no stream. While a page shares, `BDKWebContents.captureActivity` (`bdk_contents_state_t.capture`, `BDK_CAPTURE_*`, with `BDK_CONTENTS_EVENT_CAPTURE_CHANGED`) contains `.display`, and the page shared contains `.captured`. With no `screen_capture` handler BDK shows the sharing bar at the top of the page's window, whose Stop ends the capture; an application with a handler shows its own indicator. Screens and windows are listed only when macOS has given the application Screen Recording; pages always are. On a locked screen a shared page draws no frame, so the stream does not reach the page until the screen is unlocked (two engine scenarios wait for that).
 
 ### 5.17 External protocols (Added)
 
@@ -529,9 +538,9 @@ public final class ExternalProtocolRequest: BDKUIRequest {
 }
 ```
 
-Default presenter: Chromium's confirmation dialog. `disabled`: external schemes are blocked. BDK's sheet (below) becomes the default presenter once the request is routed (T-UIR-13, M9).
+Default presenter: BDK's sheet (below). `disabled`: external schemes are blocked. Routed since T-UIR-13 (2026-11-25, `engine/ui_browser_dialogs.cc`): once Chrome decides to ask, the engine raises an `external_protocols` request with `url`, `initiatingOrigin`, `handlerName` and `isUserGesture` (always `false`: Chrome does not pass the gesture to its dialog); `grant` opens the application, and with `{"remember": true}` opens the scheme from that origin without asking again (Chrome's per-origin "always allow"); `deny`, a rejection or a withdrawal opens nothing. Engine scenarios `engine_dialogs_an_external_protocol_is_a_request_to_a_handler` and `engine_dialogs_a_disabled_external_protocol_surface_asks_nothing`; the sheet's scenario is unchanged.
 
-Built so far (T-UIR-10, 2026-11-22, passes on Chromium 158; 8.2): no request is raised yet (S3, T-UIR-13). Chrome decides whether to ask: blocked schemes stay blocked, `mailto:` and schemes the person allowed open without asking, and policy applies. When it asks, a patch gives the question to the engine, which shows a sheet of BDK's own with Chromium's wording ("Open <application>?") and Cancel as the default button, and opens the application only on "Open". The "always allow" checkbox is not offered.
+Built in T-UIR-10 (2026-11-22, passes on Chromium 158; 8.2), before the request above existed: Chrome decides whether to ask: blocked schemes stay blocked, `mailto:` and schemes the person allowed open without asking, and policy applies. When it asks, a patch gives the question to the engine, which shows a sheet of BDK's own with Chromium's wording ("Open <application>?") and Cancel as the default button, and opens the application only on "Open". The "always allow" checkbox is not offered.
 
 ### 5.18 WebAuthn (Added; built, T-UIR-09)
 
@@ -589,7 +598,7 @@ facts; `bdk build config` adds the note `plist.passkeys_phone`):
 | Security keys (USB; NFC and Bluetooth keys as Chromium supports them) | Nothing | Built; tested on the engine with a virtual CTAP2 key, not with hardware |
 | Passkeys on a phone (hybrid: QR code, Bluetooth, the phone's tunnel service) | `NSBluetoothAlwaysUsageDescription`; under the hardened runtime `com.apple.security.device.bluetooth`. Without the usage string the engine reports Bluetooth as unsupported (`ui_webauthn.cc`), so Chromium offers no phone and makes no Bluetooth call: macOS ends a process that calls Bluetooth without it, and Chromium checks only before its power manager, not before the phone's discovery | Routed (`connectPhone`, `qrCode`); not verified with a phone, and the tunnel service the phone picks (Google's for Android, Apple's for an iPhone) is contacted once the person chooses the phone (T-UIR-12) |
 | System passkeys (iCloud Keychain and other credential providers) | macOS 13.5 and Apple's `com.apple.developer.web-browser.public-key-credential` entitlement, which Apple grants to browsers | Chromium's own path, which shows the system's sheet; not verified (T-UIR-12) |
-| Touch ID passkeys kept by the browser | A `keychain-access-groups` entitlement for `<team>.<bundle id>.webauthn` with a provisioning profile; Chromium compiles its own group in, which no BDK application can hold | Not offered to BDK applications yet (T-UIR-11) |
+| Touch ID passkeys kept by the browser | A `keychain-access-groups` entitlement for `<team>.<bundle id>.webauthn`, with the provisioning profile macOS requires for it (an application signed with that entitlement and no profile is ended at launch) | The engine names that group from the running application's signature (patch `bdk-let-an-embedder-name-the-touch-id-keychain-access-group`, 2026-11-27, T-UIR-11); `BDKWebAuthnSupport.touchID` lists the entitlement when it is missing. Unsigned, a page finds no platform authenticator (`engine_webauthn_touch_id_follows_the_applications_signature`). Not yet run signed: the team's development profile needs this Mac registered |
 
 A custom presenter: `apps/examples/minimal-browser` sets one before start (`PasskeyPresenter` and `PasskeySheet`). It
 keeps one sheet per `ceremonyID` on the page's window, redraws it for each step from `presentation`, answers with
@@ -614,13 +623,110 @@ public final class BlockedPopupRequest: BDKUIRequest {
 
 Default presenters: a dialog offering to wait or stop the page; a small notice at the `addressBar` anchor. A crashed renderer is not a request. It is the `processGone` event, and what the user sees is the application's choice.
 
+Built in the core, the stub and Swift (T-UIR-15, 2026-11-25; conformance tests `ui.page_health_*`, Swift `UIPageHealthRequestTests`) and on the engine (2026-11-25, below):
+
+| | Unresponsive page | Blocked popups |
+|---|---|---|
+| Payload | `kind` `"unresponsive"`, `origin`, `pageTitle` | `kind` `"blockedPopups"`, `origin`, `popups` `[{id, url}]`: every popup blocked since the last notice was answered |
+| Completions | `accept` `{"action":"wait"}` or `{"action":"terminate"}`; `deny` waits. Anything else is `ui.widensRequest` or `ui.completionNotAllowed` | `grant` `{"popup": id}` opens that popup, which then raises a `new_windows` request of kind `popup`; `grant` `{"always": true}` allows the site's popups in the profile (Chromium's popup content setting); `deny` dismisses. Both grants need the gesture. One of `popup` and `always`, never both |
+| Raised and withdrawn | Once per hang; withdrawn when the renderer answers again or the page closes | A new blocked popup withdraws the notice and raises one with the whole list; the engine is to withdraw it when the page navigates |
+| Rejected, dropped, default | Waits: a request never ends a page unless the application or the person chose to | Opens nothing |
+| Swift | `UnresponsivePageRequest`: `wait()`, `terminate()` | `BlockedPopupRequest`: `popups`, `urls`, `allowOnce(_:confirmedBy:)`, `alwaysAllow(confirmedBy:)`, `dismiss()` |
+
+Both have `presentation` (`BDKPageHealthPresentation`: title, message, the popups to choose from and the buttons, in Chromium's wording) and `perform(_:)`, so a presenter shows what the default does whatever draws it. The surface allows `default` and `custom`; it cannot be disabled, because a hung page must still be stoppable and the popup blocker must still say what it blocked. Where this departs from the proposal above: `allowOnce` and `alwaysAllow` take the confirming event, because each opens a page or changes a site setting that the popup blocker refused (section 3), and `allowOnce` takes a `BlockedPopup` (its `id` and `url`) rather than a URL, since two blocked popups can share one. The stub's hooks are `bdk_stub_page_unresponsive`, `bdk_stub_page_responsive` and `bdk_stub_block_popup` (`runtime.stub.makeUnresponsive(_:)`, `makeResponsive(_:)`, `blockPopup(on:url:)`); `terminate` ends the stub page's renderer with the reason `killed`.
+
+On the engine (T-UIR-15, 2026-11-25; `engine/ui_page_health.cc`): Chromium's hang monitor reaches the page as `RendererUnresponsive` (each BDK page is its own `WebContentsDelegate`; `BdkTabDialogs` forwards the hung-renderer dialog too, for a page in a `Browser`), which raises the request once per hang and withdraws it on `RendererResponsive`; `terminate` ends the renderer (`RESULT_CODE_HUNG`) and anything else restarts the hang monitor. Each popup Chromium's popup blocker blocks reaches BDK through its `UrlListManager`; a grant of `popup` opens it with `ShowBlockedPopup` (then a `new_windows` request), `always` sets the site's popup content setting, and a committed navigation withdraws the notice. The default presenters are sheets of BDK's own (`ShowAlert`): "Page Unresponsive" with Exit page and Wait, and "Pop-ups blocked" listing the popups with an Open button for the first three, Always allow and Done. Departure from the proposal above: the blocked-popup default is a sheet, not a small notice at the `addressBar` anchor, because BDK has no anchored notice of its own yet. Engine scenarios `engine_dialogs_a_hung_page_raises_a_page_health_request` and `engine_dialogs_a_blocked_popup_raises_a_page_health_notice`, each with and without a handler. Not run on the engine: the grants (they need a confirming gesture the suite's silent run cannot give).
+
 ### 5.20 Extension surfaces
 
 Action state, popups, side panels, extension context-menu items, options pages, install and permission prompts, and the default extensions menu are in [extensions.md](extensions.md) section 4. They follow sections 1 to 3 of this document without exception.
 
-### 5.21 Web app installs (product owner, 2026-11-25; not built, T-PWA-03 and T-PWA-04, M9)
+### 5.21 Web app installs (product owner, 2026-11-25; stub, core and Swift built, T-PWA-03; engine T-PWA-04, M9)
 
-The install prompt of an installable web app, and the window it is launched in, are in [web-apps.md](web-apps.md) section 4. They follow sections 1 to 3 of this document without exception: `install` is a granting completion.
+The install prompt of an installable web app, and the window it is launched in, are in [web-apps.md](web-apps.md) section 4. They follow sections 1 to 3 of this document without exception: `install` is a granting completion (the ABI's `grant`; `install` is accepted as the same).
+
+### 5.22 Payments, identity and digital credentials (T-UIR-14; reviewed 2026-11-27; Payment Request built)
+
+Payment Request, Secure Payment Confirmation, FedCM and the Digital Credentials API were off at start (8.2) and are
+to be turned on and routed (product owner, 2026-11-25); Payment Request is, since 2026-11-27 (below). This section settles what T-UIR-14 asked to settle before
+building: the surface names, the payloads and completions, and where Chromium hands each to its views UI, read at
+the pin (`~/.bdk/chromium/managed/src`, tag `158.0.8127.37`; read, not run). Nothing here is in the ABI, the core,
+Swift or the engine yet, and the names stay proposals until the product owner reviews them.
+
+#### Where Chromium shows each, and the hook
+
+| Feature | Where Chromium decides to show UI | Views UI it shows | Embedder hook | Plan |
+|---|---|---|---|---|
+| Payment Request | `ChromePaymentRequestDelegate::ShowDialog` (`chrome/browser/payments/chrome_payment_request_delegate.cc:96`), case `PAYMENT_REQUEST` (`:103`). The delegate is made in `payments::CreatePaymentRequest` (`chrome/browser/payments/payment_request_factory.cc:62`, `:90`), bound in `chrome_browser_interface_binders.cc:549` | `PaymentRequestDialogView::Create` (`chrome/browser/ui/views/payments/payment_request_dialog_view.cc:109`), shown with `constrained_window::ShowWebModalDialogViews` (`:182`); a payment handler's own page opens inside it (`payment_handler_web_flow_view_controller.cc`) | None: no `ContentBrowserClient` method creates the delegate or the dialog, and the binder map is Chrome's. `SetPaymentRequestFactoryForTesting` (`payment_request_factory.cc:95`) is for tests | One small patch, as WebAuthn's (amendments 2.19): `ShowDialog` asks an embedder factory for the `payments::PaymentRequestDialog` (`components/payments/content/payment_request_dialog.h:19`, pure virtual) before making Chrome's |
+| Secure Payment Confirmation | The same `ShowDialog`, case `SECURE_PAYMENT_CONFIRMATION` (`chrome_payment_request_delegate.cc:105`): `SecurePaymentConfirmationController` (`components/payments/content/secure_payment_confirmation_controller.h:34`, also a `PaymentRequestDialog`) | `SecurePaymentConfirmationView::Create` (controller `.cc:373`; `chrome/browser/ui/views/payments/secure_payment_confirmation_dialog_view.cc:148`, `ShowWebModalDialogViews` at `:205`) | None; the same patch covers it | The same factory, for both dialog types. On macOS the credential is a Touch ID platform credential in a keychain group compiled in (`MAC_TEAM_IDENTIFIER_STRING.MAC_BUNDLE_IDENTIFIER_STRING.secure-payment-confirmation`, `chrome_payment_request_delegate.cc:59` and `:266`), which no BDK application can hold: the same problem as Touch ID passkeys (T-UIR-11), so SPC cannot verify on a BDK application until that is fixed the same way |
+| FedCM | `content::IdentityRequestDialogController` (`content/public/browser/webid/identity_request_dialog_controller.h`): `ShowAccountsDialog` (`:292`), `ShowFailureDialog` (`:312`), `ShowErrorDialog` (`:326`), `ShowLoadingDialog` (`:340`), `ShowVerifyingDialog` (`:352`), `ShowUrl` (`:371`, the IdP's pages), `CloseModalDialog` (`:386`), `RequestIdPRegistrationPermision` (`:395`) | `IdentityDialogController` (`chrome_content_browser_client.cc:8797`) makes `AccountSelectionView` (`chrome/browser/ui/webid/identity_dialog_controller.cc:605`, `:617`, `:651`), a views bubble or modal | Yes: `ContentBrowserClient::CreateIdentityRequestDialogController` (`content/public/browser/content_browser_client.h:2903`). `BdkContentBrowserClient` already derives from `ChromeContentBrowserClient` | No patch: BDK's browser client returns its own controller, which raises `identity` requests |
+| Digital Credentials | `content::DigitalIdentityProvider` (`content/public/browser/digital_identity_provider.h`): `IsLastCommittedOriginLowRisk` (`:68`), `ShowDigitalIdentityInterstitial` (`:80`), `Get` (`:92`), `Create` (`:99`) | `DigitalIdentityProviderDesktop` (`chrome_content_browser_client.cc:8803`; `chrome/browser/digital_credentials/digital_identity_provider_desktop.cc`): a QR code for a phone (`ShowQrCodeDialog`, `:281`) in `DigitalIdentityMultiStepDialog` (`chrome/browser/ui/views/digital_credentials/digital_identity_multi_step_dialog.cc:358`, `ShowWebModalDialogViews`), and a safety interstitial (`digital_identity_safety_interstitial_controller_desktop.cc:172`, `ShowWebModal`) | Yes: `ContentBrowserClient::CreateDigitalIdentityProvider` (`content_browser_client.h:2907`) | No patch: BDK's browser client returns its own provider, which raises `digital_credentials` requests and reuses content's cross-device transaction (`content/public/browser/digital_credentials_cross_device.h`) |
+
+Two findings that change what "turned on" can mean:
+
+- **Digital credentials on a Mac need a phone.** Chrome's desktop provider is cross-device only: it presents a
+  credential held in a wallet on a phone, over the same hybrid transport as passkeys on a phone (caBLE v2, QR code,
+  Bluetooth, the phone's tunnel service; `digital_identity_provider_desktop.cc:24` to `:30`, `device/fido/cable`).
+  Proposed: `digital_credentials` follows `[services.webauthn] phones` (configuration.md 3.8). With phones off (the
+  default) the API reports itself unsupported, as `disabled` does, and no tunnel host is contacted. This needs the
+  product owner's agreement, since it ties a surface to the phone switch.
+- **Payment Request is useful only with a payment handler**, as T-UIR-14 says: BDK has no basic-card method and no
+  Google Pay. A handler is a service-worker payment app, installed or installed just in time from the payment
+  method's manifest, which Chromium fetches from the payment method's origin; those fetches go through the network
+  audit. SPC depends on T-UIR-11, above.
+
+#### Surfaces
+
+The names `payments`, `identity` and `digital_credentials` are kept. Each allows `default`, `custom` and `disabled`;
+`disabled` keeps today's behaviour (the API absent or rejecting), so that turning a surface off is always possible.
+
+| Key | Kinds (payload `kind` or `step`) | Payload | Completions |
+|---|---|---|---|
+| `payments` | `kind` `paymentRequest` | `origin`, `topLevelOrigin`, `total` `{label, currency, value}`, `displayItems` `[{label, currency, value}]`, `apps` `[{id, name, origin, icon?}]` (the payment handlers that can pay), `requests` `{shipping, payerName, payerEmail, payerPhone}` | `grant` `{app}` pays with that handler and needs the gesture; the handler's page then opens as a `new_windows` request of a new kind `paymentHandler`, which the presenter shows and closes. `deny` aborts (`AbortError`). Shipping and payer details need address and contact pickers BDK does not have: a request that asks for them is refused before anyone is asked (`NotSupportedError`), as is one no app can pay |
+| `payments` | `kind` `securePaymentConfirmation` | `origin`, `payeeName`, `payeeOrigin`, `instrument` `{displayName, icon}`, `total`, `showOptOut` | `grant` `{}` verifies (Chromium then runs the platform authenticator, which is T-UIR-11's) and needs the gesture; `accept` `{"action":"optOut"}` where `showOptOut`; `deny` cancels |
+| `identity` | `step` `chooseAccount`, `loading`, `verifying`, `failure`, `error`, plus `registerIdP` for `RequestIdPRegistrationPermision`. One request per step, withdrawn when Chromium moves on, as WebAuthn (5.18) | `relyingParty` `{origin, iframeOrigin?}`, `context` (`signin`, `signup`, `use`, `continue`), `mode` (`passive`, `active`), `identityProviders` `[{id, configURL, name, icon?}]`, `accounts` `[{id, idp, name, email, givenName, picture, isReturning}]` (from `IdentityRequestAccount`, `identity_request_account.h:104` to `:122`), `error` `{code, url?}` | `grant` `{account, idp}` signs in and needs the gesture (it releases an identity to the site). Two providers may offer the same account `id`, so a grant names the provider; one without `idp` names an account only when a single provider offers that `id`, and otherwise dismisses; `accept` `{"action":"signInToIdP","idp"}` opens the IdP's sign-in page as a `new_windows` request of a new kind `identityProvider` (`ShowUrl`), `accept` `{"action":"moreDetails"}` opens the error URL; `accept` `{}` on `registerIdP` allows the registration and needs the gesture; `deny` dismisses |
+| `digital_credentials` | `step` `interstitial`, `connectPhone`, `error` | `origin`, `operation` (`get`, `create`), `risk` (`low`, `high`, from `IsLastCommittedOriginLowRisk`), `qrCode` (`connectPhone`), `error` | `grant` `{}` on `interstitial` continues and needs the gesture; `deny` cancels (`NotAllowedError`). `connectPhone` has nothing to answer but `deny`; it is withdrawn when the phone answers |
+
+Default presenters: sheets of BDK's own built from these payloads, as for WebAuthn, because each of Chromium's is a
+views dialog.
+
+Reviewed by the product owner, 2026-11-27: the names and payloads above, and `digital_credentials` following
+`[services.webauthn] phones`.
+
+**Payment Request, built (2026-11-27, Chromium 158).** `payments` is `BDK_SURFACE_PAYMENTS` (34); Swift
+`PaymentRequest` (`pay(with:confirmedBy:)`, `cancel()`) and `NewWindowRequest.Kind.paymentHandler`. Patch
+`bdk-let-an-embedder-present-the-payment-request-sheet`: the delegate asks BDK for the dialog first, and `show()`
+follows the page's visibility instead of requiring the active tab of an active window of Chromium's (every BDK page
+is a background tab of a host context), as permission prompts do. The engine (`ui_payments.cc`) raises the request
+once Chromium has found the apps that can pay, and a grant selects the app and pays through Chromium's own flow.
+Two Chromium behaviours shape it:
+
+- Chromium skips its sheet and pays at once when one app can pay (`WebPaymentsSingleAppUiSkip`). BDK turns that off
+  at start, so a page never pays without the person choosing.
+- Chromium holds a payment handler's answer until the person has used the handler's own page
+  (`PaymentRequestMandatoryPaymentAppUi`): a handler that answers without opening its page never resolves. The
+  handler's page (`PaymentRequestEvent.openWindow()`) is a `new_windows` request of kind `paymentHandler` in the
+  page's profile; input in it counts as that use, closing it cancels the payment, and it closes when the payment ends.
+
+With `payments = "disabled"` pages have no `PaymentRequest` (the `WebPayments` feature is off at start). Default
+presenter: a sheet with the total and who asks, Cancel (Return and Escape) and one "Pay with" button per app, naming
+its origin. Engine scenarios `tests_engine_payments.c` (4, and one launch): a handler that pays through a payment
+handler installed just in time from a payment method manifest on the loopback server, a deny, the default sheet,
+shipping and payer details refused, and `disabled`. Not built: Secure Payment Confirmation (its credential is in a
+keychain group compiled into Chromium, T-UIR-11) and `digital_credentials`.
+
+**FedCM, built (2026-11-27, Chromium 158).** `identity` is `BDK_SURFACE_IDENTITY` (35); Swift `IdentityRequest`
+(`signIn(as:confirmedBy:)`, `allowRegistration(confirmedBy:)`, `signInToIdentityProvider(_:)`, `showMoreDetails()`,
+`cancel()`) and `NewWindowRequest.Kind.identityProvider`. No patch: `BdkContentBrowserClient` returns its own
+`IdentityRequestDialogController` (`ui_identity.cc`), which raises one request per step (`chooseAccount`, `loading`,
+`verifying`, `failure`, `error`, `registerIdP`) and withdraws the open one when Chromium moves on. A registration is
+allowed with `grant` and the gesture (the router has one granting completion per surface), not `accept` as proposed
+above. An identity provider's pages (its sign-in page, an error's details, a privacy policy) are `new_windows`
+requests of kind `identityProvider`. With `identity = "disabled"` pages have no `IdentityCredential` (`FedCm` off at
+start). Default presenter: a sheet with Cancel and one "Continue as <name> (<email>)" button per account, and sheets
+for a failure, an error and a registration. Engine scenarios `tests_engine_identity.c` (3, and one launch): a site
+and an identity provider on the loopback server; a handler signs in and the site gets the provider's token, a deny
+sends no assertion, the default sheet signs in, and `disabled`.
 
 ## 6. Default presenters
 
@@ -644,10 +750,10 @@ Written against the stub; the real runtime's payloads are the engine tasks' (T-U
 | Topic | Decision |
 |---|---|
 | Completions | The ABI names three: `"grant"` (needs the confirming `NSEvent`; permission grants, a kept dangerous download, a saved password or card, an accepted suggestion, a proceed past an interstitial, opening an external protocol), `"accept"` (every other positive answer) and `"deny"` (every negative one, including dismiss and go back). The arguments JSON distinguishes the rest. |
-| Arguments | `permissions`: grant `{"kinds":[…],"duration":"persistent"\|"thisVisit"}`, deny `{"persist":bool}` or `{"dismissed":true,"persist":false}`. `javascript_dialogs`: accept `{"text"?,"suppressFurther"}`, deny `{"suppressFurther"}`. `http_auth`: accept `{"username","password"}`. `client_certificates`: accept `{"certificate":id}`. `file_pickers`: accept `{"paths":[…]}`. `context_menus`: accept `{"action":"show","items":[…],"at"?}` or `{"action":"perform","item":id}`. `downloads`: accept `{"destination"?}`. `printing`: accept `{"action":"systemDialog"}` or `{"action":"savePDF","path"}`. `find`: accept `{"action":"close"}`. `passwords`, `autofill`: deny `{"never":true}` or `{"dismissed":true}`. `autofill_suggestions`: grant `{"suggestion":id}`. `notifications`: accept `{"event":"clicked","action"?}`, deny `{"event":"closed","byUser"}`. `external_protocols`: grant `{"remember"}`. `webauthn`: accept `{"mechanism"}`, `{"pin"}`, `{"action":"otherMechanisms"}` or `{}`, grant `{"account"}` (5.18). |
+| Arguments | `permissions`: grant `{"kinds":[…],"duration":"persistent"\|"thisVisit"}`, deny `{"persist":bool}` or `{"dismissed":true,"persist":false}`. `javascript_dialogs`: accept `{"text"?,"suppressFurther"}`, deny `{"suppressFurther"}`. `http_auth`: accept `{"username","password"}`. `client_certificates`: accept `{"certificate":id}`. `file_pickers`: accept `{"paths":[…]}`. `context_menus`: accept `{"action":"show","items":[…],"at"?}` or `{"action":"perform","item":id}`. `downloads`: accept `{"destination"?}`. `printing`: accept `{"action":"systemDialog"}` or `{"action":"savePDF","path"}`. `find`: accept `{"action":"close"}`. `passwords`, `autofill`: deny `{"never":true}` or `{"dismissed":true}`. `autofill_suggestions`: grant `{"suggestion":id}`. `notifications`: accept `{"event":"clicked","action"?}`, deny `{"event":"closed","byUser"}`. `external_protocols`: grant `{"remember"}`. `webauthn`: accept `{"mechanism"}`, `{"pin"}`, `{"action":"otherMechanisms"}` or `{}`, grant `{"account"}` (5.18). `exclusive_access`: accept `{}`. `page_health`: accept `{"action":"wait"\|"terminate"}`, grant `{"popup"}` or `{"always":true}` (5.19). |
 | Payload | The field names of section 5 in camelCase. Handles (`opener`, `newContents`, `previewContents`, `inspected`, `frontend`) are decimal strings. Two kinds on one surface are told apart by the payload: `downloads` with a `danger` field is a dangerous download, `passwords` with `"kind":"leaked"` is the leaked-password warning. |
 | Narrowing | Checked in Swift before the ABI call: a grant for kinds the request did not ask for (`ui.kindsNotRequested`), a certificate, menu item or suggestion it did not offer, more than one file for a single-file picker, `proceed` on a non-overridable interstitial (`ui.notOverridable`). |
-| Gaps | The ABI cannot report a notification as shown without completing it, preview an autofill suggestion, or complete an `NSEvent`-less `grant`. `shown()` is local, `preview` is absent. |
+| Gaps | The ABI cannot report a notification as shown without completing it, or complete an `NSEvent`-less `grant`. `shown()` is local. An autofill preview is an update of the open request (5.8, T-UIR-15). |
 
 ### 8.1 What the engine sends and does (T-UIR-02, T-UIR-06, 2026-11-19)
 
@@ -658,7 +764,9 @@ Settled against the Chromium engine (`chromium/bdk/engine/ui_*.cc`). Where this 
 | `permissions` | `origin`, `embeddingOrigin` (when different), `kinds` (camera, microphone, geolocation, notifications, clipboardRead, midi, storageAccess, localFonts, windowManagement, idleDetection, and Chromium's others by name), `text` `{title: "<origin> wants to", message: <Chromium's fragment>}`, `offersOneTime` | `grant` needs a recent mouse-up or key-down `NSEvent` of one of this application's windows (the engine checks type, age under 10 s and window; anything less is a dismissal, nothing granted). `kinds` must equal what was asked: the request manager decides a prompt's requests together, so a grant of fewer kinds grants nothing (dismissed). `duration` `thisVisit` is Chromium's one-time grant. `deny` `{persist:true}` blocks for the site, `{persist:false}` and a rejected or dropped request leave no decision and no embargo count, `{dismissed:true}` counts as a dismissal. Withdrawn when the manager drops the prompt (navigation, close). The decision lands in the profile's content settings, so a persistent profile keeps it and a private profile never shares it. Camera and microphone arrive here through Chrome's media capture logic. A prompt for a page that is not visible waits for it to be (Chromium's rule). |
 | `javascript_dialogs` | `kind`, `origin`, `pageTitle`, `message`, `defaultPromptText` (prompt), `isReload`, `offersSuppression` (from a page's second dialog since its last navigation) | `accept` `{text?, suppressFurther}` and `deny` `{suppressFurther}`. Suppressing silences the page's later dialogs until it navigates; the engine honours it even if the dialog did not offer it. `beforeUnload` carries Chromium's fixed text, never the page's. Navigation or closing withdraws it. An automation session cannot answer a dialog. |
 | `http_auth` | `challenger`, `realm`, `isProxy`, `scheme`, `savedCredentialsAvailable` (false: a saved login is not offered for a challenge yet) | `accept` `{username, password}`; everything else cancels the challenge. The request is withdrawn when the network stack drops the challenge. |
-| `file_pickers` | `mode` (open, openMultiple, directory, save), `acceptedTypes` (MIME types and `.ext`), `suggestedName` (save), `isFileSystemAccessAPI` (always false: the File System Access pickers are not routed yet), `origin` | `accept` `{paths}`. More than one path for a single-file input keeps the first. A directory upload is enumerated by the engine. `disabled` cancels the input. |
+| `file_pickers` | `mode` (open, openMultiple, directory, save), `acceptedTypes` (MIME types and `.ext`), `suggestedName` (save), `isFileSystemAccessAPI`, `origin` | `accept` `{paths}`. More than one path for a single-file input keeps the first. A directory upload is enumerated by the engine. `disabled` cancels the input. Since T-UIR-13 (2026-11-26) `showOpenFilePicker`, `showSaveFilePicker` and `showDirectoryPicker` are requests too, with `isFileSystemAccessAPI` true and `acceptedTypes` the extensions the page listed; a cancel, a rejection or `disabled` rejects the page's call with `AbortError`. Chromium asks first only for a page that is visible, and after a directory is chosen asks whether the site may view it (a `browser_dialogs` sheet, 8.2). |
+| `device_choosers` | `kind` (usb, hid, serial, bluetooth), `origin` (the frame asking), `devices` `[{id, name, paired?, connected?}]` (paired and connected for Bluetooth), `adapterEnabled`, `scanning` | While open, each change of the list arrives as an update `{devices, adapterEnabled, scanning}` (`bdk_ui_update`); an id stays the device's while the request is open. `select` `{device: id}` needs the gesture and connects the page to that device; `deny`, a rejection, a drop, a withdrawal or `disabled` cancels, so `requestDevice()` and `requestPort()` reject with `NotFoundError` and HID's resolves with no device. Withdrawn when Chromium takes the chooser down (the frame navigates or closes). |
+| `screen_capture` | `origin` (the page asking), `extensionName` (chrome.desktopCapture), `requestsAudio`, `sources` `[{id, kind (screen, window, page), name, thumbnail?}]` (thumbnail a PNG data URL, 160 by 100 at most) | While open, each change of the lists arrives as an update `{sources}`; an id stays the source's while the request is open. `share` `{source: id, audio?}` needs the gesture and shares it (audio only when asked for); `deny`, a rejection, a drop, a withdrawal or `disabled` refuses: `getDisplayMedia` rejects with `NotAllowedError`, chrome.desktopCapture's callback gets no stream id. The page must be visible (Chrome's rule on macOS). |
 | `find` | `initialText` (the page's selection as the browser process knows it, else the last search; only the last search is tested) | Raised by the engine's find entry point (`PageFind::Present`, which `page.find.present()` calls through `bdk_contents_find_present`). `accept` `{action:"close"}` ends it and clears the search. Only one is open per page; asking again focuses the bar. Navigation withdraws it. With no handler the default bar searches through Chrome's find helper and shows "n of m". |
 | `passwords` | `origin`, `username`, `isUpdate` | `grant` needs the gesture; `deny` `{never:true}` or `{dismissed:true}`. Asked when the page finishes a navigation with a question pending ([5.8](#58-passwords-and-autofill)). |
 | `autofill` | `kind` (`address`, `card`), `isUpdate`, `summary`, `text` `{title, message}` | `grant` (or `save`) needs the gesture; `deny` declines, `deny` `{dismissed:true}` leaves it undecided. A rejected, dropped, disabled or withdrawn request saves nothing. |
@@ -682,23 +790,24 @@ reading the source, not from a test.
 
 | Chromium's dialog | Reached from a BDK page by | Now |
 |---|---|---|
-| External protocol (`ExternalProtocolDialog`) | A link to a scheme another application handles that Chrome asks about | A sheet (5.17); patch `bdk-let-an-embedder-present-the-external-protocol-dialog` |
+| External protocol (`ExternalProtocolDialog`) | A link to a scheme another application handles that Chrome asks about | An `external_protocols` request since T-UIR-13, with BDK's sheet as default (5.17); patch `bdk-let-an-embedder-present-the-external-protocol-dialog` |
 | Tab-modal dialog models: File System Access ("view files?", restricted directory, dangerous file), DevTools' folder permission, extension "install blocked" and "ask a parent" | `showDirectoryPicker()` and the save picker; DevTools workspaces; installing a blocked extension | A sheet: the model's title and paragraphs, OK and Cancel with the model's default first, and the model's own callbacks; a checkbox keeps its initial state; a model with a text field or combobox is closed as dismissed. Patch `bdk-let-an-embedder-present-tab-modal-dialog-models` |
 | Credential Management account chooser and auto sign-in notice | `navigator.credentials.get({password: true})` on a site with saved passwords | Sheets of the `passwords` surface: one button per account (the first eight); OK or Turn off. Patch `bdk-let-an-embedder-present-the-credential-manager-prompts` |
-| Client certificate selector | A server that asks for a certificate the Keychain has | A sheet (5.3); no patch |
-| Device chooser bubbles (WebUSB, WebHID, Web Serial) | `requestDevice()`, `requestPort()` | Refused as a cancel (5.16); no patch |
-| Web Bluetooth chooser, scanning prompt, pairing dialogs | `navigator.bluetooth` | Off at start (`WebBluetooth`), and refused if reached |
-| Screen-capture picker, "share this tab", capture-policy confirmation | `getDisplayMedia()` | Refused: NotAllowedError (5.16) |
+| Client certificate selector | A server that asks for a certificate the Keychain has | A `client_certificates` request since T-UIR-13, with BDK's sheet as default (5.3); no patch |
+| Device chooser bubbles (WebUSB, WebHID, Web Serial) | `requestDevice()`, `requestPort()` | `device_choosers` requests since T-UIR-13 (5.16); patch `bdk-let-an-embedder-keep-the-serial-chooser-from-asking-for-bluetooth` for Web Serial without a Bluetooth usage string |
+| Web Bluetooth chooser, scanning prompt, pairing dialogs | `navigator.bluetooth` | The chooser is a `device_choosers` request when the application declares its Bluetooth usage string, and Web Bluetooth is off without one (5.16); the scanning and pairing prompts are refused |
+| Screen-capture picker, "share this tab", capture-policy confirmation | `getDisplayMedia()` | A `screen_capture` request since T-UIR-13 (5.16); patch `bdk-let-an-embedder-supply-the-screen-capture-ui` |
 | HTTPS-First's "ask before HTTP" dialog | An HTTP navigation with HTTPS-First on | Off (`HttpsFirstDialogUi`): the interstitial page asks instead (5.14) |
-| Payment Request sheet, Secure Payment Confirmation | `new PaymentRequest(...).show()` | Off (`WebPayments`, `SecurePaymentConfirmation`): `PaymentRequest` is absent |
-| FedCM account chooser | `navigator.credentials.get({identity})` | Off (`FedCm`): `IdentityCredential` is absent |
+| Secure Payment Confirmation | `new PaymentRequest(...)` with the `secure-payment-confirmation` method | Off (`SecurePaymentConfirmation`) until T-UIR-11. Payment Request itself is routed since T-UIR-14 (5.22) |
+| FedCM account chooser | `navigator.credentials.get({identity})` | `identity` requests since T-UIR-14 (5.22); BDK's browser client supplies the dialog controller, no patch |
 | Digital Credentials dialogs | `navigator.credentials.get({digital})` | Off (`WebIdentityDigitalCredentials`, `...Creation`) |
 | Web application install dialogs | `beforeinstallprompt`'s `prompt()` | Off: `profile.web_app.install_by_user_enabled` defaults to false, so no page offers itself for installation. From M9 that is the behaviour of `[web_apps] enabled = false`, the default; with `true` the dialog becomes a `web_app_installs` request (T-PWA-04, [web-apps.md](web-apps.md)) |
+| Web Install API dialogs (found by T-PWA-01, 2026-11-25; not in the T-UIR-10 list) | `navigator.install()`, the `<install>` element | Off at start (T-PWA-06): `WebAppInstallation` and `InstallElement` are disabled with the features T-UIR-10 turns off, so `navigator.install` is undefined and `<install>` is an unknown element whether `[web_apps] enabled` is false or true ([web-apps.md](web-apps.md) 10.2). Before, `navigator.install()` reached the views "not supported" dialog, the kind of dialog that ended the application before T-UIR-10. Scenario `engine_dialogs_page_initiated_install_apis_are_absent` |
 | JavaScript dialogs, HTTP authentication, permission prompts, file pickers and folder upload, password and autofill save bubbles, printing, WebAuthn, extension install and uninstall prompts, Chrome's `TabModalConfirmDialog` from the `Browser`'s delegate | Pages | Already BDK's (5.1 to 5.18, extensions.md): no views dialog is reached |
 | Bookmarks editor, application info, shortcuts, web application uninstall, update review and launch, tab groups, the window name prompt, site data, certificate viewer, caret browsing, "downloads in progress", relaunch and update notices, search engine choice, profiles, sync and sign-in | Chrome's own windows, menus and accelerators | Not reachable: a BDK application has none of them, and sign-in is off |
 | Autofill payments (server cards, OTP, BNPL, save and fill, payments WebAuthn), password change, the leaked-password dialog, tailored security, password reuse, Lens, Glic, the actor, skills, Save to Drive, dictation onboarding, feature first run | Google services | Not reachable: off at start or with no Google key (providers/README.md); the leaked-password warning is S16 |
 | Content analysis, data controls, device signals, idle and enterprise start-up dialogs, cloud management | Enterprise policy | Not reachable: they need policies BDK applications do not set |
-| Platform-app choosers, media galleries, kiosk file system, `chrome.desktopCapture.chooseDesktopMedia` | Extension and platform-app APIs | Platform apps cannot run. An installed extension can still open the desktop-capture picker: T-UIR-13, M9 |
+| Platform-app choosers, media galleries, kiosk file system, `chrome.desktopCapture.chooseDesktopMedia` | Extension and platform-app APIs | Platform apps cannot run. `chrome.desktopCapture.chooseDesktopMedia` for the extension's tab is a `screen_capture` request since T-UIR-13 (5.16) |
 
 **Decided by the product owner, 2026-11-25** ([../amendments.md](../amendments.md) 2.23): every row above that is
 refused, off or a fixed sheet becomes a routed request in M9. The web application install dialogs were left out of

@@ -169,12 +169,13 @@ The functions behind the Swift objects in [swift-api.md](swift-api.md) sections 
 |---|---|
 | `bdk_contents_create`, `bdk_contents_close`, `bdk_contents_destroy` | Lifecycle. Create takes a size-prefixed options struct. |
 | `bdk_contents_load`, `_reload`, `_stop`, `_go_to_offset`, `_go_to_index`, `_entries`, `_prune` | Navigation |
-| `bdk_contents_state` | Fills a size-prefixed struct with URL, title, loading, progress, security, audio, capture, visibility, focus, zoom |
+| `bdk_contents_state` | Fills a size-prefixed struct with URL, title, loading, progress, security, audio, capture, visibility, focus, zoom. `capture` is `BDK_CAPTURE_*` (camera, microphone, display: a screen, a window or a page, and captured: another page captures this one), and `BDK_CONTENTS_EVENT_CAPTURE_CHANGED` (13, detail `{capture}`) reports each change (T-UIR-13, 2026-11-26) |
 | `bdk_contents_session_state`, `bdk_contents_restore` | Serialised navigation state, as a buffer |
 | `bdk_contents_set_muted`, `_set_zoom`, `_set_user_agent`, `_perform_command`, `_can_perform_command` | Page controls |
 | `bdk_contents_discard`, `_set_auto_discardable` | Added (S15). Discard a hidden page's renderer; exempt a page from Chromium's automatic discarding. The `bdk_contents_t` handle stays valid across a discard, including when Chromium replaces the underlying WebContents. |
 | `bdk_contents_find_start`, `_find_next`, `_find_previous`, `_find_stop`, `_find_present`, `bdk_contents_print` | Find in page and printing, started by the application (T-SWF-07). `find_start` takes the text and an optional size-prefixed options struct (`match_case`); `find_stop` takes whether to clear the selection. Results arrive as `BDK_CONTENTS_EVENT_FIND_RESULT` events with `{"matchCount","activeIndex","rect","final"}`. `find_present` and `print` raise a `find` and a `printing` UI request. |
 | `bdk_contents_can_perform_command`, `_perform_command`, `_set_zoom_scoped`, `_exit_picture_in_picture` | Added in M4 (T-SWF-06): page commands (`BDK_PAGE_COMMAND_*`), zoom for the page or the site (`BDK_ZOOM_SCOPE_*`), leaving picture-in-picture. `perform` on a disabled command is `contents.commandDisabled`. |
+| `bdk_navigation_policy_set_handler`, `bdk_navigation_policy_decide` | Added in M9 (T-SWF-10; amendments 2.25): the navigation policy of [swift-api.md](swift-api.md) 6.3. The runtime's one handler, settable at any time (not a registration), is called later with a decision handle (a `bdk_context_t`), the page and `{"url","type","method","isUserInitiated","isRedirect","redirectedFrom"?,"initiator":{"kind","origin"?},"isPrerender"}`, after the navigation's start event and before its request, and again at each server redirect. `decide` takes `BDK_NAVIGATION_ALLOW`, `_CANCEL` or `_REDIRECT` with a URL, once, now or later; an unknown action or implausible URL is `BDK_ERR_INVALID_ARGUMENT` and leaves it open; an answered decision, or one whose navigation was stopped, superseded or closed, is `BDK_ERR_STALE_HANDLE`. A cancel ends the navigation as failed with `{"code":"cancelledByPolicy"}`, a redirect with `{"code":"redirectedByPolicy","redirectUrl"}` before loading the URL as `bdk_contents_load` would. The rules in full are in `bdk_contents.h`. |
 | `bdk_contents_set_host_context` | Conditional on decision D1 |
 
 Scripting, capture, translation and DevTools go through broker commands, not host functions, because automation uses them too.
@@ -419,6 +420,7 @@ The conformance suite is one set of tests written against the ABI. It runs again
 - The check order in [services.md](services.md) section 2, for a page caller and a session caller, using a test-only way to act as each.
 - The UI-request rules in [ui-requests.md](ui-requests.md) section 3.
 - Start-up: version mismatch, hash mismatch, invalid resolved configuration, registration after the freeze.
+- The navigation policy (`tests_navigation_policy.c`), on both; the engine adds its own scenarios against a loopback server (`tests_engine_navigation_policy.c`, T-SWF-11).
 
 A behaviour that the stub and the real runtime could disagree on belongs in the suite.
 

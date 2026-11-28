@@ -438,6 +438,97 @@ static void test_ui_a_disabled_file_picker_does_nothing(void) {
     finish(c);
 }
 
+/* ---- File System Access pickers (T-UIR-13) ---- */
+
+static const char* fsa_open_script =
+    "showOpenFilePicker({types:[{description:'Text',accept:{'text/plain':['.txt']}}]})"
+    ".then(h=>document.title='fsa:'+h[0].name,e=>document.title='fsa-error:'+e.name)";
+
+static const char* fsa_directory_script =
+    "showDirectoryPicker().then(h=>document.title='dir:'+h.name,"
+    "e=>document.title='fsa-error:'+e.name)";
+
+static const char* fsa_save_script =
+    "showSaveFilePicker({suggestedName:'notes.txt'}).then(h=>document.title='saved:'+h.name,"
+    "e=>document.title='fsa-error:'+e.name)";
+
+static void test_ui_a_file_system_access_picker_with_no_handler_uses_the_default_picker(void) {
+    char path[64], name[64], answer[200], want[128];
+    make_file(path, sizeof path, name, sizeof name);
+    bdk_contents_t c = start_page(0, NULL);
+    snprintf(answer, sizeof answer, "{\"paths\":[\"%s\"]}", path);
+    script("file_pickers", answer);
+    run_script(c, fsa_open_script, 1);
+    snprintf(want, sizeof want, "fsa:%s", name);
+    CHECK(wait_for_title(c, want));
+    char out[4096];
+    last_shown("file_pickers", out, sizeof out);
+    CHECK(strstr(out, "isFileSystemAccessAPI\\\":true") != NULL);
+    unlink(path);
+    finish(c);
+}
+
+static void test_ui_a_handler_answers_a_file_system_access_picker(void) {
+    char path[64], name[64], args[200], want[128];
+    make_file(path, sizeof path, name, sizeof name);
+    bdk_contents_t c = start_page(BDK_SURFACE_FILE_PICKERS, NULL);
+    snprintf(args, sizeof args, "{\"paths\":[\"%s\"]}", path);
+    g_log.complete = "accept";
+    g_log.complete_args = args;
+    run_script(c, fsa_open_script, 1);
+    snprintf(want, sizeof want, "fsa:%s", name);
+    CHECK(wait_for_title(c, want));
+    CHECK(strstr(g_log.payload, "\"mode\":\"open\"") != NULL);
+    CHECK(strstr(g_log.payload, "\"isFileSystemAccessAPI\":true") != NULL);
+    CHECK(strstr(g_log.payload, "\".txt\"") != NULL);
+    CHECK(strstr(g_log.payload, "\"origin\":\"https://bdk.test\"") != NULL);
+    unlink(path);
+    finish(c);
+}
+
+static void test_ui_a_handler_answers_the_directory_and_save_pickers(void) {
+    char dir[64] = "/tmp/bdk-pick-dir-XXXXXX", args[200], want[128];
+    REQUIRE(mkdtemp(dir) != NULL);
+    bdk_contents_t c = start_page(BDK_SURFACE_FILE_PICKERS, NULL);
+    /* Chromium then asks whether the site may view the folder: a tab-modal model BDK shows as a
+       sheet of browser_dialogs. */
+    script("browser_dialogs", "{\"answer\":\"accept\"}");
+    snprintf(args, sizeof args, "{\"paths\":[\"%s\"]}", dir);
+    g_log.complete = "accept";
+    g_log.complete_args = args;
+    run_script(c, fsa_directory_script, 1);
+    snprintf(want, sizeof want, "dir:%s", strrchr(dir, '/') + 1);
+    CHECK(wait_for_title(c, want));
+    CHECK(strstr(g_log.payload, "\"mode\":\"directory\"") != NULL);
+    char file[128];
+    snprintf(file, sizeof file, "%s/notes.txt", dir);
+    snprintf(args, sizeof args, "{\"paths\":[\"%s\"]}", file);
+    run_script(c, fsa_save_script, 1);
+    CHECK(wait_for_title(c, "saved:notes.txt"));
+    CHECK(strstr(g_log.payload, "\"mode\":\"save\"") != NULL);
+    CHECK(strstr(g_log.payload, "\"suggestedName\":\"notes.txt\"") != NULL);
+    unlink(file);
+    rmdir(dir);
+    finish(c);
+}
+
+static void test_ui_a_cancelled_file_system_access_picker_rejects(void) {
+    bdk_contents_t c = start_page(BDK_SURFACE_FILE_PICKERS, NULL);
+    g_log.complete = "deny";
+    run_script(c, fsa_open_script, 1);
+    CHECK(wait_for_title(c, "fsa-error:AbortError"));
+    finish(c);
+}
+
+static void test_ui_a_disabled_file_system_access_picker_rejects(void) {
+    bdk_contents_t c = start_page(BDK_SURFACE_FILE_PICKERS, "{\"file_pickers\":\"disabled\"}");
+    run_script(c, fsa_open_script, 1);
+    CHECK(wait_for_title(c, "fsa-error:AbortError"));
+    CHECK(g_log.calls == 0);
+    CHECK(shown("file_pickers") == 0);
+    finish(c);
+}
+
 /* ---- permissions ---- */
 
 static const char* ask_notifications = "Notification.requestPermission().then(p=>document.title=p)";
@@ -918,6 +1009,115 @@ static void test_ui_a_disabled_fullscreen_surface_rejects_the_api(void) {
     finish(c);
 }
 
+/* ---- exclusive access (5.12, T-UIR-15) ---- */
+
+static const char* pointer_lock_script =
+    "document.onpointerlockchange=()=>{document.title=document.pointerLockElement?'locked':"
+    "'unlocked'};document.onpointerlockerror=()=>{document.title='refused'};"
+    "document.body.style.height='400px';document.body.requestPointerLock()";
+
+int bdk_harness_engine_window_is_key(bdk_contents_t contents);
+
+/* Pointer lock and the keyboard reach only the key window (RenderWidgetHostViewMac): with
+   BDK_ENGINE_SILENT the harness is never active, so these scenarios say so and stop. */
+static int needs_key_window(bdk_contents_t c) {
+    /* BDK_TEST_WAIT_FOR_KEY: someone clicks the harness window to make it key (macOS does not
+       let an application bring itself forward). */
+    const int wait = getenv("BDK_TEST_WAIT_FOR_KEY") != NULL;
+    if (wait)
+        printf("    waiting for the harness window to be clicked\n");
+    for (int i = 0; wait && i < 800 && !bdk_harness_engine_window_is_key(c); ++i) {
+        t_pump();
+        bdk_testing_run_for(0.05);
+    }
+    if (bdk_harness_engine_window_is_key(c))
+        return 1;
+    printf("    skipped: the harness window is not the key window\n");
+    finish(c);
+    return 0;
+}
+
+/* Sends Escape through the page's render widget host, as a key press reaches it. */
+static void press_escape(bdk_contents_t c) {
+    char args[96];
+    snprintf(args, sizeof args, "{\"contents\":\"%llu\",\"key\":\"Escape\",\"type\":\"down\"}",
+             (unsigned long long)c);
+    ui("input.key", args, NULL, 0);
+    snprintf(args, sizeof args, "{\"contents\":\"%llu\",\"key\":\"Escape\",\"type\":\"up\"}",
+             (unsigned long long)c);
+    ui("input.key", args, NULL, 0);
+    t_pump();
+}
+
+/* A pointer lock with the gesture locks and raises the notice with Chromium's instruction, which
+   the handler acknowledges; Escape unlocks it, as BDK keeps Escape for itself. */
+static void test_ui_a_pointer_lock_raises_the_notice_and_escape_unlocks(void) {
+    bdk_contents_t c = start_page(BDK_SURFACE_EXCLUSIVE_ACCESS, NULL);
+    if (!needs_key_window(c))
+        return;
+    g_log.complete = "accept";
+    run_script(c, pointer_lock_script, 1);
+    CHECK(wait_for_title(c, "locked"));
+    CHECK(g_log.calls == 1);
+    CHECK(strstr(g_log.payload, "\"kind\":\"pointerLock\"") != NULL);
+    CHECK(strstr(g_log.payload, "\"origin\":\"https://bdk.test\"") != NULL);
+    CHECK(strstr(g_log.payload, "Esc") != NULL);
+    press_escape(c);
+    CHECK(wait_for_title(c, "unlocked"));
+    finish(c);
+}
+
+/* Without a gesture the page is refused, and no notice is raised. */
+static void test_ui_a_pointer_lock_without_a_gesture_is_refused(void) {
+    bdk_contents_t c = start_page(BDK_SURFACE_EXCLUSIVE_ACCESS, NULL);
+    g_log.complete = "accept";
+    run_script(c, pointer_lock_script, 0);
+    CHECK(wait_for_title(c, "refused"));
+    CHECK(g_log.calls == 0);
+    finish(c);
+}
+
+/* With no handler the default presenter shows the instruction. */
+static void test_ui_the_default_presenter_shows_the_exit_instruction(void) {
+    bdk_contents_t c = start_page(0, NULL);
+    if (!needs_key_window(c))
+        return;
+    script("exclusive_access", "{\"none\":true}");
+    run_script(c, pointer_lock_script, 1);
+    CHECK(wait_for_title(c, "locked"));
+    for (int i = 0; i < 20 && shown("exclusive_access") == 0; ++i)
+        t_pump();
+    CHECK(shown("exclusive_access") == 1);
+    run_script(c, "document.exitPointerLock()", 0);
+    CHECK(wait_for_title(c, "unlocked"));
+    finish(c);
+}
+
+/* A keyboard lock of a page in fullscreen raises the notice; one that includes Escape exits
+   fullscreen when Escape is held. */
+static void test_ui_a_keyboard_lock_in_fullscreen_raises_the_notice(void) {
+    bdk_contents_t c = start_page(BDK_SURFACE_EXCLUSIVE_ACCESS, NULL);
+    if (!needs_key_window(c))
+        return;
+    g_log.complete = "accept";
+    run_script(c, fullscreen_script, 1);
+    REQUIRE(wait_for_title(c, "in"));
+    run_script(c,
+               "navigator.keyboard.lock(['Escape']).then(()=>{document.title='keys'},"
+               "e=>{document.title='keys '+e.name})",
+               1);
+    CHECK(wait_for_title(c, "keys"));
+    for (int i = 0; i < 20 && g_log.calls == 0; ++i)
+        t_pump();
+    CHECK(strstr(g_log.payload, "\"kind\":\"keyboardLock\"") != NULL);
+    char args[96];
+    snprintf(args, sizeof args, "{\"contents\":\"%llu\",\"key\":\"Escape\",\"type\":\"down\"}",
+             (unsigned long long)c);
+    ui("input.key", args, NULL, 0);
+    CHECK(wait_for_title(c, "out"));
+    finish(c);
+}
+
 /* ---- notifications ---- */
 
 static const char* show_notification =
@@ -1035,6 +1235,16 @@ const t_test_t t_engine_ui_tests[] = {
     {"engine_ui_a_handler_cancels_a_picker", test_ui_a_handler_cancels_a_picker},
     {"engine_ui_use_default_and_reject_for_a_picker", test_ui_use_default_and_reject_for_a_picker},
     {"engine_ui_a_disabled_file_picker_does_nothing", test_ui_a_disabled_file_picker_does_nothing},
+    {"engine_ui_a_file_system_access_picker_with_no_handler_uses_the_default_picker",
+     test_ui_a_file_system_access_picker_with_no_handler_uses_the_default_picker},
+    {"engine_ui_a_handler_answers_a_file_system_access_picker",
+     test_ui_a_handler_answers_a_file_system_access_picker},
+    {"engine_ui_a_handler_answers_the_directory_and_save_pickers",
+     test_ui_a_handler_answers_the_directory_and_save_pickers},
+    {"engine_ui_a_cancelled_file_system_access_picker_rejects",
+     test_ui_a_cancelled_file_system_access_picker_rejects},
+    {"engine_ui_a_disabled_file_system_access_picker_rejects",
+     test_ui_a_disabled_file_system_access_picker_rejects},
     {"engine_ui_allowing_a_permission_in_the_default_prompt_grants_and_persists",
      test_ui_allowing_a_permission_in_the_default_prompt_grants_and_persists},
     {"engine_ui_blocking_a_permission_in_the_default_prompt_denies_and_persists",
@@ -1060,6 +1270,14 @@ const t_test_t t_engine_ui_tests[] = {
      test_ui_a_page_that_goes_withdraws_its_permission_request},
     {"engine_ui_the_default_prompt_is_taken_down_when_withdrawn",
      test_ui_the_default_prompt_is_taken_down_when_withdrawn},
+    {"engine_ui_a_pointer_lock_raises_the_notice_and_escape_unlocks",
+     test_ui_a_pointer_lock_raises_the_notice_and_escape_unlocks},
+    {"engine_ui_a_pointer_lock_without_a_gesture_is_refused",
+     test_ui_a_pointer_lock_without_a_gesture_is_refused},
+    {"engine_ui_the_default_presenter_shows_the_exit_instruction",
+     test_ui_the_default_presenter_shows_the_exit_instruction},
+    {"engine_ui_a_keyboard_lock_in_fullscreen_raises_the_notice",
+     test_ui_a_keyboard_lock_in_fullscreen_raises_the_notice},
     {"engine_ui_permissions_are_kept_per_profile_and_a_private_one_stays_separate",
      test_ui_permissions_are_kept_per_profile_and_a_private_one_stays_separate},
     {"engine_ui_find_with_no_handler_shows_the_default_find_bar_and_searches",

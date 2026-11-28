@@ -51,8 +51,10 @@ session (a logged-in Mac or the hosted macOS runner).
 | UI requests | `BDKUIHandlers` (`config.ui`, `runtime.ui`): one `Surface<Request>` per surface with `setHandler(_:)` and `mode`; `BDKUIResponse` (`.handled`, `.useDefault`, `.reject`); `BDKUIRequest` and a typed subclass per surface (see below) | T-SWF-04 |
 | Windows | `runtime.windows.register(_:_:)` (public; a page view entering an unregistered window registers it as `.normal`), `BDKWindow` (`nsWindow`, `kind`, `pages`, `activePage`, `extensionWindowID`, `anchors`, `delegate`), `BDKWindowDelegate`, `WindowRequest`, `BDKWebContents.window` | T-SWF-08 |
 | Extensions | `profile.extensions` (the generated `BDKExtensions` plus `Sources/BDK/BDKExtensions+Host.swift`: install sources, `actions(for:)`, `actionChanges`, `activateAction`, `performCommand`, `presentDefaultMenu`), `ExtensionPopupRequest`, `ExtensionSidePanelRequest`, `ExtensionInstallRequest`, `ExtensionUninstallRequest` | T-EXT-02 to T-EXT-06 |
+| Web apps | `profile.webApps` (the generated `BDKWebApps` plus `Sources/BDK/BDKWebApps+Host.swift`: `installability(of:)`, `install(_:confirmedBy:)`, `uninstall(_:clearSiteData:confirmedBy:)`, `launch(_:shortcut:)`), `BDKWebAppInstallSource`, `BDKWebAppPageState`, `page.webApp`, `WebAppInstallRequest`, `NewWindowRequest.webApp` | T-PWA-03 |
 | Settings | `BDKSettingKey`, `BDKSettingRegistry` (`config.settings`), typed `settings.get`, `set`, `reset`, `describe` on `BDKSettings`, `config.declarations` | T-SVC-08 |
 | Providers | `config.services` (`BDKServiceRegistry`), the provider protocols, `page.translation`, `TranslationRequest` (see below) | T-PRV-01, T-PRV-03, T-PRV-09 |
+| Navigation policy | `runtime.navigationPolicy` (`BDKRuntime.NavigationPolicy`, set at any time), `BDKWebContents.NavigationAction`, `BDKWebContents.NavigationDecision` (`.allow`, `.cancel`, `.redirect`); `load` throws `navigation.cancelledByPolicy` or returns the redirect's commit. On the stub and the engine (T-SWF-11); `BDKTestSupport` adds `scriptRedirect(from:to:)` and `navigateAsPage(_:to:)` | T-SWF-10 |
 | Page routes | `config.pages` (`PageRegistrations.register(_:_:)`), `PageMode` (`.chromium`, `.bundled`, `.native`, `.disabled`), `NativePageRequest`, `NativePageResult` | T-SWF-06 |
 | Commands | `BDKCommand`, `BDKEvent`, `BDKCommandRegistry` (`config.commands`), `BDKCommands` (`runtime.commands`: `register`, `declare`, `emit`, `events`, `invoke`), `BDKCommandContext`, `BDKDeclarations` | T-SVC-05 |
 | Scripting | `page.scripting` (`Scripting`): `evaluate`, `call`, `insertCSS`, `remove`, `frames`, `query`, `snapshot`, `click`, `hover`, `type`, `press`, `scroll`, `waitFor`, over `contents.*` | T-AUT-03, T-AUT-07 |
@@ -162,18 +164,22 @@ throws `ui.requestCompleted`; completing a withdrawn request does nothing.
 | `newWindows` | `NewWindowRequest` | `accept()`, `reject()` |
 | `downloads` | `DownloadRequest`, `DangerousDownloadRequest` | `proceed(to:)`, `cancel()`; `keep(confirmedBy:)` (grant), `discard()` |
 | `passwords` | `PasswordSaveRequest`, `LeakedPasswordRequest` | `save(confirmedBy:)` (grant), `never()`, `dismiss()` |
-| `autofill`, `autofillSuggestions` | `AutofillSaveRequest`, `AutofillSuggestionsRequest` | `save(confirmedBy:)`, `accept(_:confirmedBy:)` (grant), `dismiss()` |
+| `autofill`, `autofillSuggestions` | `AutofillSaveRequest`, `AutofillSuggestionsRequest` | `save(confirmedBy:)`, `accept(_:confirmedBy:)` (grant), `preview(_:)` (`bdk_ui_update` `{"preview"}`, nil clears it; fills nothing), `dismiss()` |
 | `printing` | `PrintRequest` | `printWithSystemDialog()`, `savePDF(to:)`, `cancel()` |
 | `find` | `FindRequest` | `session`, `close()` |
-| `fullscreen`, `exclusiveAccess` | `FullscreenRequest`, `ExclusiveAccessRequest` | `allow()`, `deny()`; `acknowledge()` |
+| `fullscreen`, `exclusiveAccess` | `FullscreenRequest`, `ExclusiveAccessRequest` | `allow()`, `deny()`; `acknowledge()` (the only completion; a rejected or dropped notice goes to the default presenter) |
+| `pageHealth` | `UnresponsivePageRequest`, `BlockedPopupRequest` (by the payload's `kind`) | `wait()`, `terminate()`; `allowOnce(_:confirmedBy:)` (grant `{"popup"}`), `alwaysAllow(confirmedBy:)` (grant `{"always":true}`), `dismiss()`; `presentation` (`BDKPageHealthPresentation`) and `perform(_:)` |
 | `notifications` | `NotificationRequest` | `shown()` (local), `clicked(action:)`, `closed(byUser:)` |
 | `certificateErrors`, `reputationWarnings` | `CertificateErrorRequest`, `ReputationWarningRequest` | `goBack()`, `proceed(confirmedBy:)` (grant; `ui.notOverridable` when Chromium refuses) |
 | `devTools`, `externalProtocols` | `DevToolsRequest`, `ExternalProtocolRequest` | `accept()`, `reject()`; `open(remember:confirmedBy:)` (grant), `cancel()` |
 | `extensionPopups`, `extensionSidePanels` | `ExtensionPopupRequest`, `ExtensionSidePanelRequest` | Open requests: `accept()` (popup) and `accept(side:)` (panel) send `bdk_ui_update` `{"placed":true}` and stay open; `side` sends `{"side"}`; `sizeChanges` and `visibilityChanges` come from `bdk_ui_set_update_handler`; `reject()` (deny), `close()` (accept `{"action":"close"}`); `closed` is the request's `cancellation` |
 | `extensionInstalls`, `extensionUninstalls` | `ExtensionInstallRequest`, `ExtensionUninstallRequest` | `accept(confirmedBy:)`, `confirm(confirmedBy:)` (grant), `cancel()` (deny) |
 | `translation` | `TranslationRequest` | `translate(from:to:)`, `revert()`, `always(for:)`, `never(for:)`, `neverForThisSite()`, `dismiss()` (none grants, none needs a gesture) |
-| `webAuthn` | `WebAuthnRequest`, one per step of a ceremony (same `ceremonyID`; a new step withdraws the last) | `choose(_:)` (accept `{"mechanism"}`), `providePIN(_:)` (accept `{"pin"}`), `chooseAccount(_:confirmedBy:)` (grant `{"account"}`), `accept()` (the step's own button), `useOtherMechanism()` (accept `{"action":"otherMechanisms"}`), `cancel()` (deny); `presentation` and `perform(_:)` describe and answer the step whatever draws it; `qrCodeImage(scale:)`; `cancelAll` as a handler. `BDKWebAuthnSupport.current` says which mechanisms the application can offer and what it lacks for the others |
-| `deviceChoosers`, `screenCapture` | `BDKRawUIRequest` | `complete(_:arguments:confirmedBy:)` with "grant", "deny" or "accept" |
+| `webAuthn` | `WebAuthnRequest`, one per step of a ceremony (same `ceremonyID`; a new step withdraws the last) | `choose(_:)` (accept `{"mechanism"}`), `providePIN(_:)` (accept `{"pin"}`), `chooseAccount(_:confirmedBy:)` (grant `{"account"}`), `accept()` (the step's own button), `useOtherMechanism()` (accept `{"action":"otherMechanisms"}`), `cancel()` (deny); `presentation` and `perform(_:)` describe and answer the step whatever draws it; `qrCodeImage(scale:)`; `cancelAll` as a handler. `BDKWebAuthnSupport.current` (main actor) says which mechanisms the application can offer and what it lacks for the others; phones also need `[services.webauthn] phones = true` in the running runtime's configuration (`.configuration(…)` while it is off) |
+| `deviceChoosers` | `DeviceChooserRequest` (`kind`, `origin`, `devices`, `isAdapterEnabled`, `isScanning`; `deviceChanges` as devices come and go) | `select(_:confirmedBy:)` ("select" `{"device"}`), `cancel()` |
+| `screenCapture` | `ScreenCaptureRequest` (`origin`, `extensionName`, `requestsAudio`, `sources`; `sourceChanges`) | `share(_:audio:confirmedBy:)` ("share" `{"source","audio"}`), `cancel()` |
+| `payments` | `PaymentRequest` (`origin`, `topLevelOrigin`, `total`, `displayItems`, `apps` with `name` and `origin`) | `pay(with:confirmedBy:)` ("grant" `{app}`), `cancel()` ("deny"). A handler's own page arrives as a `NewWindowRequest` of kind `.paymentHandler` |
+| `identity` | `IdentityRequest` (`step`, `origin`, `context`, `identityProviders`, `accounts`) | `signIn(as:confirmedBy:)` ("grant" `{account, idp}`), `allowRegistration(confirmedBy:)`, `signInToIdentityProvider(_:)`, `showMoreDetails()` ("accept"), `cancel()` ("deny"). A provider's page arrives as a `NewWindowRequest` of kind `.identityProvider` |
 
 Completion mapping (provisional, settled here for T-UIR-01 to T-UIR-06): a completion that grants (permission, a kept
 dangerous download, a saved password or card, an accepted suggestion, a proceed past an interstitial, opening an
@@ -319,13 +325,15 @@ so a test can start a load and act on it (supersede it, stop it) before the stub
 * `BDKKeyboardDelegate` is on the page (`keyboardDelegate`), with a forwarding property on the view. An unhandled key
   the delegate declines is offered to the main menu.
 * `BDKJSValue` exists here because error details need it; scripting reuses it (T-AUT-03).
-* `BDKTestSupport` offers `scriptNavigation` and `simulateKey` rather than `simulateNavigation` and `raise(...)`.
+* `BDKTestSupport` offers `scriptNavigation` and `simulateKey` rather than `simulateNavigation` and `raise(...)`, and `makeUnresponsive(_:)`, `makeResponsive(_:)` and `blockPopup(on:url:)` for page health.
 
 * UI requests (T-SWF-04): `BDKUIRequest` is a class, not a protocol; `window` is an `NSWindow?` (there is no
   `BDKWindow` yet); `profile` is optional; `setHandler` throws (it can fail after the freeze); a surface with two
   request kinds (`downloads`, `passwords`) takes `BDKUIRequest`; `NewWindowRequest.newContents` and the other
-  page-carrying fields are optional; `BDKMenuItem` has no `icon`; there is no `AutofillSuggestionsRequest.preview`,
-  or `ProviderDescriptor` beyond the generated `BDKProviderDescriptor`.
+  page-carrying fields are optional; `BDKMenuItem` has no `icon`; there is no `ProviderDescriptor` beyond the
+  generated `BDKProviderDescriptor`. `AutofillSuggestionsRequest.preview(_:)` throws (`ui.unknownSuggestion`) and
+  sends an update rather than completing. `BlockedPopupRequest.allowOnce` takes a `BlockedPopup` and the confirming
+  event, and `alwaysAllow` the event, where ui-requests.md 5.19 proposed a URL and no event.
 * Windows (T-SWF-08): `BDKWindow.nsWindow` is weak and optional (the registry must not keep an `NSWindow` alive);
   `extensionWindowID` is `Int?` (nil for the ABI's -1); `WindowRequest` is a struct with `action` (the doc's enum) and
   `extensionID`, so the delegate learns which extension asked; anchor rectangles are given in AppKit window
@@ -333,6 +341,15 @@ so a test can start a load and act on it (supersede it, stop it) before the stub
   `register` returns the existing `BDKWindow` unchanged (kind included) for a window already registered. The
   provider and request handler are installed at registration, so setting `anchors` or `delegate` later needs no ABI
   call.
+* Web apps (T-PWA-03): `profile.webApps` is the generated struct, so values are `BDKWebAppInfo`, `BDKWebAppIcon` and
+  the other generated types, not the doc's `WebAppInfo`. `webApps.installability` is a page command (listed in
+  `PAGE_COMMANDS` in `packages/js/codegen/src/swift.ts`), written as `installability(of:)`. The command
+  `webApps.launch` is generated as `launchContents(_:shortcutUrl:)` (it answers a handle); `launch(_:shortcut:)`
+  adopts the page and sets `page.webApp`. `install(_:confirmedBy:)` and `uninstall(_:clearSiteData:confirmedBy:)`
+  call `bdk_web_app_install` and `_uninstall` with the event; the generated `install(url:)` and `uninstall(_:)` are
+  the commands. `page.webApp` follows `BDKWebContents.Event.webAppScope` (`BDK_CONTENTS_EVENT_WEB_APP`).
+  `WebAppInstallRequest.install(confirmedBy:)` completes `grant`, `cancel()` `deny`. The stub hooks are
+  `runtime.stub.registerWebAppManifest`, `promptWebAppInstall` and `setWebAppBadge` (`BDKStub+WebApps.swift`).
 * Extensions (T-EXT-02 to T-EXT-06): `profile.extensions` is the generated struct, so values are the generated
   `BDKExtensionInfo`, `BDKExtensionActionState`, `BDKExtensionCommand` and `BDKCompatibilityReport`, not the doc's
   `ExtensionInfo` and `ActionState`; icons are `data:` URL strings with `iconImage` (`NSImage?`) and `badgeNSColor`

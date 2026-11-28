@@ -8,9 +8,11 @@
 #include <deque>
 #include <map>
 #include <mutex>
+#include <set>
 
 #include "../runtime/automation_internal.h"
 #include "../runtime/core_internal.h"
+#include "../runtime/navigation_policy.h"
 #include "../runtime/routes.h"
 #include "bdk_abi_hash.h"
 #include "bdk_stub.h"
@@ -21,6 +23,10 @@ using namespace bdkcore;
 
 namespace {
 
+/* The engine version the stub reports to the profile snapshot and downgrade policy: older than any
+   Chromium, so a test's "newer" and "older" versions mean the same against the engine. */
+constexpr const char* kStubEngineVersion = "1.0.0.0";
+constexpr const char* kCrashUrl = "chrome://crash";
 constexpr int32_t kErrAborted = -3;
 constexpr int32_t kErrBlocked = -20; /* net::ERR_BLOCKED_BY_CLIENT */
 constexpr uint32_t kMainFrame = BDK_EVENT_FLAG_MAIN_FRAME;
@@ -32,6 +38,8 @@ constexpr double kZoomSteps[] = {0.25, 1.0 / 3.0, 0.5,  2.0 / 3.0, 0.75, 0.8, 0.
 
 struct Nav {
     bool cancelled = false;
+    /* The navigation policy decision it waits for, if any (navigation_policy.h). */
+    std::shared_ptr<PolicyDecision> policy;
 };
 
 struct StubContents : BackendData {
@@ -46,6 +54,12 @@ struct StubContents : BackendData {
     std::shared_ptr<Nav> nav;
     /* The broker callers bound for the page (bdk_stub_page_bind): revoked when it navigates. */
     std::vector<std::shared_ptr<Caller>> callers;
+    /* Page health (bdk_stub_page_unresponsive, bdk_stub_block_popup): whether an unresponsive
+       request is open, and the popups blocked since the last notice was answered, by id. */
+    bool unresponsive = false;
+    std::vector<std::pair<std::string, std::string>> blocked_popups;
+    std::weak_ptr<Request> blocked_notice;
+    uint32_t next_popup_id = 1;
 };
 
 StubContents& data_of(const Contents& c) {
@@ -76,6 +90,9 @@ struct StubState {
     uint64_t delayed_seq = 0;
     std::map<std::pair<int64_t, uint64_t>, std::function<void()>> delayed;
     std::map<std::string, std::pair<int32_t, std::string>> scripts;
+    /* Server redirects (bdk_stub_script_redirect): a request for the key is redirected to the
+       value. */
+    std::map<std::string, std::string> redirects;
     bdk_stub_ui_outcome_t outcome{};
     /* What the stub keeps of application settings, by profile id ("" for the application): its
        stand-in for the disk, so a closed and reopened profile gets its values back. */
@@ -95,6 +112,9 @@ struct StubState {
     int32_t next_window_id = 1;
     uint32_t window_answer = 0;   /* the last answer to bdk_stub_window_request, 0 for none */
     uint32_t menus_presented = 0; /* bdk_extension_menu_present calls that reached the stub */
+    /* Sites whose popups are always allowed, as "<profile id> <origin>": the popup content
+       setting a blocked-popup grant {"always":true} writes. */
+    std::set<std::string> popups_allowed;
 };
 
 StubState& S() {
@@ -134,26 +154,117 @@ void detach(bdk_contents_t c) {
     }
 }
 
-void cancel_nav(const std::shared_ptr<Contents>& c, const char* why) {
+/* Ends the navigation in progress with no commit: the page stays where it is. */
+void end_nav(const std::shared_ptr<Contents>& c, const std::string& detail) {
     StubContents& d = data_of(*c);
     if (!d.nav)
         return;
     d.nav->cancelled = true;
+    withdraw_navigation_policy(d.nav->policy);
     d.nav.reset();
     d.loading = false;
     std::string url =
         d.current >= 0 ? d.entries[static_cast<size_t>(d.current)].url : "about:blank";
-    emit_contents_event(c, BDK_CONTENTS_EVENT_NAVIGATION_FAILED, shown(*c, url),
-                        std::string("{\"code\":\"") + why + "\"}", kErrAborted, kMainFrame);
+    emit_contents_event(c, BDK_CONTENTS_EVENT_NAVIGATION_FAILED, shown(*c, url), detail,
+                        kErrAborted, kMainFrame);
+}
+
+void cancel_nav(const std::shared_ptr<Contents>& c, const char* why) {
+    end_nav(c, std::string("{\"code\":\"") + why + "\"}");
 }
 
 void commit_nav(const std::shared_ptr<Contents>& c, const std::shared_ptr<Nav>& nav,
                 const std::string& url, int target_index, uint32_t flags, int32_t route_error);
 
 /* target_index -1: a new entry. Otherwise history navigation (or reload) to that entry. trusted is
-   false for a navigation a web page starts (bdk_stub_page_navigate). */
+   false for a navigation a web page starts (bdk_stub_page_navigate), and by_page true for any a
+   page starts. policy_redirects counts the redirect decisions in a row that began this one. */
 void begin_nav(const std::shared_ptr<Contents>& c, const std::string& requested, int target_index,
-               bool trusted = true) {
+               bool trusted = true, bool by_page = false, uint32_t policy_redirects = 0);
+
+/* Carries out the application's answer about the navigation to `url` (navigation_policy.h). */
+void apply_policy(const std::shared_ptr<Contents>& c, const std::shared_ptr<Nav>& nav,
+                  PolicyAction action, const std::string& redirect_url, const std::string& url,
+                  int target_index, uint32_t flags, uint32_t policy_redirects,
+                  const std::function<void()>& proceed) {
+    switch (action) {
+    case PolicyAction::kAllow:
+        proceed();
+        return;
+    case PolicyAction::kCancel:
+        end_nav(c, policy_failure_detail(action, redirect_url));
+        return;
+    case PolicyAction::kRedirect:
+        end_nav(c, policy_failure_detail(action, redirect_url));
+        begin_nav(c, redirect_url, -1, true, false, policy_redirects + 1);
+        return;
+    case PolicyAction::kTooManyRedirects:
+        commit_nav(c, nav, url, target_index, flags, kNetErrorTooManyRedirects);
+        return;
+    }
+}
+
+/* Asks the policy about the navigation, then runs `proceed` if it is allowed. */
+void ask_then(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Contents>& c,
+              const std::shared_ptr<Nav>& nav, const PolicyNavigation& ask, const std::string& url,
+              int target_index, uint32_t flags, const std::function<void()>& proceed) {
+    auto go = std::make_shared<std::function<void()>>(proceed);
+    nav->policy = ask_navigation_policy(
+        rt, c, ask,
+        [c, nav, url, target_index, flags, redirects = ask.policy_redirects,
+         go](PolicyAction action, const std::string& redirect_url) {
+            if (nav->cancelled || c->dead)
+                return;
+            nav->policy.reset();
+            apply_policy(c, nav, action, redirect_url, url, target_index, flags, redirects, *go);
+        });
+    if (!nav->policy)
+        (*go)();
+}
+
+/* Sends the request for `url`: follows the scripted server redirects, asking the policy at each,
+   then lets the reputation provider see the URL before it commits (T-PRV-05). */
+void fetch_nav(const std::shared_ptr<Contents>& c, const std::shared_ptr<Nav>& nav,
+               const std::string& url, int target_index, uint32_t flags, int32_t route_error,
+               const PolicyNavigation& asked, uint32_t hops) {
+    auto rt = c->rt.lock();
+    auto redirect = S().redirects.find(url);
+    if (rt && route_error == 0 && redirect != S().redirects.end()) {
+        if (hops >= kMaxPolicyRedirects) {
+            commit_nav(c, nav, url, target_index, flags, kNetErrorTooManyRedirects);
+            return;
+        }
+        const std::string to = redirect->second;
+        PolicyNavigation ask = asked;
+        ask.url = shown(*c, to);
+        ask.redirected_from = shown(*c, url);
+        ask_then(rt, c, nav, ask, to, target_index, flags,
+                 [c, nav, to, target_index, flags, ask, hops] {
+                     post([c, nav, to, target_index, flags, ask, hops] {
+                         if (!nav->cancelled && !c->dead)
+                             fetch_nav(c, nav, to, target_index, flags, 0, ask, hops + 1);
+                     });
+                 });
+        return;
+    }
+    bdkstub::providers_check_navigation(
+        c, url, [c, nav, url, target_index, flags, route_error](bool go) {
+            if (nav->cancelled || c->dead)
+                return;
+            if (go) {
+                commit_nav(c, nav, url, target_index, flags, route_error);
+                return;
+            }
+            StubContents& blocked = data_of(*c);
+            blocked.nav.reset();
+            blocked.loading = false;
+            emit_contents_event_now(c, BDK_CONTENTS_EVENT_NAVIGATION_FAILED, shown(*c, url),
+                                    "{\"code\":\"blocked\"}", kErrBlocked, kMainFrame);
+        });
+}
+
+void begin_nav(const std::shared_ptr<Contents>& c, const std::string& requested, int target_index,
+               bool trusted, bool by_page, uint32_t policy_redirects) {
     auto rt = c->rt.lock();
     if (!rt)
         return;
@@ -176,46 +287,44 @@ void begin_nav(const std::shared_ptr<Contents>& c, const std::string& requested,
     }
     cancel_nav(c, "superseded");
     StubContents& d = data_of(*c);
+    PolicyNavigation ask;
+    ask.url = shown(*c, url);
+    ask.type = target_index < 0 ? "load" : target_index == d.current ? "reload" : "history";
+    ask.initiator = by_page ? "page" : "application";
+    ask.user_initiated = !by_page;
+    ask.policy_redirects = policy_redirects;
     auto nav = std::make_shared<Nav>();
     d.nav = nav;
     d.loading = true;
     d.progress = 0.1;
     uint32_t flags = kMainFrame | BDK_EVENT_FLAG_USER_INITIATED;
     emit_contents_event(c, BDK_CONTENTS_EVENT_NAVIGATION_STARTED, shown(*c, url), "{}", 0, flags);
+    std::function<void()> proceed;
     if (route.kind == RouteNavigation::Kind::kNative) {
         /* The navigation is cancelled in the page; the handler decides what the user sees. */
-        std::string display = route.display;
-        dispatch_native_page(rt, route, c, [c, nav, display, flags](bool handled) {
-            if (nav->cancelled || c->dead)
-                return;
-            if (handled) {
-                /* The navigation ends there; navigate(to:) learns why (T-SWF-09). */
-                cancel_nav(c, "handledNatively");
-                return;
-            }
-            commit_nav(c, nav, display, -1, flags, kNetErrorBlockedByClient);
-        });
-        return;
-    }
-    post([c, nav, url, target_index, flags, route_error] {
-        if (nav->cancelled || c->dead)
-            return;
-        /* The reputation provider sees the URL before it commits (T-PRV-05). */
-        bdkstub::providers_check_navigation(
-            c, url, [c, nav, url, target_index, flags, route_error](bool go) {
+        proceed = [rt, route, c, nav, flags] {
+            std::string display = route.display;
+            dispatch_native_page(rt, route, c, [c, nav, display, flags](bool handled) {
                 if (nav->cancelled || c->dead)
                     return;
-                if (go) {
-                    commit_nav(c, nav, url, target_index, flags, route_error);
+                if (handled) {
+                    /* The navigation ends there; navigate(to:) learns why (T-SWF-09). */
+                    cancel_nav(c, "handledNatively");
                     return;
                 }
-                StubContents& blocked = data_of(*c);
-                blocked.nav.reset();
-                blocked.loading = false;
-                emit_contents_event_now(c, BDK_CONTENTS_EVENT_NAVIGATION_FAILED, shown(*c, url),
-                                        "{\"code\":\"blocked\"}", kErrBlocked, kMainFrame);
+                commit_nav(c, nav, display, -1, flags, kNetErrorBlockedByClient);
             });
-    });
+        };
+    } else {
+        proceed = [c, nav, url, target_index, flags, route_error, ask] {
+            post([c, nav, url, target_index, flags, route_error, ask] {
+                if (!nav->cancelled && !c->dead)
+                    fetch_nav(c, nav, url, target_index, flags, route_error, ask, 0);
+            });
+        };
+    }
+    /* The application is asked before the request is sent (navigation_policy.h). */
+    ask_then(rt, c, nav, ask, url, target_index, flags, proceed);
 }
 
 void commit_nav(const std::shared_ptr<Contents>& c, const std::shared_ptr<Nav>& nav,
@@ -273,6 +382,7 @@ void commit_nav(const std::shared_ptr<Contents>& c, const std::shared_ptr<Nav>& 
         const std::string display = shown(*c, url);
         emit_contents_event_now(c, BDK_CONTENTS_EVENT_NAVIGATION_COMMITTED, display, "{}", 0,
                                 flags);
+        bdkstub::web_apps_committed(c, url);
         if (title_changed) {
             emit_contents_event_now(c, BDK_CONTENTS_EVENT_TITLE_CHANGED, display,
                                     "{\"title\":\"" + json_escape(title) + "\"}", 0, kMainFrame);
@@ -395,6 +505,7 @@ class StubBackend final : public Backend {
     bdk_status_t Start(Runtime&, const bdk_start_config_t&, const std::string&,
                        bdk_error_t*) override {
         S().scripts.clear();
+        S().redirects.clear();
         S().app_settings.clear();
         S().last_request.reset();
         S().last_update.clear();
@@ -402,6 +513,7 @@ class StubBackend final : public Backend {
         S().next_window_id = 1;
         S().window_answer = 0;
         S().menus_presented = 0;
+        S().popups_allowed.clear();
         {
             std::lock_guard<std::mutex> lock(S().mutex);
             S().delayed.clear();
@@ -422,6 +534,17 @@ class StubBackend final : public Backend {
         return std::string("{\"bdk\":\"0.0.0-stub\",\"chromium\":null,\"digest\":null,"
                            "\"abiVersion\":") +
                std::to_string(BDK_ABI_VERSION) + ",\"abiHash\":\"" BDK_ABI_HASH "\"}";
+    }
+
+    /* The stub keeps everything in memory. Given a data directory (tests, launch options), it
+       applies the snapshot and downgrade policy to it as if it were an engine of version
+       kStubEngineVersion. */
+    std::string ProfileDataDirectory(const bdk_start_config_t& config,
+                                     const std::string&) override {
+        return str(config.user_data_path_override);
+    }
+    std::string EngineVersion() override {
+        return kStubEngineVersion;
     }
 
     void ProfilesChanged(Runtime&) override {}
@@ -476,6 +599,15 @@ class StubBackend final : public Backend {
 
     bdk_status_t Load(const std::shared_ptr<Contents>& c, const std::string& url,
                       bdk_error_t*) override {
+        /* Chromium's debug URL kills the page's renderer and commits nothing; the stub reports it
+           the same way, so a crash-recovery test runs on both (tests_robustness.c). */
+        if (url == kCrashUrl) {
+            Post([weak = std::weak_ptr<Contents>(c)] {
+                if (auto page = weak.lock())
+                    bdkstub::page_renderer_gone(page, "crashed");
+            });
+            return BDK_OK;
+        }
         begin_nav(c, url, -1);
         return BDK_OK;
     }
@@ -894,7 +1026,7 @@ void page_keep_caller(Contents& c, std::shared_ptr<Caller> caller) {
 void page_navigate(const std::shared_ptr<Contents>& c, const std::string& url) {
     auto rt = c->rt.lock();
     if (rt)
-        begin_nav(c, url, -1, is_internal_page(*rt, page_committed_url(*c)));
+        begin_nav(c, url, -1, is_internal_page(*rt, page_committed_url(*c)), true);
 }
 
 void page_renderer_gone(const std::shared_ptr<Contents>& c, const char* reason) {
@@ -904,6 +1036,100 @@ void page_renderer_gone(const std::shared_ptr<Contents>& c, const char* reason) 
 }
 
 } // namespace bdkstub
+
+namespace {
+
+/* scheme://host[:port] of a URL, or the URL itself when it has no authority. */
+std::string origin_of(const std::string& url) {
+    const size_t start = url.find("://");
+    if (start == std::string::npos)
+        return url;
+    return url.substr(0, url.find_first_of("/?#", start + 3));
+}
+
+std::string page_origin(const Contents& c) {
+    return origin_of(bdkstub::page_committed_url(c));
+}
+
+std::string popup_site(const Contents& c) {
+    auto profile = c.profile;
+    return (profile ? profile->id : std::string()) + " " + page_origin(c);
+}
+
+/* A page health request the stub raises for the page (ui-requests.md 5.19), reporting its outcome
+   like the requests a test raises. */
+std::shared_ptr<Request> raise_page_health(
+    const std::shared_ptr<Contents>& c, const std::string& payload,
+    std::function<void(UiOutcome, const std::string&, const std::string&)> on_finish) {
+    auto rt = c->rt.lock();
+    if (!rt)
+        return nullptr;
+    auto r = std::make_shared<Request>();
+    r->surface = BDK_SURFACE_PAGE_HEALTH;
+    r->contents = c->handle;
+    r->payload = payload;
+    r->on_finish = std::move(on_finish);
+    bdkstub::track_request(r);
+    raise_ui_request(rt, r);
+    return r;
+}
+
+/* The page opens a blocked popup: a new-window request, as a popup the blocker let through. */
+void open_popup(const std::shared_ptr<Contents>& opener, const std::string& url) {
+    auto rt = opener->rt.lock();
+    if (!rt)
+        return;
+    auto r = std::make_shared<Request>();
+    r->surface = BDK_SURFACE_NEW_WINDOWS;
+    r->contents = opener->handle;
+    r->payload = "{\"kind\":\"popup\",\"disposition\":\"popup\",\"targetURL\":\"" +
+                 json_escape(url) + "\",\"opener\":\"" + std::to_string(opener->handle) +
+                 "\",\"userGesture\":true}";
+    bdkstub::track_request(r);
+    raise_ui_request(rt, r);
+}
+
+/* Raises the blocked-popup notice for the page's list, withdrawing the one it replaces. */
+void raise_blocked_notice(const std::shared_ptr<Contents>& c) {
+    StubContents& d = data_of(*c);
+    if (auto open = d.blocked_notice.lock())
+        withdraw_ui_request(*open);
+    std::string popups;
+    for (const auto& [id, url] : d.blocked_popups)
+        popups += std::string(popups.empty() ? "" : ",") + "{\"id\":\"" + id + "\",\"url\":\"" +
+                  json_escape(url) + "\"}";
+    std::weak_ptr<Contents> weak = c;
+    d.blocked_notice = raise_page_health(
+        c,
+        "{\"kind\":\"blockedPopups\",\"origin\":\"" + json_escape(page_origin(*c)) +
+            "\",\"popups\":[" + popups + "]}",
+        [weak](UiOutcome outcome, const std::string& completion, const std::string& args) {
+            auto page = weak.lock();
+            if (!page || outcome == UiOutcome::kWithdrawn)
+                return;
+            StubContents& pd = data_of(*page);
+            if (outcome == UiOutcome::kCompleted && completion == "grant") {
+                if (args.find("\"always\":true") != std::string::npos) {
+                    S().popups_allowed.insert(popup_site(*page));
+                    return;
+                }
+                for (auto it = pd.blocked_popups.begin(); it != pd.blocked_popups.end(); ++it) {
+                    if (args.find("\"popup\":\"" + it->first + "\"") != std::string::npos) {
+                        const std::string url = it->second;
+                        pd.blocked_popups.erase(it);
+                        open_popup(page, url);
+                        return;
+                    }
+                }
+                return;
+            }
+            /* Dismissed, rejected, dropped or shown by the default presenter: the list is
+               answered, and the next blocked popup starts a new one. */
+            pd.blocked_popups.clear();
+        });
+}
+
+} // namespace
 
 namespace bdkcore {
 
@@ -955,6 +1181,18 @@ BDK_EXPORT bdk_status_t bdk_stub_script_navigation(bdk_runtime_t h, bdk_string_t
     return BDK_OK;
 }
 
+BDK_EXPORT bdk_status_t bdk_stub_script_redirect(bdk_runtime_t h, bdk_string_t url,
+                                                 bdk_string_t to) {
+    if (bdk_status_t s = check_thread())
+        return s;
+    if (!runtime_of(h))
+        return BDK_ERR_STALE_HANDLE;
+    if (!string_ok(url) || !string_ok(to) || to.length == 0)
+        return BDK_ERR_INVALID_ARGUMENT;
+    S().redirects[str(url)] = str(to);
+    return BDK_OK;
+}
+
 BDK_EXPORT bdk_status_t bdk_stub_raise_ui_request(bdk_runtime_t h, uint32_t surface,
                                                   bdk_contents_t contents, bdk_string_t payload) {
     if (bdk_status_t s = check_thread())
@@ -971,6 +1209,76 @@ BDK_EXPORT bdk_status_t bdk_stub_raise_ui_request(bdk_runtime_t h, uint32_t surf
     r->payload = str(payload);
     bdkstub::track_request(r);
     raise_ui_request(rt, r);
+    return BDK_OK;
+}
+
+BDK_EXPORT bdk_status_t bdk_stub_page_unresponsive(bdk_contents_t h) {
+    if (bdk_status_t s = check_thread())
+        return s;
+    auto c = contents_of(h);
+    if (!c)
+        return BDK_ERR_STALE_HANDLE;
+    StubContents& d = data_of(*c);
+    if (d.unresponsive)
+        return BDK_OK; /* one question per hang */
+    d.unresponsive = true;
+    std::string title;
+    if (d.current >= 0)
+        title = d.entries[static_cast<size_t>(d.current)].title;
+    std::weak_ptr<Contents> weak = c;
+    raise_page_health(
+        c,
+        "{\"kind\":\"unresponsive\",\"origin\":\"" + json_escape(page_origin(*c)) +
+            "\",\"pageTitle\":\"" + json_escape(title) + "\"}",
+        [weak](UiOutcome outcome, const std::string& completion, const std::string& args) {
+            auto page = weak.lock();
+            if (!page)
+                return;
+            data_of(*page).unresponsive = false;
+            if (outcome == UiOutcome::kCompleted && completion == "accept" &&
+                args.find("\"terminate\"") != std::string::npos)
+                bdkstub::page_renderer_gone(page, "killed");
+        });
+    return BDK_OK;
+}
+
+BDK_EXPORT bdk_status_t bdk_stub_page_responsive(bdk_contents_t h) {
+    if (bdk_status_t s = check_thread())
+        return s;
+    auto c = contents_of(h);
+    if (!c)
+        return BDK_ERR_STALE_HANDLE;
+    auto rt = c->rt.lock();
+    if (!rt)
+        return BDK_ERR_STALE_HANDLE;
+    for (auto& r : std::vector<std::shared_ptr<Request>>(rt->requests)) {
+        if (r->contents != h || r->surface != BDK_SURFACE_PAGE_HEALTH || r->finished)
+            continue;
+        if (r->payload.find("\"kind\":\"unresponsive\"") != std::string::npos)
+            withdraw_ui_request(*r);
+    }
+    data_of(*c).unresponsive = false;
+    return BDK_OK;
+}
+
+BDK_EXPORT bdk_status_t bdk_stub_block_popup(bdk_contents_t h, bdk_string_t url,
+                                             uint8_t* out_blocked) {
+    if (bdk_status_t s = check_thread())
+        return s;
+    auto c = contents_of(h);
+    if (!c)
+        return BDK_ERR_STALE_HANDLE;
+    if (!string_ok(url) || url.length == 0 || !out_blocked)
+        return BDK_ERR_INVALID_ARGUMENT;
+    if (S().popups_allowed.count(popup_site(*c))) {
+        *out_blocked = 0;
+        open_popup(c, str(url));
+        return BDK_OK;
+    }
+    *out_blocked = 1;
+    StubContents& d = data_of(*c);
+    d.blocked_popups.emplace_back(std::to_string(d.next_popup_id++), str(url));
+    raise_blocked_notice(c);
     return BDK_OK;
 }
 

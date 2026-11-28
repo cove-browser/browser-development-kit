@@ -38,6 +38,45 @@ BDK_EXPORT bdk_status_t bdk_contents_go_to_index(bdk_contents_t, int32_t index, 
 /* JSON {"current":int,"entries":[{"url","title"}]} in a buffer the caller releases. */
 BDK_EXPORT bdk_status_t bdk_contents_entries(bdk_contents_t, bdk_buffer_t* out_json, bdk_error_t*);
 
+/* Navigation policy (T-SWF-10, swift-api.md 6.3). With a handler set, the application is asked
+   before a navigation of a page's main frame sends its request, and again at each server redirect,
+   and the navigation waits for the answer. It is asked for the application's own loads, reloads
+   and history navigations, the page's links, scripts and form submissions, and the first
+   navigation of a page the web or an extension opened. It is not asked for subframes, same-document
+   navigations, a page restored from the back/forward cache or activated from a prerender (the
+   navigation that loaded it was asked), or the start of a navigation a redirect decision began.
+   With no handler nothing is asked and nothing changes.
+
+   The handler is called later, on the UI thread, after BDK_CONTENTS_EVENT_NAVIGATION_STARTED, with
+   navigation_json {"url", "type": "load" | "reload" | "history", "method", "isUserInitiated",
+   "isRedirect", "redirectedFrom"? (a server redirect: the URL it came from), "initiator": {"kind":
+   "application" | "page" | "browser", "origin"?}, "isPrerender"}. URLs are as the application sees
+   them (branded for an internal page). The decision handle is answered once, now or later, with
+   bdk_navigation_policy_decide. There is no timeout. The handle goes stale, and the answer is not
+   needed, when the navigation ends first: stopped, superseded or the page closed.
+
+   BDK_NAVIGATION_ALLOW lets it go on. BDK_NAVIGATION_CANCEL ends it with no request sent (the page
+   stays where it is): BDK_CONTENTS_EVENT_NAVIGATION_FAILED with net_error -3 and detail
+   {"code":"cancelledByPolicy"}. BDK_NAVIGATION_REDIRECT ends it the same way with
+   {"code":"redirectedByPolicy","redirectUrl"} and loads redirect_url in the same page as
+   bdk_contents_load would: a GET with no body or referrer, with the application's authority. The
+   start of that load is not asked, its server redirects are; the twenty-first redirect decision in
+   a row without a commit is refused with net error -310 (ERR_TOO_MANY_REDIRECTS), as a server
+   redirect loop is. A prerender that is not allowed is discarded. */
+typedef void (*bdk_navigation_policy_cb)(void* context, bdk_context_t decision,
+                                         bdk_contents_t contents, bdk_string_t navigation_json);
+/* Sets the runtime's handler, at any time while it runs, replacing (and releasing) the previous
+   one; a null callback removes it. Decisions already asked stay answerable. BDK owns the context
+   until replacement or shutdown. */
+BDK_EXPORT bdk_status_t bdk_navigation_policy_set_handler(bdk_runtime_t, bdk_navigation_policy_cb,
+                                                          void* ctx, bdk_release_cb, bdk_error_t*);
+/* action is a BDK_NAVIGATION_*; redirect_url is read only for BDK_NAVIGATION_REDIRECT. An unknown
+   action or an implausible redirect URL is BDK_ERR_INVALID_ARGUMENT and leaves the decision open;
+   a decision answered already or withdrawn is BDK_ERR_STALE_HANDLE. The answer takes effect on a
+   later task. */
+BDK_EXPORT bdk_status_t bdk_navigation_policy_decide(bdk_context_t decision, uint32_t action,
+                                                     bdk_string_t redirect_url, bdk_error_t*);
+
 /* Filled by bdk_contents_state. The caller sets struct_size to the size it was built with; the
    callee writes only those bytes. url and title are borrowed: valid until the next
    bdk_contents_state call on the same contents or until it is destroyed. */
@@ -49,7 +88,7 @@ typedef struct bdk_contents_state {
     double progress;     /* 0.0 to 1.0 */
     uint32_t security;   /* BDK_SECURITY_* */
     uint32_t audio;      /* BDK_AUDIO_* flags */
-    uint32_t capture;    /* capture flags; none are defined yet, always 0 */
+    uint32_t capture;    /* BDK_CAPTURE_* flags */
     uint32_t visibility; /* BDK_VISIBILITY_* */
     uint8_t focused;
     double zoom; /* 1.0 is 100 percent */

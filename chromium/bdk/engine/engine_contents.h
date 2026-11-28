@@ -7,10 +7,13 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
+#include "base/time/time.h"
+#include "base/timer/timer.h"
 #include "bdk/core/runtime/core_internal.h"
 #include "bdk/engine/services/events.h"
 #include "content/public/browser/web_contents_delegate.h"
@@ -80,6 +83,24 @@ class EngineContents : public bdkcore::BackendData,
 
   content::WebContents* web_contents() { return web_contents_; }
   HostView& host_view() { return *host_view_; }
+  // Creates a page of `profile` loading `url` as the installed app `app_id`
+  // (web-apps.md 4.2) and raises its new-window request of kind webApp with
+  // `app` (WebAppInfo). Null when the profile cannot host a page.
+  static EngineContents* LaunchWebApp(
+      const std::shared_ptr<bdkcore::Profile>& profile,
+      const std::string& app_id,
+      const GURL& url,
+      base::DictValue app);
+  // The app this page was launched as, or empty.
+  const std::string& web_app_id() const { return web_app_id_; }
+  // What the page captures changed (ui_screen_capture.h): emits
+  // BDK_CONTENTS_EVENT_CAPTURE_CHANGED when its BDK_CAPTURE_* flags did.
+  void NoteCaptureChanged();
+  // An app's page committed `url`: reports leaving or re-entering the app's
+  // scope (BDK_CONTENTS_EVENT_WEB_APP).
+  void NoteAppScope(const GURL& url);
+  // The page's JavaScript dialogs and file pickers.
+  PageDialogs& dialogs() { return *dialogs_; }
 
   // Every page of the engine, in creation order.
   static const std::vector<EngineContents*>& All();
@@ -93,6 +114,13 @@ class EngineContents : public bdkcore::BackendData,
   // showed the page: it ends as handledNatively rather than aborted.
   void NoteHandledNatively(int64_t navigation_id) {
     handled_natively_ = navigation_id;
+  }
+  // The navigation `navigation_id` was cancelled or redirected by the
+  // application's navigation policy: it ends with `detail`
+  // (bdkcore::policy_failure_detail) rather than as aborted.
+  void NotePolicyEnd(int64_t navigation_id, std::string detail) {
+    policy_ended_ = navigation_id;
+    policy_detail_ = std::move(detail);
   }
   // A tab Chromium inserted in a host context by itself (a link in an
   // extension popup, which Chromium opens in the popup's Browser): unless a
@@ -108,7 +136,8 @@ class EngineContents : public bdkcore::BackendData,
       const GURL& target_url,
       const blink::mojom::WindowFeatures* features,
       bool user_gesture,
-      const std::string& initiator_extension_id);
+      const std::string& initiator_extension_id,
+      const base::DictValue* web_app = nullptr);
 
   // Moves the page's tab into `context`. A page with a focus keeps being the
   // active tab of the context it moves into.
@@ -124,6 +153,12 @@ class EngineContents : public bdkcore::BackendData,
   void Focus();
 
   void Load(const std::string& url);
+  // Loads the URL of the application's redirect decision, the
+  // `policy_redirects`th in a row (NavigationPolicyThrottle).
+  void LoadForPolicy(const std::string& url, uint32_t policy_redirects);
+  // The count LoadForPolicy left for the navigation it started, once; 0 for
+  // any other.
+  uint32_t TakePolicyRedirects() { return std::exchange(policy_redirects_, 0); }
   // Replaces the WebContents with one restored from `state`, keeping the
   // handle and the host view.
   void ReplaceWebContents(std::unique_ptr<content::WebContents> web_contents);
@@ -164,6 +199,8 @@ class EngineContents : public bdkcore::BackendData,
   void set_auto_discardable(bool value) { auto_discardable_ = value; }
 
   // content::WebContentsDelegate:
+  blink::mojom::DisplayMode GetDisplayMode(
+      const content::WebContents* web_contents) override;
   content::WebContents* OpenURLFromTab(
       content::WebContents* source,
       const content::OpenURLParams& params,
@@ -196,6 +233,27 @@ class EngineContents : public bdkcore::BackendData,
   void ExitFullscreenModeForTab(content::WebContents* source) override;
   bool IsFullscreenForTabOrPending(
       const content::WebContents* web_contents) override;
+  // Pointer and keyboard lock (ui-requests.md 5.12, T-UIR-15), with
+  // Chrome's rules: a pointer lock needs a gesture unless the page unlocked
+  // it itself, and is refused just after the person pressed Escape; a
+  // keyboard lock only in fullscreen. Each raises the exclusive_access notice
+  // (ui_exclusive_access.h); Escape unlocks the pointer, and held, exits a
+  // keyboard lock that includes it.
+  void RequestPointerLock(content::WebContents* web_contents,
+                          bool user_gesture,
+                          bool last_unlocked_by_target) override;
+  void LostPointerLock() override;
+  void RequestKeyboardLock(content::WebContents* web_contents,
+                           bool esc_key_locked) override;
+  void CancelKeyboardLockRequest(content::WebContents* web_contents) override;
+  // A hung renderer is a page_health request (ui_page_health.h).
+  void RendererUnresponsive(
+      content::WebContents* source,
+      content::RenderWidgetHost* render_widget_host,
+      base::RepeatingClosure hang_monitor_restarter) override;
+  void RendererResponsive(
+      content::WebContents* source,
+      content::RenderWidgetHost* render_widget_host) override;
   content::JavaScriptDialogManager* GetJavaScriptDialogManager(
       content::WebContents* source) override;
   void RunFileChooser(content::RenderFrameHost* render_frame_host,
@@ -272,6 +330,11 @@ class EngineContents : public bdkcore::BackendData,
   // JavaScript dialogs and file pickers; find in page (ui_dialogs.h,
   // ui_find.h).
   std::unique_ptr<PageDialogs> dialogs_;
+  uint32_t capture_flags_ = 0;
+  // An app's page: the app, and whether its last committed page was in the
+  // app's scope.
+  std::string web_app_id_;
+  bool in_app_scope_ = true;
   std::unique_ptr<PageFind> find_;
   // Owned by its tab model, in a host context.
   raw_ptr<content::WebContents> web_contents_ = nullptr;
@@ -285,14 +348,34 @@ class EngineContents : public bdkcore::BackendData,
   base::OnceClosure own_window_;
   // For an inspected page: the page of its open front end.
   base::WeakPtr<EngineContents> devtools_page_;
+  // Load and LoadForPolicy, once they have set policy_redirects_.
+  void LoadUrl(const std::string& url);
+  // The page's visibility follows its host view (T-ADP-11): checked on a later
+  // task, after Chromium's own update.
+  void ScheduleVisibilityCheck();
+  void FollowHostViewVisibility();
   std::string user_agent_;
   // The navigation a native route's handler took (NoteHandledNatively), or 0.
   int64_t handled_natively_ = 0;
+  // The navigation the policy ended (NotePolicyEnd), or 0, and its detail.
+  int64_t policy_ended_ = 0;
+  std::string policy_detail_;
+  // LoadForPolicy's count, for TakePolicyRedirects.
+  uint32_t policy_redirects_ = 0;
+  bool visibility_check_pending_ = false;
+  // The page has been reported visible once (OnVisibilityChanged).
+  bool shown_once_ = false;
   bool muted_ = false;
   double zoom_ = 1.0;
   bool auto_discardable_ = true;
   bool discarded_ = false;
   bool fullscreen_ = false;
+  // Exclusive access: the pointer is locked; the keyboard is, with Escape;
+  // when the person last pressed Escape to unlock; Escape held down.
+  bool pointer_locked_ = false;
+  bool keyboard_locked_with_escape_ = false;
+  base::TimeTicks last_escape_;
+  base::OneShotTimer escape_held_;
   bool close_reported_ = false;
   bool focused_ = false;
   bool closing_ = false;

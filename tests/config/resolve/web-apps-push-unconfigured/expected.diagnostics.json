@@ -1,0 +1,11 @@
+{
+  "diagnostics": [
+    {
+      "code": "web_apps.push_unconfigured",
+      "severity": "note",
+      "message": "Installable web apps are on and [services.push] provider is \"none\": installed apps work, and receive no push messages.",
+      "file": "bdk.toml",
+      "line": 5
+    }
+  ]
+}

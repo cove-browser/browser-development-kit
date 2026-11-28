@@ -8,6 +8,8 @@
  */
 #include <ctype.h>
 #include <stdlib.h>
+#include <string.h>
+#include <time.h>
 
 #include "bdk_testing.h"
 #include "test_support.h"
@@ -116,13 +118,28 @@ static int wait_for_phase(bdk_contents_t c, const char* phase) {
     char want[48];
     snprintf(want, sizeof want, "\"phase\":\"%s\"", phase);
     t_capture_t cap;
+    /* When it misses (T-ADP-10), how long it waited, start-up's state and the page's. */
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
     for (int i = 0; i < 60; ++i) {
         invoke("translation.state", "{}", 0, c, &cap);
         if (strstr(cap.json, want))
             return 1;
         bdk_testing_run_for(0.1);
     }
-    printf("    translation state is %s\n", cap.json);
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    printf("    translation state is %s after %.2fs\n", cap.json,
+           (t1.tv_sec - t0.tv_sec) + (t1.tv_nsec - t0.tv_nsec) / 1e9);
+    char out[512];
+    control("startup.state", "{}", out, sizeof out);
+    bdk_contents_state_t st;
+    memset(&st, 0, sizeof st);
+    st.struct_size = sizeof st;
+    bdk_error_t err = 0;
+    bdk_contents_state(c, &st, &err);
+    printf("    start-up %s; page %.*s \"%.*s\" loading %d visibility %u\n", out,
+           (int)st.url.length, st.url.data ? st.url.data : "", (int)st.title.length,
+           st.title.data ? st.title.data : "", st.loading, st.visibility);
     return 0;
 }
 
@@ -397,7 +414,47 @@ static void test_engine_no_key_reaches_chromium_without_a_google_provider(void) 
     CHECK(strstr(out, "\"googleKey\":false") != NULL);
 }
 
+/* ---- the application's Google key (a launch of its own) ---- */
+
+#define KEY_LAUNCH "engine_launch_chromium_starts_with_the_application_s_google_key"
+#define KEY_CONFIG "\"services\":{\"geolocation\":{\"provider\":\"google\"}}"
+#define KEY_VALUE "AIza-bdk-test-key"
+
+static int g_key_prepared;
+
+/* Called by the harness before its first start: Chromium takes a key once per process, from the
+   start that opens it, so the scenario runs alone (scripts/test-engine.sh). */
+void bdk_engine_google_key_launch_prepare(const char* name) {
+    if (strcmp(name, KEY_LAUNCH) != 0)
+        return;
+    t_config_extra = KEY_CONFIG;
+    t_first_start_google_key = KEY_VALUE;
+    g_key_prepared = 1;
+}
+
+/* A start with a Google provider gives Chromium the application's key once Chromium's features
+   exist; before them, Chromium's key cache stops the process (it reads a feature). */
+static void test_launch_chromium_starts_with_the_application_s_google_key(void) {
+    if (!g_key_prepared) {
+        printf("    nothing prepared: run alone (scripts/test-engine.sh does)\n");
+        return;
+    }
+    bdk_error_t err = 0;
+    t_config_extra = KEY_CONFIG;
+    bdk_start_config_t config;
+    t_fill_start_config(&config);
+    t_config_extra = NULL;
+    config.google_api_key = S(KEY_VALUE);
+    REQUIRE(bdk_runtime_start(&config, &t_runtime, &err) == BDK_OK);
+    t_freeze();
+    char out[512];
+    control("providers.settings", "{}", out, sizeof out);
+    CHECK(strstr(out, "\"googleKey\":true") != NULL);
+    CHECK(strstr(out, "\"geolocation\":\"google\"") != NULL);
+}
+
 const t_test_t t_engine_provider_tests[] = {
+    {KEY_LAUNCH, test_launch_chromium_starts_with_the_application_s_google_key},
     {"engine_a_real_page_is_translated_through_the_app_provider",
      test_engine_a_real_page_is_translated_through_the_app_provider},
     {"engine_the_offer_with_no_handler_is_the_default_sheet",

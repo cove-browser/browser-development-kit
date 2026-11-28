@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "bdk_version": "0.0.0",
-  "config_digest": "sha256:3a7ce9ba88275daad6561e37cbd353086e6aacde37d7bc29ab0435a5c20d4140",
+  "config_digest": "sha256:2f39c41b253176d4c5d60a99348d9dc163feb9ef6c90af31d73edb941945d5dc",
   "browser": {
     "name": "Tide",
     "internal_scheme": "tide",
@@ -23,30 +23,43 @@
     "permissions": "default",
     "javascript_dialogs": "default",
     "http_auth": "default",
+    "client_certificates": "default",
     "file_pickers": "default",
     "context_menus": "default",
     "new_windows": "default",
     "downloads": "default",
     "passwords": "default",
     "autofill": "default",
+    "autofill_suggestions": "default",
     "printing": "default",
     "translation": "default",
     "find": "default",
     "fullscreen": "default",
+    "exclusive_access": "default",
     "notifications": "default",
     "certificate_errors": "default",
     "reputation_warnings": "default",
-    "devtools": "default"
+    "devtools": "default",
+    "device_choosers": "default",
+    "screen_capture": "default",
+    "webauthn": "default",
+    "external_protocols": "default",
+    "page_health": "default",
+    "identity": "default",
+    "payments": "default",
+    "web_app_installs": "default"
   },
   "extensions": {
     "enabled": true,
     "install_policy": "reject_known_incompatible",
     "allow_in_private": "user",
+    "developer_mode": "user",
     "install": {
       "unpacked": true,
       "crx": true,
       "update_urls": "any",
-      "stores": []
+      "stores": [],
+      "blocklist": []
     },
     "ui": {
       "actions": "default",
@@ -57,6 +70,9 @@
       "devtools": "default"
     },
     "bundled": {}
+  },
+  "web_apps": {
+    "enabled": false
   },
   "services": {
     "translation": {
@@ -71,10 +87,16 @@
     "geolocation": {
       "provider": "system"
     },
+    "webauthn": {
+      "phones": false
+    },
     "credentials": {
       "provider": "chromium"
     },
     "leak_check": {
+      "provider": "none"
+    },
+    "push": {
       "provider": "none"
     }
   },

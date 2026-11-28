@@ -203,10 +203,76 @@ extension BDKStubTests {
                 try fixture.expectOutcome(.completed, "grant", "{\"remember\":true}")
 
                 let raw = try fixture.deliver(
-                    BDKRawUIRequest.self, BDK_SURFACE_DEVICE_CHOOSERS, "{\"kind\":\"usb\"}")
-                #expect(raw.payload["kind"] == .string("usb"))
+                    BDKRawUIRequest.self, BDK_SURFACE_EXTENSION_DEVTOOLS,
+                    "{\"origin\":\"https://a.test\"}")
+                #expect(raw.payload["origin"] == .string("https://a.test"))
                 try raw.complete("deny", arguments: ["why": .string("no")])
                 try fixture.expectOutcome(.completed, "deny", "{\"why\":\"no\"}")
+            }
+        }
+
+        @Test func aScreenCapturePickerFollowsItsSourcesAndShares() async throws {
+            try await withUIFixture { fixture in
+                let picker = try fixture.deliver(
+                    ScreenCaptureRequest.self, BDK_SURFACE_SCREEN_CAPTURE,
+                    "{\"origin\":\"https://meet.test\",\"requestsAudio\":true,\"sources\":"
+                        + "[{\"id\":\"source0\",\"kind\":\"screen\",\"name\":\"Display\"}]}")
+                #expect(picker.origin == URL(string: "https://meet.test"))
+                #expect(picker.requestsAudio && picker.extensionName == nil)
+                #expect(picker.sources.map(\.kind) == [.screen])
+                let changes = EventReader(picker.sourceChanges)
+                try fixture.runtime.stub.sendUIUpdate(
+                    "{\"sources\":[{\"id\":\"source0\",\"kind\":\"screen\",\"name\":\"Display\"},"
+                        + "{\"id\":\"source1\",\"kind\":\"page\",\"name\":\"Notes\"}]}")
+                fixture.runtime.stub.pump()
+                #expect(await changes.next()?.count == 2)
+                let page = try #require(picker.sources.last)
+                #expect(page.kind == .page && page.name == "Notes")
+                try picker.share(page, audio: true, confirmedBy: try confirmingEvent())
+                try fixture.expectOutcome(
+                    .completed, "share", "{\"audio\":true,\"source\":\"source1\"}")
+
+                let refused = try fixture.deliver(
+                    ScreenCaptureRequest.self, BDK_SURFACE_SCREEN_CAPTURE,
+                    "{\"origin\":\"https://meet.test\",\"extensionName\":\"Recorder\"}")
+                #expect(refused.extensionName == "Recorder" && refused.sources.isEmpty)
+                refused.cancel()
+                try fixture.expectOutcome(.completed, "deny", "{}")
+            }
+        }
+
+        @Test func aDeviceChooserFollowsItsListAndSelectsWithAGesture() async throws {
+            try await withUIFixture { fixture in
+                let chooser = try fixture.deliver(
+                    DeviceChooserRequest.self, BDK_SURFACE_DEVICE_CHOOSERS,
+                    "{\"kind\":\"hid\",\"origin\":\"https://keys.test\",\"devices\":"
+                        + "[{\"id\":\"device0\",\"name\":\"Pad\"}],\"adapterEnabled\":true,"
+                        + "\"scanning\":true}")
+                #expect(chooser.kind == .hid)
+                #expect(chooser.origin == URL(string: "https://keys.test"))
+                #expect(chooser.devices.map(\.name) == ["Pad"])
+                #expect(chooser.isScanning)
+                let changes = EventReader(chooser.deviceChanges)
+                try fixture.runtime.stub.sendUIUpdate(
+                    "{\"devices\":[{\"id\":\"device1\",\"name\":\"Stick\"}],\"scanning\":false}")
+                fixture.runtime.stub.pump()
+                #expect(await changes.next()?.map(\.id) == ["device1"])
+                #expect(!chooser.isScanning)
+                let gone = DeviceChooserRequest.Device(
+                    id: "device0", name: "Pad", isPaired: false, isConnected: false)
+                #expect(throws: BDKError.self) {
+                    try chooser.select(gone, confirmedBy: try confirmingEvent())
+                }
+                try chooser.select(chooser.devices[0], confirmedBy: try confirmingEvent())
+                try fixture.expectOutcome(.completed, "select", "{\"device\":\"device1\"}")
+
+                let cancelled = try fixture.deliver(
+                    DeviceChooserRequest.self, BDK_SURFACE_DEVICE_CHOOSERS,
+                    "{\"kind\":\"bluetooth\",\"devices\":[{\"id\":\"device0\",\"name\":\"Tag\","
+                        + "\"paired\":true}]}")
+                #expect(cancelled.devices.first?.isPaired == true)
+                cancelled.cancel()
+                try fixture.expectOutcome(.completed, "deny", "{}")
             }
         }
     }

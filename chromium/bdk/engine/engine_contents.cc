@@ -3,9 +3,13 @@
 // found in the LICENSE file.
 
 #include "bdk/engine/engine_contents.h"
+#include "bdk/engine/ui_exclusive_access.h"
+#include "ui/events/keycodes/keyboard_codes.h"
 
 #include <algorithm>
 #include <array>
+#include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -17,6 +21,7 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/values.h"
 #include "bdk/core/runtime/automation_internal.h"
+#include "bdk/core/runtime/navigation_policy.h"
 #include "bdk/engine/devtools_frontend.h"
 #include "bdk/engine/extensions/extension_menu_items.h"
 #include "bdk/engine/extensions/extension_ui_util.h"
@@ -34,20 +39,26 @@
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_dialogs.h"
 #include "bdk/engine/ui_find.h"
+#include "bdk/engine/ui_page_health.h"
 #include "bdk/engine/ui_permissions.h"
 #include "bdk/engine/ui_presenters.h"
 #include "bdk/engine/ui_request.h"
+#include "bdk/engine/ui_screen_capture.h"
+#include "bdk/engine/web_apps.h"
 #include "bdk/engine/window_registry.h"
 #include "chrome/browser/history/history_tab_helper.h"
 #include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_web_contents_delegate/browser_web_contents_delegate.h"
+#include "chrome/browser/web_applications/web_app_tab_helper.h"
 #include "components/input/native_web_keyboard_event.h"
+#include "content/public/browser/back_forward_cache.h"
 #include "content/public/browser/context_menu_params.h"
 #include "content/public/browser/host_zoom_map.h"
 #include "content/public/browser/keyboard_event_processing_result.h"
 #include "content/public/browser/navigation_controller.h"
+#include "content/public/browser/navigation_discard_reason.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/render_frame_host.h"
@@ -68,10 +79,49 @@
 #include "ui/base/page_transition_types.h"
 #include "ui/base/window_open_disposition.h"
 #include "url/gurl.h"
+#include "url/origin.h"
 
 namespace bdk {
 
 namespace {
+
+// A navigation another one replaced before it committed, as the stub reports
+// it (bdk_contents.h).
+bool Superseded(content::NavigationHandle& handle) {
+  const std::optional<content::NavigationDiscardReason> reason =
+      handle.GetNavigationDiscardReason();
+  if (!reason) {
+    return false;
+  }
+  switch (*reason) {
+    case content::NavigationDiscardReason::kNewReloadNavigation:
+    case content::NavigationDiscardReason::kNewHistoryNavigation:
+    case content::NavigationDiscardReason::kNewOtherNavigationBrowserInitiated:
+    case content::NavigationDiscardReason::kNewOtherNavigationRendererInitiated:
+      return true;
+    default:
+      return false;
+  }
+}
+
+// While the application has a navigation policy, a committed page is not
+// kept in the back/forward cache: a page restored from it starts no
+// navigation, so going back to it would not be asked (conventions.md 16). A
+// page cached before the handler was set can still be restored unasked.
+void KeepOutOfBackForwardCacheForPolicy(content::NavigationHandle* handle) {
+  std::shared_ptr<bdkcore::Runtime> rt = bdkcore::current_runtime();
+  if (handle->IsSameDocument() || !rt ||
+      !bdkcore::navigation_policy_active(*rt) ||
+      !handle->GetRenderFrameHost()) {
+    return;
+  }
+  content::BackForwardCache::DisableForRenderFrameHost(
+      handle->GetRenderFrameHost(),
+      content::BackForwardCache::DisabledReason(
+          content::BackForwardCache::DisabledSource::kEmbedder,
+          /*id=*/0, "The application has a navigation policy", "",
+          "bdkNavigationPolicy"));
+}
 
 constexpr uint32_t kMainFrame = BDK_EVENT_FLAG_MAIN_FRAME;
 
@@ -261,6 +311,7 @@ EngineContents::~EngineContents() {
   host_view_.reset();
   if (web_contents_) {
     // Nothing of ours refers to the page when its tab destroys it.
+    UninstallPageHealth(web_contents_);
     content::WebContents* contents = web_contents_.ExtractAsDangling();
     if (HostContext* context = HostContexts::Get().ContextOf(contents)) {
       context->Destroy(contents);
@@ -296,6 +347,7 @@ void EngineContents::Attach(
   if (web_contents_) {
     // What the old page asked for is withdrawn with it.
     dialogs_->CancelDialogs(web_contents_, /*reset_state=*/true);
+    UninstallPageHealth(web_contents_);
     find_->OnNavigated();
     web_contents_->SetDelegate(nullptr);
     // The page keeps its tab; the tab model swaps the contents.
@@ -339,11 +391,14 @@ void EngineContents::TakeContents(content::WebContents* fresh) {
     devtools_->SetFrontend(web_contents_);
   }
   host_view_->SetWebContents(web_contents_);
+  // A page nobody shows yet reports hidden (T-ADP-11).
+  ScheduleVisibilityCheck();
   if (!user_agent_.empty()) {
     SetUserAgent(user_agent_);
   }
   // Prompts and find follow the page's WebContents.
   InstallPermissionPrompts(*this, web_contents_);
+  InstallPageHealth(*this, web_contents_);
   find_->Attach(web_contents_);
 }
 
@@ -395,7 +450,49 @@ bool EngineContents::IsInWindow(const bdkcore::Window* window) {
   return context && context->window() == window;
 }
 
+void EngineContents::ScheduleVisibilityCheck() {
+  if (visibility_check_pending_) {
+    return;
+  }
+  visibility_check_pending_ = true;
+  // After Chromium's own update for the same change, which runs first.
+  NoteTaskPosted();
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce(
+                     [](base::WeakPtr<EngineContents> self) {
+                       NoteTaskRun();
+                       if (self) {
+                         self->visibility_check_pending_ = false;
+                         self->FollowHostViewVisibility();
+                       }
+                     },
+                     weak_factory_.GetWeakPtr()));
+}
+
+void EngineContents::FollowHostViewVisibility() {
+  // A page's visibility follows its view (amendments 2.18, T-ADP-11). Chromium
+  // trusts a WebContents' first visibility, visible, until it is shown for
+  // real, and ignores the view leaving every window until then; and a page
+  // that has been shown can be left visible once its view has gone (the
+  // focused pane of a window). Hidden here is what Chromium's own view would
+  // have said: in no window, or in a hidden view. A page being captured
+  // stays as Chromium keeps it.
+  const content::Visibility now = web_contents_->GetVisibility();
+  if (!host_view_->IsShown()) {
+    if (now != content::Visibility::HIDDEN) {
+      web_contents_->WasHidden();
+    }
+    return;
+  }
+  // Shown again: a page BDK hid comes back, as Chromium's view would bring it
+  // back when the window is on screen.
+  if (now == content::Visibility::HIDDEN) {
+    web_contents_->WasShown();
+  }
+}
+
 void EngineContents::OnHostViewWindowChanged() {
+  ScheduleVisibilityCheck();
   if (reconcile_pending_) {
     return;
   }
@@ -445,7 +542,20 @@ void EngineContents::Emit(uint32_t kind,
   }
 }
 
+void EngineContents::LoadForPolicy(const std::string& url,
+                                   uint32_t policy_redirects) {
+  // Set first: Chromium can ask the throttle about the new navigation's start
+  // from inside LoadURLWithParams.
+  policy_redirects_ = policy_redirects;
+  LoadUrl(url);
+}
+
 void EngineContents::Load(const std::string& url) {
+  policy_redirects_ = 0;
+  LoadUrl(url);
+}
+
+void EngineContents::LoadUrl(const std::string& url) {
   content::NavigationController::LoadURLParams params{GURL(url)};
   params.transition_type = ui::PAGE_TRANSITION_TYPED;
   if (!user_agent_.empty()) {
@@ -635,7 +745,8 @@ EngineContents* EngineContents::RequestNewPage(
     const GURL& target_url,
     const blink::mojom::WindowFeatures* features,
     bool user_gesture,
-    const std::string& initiator_extension_id) {
+    const std::string& initiator_extension_id,
+    const base::DictValue* web_app) {
   std::shared_ptr<bdkcore::Runtime> rt = bdkcore::current_runtime();
   if (!profile || !profile->data || !rt || rt->shutting ||
       !HostContexts::CanHost(
@@ -662,6 +773,9 @@ EngineContents* EngineContents::RequestNewPage(
     payload.Set("opener", base::NumberToString(opener->handle));
   }
   payload.Set("userGesture", user_gesture);
+  if (web_app) {
+    payload.Set("webApp", web_app->Clone());
+  }
   if (!initiator_extension_id.empty()) {
     // An extension asked for the page (its options page): ui-requests.md
     // section 5.6.
@@ -710,8 +824,10 @@ EngineContents* EngineContents::RequestNewPage(
           bdkcore::destroy_contents(runtime, p);
         }
       },
-      std::weak_ptr<bdkcore::Contents>(page), DisplayUrl(target_url), width,
-      height);
+      std::weak_ptr<bdkcore::Contents>(page),
+      web_app && web_app->FindString("name") ? *web_app->FindString("name")
+                                             : DisplayUrl(target_url),
+      width, height);
   if (opener) {
     RaiseUiRequest(opener, BDK_SURFACE_NEW_WINDOWS, payload, std::move(finish));
   } else {
@@ -721,6 +837,50 @@ EngineContents* EngineContents::RequestNewPage(
                    std::move(finish));
   }
   return raw;
+}
+
+// static
+EngineContents* EngineContents::LaunchWebApp(
+    const std::shared_ptr<bdkcore::Profile>& profile,
+    const std::string& app_id,
+    const GURL& url,
+    base::DictValue app) {
+  if (!profile || !profile->data) {
+    return nullptr;
+  }
+  Profile* chrome_profile =
+      static_cast<EngineProfile*>(profile->data.get())->profile;
+  std::unique_ptr<content::WebContents> contents = content::WebContents::Create(
+      content::WebContents::CreateParams(chrome_profile));
+  content::WebContents* raw = contents.get();
+  EngineContents* page =
+      RequestNewPage(profile, nullptr, std::move(contents), "webApp",
+                     WindowOpenDisposition::kNewWindow, url, nullptr,
+                     /*user_gesture=*/true, std::string(), &app);
+  if (!page) {
+    return nullptr;
+  }
+  page->web_app_id_ = app_id;
+  // Chromium's readers of "in an app window" (manifest updates, the
+  // webapps client) see it (web-apps.md 10.1).
+  if (web_app::WebAppTabHelper* helper =
+          web_app::WebAppTabHelper::FromWebContents(raw)) {
+    helper->SetIsInAppWindow(app_id);
+  }
+  raw->GetController().LoadURL(url, content::Referrer(),
+                               ui::PAGE_TRANSITION_AUTO_TOPLEVEL,
+                               std::string());
+  return page;
+}
+
+blink::mojom::DisplayMode EngineContents::GetDisplayMode(
+    const content::WebContents* web_contents) {
+  // An app's page reports the app's display mode while it is in the app's
+  // scope (web-apps.md 6); every other page is a browser page.
+  if (web_app_id_.empty() || !in_app_scope_) {
+    return blink::mojom::DisplayMode::kBrowser;
+  }
+  return AppDisplayMode(ProfileOf(*core()), web_app_id_);
 }
 
 void EngineContents::ToggleDevTools() {
@@ -1050,6 +1210,36 @@ void EngineContents::PerformMenuItem(const content::ContextMenuParams& params,
 content::KeyboardEventProcessingResult EngineContents::PreHandleKeyboardEvent(
     content::WebContents* source,
     const input::NativeWebKeyboardEvent& event) {
+  // Escape belongs to BDK while the page has exclusive access (5.12): a
+  // custom presenter cannot keep it.
+  if (event.windows_key_code == ui::VKEY_ESCAPE) {
+    const bool down =
+        event.GetType() == blink::WebInputEvent::Type::kRawKeyDown;
+    if (down && pointer_locked_) {
+      if (content::RenderWidgetHostView* view =
+              web_contents_->GetRenderWidgetHostView()) {
+        view->UnlockPointer();
+      }
+      last_escape_ = base::TimeTicks::Now();
+      return content::KeyboardEventProcessingResult::HANDLED;
+    }
+    if (keyboard_locked_with_escape_) {
+      // The page gets Escape; held for as long as Chrome asks, it exits.
+      if (down && !escape_held_.IsRunning()) {
+        escape_held_.Start(
+            FROM_HERE, base::Milliseconds(1500),
+            base::BindOnce(
+                [](base::WeakPtr<EngineContents> page) {
+                  if (page) {
+                    page->ExitFullscreenModeForTab(page->web_contents());
+                  }
+                },
+                GetWeakPtr()));
+      } else if (event.GetType() == blink::WebInputEvent::Type::kKeyUp) {
+        escape_held_.Stop();
+      }
+    }
+  }
   std::shared_ptr<bdkcore::Contents> c = core();
   if (c && bdkcore::reserve_key(*c, HostView::KeyEvent(event))) {
     return content::KeyboardEventProcessingResult::HANDLED;
@@ -1120,7 +1310,58 @@ void EngineContents::EnterFullscreenModeForTab(
           weak_factory_.GetWeakPtr()));
 }
 
+void EngineContents::RequestPointerLock(content::WebContents* web_contents,
+                                        bool user_gesture,
+                                        bool last_unlocked_by_target) {
+  // Chrome's PointerLockController's rules.
+  constexpr base::TimeDelta kEscapeCooldown = base::Milliseconds(1250);
+  if (!last_unlocked_by_target) {
+    if (!user_gesture) {
+      web_contents->GotResponseToPointerLockRequest(
+          blink::mojom::PointerLockResult::kRequiresUserGesture);
+      return;
+    }
+    if (base::TimeTicks::Now() < last_escape_ + kEscapeCooldown) {
+      web_contents->GotResponseToPointerLockRequest(
+          blink::mojom::PointerLockResult::kUserEscapeCooldown);
+      return;
+    }
+  }
+  web_contents->Focus();
+  pointer_locked_ = web_contents->GotResponseToPointerLockRequest(
+      blink::mojom::PointerLockResult::kSuccess);
+  // A page that unlocked and locks again (a game's menu) is not told again.
+  if (pointer_locked_ && !last_unlocked_by_target) {
+    NoteExclusiveAccess(*this, ExclusiveAccessKind::kPointerLock,
+                        /*escape_held=*/false);
+  }
+}
+
+void EngineContents::LostPointerLock() {
+  pointer_locked_ = false;
+}
+
+void EngineContents::RequestKeyboardLock(content::WebContents* web_contents,
+                                         bool esc_key_locked) {
+  // Chrome's KeyboardLockController: only a page in fullscreen.
+  const bool allowed = fullscreen_;
+  web_contents->GotResponseToKeyboardLockRequest(allowed);
+  keyboard_locked_with_escape_ = allowed && esc_key_locked;
+  if (allowed) {
+    NoteExclusiveAccess(*this, ExclusiveAccessKind::kKeyboardLock,
+                        esc_key_locked);
+  }
+}
+
+void EngineContents::CancelKeyboardLockRequest(
+    content::WebContents* web_contents) {
+  keyboard_locked_with_escape_ = false;
+  escape_held_.Stop();
+}
+
 void EngineContents::ExitFullscreenModeForTab(content::WebContents* source) {
+  keyboard_locked_with_escape_ = false;
+  escape_held_.Stop();
   if (!fullscreen_) {
     return;
   }
@@ -1172,25 +1413,47 @@ void EngineContents::RequestMediaAccessPermission(
     content::WebContents* web_contents,
     const content::MediaStreamRequest& request,
     content::MediaResponseCallback callback) {
-  // getDisplayMedia: Chrome's source picker is a tab-modal views dialog,
-  // which this page's window cannot parent (it ended the process). Until the
-  // screen_capture surface is built (S3), the request is refused as that
-  // surface's `disabled` mode refuses it: NotAllowedError (T-UIR-10).
-  using blink::mojom::MediaStreamType;
-  for (MediaStreamType type : {request.video_type, request.audio_type}) {
-    if (type == MediaStreamType::DISPLAY_VIDEO_CAPTURE ||
-        type == MediaStreamType::DISPLAY_VIDEO_CAPTURE_THIS_TAB ||
-        type == MediaStreamType::DISPLAY_VIDEO_CAPTURE_SET ||
-        type == MediaStreamType::DISPLAY_AUDIO_CAPTURE) {
-      std::move(callback).Run(
-          blink::mojom::StreamDevicesSet(),
-          blink::mojom::MediaStreamRequestResult::PERMISSION_DENIED,
-          /*ui=*/nullptr);
-      return;
-    }
-  }
+  // getDisplayMedia goes through Chrome's display media handler too; its
+  // picker and its sharing notification are BDK's (ui_screen_capture.h).
   MediaCaptureDevicesDispatcher::GetInstance()->ProcessMediaAccessRequest(
       web_contents, request, std::move(callback), /*extension=*/nullptr);
+}
+
+void EngineContents::NoteAppScope(const GURL& url) {
+  if (web_app_id_.empty() || !core()) {
+    return;
+  }
+  const bool in_scope = IsInAppScope(ProfileOf(*core()), web_app_id_, url);
+  if (in_scope == in_app_scope_) {
+    return;
+  }
+  in_app_scope_ = in_scope;
+  // The page's display mode changes with it.
+  if (content::RenderWidgetHostView* view =
+          web_contents_->GetRenderWidgetHostView()) {
+    view->GetRenderWidgetHost()->SynchronizeVisualProperties();
+  }
+  Emit(BDK_CONTENTS_EVENT_WEB_APP, "",
+       ToJson(base::DictValue()
+                  .Set("appId", web_app_id_)
+                  .Set("isInScope", in_scope)),
+       0, 0);
+  // BDK's own app window shows the origin while the page is out of scope
+  // (web-apps.md 4.2); an application's window shows what it likes.
+  if (own_window_) {
+    host_view_->SetOriginNotice(
+        in_scope ? std::string() : url::Origin::Create(url).Serialize());
+  }
+}
+
+void EngineContents::NoteCaptureChanged() {
+  const uint32_t flags = CaptureFlags(web_contents_);
+  if (flags == capture_flags_) {
+    return;
+  }
+  capture_flags_ = flags;
+  Emit(BDK_CONTENTS_EVENT_CAPTURE_CHANGED, "",
+       ToJson(base::DictValue().Set("capture", static_cast<int>(flags))), 0, 0);
 }
 
 bool EngineContents::CheckMediaAccessPermission(
@@ -1246,20 +1509,29 @@ void EngineContents::DidFinishNavigation(content::NavigationHandle* handle) {
     if (zoom_ != 1.0 && !handle->IsSameDocument()) {
       SetZoom(zoom_);
     }
+    KeepOutOfBackForwardCacheForPolicy(handle);
     Emit(BDK_CONTENTS_EVENT_NAVIGATION_COMMITTED, url, "{}", 0, flags);
+    NoteAppScope(handle->GetURL());
     return;
   }
   const int net_error = handle->GetNetErrorCode();
   if (handle->IsErrorPage()) {
     flags |= BDK_EVENT_FLAG_ERROR_PAGE;
   }
+  if (handle->GetNavigationId() == policy_ended_) {
+    policy_ended_ = 0;
+    Emit(BDK_CONTENTS_EVENT_NAVIGATION_FAILED, url,
+         std::exchange(policy_detail_, std::string()), net_error, flags);
+    return;
+  }
   const bool native = handle->GetNavigationId() == handled_natively_;
   if (native) {
     handled_natively_ = 0;
   }
   const char* code = native                          ? "handledNatively"
-                     : net_error == net::ERR_ABORTED ? "aborted"
-                                                     : "netError";
+                     : net_error != net::ERR_ABORTED ? "netError"
+                     : Superseded(*handle)           ? "superseded"
+                                                     : "aborted";
   Emit(BDK_CONTENTS_EVENT_NAVIGATION_FAILED, url,
        ToJson(base::DictValue()
                   .Set("code", code)
@@ -1313,11 +1585,42 @@ void EngineContents::OnWebContentsLostFocus(
        ToJson(base::DictValue().Set("focused", false)), 0, 0);
 }
 
+void EngineContents::RendererUnresponsive(
+    content::WebContents* source,
+    content::RenderWidgetHost* render_widget_host,
+    base::RepeatingClosure hang_monitor_restarter) {
+  // As Chrome's browser does: not for a hung <select> or date popup, whose
+  // own widget would lose focus to the question.
+  content::RenderWidgetHostView* view = render_widget_host->GetView();
+  if (view && !view->IsHTMLFormPopup()) {
+    ShowUnresponsivePage(source, render_widget_host,
+                         std::move(hang_monitor_restarter));
+  }
+}
+
+void EngineContents::RendererResponsive(
+    content::WebContents* source,
+    content::RenderWidgetHost* render_widget_host) {
+  HideUnresponsivePage(source);
+}
+
 void EngineContents::OnVisibilityChanged(content::Visibility visibility) {
   const bool visible = visibility == content::Visibility::VISIBLE;
+  if (visible && !host_view_->IsShown()) {
+    // Chromium shows a page whose view is in no window (T-ADP-11): it is hidden
+    // again, and the application never sees it visible.
+    ScheduleVisibilityCheck();
+    return;
+  }
   if (visible) {
     LoadIfDiscarded();
+  } else if (!shown_once_) {
+    // A page nobody has shown yet is hidden quietly: its state says so, and
+    // no event reports a change the application never saw the other side of
+    // (the stub reports none either).
+    return;
   }
+  shown_once_ = shown_once_ || visible;
   Emit(BDK_CONTENTS_EVENT_VISIBILITY_CHANGED, "",
        ToJson(base::DictValue().Set("visible", visible)), 0, 0);
 }

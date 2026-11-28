@@ -1,0 +1,35 @@
+---
+title: Experimental APIs
+description: What may change before 1.0, and what is defined but not built yet.
+---
+
+BDK is before 1.0. The Swift and TypeScript APIs are experimental and may break in any `0.y` release; the
+C ABI is checked by version and hash at start, so a mismatched runtime fails at start rather than later.
+`bdk.toml` follows the BDK version, and inside one major version every earlier valid file still
+validates. See [Versioning](./versioning.mdx).
+
+## Status labels
+
+Every key, type and command in the plan carries a label
+([sdk/README.md section 2](https://github.com/cove-browser/browser-development-kit/blob/main/docs/planning/sdk/README.md#2-status-labels)):
+
+| Label | Meaning for you |
+| --- | --- |
+| Plan | Part of the design. It may still be renamed before 1.0. |
+| Added | Proposed and waiting for confirmation. Not in the schema until it is accepted: `bdk.toml` rejects the key as unknown. |
+| Conditional | Depends on an open decision; may not ship. |
+| Later | After v1. Listed so the v1 API leaves room for it. |
+
+## Defined but not built
+
+These appear in the reference and do not work yet. Each is tracked in the plan's task list.
+
+| Item | State |
+| --- | --- |
+| A prebuilt runtime | Not published: `bdk build runtime` and `bdk build embed` work, but only with a runtime built from source (`runtime.mode = "source"`). Without one, an application from `bdk init` runs on the stub runtime. |
+| `bdk build pages --watch` | Not built; `bdk build automation --watch` is. |
+| `bdk doctor --fix`, and the check that the pinned Chromium is behind the newest release | Not built. |
+| `bdk init --search-engine` | Not offered: the `[search]` table is an Added item that has not been accepted. |
+| Vue, Svelte, Solid and Lit page templates | Not offered: they assign HTML strings, which the internal-page policy blocks. |
+
+When an experimental API changes, the release notes of the version that changes it say how to move.

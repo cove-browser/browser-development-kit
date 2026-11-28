@@ -37,6 +37,14 @@ checkout lock, so a whole sync, patch and build sequence is one lock acquisition
   dependencies are synced, so the next build has nothing to do; `--force` and `--no-patch` reset to
   the pin instead.
 - `chromium:patch-apply [--force]`, `chromium:patch-export`, `chromium:patch-check`.
+- An application's own series (source mode, `bdk patch`, sdk/cli.md section 7) follows BDK's:
+  `loadSeriesWithApp(patchesDir, appPatchesDir)` in `common.ts` names its patches `app/<file>`, and
+  `applySeries`, `checkPatchSeries`, `verifyCheckout`, `computeSourceIdentity` and `packageRuntime` take
+  `appPatchesDir`. `chromium:build --app-patches <dir>` applies it and stamps the build with it;
+  `chromium:package --app-patches <absolute dir>` packages that build, and the identity, so the source key, and
+  the manifest carry `application: { patches_digest, patches }`. Without application patches neither changes, so
+  existing keys stay as they were. The `bdk` CLI imports `patch-apply.ts`, `patch-export.ts` and
+  `patch-check.ts` into its CommonJS executable, so those modules start their command without top-level `await`.
 - `chromium:build [--config dev|release] [--targets a,b | targets...] [--ccache-maxsize 50G] [--no-patch]
   [--no-verify] [--force]`: apply patches, mount `//bdk` (content-diff copy of `chromium/bdk`, plus `packages/core/runtime`, `include/bdk` and `generated` under `//bdk/core`), `gn gen`, `autoninja`
   (default target `chrome`) with `CCACHE_DIR=$BDK_HOME/ccache`, `CCACHE_MAXSIZE` (flag, or
@@ -126,7 +134,9 @@ Design: `docs/planning/repository-and-tooling.md` sections 5.2, 5.3, 7.1, 8 and 
 | `pnpm chromium:package [--config release] [--experiment <id>] [--reproducible-check]` | Under the checkout lock: copies the files listed in `chromium/runtime-files.json` from `out/<config>` of the managed (or experiment) checkout into a temp dir in the store, writes and verifies `manifest.json`, makes it read-only and renames it to `runtimes/<source-key>/`. Refuses a checkout that is not the pin plus the current patch series (clean), and refuses when `packages/core/generated/abi-hash.txt` is stale (`cmake -DMODE=check`). Idempotent for identical content, after re-verifying the existing store entry against its manifest; an error when the key exists with different content or the entry is damaged (it is never replaced silently: remove it as the message says). Symlinks must resolve inside the runtime through the real filesystem. A declared file that is missing fails packaging and is named. `--reproducible-check` packages twice into throwaway stores and compares. |
 | `pnpm chromium:runtime [--config release] [--allow-source-build]` | Never cached. Computes the source key, re-verifies the manifest and every file digest in `runtimes/<key>`, checks the manifest digest and ABI hash against `pin.json` when it records a runtime for this key (not in `source` mode), writes `.bdk/runtime.json` and the `.bdk/runtime` symlink. If the key is missing and `pin.json` has a published runtime for it, downloads, checks the archive SHA-256 and then the manifest digest against `pin.json`, unpacks via temp and rename. Otherwise fails naming the key and the remedies. |
 | `pnpm chromium:publish [--backend github\|file] [--dest file:///dir] [--repo owner/name] [--config release] [--dry-run]` | Clean tree only (`git status --porcelain` empty). Archives `runtimes/<key>`, uploads, writes the `runtime` record into `chromium/pin.json`. `github` uses `gh release upload` to release `runtime-<key>` of `origin` (created if absent, never overwrites). `file` copies into a directory. |
-| `pnpm test:release` | Adds `chromium:test-release`: the runtime/resolver suite, then the conformance step, which skips with a message while no runtime is published or the suite is not written. |
+| `pnpm exec nx run chromium:compare-runtimes -- <a> <b> [--files paths\|strict]` | T-CHR-09 (M9): whether two runtimes (directories or `manifest.json` files) are builds of the same inputs. Equal source key, ABI version and hash, Chromium tag, commit and deps digest, BDK digests and target; the same file inventory (paths, file or symlink, executable bit, link targets); and in `strict` mode the same digests. Builder, timestamp, BDK commit and attestation are provenance and only noted. Exit 0 equivalent, 1 not, 2 usage. `--reproducible-check` uses the same comparison in `strict` mode. |
+| `pnpm exec nx run chromium:release-check -- [--version X.Y.Z] [--swift-archive <zip>] [--skip-swift-resolve]` | The release dry run (T-PKG-06, `src/release/checks.ts`): clean tree, tag, pin record, ABI hash, source key, the published runtime fetched into a scratch store and checked against `pin.json` (archive, files, manifest digest, ABI hash, notices), and the Swift package's binary target and resolution. Writes nothing to the repository, `.bdk/` or `BDK_HOME`. See `docs/release/procedure.md` section 3. |
+| `pnpm test:release` | Adds every `test-release` target: `chromium:test-release` (the runtime/resolver suite, then the conformance step, which skips with a message while no runtime is published or the suite is not written), `core:test-release` and `arc-style-browser:test-release` (the robustness suites, T-REL-03). |
 
 `BDK_RUNTIME_MODE=source` makes the resolver use only a locally packaged runtime (no download).
 `--allow-source-build` only changes the failure message when `pin.json` has no published runtime: the source
@@ -139,7 +149,7 @@ First 16 hex digits of SHA-256 over the canonical JSON (sorted keys, no whitespa
 BDK ABI version and ABI hash; SHA-256 digest of every file in `chromium/patches`, in `chromium/bdk` and in
 `packages/core/runtime` (the runtime core the engine compiles; path-sorted, relative path hashed in; `README.md` and `.DS_Store` at the top level are ignored so documentation
 edits do not force a rebuild); digest of `chromium/gn/<config>.gn` (`absent` if the preset file does not exist,
-which packaging refuses); digest of `chromium/runtime-files.json` (its sorted paths and `target.min_os`, canonical
+which packaging refuses); digest of `chromium/runtime-files.json` (its sorted paths, `target.min_os` and `notices`, canonical
 JSON: what is packaged decides what the key names); target OS and architecture. The key's own `key_schema` is 3.
 The ABI hash is in the key as well as the version: the
 runtime must report exactly the hash the SDK was compiled against, so a header change is a new key.
@@ -158,6 +168,22 @@ step with `commit`, and nothing can verify it without a checkout. Packaging refu
 the pinned commit plus exactly the current `chromium/patches` series with no uncommitted tracked changes (a built
 checkout's `HEAD` is the series tip, never the pin itself), so the manifest value always belongs to the pin. Local edits to `DEPS` or to `.gclient` do not
 change the key; that is the managed checkout's job to prevent (`chromium:sync` resets to the pin).
+
+### Third-party notices
+
+`chromium/runtime-files.json` may declare `notices: { "from": <path in out/<config>>, "to": <file name> }`. The
+repository's declares Chromium's credits page, `gen/components/resources/about_credits.html`, as
+`THIRD_PARTY_NOTICES.html` (T-REL-02, `docs/release/licence-review.md`). Packaging copies it to the top of the
+runtime, where the manifest lists it; a missing file fails as any declared file does, and Chromium's placeholder
+(written when `generate_about_credits` is false) is refused. `also_in`, a directory inside a declared path, gets a
+copy too: the repository names the framework's `Resources`, so the notices travel with the framework an
+application embeds, and `bdk build sign` copies them into the application (2026-11-27). The declaration is part of
+the runtime-files digest in the source key.
+
+`pnpm exec tsx tooling/src/release/notices.ts --package <dir>... [--node] --out <file>` writes the notices for
+what BDK ships besides the runtime: the production dependency closure of workspace packages (workspace packages
+themselves are followed and not listed) and, with `--node`, Node's licence. It fails on a package with no
+licence, one outside `ACCEPTED_LICENCES`, or no licence file to reproduce.
 
 ### Manifest
 

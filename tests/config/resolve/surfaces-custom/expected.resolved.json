@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "bdk_version": "0.0.0",
-  "config_digest": "sha256:6c9f59a830466ea79ce00cb7f23ed427bb955327bb70123b051ea399e861fb19",
+  "config_digest": "sha256:bdd636a5720fd33da6879af5c74a935bce4f19bb27dcb39a4890d8044ae8d36d",
   "browser": {
     "name": "Cove",
     "internal_scheme": "cove",
@@ -23,30 +23,43 @@
     "permissions": "custom",
     "javascript_dialogs": "custom",
     "http_auth": "custom",
+    "client_certificates": "custom",
     "file_pickers": "custom",
     "context_menus": "custom",
     "new_windows": "custom",
     "downloads": "custom",
     "passwords": "custom",
     "autofill": "custom",
+    "autofill_suggestions": "custom",
     "printing": "custom",
     "translation": "custom",
     "find": "default",
     "fullscreen": "custom",
+    "exclusive_access": "custom",
     "notifications": "disabled",
     "certificate_errors": "custom",
     "reputation_warnings": "custom",
-    "devtools": "custom"
+    "devtools": "custom",
+    "device_choosers": "custom",
+    "screen_capture": "custom",
+    "webauthn": "custom",
+    "external_protocols": "custom",
+    "page_health": "custom",
+    "identity": "custom",
+    "payments": "custom",
+    "web_app_installs": "custom"
   },
   "extensions": {
     "enabled": true,
     "install_policy": "reject_known_incompatible",
     "allow_in_private": "user",
+    "developer_mode": "user",
     "install": {
       "unpacked": true,
       "crx": true,
       "update_urls": "any",
-      "stores": []
+      "stores": [],
+      "blocklist": []
     },
     "ui": {
       "actions": "custom",
@@ -57,6 +70,9 @@
       "devtools": "disabled"
     },
     "bundled": {}
+  },
+  "web_apps": {
+    "enabled": false
   },
   "services": {
     "translation": {
@@ -71,10 +87,16 @@
     "geolocation": {
       "provider": "system"
     },
+    "webauthn": {
+      "phones": false
+    },
     "credentials": {
       "provider": "chromium"
     },
     "leak_check": {
+      "provider": "none"
+    },
+    "push": {
       "provider": "none"
     }
   },

@@ -501,6 +501,98 @@ sections 3, 4, 5.6, 5.21 (new) and 8.2, [sdk/services.md](sdk/services.md) 4 and
 [risks.md](risks.md) R32 and section 4, the M9 rows of [roadmap.md](roadmap.md), and task T-UIR-13, with T-PWA-01
 to T-PWA-05 new. The task list is 153.
 
+### 2.25 Navigation policy hook in M9 (2026-11-25)
+
+The product owner moved the navigation policy hook from "not in v1" to M9. Nothing was built when this was recorded.
+
+| Topic | Before | Decision |
+|---|---|---|
+| Cancelling or redirecting a navigation before it starts | "Later", on the grounds that new-window requests cover the common case. An application could only call `stop()` after the start, route its own internal URLs natively, or ship an extension with blocking rules. | In v1, built in M9: allow, cancel or redirect ([sdk/swift-api.md](sdk/swift-api.md) 6.3). With no handler nothing changes. |
+
+T-SWF-10 (stub, core, C ABI, Swift; no Chromium build) settles the API before T-SWF-11 (engine). The engine side is
+expected to be a navigation throttle in the overlay with no patch; unverified.
+
+Changed: [sdk/swift-api.md](sdk/swift-api.md) 6.3, [sdk/swift-api-reference.md](sdk/swift-api-reference.md) 6.3,
+[sdk/production-browser.md](sdk/production-browser.md) 2.2, the M9 rows of [roadmap.md](roadmap.md), with T-SWF-10 and
+T-SWF-11 new. The task list is 155.
+
+### 2.26 M9 without a Chromium build (2026-11-25)
+
+M9 was worked on one branch (`m9-final-touches`) in five parallel pieces, none of which built Chromium (AGENTS.md:
+no build, sync or roll unless asked). What needs no build is built and tested on the stub; every engine half is
+open, under the task it belongs to. The status is in [roadmap.md](roadmap.md), M9. Decisions taken while building:
+
+| Topic | Decision |
+|---|---|
+| Navigation policy names (T-SWF-10) | Nested Swift types, `BDKWebContents.NavigationDecision`, `BDKWebContents.NavigationAction` and `BDKRuntime.NavigationPolicy`, by swift-api-reference.md's prefix rule. The handler's page is optional: nil when the application holds no object for the page yet. |
+| What the policy is asked (T-SWF-10) | Main-frame navigations after their start event and before the request, and again at each server redirect (`redirectedFrom`). Not subframes, same-document navigations, back/forward cache restores or prerender activations (Chromium runs no throttle for an activation); a prerender's own navigation is asked with `isPrerender`. A redirect loads with the application's authority (a GET, no body, no referrer). Cancel is net error -3 with `cancelledByPolicy`. No timeout: a stop, a newer navigation or the page closing makes the decision stale. The 21st redirect decision in a row is `ERR_TOO_MANY_REDIRECTS`, matching Chromium's limit of 20. The handler is a property settable at any time, not a registration. |
+| Page health (T-UIR-15) | Surface 33. `BlockedPopupRequest.allowOnce(_:confirmedBy:)` and `alwaysAllow(confirmedBy:)` take the confirming event and a listed popup. |
+| Exclusive access (T-UIR-15) | A rejected or dropped notice is shown by the default presenter, because the exit instruction must be shown. |
+| Autofill preview (T-UIR-15) | `preview` is an update of the open request, `{"preview": id}` or `{"preview": null}`; a completion naming a suggestion the list did not offer is `ui.widensRequest`. |
+| `developer_mode = "user"` (T-EXT-14) | Behaves as `"on"` until the setting `extensions.developerMode` exists. |
+| Bundled extensions (T-EXT-14) | Paths are relative to the project; the build copies them to the same path under `Contents/Resources`. New codes `extension.blocklisted` (also under `allow_all`) and `extension.notRemovable`. |
+| T-UIR-14 surfaces | Proposed in [sdk/ui-requests.md](sdk/ui-requests.md) 5.22; reviewed and accepted by the product owner on 2026-11-27: the names `payments`, `identity`, `digital_credentials`; `digital_credentials` follows `[services.webauthn] phones`, because the desktop provider reads a credential only from a phone over the same transport; Payment Request calls that ask for shipping or payer details are refused in v1. Secure Payment Confirmation uses a keychain group compiled into Chromium, so it waits for the T-UIR-11 fix. |
+| Web apps in a host context (T-PWA-01, R32) | Read, not run: `display-mode` comes from the page's `WebContentsDelegate::GetDisplayMode`, which BDK's `EngineContents` implements, so an app page can live in an ordinary host context with overlay code. R32's fallback is not taken; R32 is Low. |
+| Web app install dialogs (T-PWA-01) | Every path converges on `OnWebAppInstallShowInstallDialog` with no embedder seam: one patch. Turning off OS integration (app shims) is a second patch. [sdk/web-apps.md](sdk/web-apps.md) sections 9 and 10. |
+| Web Install API (T-PWA-01) | Not in v1. `navigator.install()` and `<install>` (features `WebAppInstallation`, `InstallElement`, on for macOS at the pin) reach views dialogs whether installs are on or off, the crash class T-UIR-10 removed; they are to be turned off at start (T-PWA-06). |
+| Web app ABI (T-PWA-03) | Surface 37; contents event `WEB_APP` (12); domain `webApps` with `privateProfile` and `notInstallable`; the host's confirmed install and uninstall are ABI functions (`bdk_web_apps.h`), not commands; icons are references and an optional `data:` URL, never image buffers; `WebAppInfo.hasPendingUpdate` reports a held name or icon change, applying it is later (T-PWA-07). |
+| Push credentials (T-PWA-05) | Read, not run: Chromium's GCM client authenticates with a device check-in that identifies as `DEVICE_CHROME_BROWSER` and reads no API key, so `InitializeAndOverrideAPIKey` does not configure push and the requirement may be a question of terms, not a console credential. Until T-PWA-05 settled it, `provider = "google"` needed the Google key (`config.keyMissing`); since 2026-11-26 it takes none (row "Push through Google" below). A provider that is not a string is `services.provider_unknown`, like the other providers. |
+| Profile downgrade (T-PKG-05) | The existing `[runtime] downgrade` and `snapshot_on_upgrade` keys, applied by the core before the backend starts, to the whole data directory, with Chromium's own `Last Version` and `Snapshots/<version>/`. Restoring a snapshot deletes newer data, as Chromium does. Codes `runtime.downgradeRefused` and `runtime.profileMigrationFailed` are strings, not ABI constants. The core code uses `std::filesystem`; it is not Chromium code, and it has not been compiled under GN yet. |
+| Third-party notices (T-REL-02) | Both GN presets set `generate_about_credits = true` (without it `chrome://credits` is a placeholder), which changes the source key, so a new runtime is built; the build stays incremental, because the flag reaches only `generate_about_credits.h` (included by one unit test) and adds the `about_credits` action, which runs `tools/licenses/licenses.py` over the tree. The notices ship at the top of the runtime as `THIRD_PARTY_NOTICES.html`, outside the framework, so its signature is untouched. |
+| Release documents | A new `docs/release/` directory: the procedure, the security-patch policy, the licence review, versioning, compatibility, experimental APIs and the cross-platform review. The security response targets in it (3 and 10 working days) are proposals for the product owner. |
+| `bdk init` frameworks (T-CLI-02) | Vanilla, React and Preact only: Vue, Svelte, Solid and Lit assign HTML strings to `innerHTML`, which the engine's `trusted-types` policy blocks. `--search-engine` and `[storage]` are not offered while S1 and S2 are not accepted. The project references BDK at the CLI's exact version (`--bdk-package` for another). The generated application runs on the stub until `bdk build runtime` and `embed` exist (T-CLI-04). Page templates are composed from shared pieces. |
+| `bdk patch` and `bdk doctor` (T-CLI-03, T-CLI-01) | `bdk patch new` records no base ref; `export` finds the base as the pin plus BDK's series. A runtime built with application patches records `application: {patches, patches_digest}` in its identity and manifest; without them the source key is unchanged. In `bdk doctor`, integrity and signature failures exit 1. `doctor` lists every diagnostic the configuration resolver reports. |
+
+Fixed on the way: the packaged CLI ran its bundled tooling modules' own `main()`, and packaged `bdk build automation`
+always failed to load Rolldown; the framework's exports now name the navigation policy functions.
+
+Changed: the M9 status in [roadmap.md](roadmap.md); tasks T-PKG-05, T-REL-01, T-REL-02 and T-XPL-02, with T-PWA-06,
+T-PWA-07, T-CLI-07 and T-REP-09 new. The task list is 159.
+
+### 2.27 M9 on the engine (2026-11-25)
+
+The engine halves of M9 that need no product decision, built on `m9-final-touches` with incremental release
+builds of the managed checkout (each about 60 to 90 seconds; AGENTS.md now allows them without asking). The
+status is in [roadmap.md](roadmap.md), M9. Decisions taken while building:
+
+| Topic | Decision |
+|---|---|
+| Navigation policy on the engine (T-SWF-11) | A throttle of the overlay, first in the list so it is asked before the route table hands a native route to its handler. A navigation the route table drops or restarts as the browser's own is not asked; the restart is. While a handler is set every committed page is kept out of the back/forward cache (`DisabledSource::kEmbedder`), since a restored page starts no navigation; a page cached before the handler was set can still come back unasked. A prerender is asked at its own start and discarded unless allowed. |
+| `superseded` on the engine | A navigation another one replaces now ends with the code `superseded`, as on the stub (Chromium's `NavigationDiscardReason`); before it was `aborted`. |
+| Downgrade policy on the engine (T-PKG-05) | Applied at the first start of the process only, before Chromium opens the directory; a later runtime of the same process uses the directory Chromium has open. Engine scenarios each get a launch of their own (`engine_launch_*`, prepared by `bdk_engine_launch_prepare` before the harness's first start). |
+| Page visibility (T-ADP-11) | BDK hides a page itself whenever its host view is in no window or in a hidden view (`WasHidden`), and shows it again when it is back (`WasShown`), after Chromium's own update for the same change; a page Chromium makes visible while its view is in no window is hidden again and never reported visible. Whether the window is on screen stays Chromium's (occlusion), because a window ordered in after the view was added sends nothing a view can follow. A page never shown is hidden quietly, with no event, as the stub reports none. |
+| Push off (T-PWA-05) | `provider = "none"` turns the Blink feature `PushMessaging` off, so the Push API is absent, instead of `subscribe()` rejecting and `permissionState()` answering `denied`: Chromium has no embedder switch for that without a patch, and its push client checks in with Google at the first subscription. |
+| Phones off (T-UIR-12) | `phones = false` reports Bluetooth LE as unsupported to Chrome's WebAuthn code, as a missing Bluetooth usage string does. Read once, as Chromium starts. |
+| Page health on the engine (T-UIR-15) | A hung renderer reaches BDK as `RendererUnresponsive` of the page's own `WebContentsDelegate` (and through `BdkTabDialogs` for a page in a `Browser`); blocked popups through the popup blocker's `UrlListManager`, observed until the tab is about to be deleted. Both default presenters are sheets; the blocked-popup notice is a sheet rather than the planned small notice at the address bar. |
+| Bundled extensions on the engine (T-EXT-14) | Chromium's unpacked loader with no prompt, before the profile is handed over; `MustRemainInstalled`, and `MustRemainEnabled` when required. An installed extension blocklisted later is disabled by BDK when it loads, with `DISABLE_BLOCKED_BY_POLICY`, which BDK reports as `blocklisted`. A bundled extension the configuration stops listing stays installed. |
+| External protocols and client certificates (T-UIR-13, part) | Requests, with BDK's sheets as default presenters. `isUserGesture` is always `false` (Chrome does not pass it to its dialog). `remember` uses Chrome's per-origin "always allow". |
+
+The robustness suite's memory bound, which failed on the engine in the first pass (about 1 to 3 MB a page), passes
+since the third (2.28): the growth was the engine harness, not a leak of BDK's or Chromium's.
+
+### 2.28 M9 on the engine, third pass (2026-11-26)
+
+| Topic | Decision |
+|---|---|
+| The engine suite runs outside a Chromium task (T-REL-03) | The engine harness ran the whole suite as one Chromium task posted to the UI thread, and pumped inside it. PartitionAlloc keeps what a task frees in the thread's scheduler-loop quarantine and purges it only when the outermost task ends, so nothing freed during the suite was ever released: 2.4 MB a page opened and closed, mostly Chromium's own objects freed with the page (found by forcing a purge from a test command: the live heap fell from 278 MB to 41 MB). The suite now starts from a run-loop timer inside Chromium's main loop, where an application's own code runs, and the harness's pump drains an autorelease pool between scenario steps, as each AppKit event would. Over 3,000 pages the process now grows 288 KB. A purge from inside the task was tried first and rejected: it frees objects the task's outer frames still use, which the quarantine is there to prevent. |
+| File System Access pickers (T-UIR-13) | Through a `ui::SelectFileDialogFactory` and the `SelectFilePolicy` BDK's browser client returns, which carries the page: every file dialog Chromium opens for a page (the File System Access API's, and any other of a page's) is a `file_pickers` request with `isFileSystemAccessAPI` true. A dialog for no page is Chromium's own. No patch. |
+| Device choosers (T-UIR-13) | Chrome's chooser controllers (USB, HID, Serial, Bluetooth) find the devices; BDK replaces only `chrome::ShowDeviceChooserDialog`, with a session that is the controller's view and raises a `device_choosers` request whose device list follows the controller through updates. The default presenter is a sheet of BDK's with the devices in a pop-up menu. The Swift type exposes the current `devices` and a `deviceChanges` sequence rather than one `Devices` sequence, as the extension panels expose their state. |
+| Web Bluetooth and Web Serial without a Bluetooth usage string (T-UIR-13) | macOS ends a process that opens the Bluetooth adapter without `NSBluetoothAlwaysUsageDescription`. Web Bluetooth is turned on only when the application's `Info.plist` has it, and absent otherwise. The serial chooser opened the adapter to list Bluetooth serial ports, which ended the engine suite: patch `bdk-let-an-embedder-keep-the-serial-chooser-from-asking-for-bluetooth` lets BDK have it list only the ports it can find without asking, as `getPorts()` does, when the key is missing. Bluetooth's scanning prompt (`requestLEScan`, behind Chromium's experimental features) and pairing prompts stay refused. |
+| Choosing a device in the engine suite | No Mac the suite runs on has a known USB, HID or serial device, so the scenarios that choose one use a fake chooser controller of the engine's (`chooser.open`, `bdk_testing.h`) through the same session; the web APIs' own scenarios cover the request, the default presenter and `disabled`. |
+| Screen capture (T-UIR-13) | Chrome's display media handler, source lists, streams and capture indicator are kept; patch `bdk-let-an-embedder-supply-the-screen-capture-ui` lets BDK supply the picker (`DesktopMediaPicker::Create`) and the sharing notification (asked for in `GetDevicesForDesktopCapture`, which covers screens, windows and tabs), the two views pieces. One patch serves `getDisplayMedia` and `chrome.desktopCapture.chooseDesktopMedia`; the extension's request needs its tab, since the request belongs to a page. |
+| The capture state (T-UIR-13) | `bdk_contents_state_t.capture`, reserved until now, carries `BDK_CAPTURE_*` flags, and `BDK_CONTENTS_EVENT_CAPTURE_CHANGED` (13) reports changes: the application's indicator follows `display`, and the page being shared reports `captured`. In Swift it is `BDKWebContents.captureActivity`, because `capture` already names the screenshot API. The ABI hash changed. |
+| The sharing indicator (T-UIR-13) | BDK's sharing bar is shown when the application has no `screen_capture` handler; an application that handles the surface shows its own, as the surface's custom mode implies. |
+| Web apps on the engine (T-PWA-04) | As web-apps.md 10 decided, with two patches: `bdk-let-an-embedder-present-the-web-app-install-dialog` (a page's `prompt()` reaches BDK's presenter at `OnWebAppInstallShowInstallDialog`, which raises `web_app_installs` with source `page`) and `bdk-let-an-embedder-turn-off-web-app-os-integration`. `webApps.install` of a page uses Chromium's `FetchManifestAndInstall` with a dialog callback of BDK's (source `command`, or no request when the host confirmed it), so it needs the page on screen, as Chromium's user install does. `PwaNavigationCapturing` and `DefaultWebAppInstallation` are off at start. Badges come from `BadgeManager::SetDelegate`. |
+| Web apps: installing from a URL (T-PWA-04) | Built by web-apps.md 10.3's three steps: the URL loads in a hidden page of the profile for the manifest id, `FetchInstallInfoFromInstallUrl` reads what to install, and `InstallFromInfoWithParams` installs it. With no page named, the `web_app_installs` request belongs to the profile, and its default installs nothing, since there is no page to show a sheet on. A URL with no installable manifest is `webApps.notInstallable` with Chromium's reasons. Background Sync and Periodic Background Sync are recorded in web-apps.md section 9: one-off sync works; periodic sync registers for an installed app, with events at least 12 hours apart. |
+| Web apps: a profile's first page (T-PWA-04) | Chromium checks a page for installation only once its profile's web-app registry is ready, so the first page loaded into a profile just opened may not be offered until it loads again. The engine scenarios wait for the registry (`webApps.list` does) before loading. |
+| Push through Google (T-PWA-05) | `provider = "google"` runs on the engine with no key and no project in Google's console: Chromium's push client registers the device with Google and reads no key, so the rule that a Google push provider needs the application's key at start is dropped, and a key given for push alone is `config.keyUnused`. Pages of an unbranded build were given the push service's staging endpoint (`fcm.googleapis.com/preprod/wp/`), because the endpoint follows the release channel and Chromium reports none; Google answers 410 there. Patch `bdk-let-an-embedder-give-pages-the-production-push-endpoint` lets the engine name the stable channel for endpoints only. Run with Google (product owner, 2026-11-26: the terms question is not a concern for now): a page subscribes, a push reaches its service worker, and the audit lists only `android.clients.google.com` and `mtalk.google.com` besides the loopback server. |
+| The application's Google key (found by T-PWA-05) | The engine gave Chromium the key before Chromium starts, as the key cache asks, but the cache's constructor reads a feature, and Chromium stops a process that reads one before its feature list exists: any application with a Google provider ended at start. The key is now recorded before start and given to Chromium at the start of the browser's main parts (`InstallGoogleKey`), once the feature list exists and before any service reads a key. No scenario had started with a key; `engine_launch_chromium_starts_with_the_application_s_google_key` now does. |
+| Payment Request (T-UIR-14) | Built on the engine: the `payments` surface (34), one patch (the delegate asks BDK for the dialog, and `show()` follows page visibility, because a BDK page is never the active tab of an active window of Chromium's), Chromium's single-app shortcut off so that a page never pays without the person choosing, and a handler's own page as a `new_windows` request of kind `paymentHandler`. Chromium holds a handler's answer until the person has used that page, so a handler that never opens one never resolves; that is Chromium's rule, kept. Shipping and payer details are refused (`NotSupportedError`). Secure Payment Confirmation waits for T-UIR-11; FedCM and digital credentials are not built. |
+| Touch ID passkeys (T-UIR-11) | Chromium offers its Touch ID authenticator only to an executable entitled to a keychain access group it compiles in for Chrome. A patch lets the engine name the group instead, and the engine names `<team>.<bundle id>.webauthn` from the running application's signature (empty, Chrome's group is kept, and an unsigned application offers no platform authenticator). macOS ends an application signed with `keychain-access-groups` and no provisioning profile at launch, so a BDK application needs a profile for it; a development profile needs the Mac registered with the team. |
+| FedCM (T-UIR-14) | Built with no patch: BDK's browser client returns its own `IdentityRequestDialogController`, which raises one `identity` request per step of Chromium's sign-in. A registration is allowed with `grant` and the gesture, not `accept`: the router has one granting completion per surface. An identity provider's pages are `new_windows` requests of kind `identityProvider`. |
+| Pointer and keyboard lock (T-UIR-15) | A BDK page is its own `WebContentsDelegate`, so Chromium's exclusive-access manager never saw its locks and the defaults refused them. The page delegate applies Chrome's rules (a gesture for a pointer lock unless the page unlocked it, a cooldown after Escape, keyboard lock only in fullscreen) and raises the `exclusive_access` notice; BDK keeps Escape. |
+| Geolocation after another runtime (T-PRV-04) | Chromium's geolocation provider caches a refusal whenever it is told a system permission other than allowed, an undetermined one included, and keeps it until the last page stops or the status goes from denied to allowed. BDK's permission source reports only changes, and passes through denied when the application's provider takes over. |
+
 ## 3. Tasks and workflows
 
 | Task | Change |
@@ -530,7 +622,13 @@ to T-PWA-05 new. The task list is 153.
 | T-UIR-14 | New, M9 (2026-11-25): Payment Request, Secure Payment Confirmation, FedCM and the Digital Credentials API turned on and routed (2.23). |
 | T-UIR-15 | New, M9 (2026-11-25): the S3 `[ui.surfaces]` keys accepted, and the three S3 surfaces with no task (`autofill_suggestions`, `exclusive_access`, `page_health`) finished (2.23). |
 | T-PWA-01 to T-PWA-05 | New, M9 (2026-11-25): installable web apps and push (2.24). |
+| T-SWF-10, T-SWF-11 | New, M9 (2026-11-25): the navigation policy hook (2.25). |
 | T-UIR-13 | Changed (2026-11-25, 2.24): its scenario that a page-initiated install stays off now holds for the default, `[web_apps] enabled = false`. |
+| T-PWA-06 | New, M9 (2026-11-25, 2.26): turn off `navigator.install()` and `<install>` at start, found in T-PWA-01. |
+| T-PWA-07 | New, after v1 (2026-11-25, 2.26): apply a held manifest update. |
+| T-CLI-07 | New, M9 (2026-11-25, 2.26): what `bdk doctor` does not check yet. |
+| T-REP-09 | New, M9 (2026-11-25, 2.26): publishing the documentation site. |
+| T-REL-01, T-REL-02, T-PKG-05, T-XPL-02 | Widened (2026-11-25, 2.26): `SECURITY.md`; BDK's own licence; the engine half of the downgrade policy; the cross-platform findings recorded for M10. |
 
 The task list goes from 103 to 106 tasks. The README said 100 before, which was already wrong; it now says 106. With T-CLI-05 on 2026-11-16 it is 107.
 
@@ -539,7 +637,7 @@ The task list goes from 103 to 106 tasks. The README said 100 before, which was 
 | `pr.yml` | From 2026-11-16: also packages the CLI executable and smoke-tests it |
 | `integration.yml` | Changed, as in 2.7 |
 | `chromium-roll.yml` | New |
-| `docs.yml` | Builds the Fumadocs site |
+| `docs.yml` | Builds the Fumadocs site. Not written yet: `pr.yml` builds the site and checks its links; publishing is T-REP-09 |
 | `chromium-build.yml` | Removed |
 | `chromium-rebase.yml` | Removed; replaced by the roll bot |
 | `release.yml` | Removed for now; deferred |
@@ -554,9 +652,9 @@ The task list goes from 103 to 106 tasks. The README said 100 before, which was 
 | A Chromium-based runtime launches and renders on a hosted macOS runner with no real GPU. If not, integration tests move to the local pass. | T-REP-04 |
 | Every build-time figure: about 90 minutes for a full build is a 2023 report | T-CHR-05 |
 | ~~SwiftPM expects `Package.swift` at the repository root, and the package lives in `packages/swift`~~ Settled in M2 (T-SWF-01): the manifest is the root `Package.swift`; sources stay in `packages/swift`. T-PKG-04 still tests binary-target resolution from a clean machine. | T-PKG-04 |
-| A page launched as an installed web app works in a BDK host context without Chromium's app-type `Browser` (2.24) | T-PWA-01 |
-| Chromium's web-app install can be confirmed from a request, and can install from a URL into a chosen profile (2.24) | T-PWA-01 |
-| What Chromium's push client needs from the developer's Google project, and that it is silent with no provider (2.24) | T-PWA-05 |
+| A page launched as an installed web app works in a BDK host context without Chromium's app-type `Browser` (2.24). Read, not run, in T-PWA-01: it can (2.26) | T-PWA-04 |
+| Chromium's web-app install can be confirmed from a request, and can install from a URL into a chosen profile (2.24). Read, not run, in T-PWA-01: with one patch, and from a URL with no patch (2.26). Run on the engine 2026-11-26 (2.28): both hold | T-PWA-04 |
+| What Chromium's push client needs from the developer's Google project, and that it is silent with no provider (2.24). Run on the engine 2026-11-26 (2.28): no project or key; silent with `none` | T-PWA-05 |
 
 ## 5. Where to look
 

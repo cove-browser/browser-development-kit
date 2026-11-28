@@ -2,12 +2,13 @@
  * Assembles `bdk.resolved.json` (configuration.md section 7) from a validated bdk.toml and the
  * project directory. Every default is written out, because the engine has none of its own.
  */
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { deriveScheme } from "./checks.js";
-import { fileDigest, sha256 } from "./digest.js";
+import { directoryDigest, fileDigest, sha256 } from "./digest.js";
 import type { BundleFacts } from "./index.js";
-import { buildRouteTable, isInsideProject } from "./pages.js";
+import { isInsideProject, nestedLinkProblem } from "./links.js";
+import { buildRouteTable } from "./pages.js";
 import { normaliseProjectPath } from "./paths.js";
 import { isRecord, type Reporter } from "./reporter.js";
 
@@ -94,6 +95,103 @@ function discoverScripts(
   return Object.fromEntries(scripts);
 }
 
+interface BundledExtension {
+  path: string;
+  required: boolean;
+  digest: string;
+}
+
+/** Whether the text is a manifest Chromium could load: an object with a name, a version and a numeric manifest_version. */
+function manifestProblem(text: string): string | undefined {
+  let manifest: unknown;
+  try {
+    manifest = JSON.parse(text);
+  } catch {
+    return "its manifest.json is not JSON";
+  }
+  if (!isRecord(manifest)) return "its manifest.json is not an object";
+  for (const key of ["name", "version"]) {
+    if (typeof manifest[key] !== "string" || manifest[key] === "")
+      return `its manifest.json has no "${key}"`;
+  }
+  if (typeof manifest.manifest_version !== "number")
+    return 'its manifest.json has no numeric "manifest_version"';
+  return undefined;
+}
+
+/**
+ * [extensions.bundled] (extensions.md section 9): each entry is an unpacked extension in the
+ * project, which the build copies into Contents/Resources at the same path. The resolved file
+ * keeps the long form with the directory's digest.
+ */
+function bundledExtensions(
+  projectDir: string,
+  bundled: Doc,
+  reporter: Reporter,
+): Record<string, BundledExtension> {
+  const out = new Map<string, BundledExtension>();
+  for (const [name, entry] of Object.entries(bundled)) {
+    const long = isRecord(entry) ? entry : { path: entry };
+    const path = normaliseProjectPath(String(long.path));
+    const keyPath = ["extensions", "bundled", name, ...(isRecord(entry) ? ["path"] : [])];
+    const directory = join(projectDir, path);
+    const manifestFile = join(directory, "manifest.json");
+    const problem = !existsSync(directory)
+      ? "it does not exist"
+      : !statSync(directory).isDirectory()
+        ? "it is not a directory"
+        : !existsSync(manifestFile)
+          ? "it has no manifest.json"
+          : manifestProblem(readFileSync(manifestFile, "utf8"));
+    if (problem === undefined && !isInsideProject(projectDir, directory)) {
+      reporter.error(
+        "config.path_escape",
+        `"extensions.bundled.${name}" resolves to a place outside the project.`,
+        keyPath,
+        "Remove the link, or copy the extension into the project.",
+      );
+      continue;
+    }
+    if (problem !== undefined) {
+      reporter.error(
+        "extensions.bundled_invalid",
+        `The bundled extension "${name}" at "${path}" has no valid manifest: ${problem}.`,
+        keyPath,
+        "Point it at an unpacked extension directory with a manifest.json.",
+      );
+      continue;
+    }
+    // Hashing follows links, so one that loops or leaves the extension is reported, not followed.
+    const link = nestedLinkProblem(directory, directory);
+    if (link !== undefined) {
+      if (link.kind === "outside") {
+        reporter.error(
+          "config.path_escape",
+          `"${path}/${link.path}" in the bundled extension "${name}" is a link that leaves the extension's directory.`,
+          keyPath,
+          "Remove the link, or copy the extension into the project.",
+        );
+      } else {
+        reporter.error(
+          "extensions.bad_link",
+          link.kind === "broken"
+            ? `"${path}/${link.path}" in the bundled extension "${name}" is a link to nothing.`
+            : `"${path}/${link.path}" in the bundled extension "${name}" links back to a directory it is inside.`,
+          keyPath,
+          "Remove the link, or replace it with the files it should contain.",
+        );
+      }
+      continue;
+    }
+    out.set(name, {
+      path,
+      required: long.required === true,
+      digest: directoryDigest(directory),
+    });
+  }
+  return sortedObject(Object.fromEntries(out));
+}
+
 function sortedObject<T>(value: Record<string, T>): Record<string, T> {
   return Object.fromEntries(Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 }
@@ -103,6 +201,7 @@ export function checkBundleFacts(
   facts: BundleFacts | undefined,
   scheme: string,
   schemeKey: string[],
+  phones: boolean,
   reporter: Reporter,
 ): void {
   if (!facts) return;
@@ -140,7 +239,7 @@ export function checkBundleFacts(
       });
     }
   }
-  if (infoPlist) checkPasskeyFacts(infoPlist, entitlements, reporter);
+  if (infoPlist && phones) checkPasskeyFacts(infoPlist, entitlements, reporter);
   if (entitlements?.["com.apple.security.app-sandbox"] === true) {
     reporter.errorAt(
       "plist.app_sandbox",
@@ -152,9 +251,9 @@ export function checkBundleFacts(
 }
 
 /**
- * Passkeys on a phone (hybrid, ui-requests.md 5.18): Chromium offers them only to an application
- * that may use Bluetooth. A note, not a warning: an application may not want them, and security
- * keys work either way.
+ * Passkeys on a phone (hybrid, ui-requests.md 5.18), checked only with [services.webauthn]
+ * phones = true: Chromium offers them only to an application that may use Bluetooth. A note, not a
+ * warning: security keys work either way.
  */
 function checkPasskeyFacts(
   infoPlist: Record<string, unknown>,
@@ -167,9 +266,9 @@ function checkPasskeyFacts(
       code: "plist.passkeys_phone",
       severity: "note",
       message:
-        "Info.plist has no NSBluetoothAlwaysUsageDescription, so passkeys on a phone are not offered. Security keys still work.",
+        "[services.webauthn] phones is true, but Info.plist has no NSBluetoothAlwaysUsageDescription, so passkeys on a phone are not offered. Security keys still work.",
       file: "Info.plist",
-      fix: "To offer them, add NSBluetoothAlwaysUsageDescription and, for a hardened-runtime build, the com.apple.security.device.bluetooth entitlement.",
+      fix: "To offer them, add NSBluetoothAlwaysUsageDescription and, for a hardened-runtime build, the com.apple.security.device.bluetooth entitlement. Otherwise set phones = false.",
     });
   } else if (entitlements && entitlements["com.apple.security.device.bluetooth"] !== true) {
     reporter.diagnostics.push({
@@ -180,6 +279,33 @@ function checkPasskeyFacts(
       file: "entitlements",
       fix: "Add com.apple.security.device.bluetooth to the entitlements.",
     });
+  }
+}
+
+/**
+ * What `bdk build` and `bdk doctor` say about web apps and push (web-apps.md section 7): a warning
+ * whenever push goes through Google, and a note when web apps are on with no push provider.
+ */
+export function checkWebAppsAndPush(
+  webAppsEnabled: boolean,
+  pushProvider: string,
+  reporter: Reporter,
+): void {
+  if (pushProvider === "google") {
+    reporter.warning(
+      "services.push_google",
+      "[services.push] provider = \"google\" sends every push subscription through Google's messaging service (FCM): Chromium's push client registers the device with Google as Chrome does, so Google sees every subscription and Google's terms apply. It needs no Google project or key. Messages arrive only while the browser runs.",
+      ["services", "push", "provider"],
+      'See docs/planning/sdk/web-apps.md section 7. To send nothing to Google, use provider = "none".',
+    );
+  }
+  if (webAppsEnabled && pushProvider === "none") {
+    reporter.note(
+      "web_apps.push_unconfigured",
+      'Installable web apps are on and [services.push] provider is "none": installed apps work, and receive no push messages.',
+      ["web_apps", "enabled"],
+      'To deliver push messages, set [services.push] provider = "google" (see docs/planning/sdk/web-apps.md section 7).',
+    );
   }
 }
 
@@ -207,7 +333,9 @@ export function assemble(input: AssembleInput): Record<string, unknown> | undefi
 
   const name = String(browser.name);
   const scheme = pick(browser.internal_scheme as string | undefined, deriveScheme(name));
-  checkBundleFacts(bundleFacts, scheme, input.schemeKey, reporter);
+  const phones = table(services, "webauthn").phones === true;
+  checkBundleFacts(bundleFacts, scheme, input.schemeKey, phones, reporter);
+  const bundled = bundledExtensions(projectDir, table(extensions, "bundled"), reporter);
 
   const routeTable = buildRouteTable(
     { projectDir, pages, extensionsEnabled: pick(extensions.enabled, true) },
@@ -230,6 +358,9 @@ export function assemble(input: AssembleInput): Record<string, unknown> | undefi
   const reputation = table(services, "reputation");
   const geolocation = table(services, "geolocation");
   const frontend = pick(devtools.frontend, "default");
+  const webAppsEnabled = pick(table(doc, "web_apps").enabled, false);
+  const pushProvider = pick(table(services, "push").provider, "none");
+  checkWebAppsAndPush(webAppsEnabled, pushProvider, reporter);
 
   return {
     schema: RESOLVED_SCHEMA_VERSION,
@@ -258,11 +389,13 @@ export function assemble(input: AssembleInput): Record<string, unknown> | undefi
       enabled: pick(extensions.enabled, true),
       install_policy: pick(extensions.install_policy, "reject_known_incompatible"),
       allow_in_private: pick(extensions.allow_in_private, "user"),
+      developer_mode: pick(extensions.developer_mode, "user"),
       install: {
         unpacked: pick(install.unpacked, true),
         crx: pick(install.crx, true),
         update_urls: pick(install.update_urls, "any"),
         stores: pick(install.stores, []),
+        blocklist: pick(install.blocklist, []),
       },
       ui: surfaceModes(
         schema,
@@ -270,8 +403,9 @@ export function assemble(input: AssembleInput): Record<string, unknown> | undefi
         table(extensions, "ui"),
         surfaceDefault,
       ),
-      bundled: {},
+      bundled,
     },
+    web_apps: { enabled: webAppsEnabled },
     services: {
       translation: {
         provider: pick(translation.provider, "default"),
@@ -288,8 +422,10 @@ export function assemble(input: AssembleInput): Record<string, unknown> | undefi
         provider: pick(geolocation.provider, "system"),
         ...optional(geolocation, "endpoint"),
       },
+      webauthn: { phones },
       credentials: { provider: "chromium" },
       leak_check: { provider: "none" },
+      push: { provider: pushProvider },
     },
     settings_defaults: {},
     automation: {

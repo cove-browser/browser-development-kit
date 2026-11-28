@@ -13,6 +13,9 @@ import {
   INTERNAL_MODULES_PREFIX,
   internalModulesDir,
   listInternalModules,
+  RELEASE_ASSET,
+  releaseFacts,
+  repositoryAssets,
   SDK_PACKAGES,
   sdkAssets,
   sdkDirs,
@@ -36,8 +39,16 @@ async function bundle(version: string, file: string): Promise<void> {
   const build = await rolldown({
     input: join(root, "src", "main.ts"),
     platform: "node",
-    // The bundle is evaluated by the executable's CommonJS loader.
-    transform: { define: { __BDK_CLI_VERSION__: JSON.stringify(version) } },
+    // The bundle is evaluated by the executable's CommonJS loader, where `import.meta.url` would be the
+    // executable's own path. That makes the tooling's command modules (`if (isMain(import.meta.url))
+    // main()`) believe they are the entry point and run. A name beside the executable keeps the directory
+    // that module resolution starts from (automation/loader.ts) and is never the entry point.
+    transform: {
+      define: {
+        __BDK_CLI_VERSION__: JSON.stringify(version),
+        "import.meta.url": 'require("node:url").pathToFileURL(process.execPath + ".cjs").href',
+      },
+    },
     logLevel: "warn",
   });
   await build.write({ file, format: "cjs", minify: false, sourcemap: false });
@@ -73,10 +84,15 @@ async function main(): Promise<void> {
       );
     }
   }
-  const assets = {
+  // The release facts `bdk doctor` and `bdk patch` read: the pin and the ABI, as of this build.
+  const releaseFile = join(work, RELEASE_ASSET);
+  writeFileSync(releaseFile, `${JSON.stringify(releaseFacts())}\n`);
+  const assets: Record<string, string> = {
     ...listAssets(join(root, "assets")),
     ...internalAssets(internalModulesDir(), modules, INTERNAL_MODULES_PREFIX),
     ...sdk,
+    ...repositoryAssets(),
+    [RELEASE_ASSET]: releaseFile,
   };
   // `node:sea` cannot list assets, so the executable carries the list, itself included.
   const indexFile = join(work, ASSET_INDEX);

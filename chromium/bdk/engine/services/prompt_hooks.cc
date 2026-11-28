@@ -20,7 +20,7 @@
 
 namespace bdk {
 
-void InstallPromptHooks() {
+void InstallPromptHooks(bool phones) {
   embedder_tab_dialogs_factory::SetFactory(base::BindRepeating(
       [](tabs::TabInterface& tab,
          content::WebContents* contents) -> std::unique_ptr<TabDialogs> {
@@ -30,7 +30,7 @@ void InstallPromptHooks() {
   InstallAutofillPopupHook();
   InstallExtensionPromptHooks();
   InstallExtensionOptionsPageHook();
-  InstallWebAuthnDialogHook();
+  InstallWebAuthnDialogHook(phones);
   InstallBrowserDialogHooks();
   InstallCredentialManagerPrompts();
   // An application may show several pages of one window side by side; each

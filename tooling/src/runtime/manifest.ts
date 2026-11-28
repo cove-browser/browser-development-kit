@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { canonicalJson, mapLimit, sha256File, sha256Hex } from "./canonical.js";
-import type { BuildIdentity, SourceIdentity } from "./identity.js";
+import type { ApplicationPatches, BuildIdentity, SourceIdentity } from "./identity.js";
 import { findEscapingLinks, walkTree } from "./tree.js";
 
 export const MANIFEST_NAME = "manifest.json";
@@ -28,6 +28,8 @@ export interface Manifest {
     readonly core_digest: string;
     readonly gn_args_digest: string;
   };
+  /** The application's own patches, for a source-mode runtime that has any (sdk/cli.md section 7). */
+  readonly application?: ApplicationPatches;
   readonly target: { readonly os: string; readonly arch: string; readonly min_os: string };
   readonly builder: BuildIdentity;
   readonly files: Readonly<Record<string, string>>;
@@ -76,6 +78,7 @@ export function buildManifest(i: ManifestInputs): Manifest {
       core_digest: i.identity.bdk.core_digest,
       gn_args_digest: i.identity.bdk.gn_args_digest,
     },
+    ...(i.identity.application === undefined ? {} : { application: i.identity.application }),
     target: { ...i.identity.target, min_os: i.minOs },
     builder: i.builder,
     files: i.files,

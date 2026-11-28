@@ -106,6 +106,8 @@ void FailFromMessage(const StatePtr& state, const std::string& message) {
     Fail(state, BDK_CODE_INCOMPATIBLE, strip(kRefusalIncompatible));
   } else if (message.starts_with(kRefusalSource)) {
     Fail(state, BDK_CODE_SOURCE_NOT_ALLOWED, strip(kRefusalSource));
+  } else if (message.starts_with(kRefusalBlocklisted)) {
+    Fail(state, BDK_CODE_BLOCKLISTED, strip(kRefusalBlocklisted));
   } else {
     Fail(state, BDK_CODE_MANIFEST_INVALID, message);
   }
@@ -262,7 +264,8 @@ void OnCrxInstalled(StatePtr state,
   }
   const std::string message = Utf8(error->message());
   if (message.starts_with(kRefusalIncompatible) ||
-      message.starts_with(kRefusalSource)) {
+      message.starts_with(kRefusalSource) ||
+      message.starts_with(kRefusalBlocklisted)) {
     FailFromMessage(state, message);
     return;
   }

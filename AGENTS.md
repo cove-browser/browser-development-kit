@@ -15,6 +15,7 @@ and if the two disagree, the doc wins and this file should be fixed.
 | Public SDK surface (Swift, C ABI, JS, CLI, `bdk.toml`) | [docs/planning/sdk/](docs/planning/sdk/README.md) |
 | `packages/core` (C ABI, stub, conformance suite) | [packages/core/docs/conventions.md](packages/core/docs/conventions.md) |
 | `tooling/` and the `chromium:*` commands | [tooling/README.md](tooling/README.md) |
+| Releasing, security patches, notices and licences | [docs/release/README.md](docs/release/README.md) |
 | `chromium/` (pin, overlay, patches, GN) | [chromium/README.md](chromium/README.md) and the README in each subdirectory |
 | The original product spec | [docs/BDK-Design-Spec-v0.7.pdf](docs/BDK-Design-Spec-v0.7.pdf) |
 
@@ -51,7 +52,9 @@ A full Chromium build costs hours; an incremental one can still cost over an hou
 - Avoid edits to widely included Chromium headers and anything that changes GN args; both rebuild large parts
   of the tree.
 - Use `chromium:patch-check` (no build) to validate patches, and an experiment checkout for anything risky.
-- Do not start a Chromium build, sync or roll unless asked. Hooks and CI never build Chromium; keep it that way.
+- You may start a Chromium build (`chromium:build`) when the work needs one, without asking. Say in your
+  report what you built and how long it took. A sync or a roll still needs the user's go-ahead. Hooks and CI never
+  build Chromium; keep it that way.
 - Tests use fixtures and fakes, never a real checkout.
 
 ### Room for other platforms

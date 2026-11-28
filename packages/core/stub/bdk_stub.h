@@ -26,6 +26,10 @@ typedef struct bdk_stub_navigation_script {
 BDK_EXPORT bdk_status_t bdk_stub_script_navigation(bdk_runtime_t, bdk_string_t url,
                                                    const bdk_stub_navigation_script_t*);
 
+/* Scripts a server redirect: every later request for url is redirected to `to`, which is
+   requested in turn (and may be redirected again). The navigation policy is asked at each. */
+BDK_EXPORT bdk_status_t bdk_stub_script_redirect(bdk_runtime_t, bdk_string_t url, bdk_string_t to);
+
 /* Raises a UI request as Chromium would. The handler registered for the surface is called from the
  * next pump. */
 BDK_EXPORT bdk_status_t bdk_stub_raise_ui_request(bdk_runtime_t, uint32_t surface, bdk_contents_t,
@@ -50,6 +54,20 @@ typedef struct bdk_stub_ui_outcome {
 } bdk_stub_ui_outcome_t;
 
 BDK_EXPORT bdk_status_t bdk_stub_last_ui_outcome(bdk_runtime_t, bdk_stub_ui_outcome_t* out);
+
+/* Page health (ui-requests.md 5.19). Acts as Chromium finding the page's renderer hung: a
+   page_health request of kind "unresponsive" (one per hang); an accept {"action":"terminate"} ends
+   the renderer, which the page reports as gone with the reason "killed". bdk_stub_page_responsive
+   acts as the renderer answering again and withdraws the question. */
+BDK_EXPORT bdk_status_t bdk_stub_page_unresponsive(bdk_contents_t);
+BDK_EXPORT bdk_status_t bdk_stub_page_responsive(bdk_contents_t);
+/* Acts as the page opening a popup without a gesture. *out_blocked is 1 when the popup blocker
+   stopped it: the page's blocked-popup notice (kind "blockedPopups") is raised again with every
+   popup blocked since it was last answered, withdrawing the last one. A grant {"popup": id}
+   opens that popup as a new-window request; {"always": true} allows the site's popups for the
+   profile, so its later popups are not blocked (*out_blocked 0, a new-window request at once). */
+BDK_EXPORT bdk_status_t bdk_stub_block_popup(bdk_contents_t, bdk_string_t url,
+                                             uint8_t* out_blocked);
 
 /* Open requests (bdk_ui.h): sends the runtime's update to the most recently raised request, and
    reads the last update the application sent it (bdk_ui_update), "" for none. */
@@ -76,6 +94,23 @@ BDK_EXPORT bdk_status_t bdk_stub_extension_package(bdk_runtime_t, bdk_string_t k
                                                    bdk_string_t key, bdk_string_t manifest_json);
 /* How many times bdk_extension_menu_present reached the stub since start. */
 BDK_EXPORT bdk_status_t bdk_stub_menus_presented(uint32_t* out);
+
+/* Web apps (web-apps.md). Registers the manifest a page at document_url links, which is what
+   webApps.installability, webApps.install and the prompt read; relative URLs in it resolve against
+   document_url. */
+BDK_EXPORT bdk_status_t bdk_stub_web_app_manifest(bdk_runtime_t, bdk_string_t document_url,
+                                                  bdk_string_t manifest_json);
+/* Acts as the page calling prompt() on its beforeinstallprompt event: raises a web_app_installs
+   request (source "page") for the manifest of the page's URL, and installs into the page's profile
+   when it is granted. Fails, raising nothing, with webApps.disabled while web apps are off,
+   webApps.privateProfile in a private profile, webApps.gestureRequired without user_gesture and
+   webApps.notInstallable when the manifest is missing or not installable. */
+BDK_EXPORT bdk_status_t bdk_stub_web_app_prompt(bdk_contents_t, uint8_t user_gesture, bdk_error_t*);
+/* Acts as the page calling navigator.setAppBadge (badge_json {"kind":"flag"} or
+   {"kind":"count","count":n}) or clearAppBadge ("null"): sets the badge of the installed app whose
+   scope holds the page's URL and emits webApps.badgeChanged. webApps.notFound when none does. */
+BDK_EXPORT bdk_status_t bdk_stub_web_app_set_badge(bdk_contents_t, bdk_string_t badge_json,
+                                                   bdk_error_t*);
 
 /* Delivers a key event to the keyboard handler of the contents. *out_reserved is the reserve
  * callback's answer. */

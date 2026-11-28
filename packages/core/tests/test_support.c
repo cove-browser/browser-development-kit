@@ -39,6 +39,7 @@ int str_has(bdk_string_t s, const char* needle) {
 }
 
 const char* t_config_extra = NULL;
+const char* t_first_start_google_key = NULL;
 
 void t_fill_start_config(bdk_start_config_t* c) {
     static char resolved[2048];
@@ -245,7 +246,12 @@ static const t_test_t* const kTables[] = {
     t_provider_tests, /* providers: contracts, configuration, translation, reputation
                          (tests_providers.c) */
     t_pages_tests,
-    t_extension_tests, /* extensions and registered windows (tests_extensions.c) */
+    t_extension_tests,         /* extensions and registered windows (tests_extensions.c) */
+    t_navigation_policy_tests, /* the navigation policy (tests_navigation_policy.c) */
+    t_profile_version_tests,   /* profile snapshots and the downgrade policy
+                                  (tests_profile_versions.c) */
+    t_robustness_tests, /* long-run, crash recovery and memory, T-REL-03 (tests_robustness.c) */
+    t_web_app_tests,    /* installable web apps (tests_web_apps.c) */
 #ifdef BDK_HARNESS_ENGINE_TESTS
     t_engine_tests,            /* scenarios only a real engine can run (tests_engine.c) */
     t_engine_ui_tests,         /* browser-owned surfaces on the engine (tests_engine_ui.c) */
@@ -261,7 +267,17 @@ static const t_test_t* const kTables[] = {
     t_engine_extension_probe_tests, /* the MV3 probe, T-EXT-01 (tests_engine_ext_probe.c) */
     t_engine_webauthn_tests,        /* passkeys and security keys (tests_engine_webauthn.c) */
     t_engine_dialogs_tests,         /* Chromium's other browser dialogs (tests_engine_dialogs.c) */
-    t_engine_arc_tests,             /* the Arc-style layouts, M8 (tests_engine_arc.c) */
+    t_engine_chooser_tests,         /* the device choosers (tests_engine_choosers.c) */
+    t_engine_web_app_tests,         /* installable web apps (tests_engine_web_apps.c) */
+    t_engine_payment_tests,         /* Payment Request (tests_engine_payments.c) */
+    t_engine_client_certificate_tests, /* client certificates (tests_engine_client_certificates.c)
+                                        */
+    t_engine_identity_tests,           /* FedCM (tests_engine_identity.c) */
+    t_engine_arc_tests,                /* the Arc-style layouts, M8 (tests_engine_arc.c) */
+    t_engine_navigation_policy_tests,  /* the navigation policy on Chromium
+                                          (tests_engine_navigation_policy.c) */
+    t_engine_profile_version_tests,    /* the downgrade policy on Chromium, a launch each
+                                          (tests_engine_profile_versions.c) */
 #endif
 };
 
@@ -284,15 +300,29 @@ static int run_one(const t_test_t* t) {
     return g_failures_in_test == 0;
 }
 
-/* `pattern` is a test name, or a prefix followed by '*' for every test that starts with it; a
-   leading '!' selects every test that does not match the rest. */
+/* One pattern of `--run` (`pattern` of `n` bytes): a test name, or a prefix followed by '*' for
+   every test that starts with it. */
+static int t_one_matches(const char* pattern, size_t n, const char* name) {
+    if (n > 0 && pattern[n - 1] == '*')
+        return strncmp(pattern, name, n - 1) == 0;
+    return strlen(name) == n && strncmp(pattern, name, n) == 0;
+}
+
+/* `pattern` is one pattern or several separated by commas, run in the suite's order (to reproduce
+   what one scenario leaves for a later one); a leading '!' selects every test that matches none
+   of the rest. */
 static int t_name_matches(const char* pattern, const char* name) {
     if (pattern[0] == '!')
         return !t_name_matches(pattern + 1, name);
-    size_t n = strlen(pattern);
-    if (n > 0 && pattern[n - 1] == '*')
-        return strncmp(pattern, name, n - 1) == 0;
-    return strcmp(pattern, name) == 0;
+    for (const char* p = pattern;;) {
+        const char* comma = strchr(p, ',');
+        const size_t n = comma ? (size_t)(comma - p) : strlen(p);
+        if (t_one_matches(p, n, name))
+            return 1;
+        if (!comma)
+            return 0;
+        p = comma + 1;
+    }
 }
 
 /* A harness whose runtime must own the process's main thread first (an application event loop)

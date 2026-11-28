@@ -22,10 +22,21 @@ const char* source_name(Source);
 bool store_known(const std::string& store);
 
 /* Why the configuration refuses a source, naming the bdk.toml key, or empty when it is allowed
-   (extension.sourceNotAllowed). update_url is checked for kUpdateUrl, store for kStore. A bundled
-   extension is part of the signed application and always allowed. */
+   (extension.sourceNotAllowed). update_url is checked for kUpdateUrl, store for kStore. Unpacked
+   directories also need developer_mode other than "off". A bundled extension is part of the
+   signed application and always allowed. */
 std::string source_refusal(const ExtensionConfig&, Source, const std::string& update_url,
                            const std::string& store);
+
+/* Whether [extensions.install] blocklist names the identifier: it never installs or loads, from
+   any source, bundled ones included, whatever install_policy says (extension.blocklisted). */
+bool blocklisted(const ExtensionConfig&, const std::string& id);
+
+/* The extension.blocklisted message for the identifier. */
+std::string blocklist_refusal(const std::string& id);
+
+/* The directory of a bundled extension: path under the bundle's Contents/Resources. */
+std::string bundled_directory(const Runtime&, const ExtensionConfig::Bundled&);
 
 /* An update_urls pattern: `*` matches any run of characters, everything else matches itself, and
    the whole URL must match. */

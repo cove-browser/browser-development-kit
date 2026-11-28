@@ -11,7 +11,8 @@ namespace bdk {
 // password bubble, the print preview, ...): the factories BDK's patches add to
 // Chromium. Called once, when the engine starts and before the first page
 // exists.
-void InstallPromptHooks();
+// `phones`: [services.webauthn] phones of the runtime that starts Chromium.
+void InstallPromptHooks(bool phones);
 
 }  // namespace bdk
 

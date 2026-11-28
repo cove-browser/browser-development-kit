@@ -1,0 +1,25 @@
+{
+  "diagnostics": [
+    {
+      "code": "config.type",
+      "severity": "error",
+      "message": "\"web_apps.enabled\" must be a boolean, found string.",
+      "file": "bdk.toml",
+      "line": 5
+    },
+    {
+      "code": "services.provider_unknown",
+      "severity": "error",
+      "message": "\"services.push.provider\" names a provider BDK does not ship: 1. Valid providers are \"none\", \"google\".",
+      "file": "bdk.toml",
+      "line": 8
+    },
+    {
+      "code": "ui.surface_mode",
+      "severity": "error",
+      "message": "Surface \"web_app_installs\" does not allow the mode \"disabled\". Allowed modes: \"default\", \"custom\".",
+      "file": "bdk.toml",
+      "line": 11
+    }
+  ]
+}

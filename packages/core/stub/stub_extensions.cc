@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <fstream>
+#include <set>
 #include <sstream>
 
 #include "../runtime/extension_policy.h"
@@ -31,11 +32,13 @@ struct Ext {
     bool allowed_in_private = false, file_access = false, pinned = false;
     std::map<std::string, std::string> shortcuts; /* command name -> the user's binding */
     std::vector<std::string> errors;              /* ExtensionError objects as JSON */
+    bool required = false;                        /* a bundled extension the user cannot disable */
 };
 
 struct ExtState {
     std::map<std::string, std::vector<Ext>> profiles; /* by profile id, in install order */
     std::map<std::string, std::string> packages;      /* "<kind>:<key>" -> manifest JSON */
+    std::set<std::string> seeded; /* profile ids whose bundled extensions are loaded */
 };
 
 ExtState& es() {
@@ -362,6 +365,28 @@ bool read_source(const JsonValue& v, SourceArgs* out, std::string* message) {
     return false;
 }
 
+/* Bundled extensions (extensions.md section 9) load in every persistent profile before anything
+   asks for its extensions, with no prompt; a blocklisted one never loads. The package is the
+   directory in the bundle, or a manifest a test registered as "bundled" and the declared path. */
+void load_bundled(const Runtime& rt, const BuiltinCall& call) {
+    if (!call.profile || call.profile->ephemeral || !rt.extensions.enabled ||
+        !es().seeded.insert(call.profile->id).second)
+        return;
+    std::vector<Ext>& list = extensions_of(call);
+    for (const ExtensionConfig::Bundled& b : rt.extensions.bundled) {
+        std::string manifest = package_manifest(ext::Source::kBundled, b.path);
+        if (manifest.empty())
+            manifest = read_file(ext::bundled_directory(rt, b) + "/manifest.json");
+        const std::string id = make_id("bundled:" + b.name);
+        if (manifest.empty() || ext::blocklisted(rt.extensions, id) || find(list, id))
+            continue;
+        Ext e = make_ext(id, manifest, ext::Source::kBundled);
+        e.path = b.path;
+        e.required = b.required;
+        list.push_back(e);
+    }
+}
+
 void install(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<BuiltinCall>& call,
              const JsonValue& args) {
     SourceArgs src;
@@ -382,6 +407,8 @@ void install(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<BuiltinCa
         src.source == ext::Source::kUpdateUrl || src.source == ext::Source::kStore
             ? src.id
             : make_id(std::string(ext::source_name(src.source)) + ":" + src.key);
+    if (ext::blocklisted(rt->extensions, id))
+        return reject(*call, BDK_CODE_BLOCKLISTED, ext::blocklist_refusal(id));
     ask(rt, call, BDK_SURFACE_EXTENSION_INSTALLS,
         install_payload(*rt, "install", id, manifest, src.source, report),
         [rt, call, src, id, manifest](bool granted) {
@@ -415,6 +442,9 @@ void uninstall(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Builtin
     Ext* e = find(extensions_of(*call), id);
     if (!e)
         return reject(*call, BDK_CODE_NOT_FOUND, "no extension " + id + " is installed");
+    if (e->source == ext::Source::kBundled)
+        return reject(*call, BDK_CODE_NOT_REMOVABLE,
+                      "the extension " + id + " ships with the application ([extensions.bundled])");
     const std::string payload = "{\"extensionId\":\"" + id + "\",\"extensionName\":\"" +
                                 json_escape(text_of(parse(e->manifest), "name")) +
                                 "\",\"requestedBy\":{\"kind\":\"user\"}}";
@@ -438,6 +468,10 @@ void set_enabled(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Built
     Ext* e = find(extensions_of(*call), id);
     if (!e)
         return reject(*call, BDK_CODE_NOT_FOUND, "no extension " + id + " is installed");
+    if (!enabled && e->required)
+        return reject(*call, BDK_CODE_NOT_REMOVABLE,
+                      "the extension " + id +
+                          " is required by the application ([extensions.bundled] required = true)");
     const bdk_profile_t profile = profile_handle(*call);
     auto apply = [rt, call, id, enabled, profile] {
         Ext* x = find(extensions_of(*call), id);
@@ -615,6 +649,7 @@ std::string action_json(const Ext& e) {
 void extensions_reset() {
     es().profiles.clear();
     es().packages.clear();
+    es().seeded.clear();
 }
 
 void extensions_add_package(const std::string& kind, const std::string& key,
@@ -629,6 +664,7 @@ bool extensions_execute(Runtime& runtime, const std::shared_ptr<BuiltinCall>& ca
     if (!rt)
         return false;
     (void)runtime;
+    load_bundled(*rt, *call);
     JsonValue args;
     json_parse(call->arguments, &args);
     const std::string id = text_of(args, "id");

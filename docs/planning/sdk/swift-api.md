@@ -324,7 +324,42 @@ public struct LoadOptions {
 - The application may navigate to any branded internal URL. A web page may not, exactly as with `chrome://` today.
 - A navigation to a route in `native` mode calls the registered handler and throws `navigation.handledNatively`.
 
-Later: a navigation policy hook that lets the application cancel or redirect a navigation before it starts. Not in v1; new-window requests cover the common case.
+**Navigation policy** (product owner, 2026-11-25; [../amendments.md](../amendments.md) 2.25). The application can cancel or redirect a navigation before it starts. Built on the stub, the core and the C ABI by T-SWF-10 and on the engine by T-SWF-11 (M9). On the engine, while a handler is set, a page is kept out of Chromium's back/forward cache so that going back is a navigation the policy is asked about; a page cached before the handler was set can still come back unasked. The C side is `bdk_navigation_policy_set_handler` and `bdk_navigation_policy_decide` ([c-abi.md](c-abi.md) 5.2).
+
+```swift
+public enum NavigationDecision: Sendable, Equatable {     // BDKWebContents.NavigationDecision
+    case allow
+    case cancel                // no request is sent; the page stays where it is
+    case redirect(URL)         // cancel, then load this URL in the same page
+}
+
+public typealias NavigationPolicy =                        // BDKRuntime.NavigationPolicy
+    @MainActor (BDKWebContents?, BDKWebContents.NavigationAction) async
+        -> BDKWebContents.NavigationDecision
+
+runtime.navigationPolicy = { page, navigation in .allow }   // nil, the default: no policy
+
+public struct NavigationAction: Sendable, Equatable {     // BDKWebContents.NavigationAction
+    public let url: URL?               // as the application sees it: branded for an internal page
+    public let kind: Kind              // .load, .reload, .history
+    public let method: String          // "GET", or "POST" for a form submission
+    public let isUserInitiated: Bool
+    public let redirectedFrom: URL?    // a server redirect: the URL it came from
+    public var isRedirect: Bool { get }
+    public let initiator: Initiator    // .application, .page(origin: URL?), .browser
+    public let isPrerender: Bool
+}
+```
+
+- With no policy nothing is asked and every navigation goes as before.
+- The policy belongs to the runtime, not to a page, so that it also covers the first navigation of a page the web or an extension opened. The page argument is nil when the application holds no object for that page yet (its new-window request has not reached the application); the policy still decides.
+- It can be set, replaced or removed at any time; it is not a registration. A navigation already asked gets its answer from the policy that was asked; one asked after the policy was removed goes on.
+- What is asked: each navigation of a page's main frame, before its request is sent (after `navigationStarted`). That is the application's own loads, reloads and history navigations, the page's links, scripts and form submissions, and the first navigation of an opened page. Not asked: subframes (an extension's blocking rules cover them, and a round trip per frame would stall pages), same-document navigations (a fragment, `history.pushState`), and a page restored from the back/forward cache or activated from a prerender (Chromium runs no throttle for a page activation; the navigation that loaded it was asked). A prerender's own navigation is asked with `isPrerender`; a prerender that is not allowed is discarded.
+- Server redirects: the policy is asked again at each one, with `redirectedFrom` set and `url` the new location. A cancel there ends the navigation with nothing committed; the first request was sent, the redirect target is not requested.
+- The navigation waits for the answer. There is no timeout: the page shows itself loading until the policy answers, the navigation is stopped or superseded, or the page closes. Then the answer is not needed and is ignored.
+- `cancel`: no request is sent and the page stays where it is. The navigation fails with reason `cancelledByPolicy` (net error `-3`, no error page), and `navigate(to:)` throws `navigation.cancelledByPolicy`.
+- `redirect(url)`: the navigation fails with reason `redirectedByPolicy` and `redirectURL`, and `url` loads in the same page as the application's own load: a GET with no body and no referrer, whatever the original was (a form submission's body is dropped), with the application's authority (it may be a branded internal URL). `navigate(to:)` returns the commit of the URL loaded instead. A URL the runtime refuses cancels the navigation.
+- Loops: the start of the load a `redirect` began is not asked again, because the application chose that URL. Its server redirects are asked, and the twenty-first `redirect` in a row without a commit (Chromium's own limit for server redirects) is refused: the navigation commits the error page for net error `-310` (`ERR_TOO_MANY_REDIRECTS`), as a server redirect loop does.
 
 ### 6.4 Events
 
@@ -955,7 +990,7 @@ public struct BDKError: Error, Sendable {
 | `config` | `resolvedMissing`, `resolvedInvalid`, `registrationAfterStart`, `handlerMissing`, `providerMissing`, `keyMissing`, `nameNotApp`, `routeUnknown` |
 | `profile` | `notFound`, `inUse`, `nameTaken`, `isPrivate` |
 | `contents` | `stale`, `crashed`, `stateTooNew`, `internalPage` |
-| `navigation` | `aborted`, `superseded`, `blocked`, `handledNatively`, `netError` |
+| `navigation` | `aborted`, `superseded`, `blocked`, `handledNatively`, `cancelledByPolicy`, `netError` |
 | `broker` | `unknownCommand`, `invalidArguments`, `cancelled`, `timeout`, `payloadTooLarge`, `notImplemented` |
 | `capability` | `denied`, `gestureRequired`, `reauthenticationFailed`, `outOfScope` |
 | `extension` | `incompatible`, `sourceNotAllowed`, `notFound`, `surfaceDisabled`, `installCancelled` |

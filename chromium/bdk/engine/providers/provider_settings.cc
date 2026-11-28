@@ -143,7 +143,7 @@ bool ApplyGoogleKey(const std::string& key, std::string* error) {
     return true;
   }
 #if BUILDFLAG(SUPPORT_EXTERNAL_GOOGLE_API_KEY)
-  google_apis::InitializeAndOverrideAPIKey(key);
+  // Chromium takes it in InstallGoogleKey(), once its features exist.
   given = key;
   return true;
 #else
@@ -151,6 +151,15 @@ bool ApplyGoogleKey(const std::string& key, std::string* error) {
       "this runtime was built without support_external_google_api_key, so it "
       "cannot take the application's Google key";
   return false;
+#endif
+}
+
+void InstallGoogleKey() {
+#if BUILDFLAG(SUPPORT_EXTERNAL_GOOGLE_API_KEY)
+  const std::optional<std::string>& given = KeyGiven();
+  if (given && !given->empty()) {
+    google_apis::InitializeAndOverrideAPIKey(*given);
+  }
 #endif
 }
 

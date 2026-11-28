@@ -191,6 +191,35 @@ export function loadSeries(patchesDir: string): Series {
   return { patches, orphans };
 }
 
+/** The prefix that marks an application's patch in reports, after BDK's own series. */
+export const APP_PATCH_PREFIX = "app/";
+
+/**
+ * BDK's series followed by an application's (source mode, sdk/cli.md section 7), in the order they are
+ * applied. The application's patches and orphans are named `app/<file>`, so a report tells the two
+ * apart. Without `appPatchesDir` it is `loadSeries(patchesDir)`.
+ */
+export function loadSeriesWithApp(patchesDir: string, appPatchesDir?: string): Series {
+  const bdk = loadSeries(patchesDir);
+  if (appPatchesDir === undefined) return bdk;
+  let app: Series;
+  try {
+    app = loadSeries(appPatchesDir);
+  } catch (e) {
+    if (e instanceof PatchFormatError) {
+      throw new PatchFormatError(`the application's patches: ${e.message}`);
+    }
+    throw e;
+  }
+  return {
+    patches: [
+      ...bdk.patches,
+      ...app.patches.map((p) => ({ ...p, name: `${APP_PATCH_PREFIX}${p.name}` })),
+    ],
+    orphans: [...bdk.orphans, ...app.orphans.map((o) => `${APP_PATCH_PREFIX}${o}`)],
+  };
+}
+
 // ---------------------------------------------------------------------------------------------
 // Checkouts, depot_tools, locking
 

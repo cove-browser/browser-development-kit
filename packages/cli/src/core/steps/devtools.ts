@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { directoryDigest, sha256 } from "../config/digest.js";
-import { isInsideProject } from "../config/pages.js";
+import { isInsideProject } from "../config/links.js";
 import { pathProblem } from "../config/paths.js";
 import type { Diagnostic } from "../diagnostics.js";
 import { hasErrors } from "../diagnostics-format.js";

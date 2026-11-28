@@ -10,7 +10,7 @@ import {
   fail,
   isMain,
   LOCKED_FLAG,
-  loadSeries,
+  loadSeriesWithApp,
   type PatchFile,
   readPin,
   relaunchUnderLock,
@@ -228,6 +228,8 @@ export interface ApplyOptions {
   readonly srcDir: string;
   readonly pinCommit: string;
   readonly patchesDir: string;
+  /** An application's series (source mode), applied after BDK's: `loadSeriesWithApp`. */
+  readonly appPatchesDir?: string;
   /** Discard uncommitted changes and commits that are not in the series. */
   readonly force?: boolean;
   readonly log?: (line: string) => void;
@@ -249,7 +251,7 @@ export interface ApplyResult {
  */
 export async function applySeries(opts: ApplyOptions): Promise<ApplyResult> {
   const log = opts.log ?? (() => {});
-  const { patches, orphans } = loadSeries(opts.patchesDir);
+  const { patches, orphans } = loadSeriesWithApp(opts.patchesDir, opts.appPatchesDir);
   for (const o of orphans) log(`warning: ${o} is not listed in series and is ignored`);
 
   if (await amInProgress(opts.srcDir)) {
@@ -306,7 +308,7 @@ export async function applySeries(opts: ApplyOptions): Promise<ApplyResult> {
 /** `applySeries` on a BDK-managed checkout (under `$BDK_HOME/chromium`), using the repo's pin and series. */
 export function applyToCheckout(
   ctx: CheckoutContext,
-  options: { force?: boolean; log?: (line: string) => void } = {},
+  options: { force?: boolean; appPatchesDir?: string; log?: (line: string) => void } = {},
 ): Promise<ApplyResult> {
   if (!existsSync(join(ctx.root, ".gclient")) || !existsSync(join(ctx.src, ".git"))) {
     throw new UnsafeCheckoutError(
@@ -317,6 +319,7 @@ export function applyToCheckout(
     srcDir: ctx.src,
     pinCommit: readPin(ctx.layout).commit,
     patchesDir: ctx.layout.patchesDir,
+    ...(options.appPatchesDir === undefined ? {} : { appPatchesDir: options.appPatchesDir }),
     ...(options.force === undefined ? {} : { force: options.force }),
     ...(options.log === undefined ? {} : { log: options.log }),
   });
@@ -345,4 +348,7 @@ async function main(): Promise<void> {
   }
 }
 
-if (isMain(import.meta.url)) await main();
+// No top-level await: the bdk CLI bundles this module into a CommonJS executable (packages/cli).
+if (isMain(import.meta.url)) {
+  main().catch((e: unknown) => fail(e instanceof Error ? e.message : String(e)));
+}

@@ -12,6 +12,7 @@
 #include "base/memory/weak_ptr.h"
 #include "base/no_destructor.h"
 #include "base/task/sequenced_task_runner.h"
+#include "base/time/time.h"
 #include "bdk/engine/json_util.h"
 
 namespace bdk {
@@ -81,6 +82,98 @@ class Scripted {
         },
         state, surface);
   }
+};
+
+// A scripted device chooser: chooses the device the script names once it is
+// offered, or cancels at once.
+class ScriptedDeviceChooser : public DeviceChooserSheet {
+ public:
+  ScriptedDeviceChooser(
+      base::DictValue answer,
+      base::OnceCallback<void(std::optional<std::string>)> chosen)
+      : answer_(std::move(answer)), chosen_(std::move(chosen)) {}
+  ~ScriptedDeviceChooser() override {
+    if (chosen_) {
+      ++Records()["device_choosers"].dismissed;
+    }
+  }
+
+  void SetDevices(const base::ListValue& devices) override {
+    const std::string* name = answer_.FindString("device");
+    if (!chosen_ || answer_.FindBool("none").value_or(false)) {
+      return;
+    }
+    if (!name) {
+      Answer(std::nullopt);
+      return;
+    }
+    for (const base::Value& device : devices) {
+      const base::DictValue* dict = device.GetIfDict();
+      const std::string* id = dict ? dict->FindString("id") : nullptr;
+      const std::string* device_name =
+          dict ? dict->FindString("name") : nullptr;
+      if (id && device_name && *device_name == *name) {
+        Answer(*id);
+        return;
+      }
+    }
+  }
+
+ private:
+  // Later, as a person would answer.
+  void Answer(std::optional<std::string> id) {
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(std::move(chosen_), std::move(id)));
+  }
+
+  base::DictValue answer_;
+  base::OnceCallback<void(std::optional<std::string>)> chosen_;
+};
+
+// A scripted screen-capture picker: shares the source the script names once
+// it is offered, or cancels at once.
+class ScriptedScreenCapture : public ScreenCaptureSheet {
+ public:
+  ScriptedScreenCapture(
+      base::DictValue answer,
+      base::OnceCallback<void(std::optional<ScreenCaptureChoice>)> chosen)
+      : answer_(std::move(answer)), chosen_(std::move(chosen)) {}
+  ~ScriptedScreenCapture() override {
+    if (chosen_) {
+      ++Records()["screen_capture"].dismissed;
+    }
+  }
+
+  void SetSources(const base::ListValue& sources) override {
+    const std::string* name = answer_.FindString("source");
+    if (!chosen_ || answer_.FindBool("none").value_or(false)) {
+      return;
+    }
+    if (!name) {
+      Answer(std::nullopt);
+      return;
+    }
+    for (const base::Value& source : sources) {
+      const base::DictValue* dict = source.GetIfDict();
+      const std::string* id = dict ? dict->FindString("id") : nullptr;
+      const std::string* source_name =
+          dict ? dict->FindString("name") : nullptr;
+      if (id && source_name && *source_name == *name) {
+        Answer(ScreenCaptureChoice{*id,
+                                   answer_.FindBool("audio").value_or(false)});
+        return;
+      }
+    }
+  }
+
+ private:
+  void Answer(std::optional<ScreenCaptureChoice> choice) {
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(std::move(chosen_), std::move(choice)));
+  }
+
+  base::DictValue answer_;
+  base::OnceCallback<void(std::optional<ScreenCaptureChoice>)> chosen_;
 };
 
 // Chooses between the scripted answer and the platform's presenters.
@@ -293,6 +386,68 @@ class RoutingPresenters : public UiPresenters {
           }
           std::move(answer).Run(chosen->Clone());
         });
+  }
+
+  std::unique_ptr<DeviceChooserSheet> ShowDeviceChooser(
+      HostView* view,
+      const base::DictValue& payload,
+      base::OnceCallback<void(std::optional<std::string>)> answer) override {
+    Script* script = Scripted::Find("device_choosers");
+    if (!script) {
+      return platform_->ShowDeviceChooser(view, payload, std::move(answer));
+    }
+    PresenterRecord& record = Records()["device_choosers"];
+    ++record.shown;
+    record.last_payload = ToJson(payload);
+    return std::make_unique<ScriptedDeviceChooser>(script->answer.Clone(),
+                                                   std::move(answer));
+  }
+
+  std::unique_ptr<ScreenCaptureSheet> ShowScreenCapturePicker(
+      HostView* view,
+      const base::DictValue& payload,
+      base::OnceCallback<void(std::optional<ScreenCaptureChoice>)> answer)
+      override {
+    Script* script = Scripted::Find("screen_capture");
+    if (!script) {
+      return platform_->ShowScreenCapturePicker(view, payload,
+                                                std::move(answer));
+    }
+    PresenterRecord& record = Records()["screen_capture"];
+    ++record.shown;
+    record.last_payload = ToJson(payload);
+    return std::make_unique<ScriptedScreenCapture>(script->answer.Clone(),
+                                                   std::move(answer));
+  }
+
+  Dismisser ShowSharingBar(HostView* view,
+                           const base::DictValue& sharing,
+                           base::OnceClosure stop) override {
+    Script* script = Scripted::Find("sharing_indicator");
+    if (!script) {
+      return platform_->ShowSharingBar(view, sharing, std::move(stop));
+    }
+    const bool stops = script->answer.FindString("answer") &&
+                       *script->answer.FindString("answer") == "stop";
+    return Scripted::Present(
+        "sharing_indicator", sharing,
+        [stop = std::move(stop), stops](const base::DictValue&) mutable {
+          // A person presses Stop on a bar they have seen, after the page has
+          // its stream: a stop before then never settles getDisplayMedia().
+          if (stops) {
+            base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
+                FROM_HERE, std::move(stop), base::Seconds(1));
+          }
+        });
+  }
+
+  Dismisser ShowExclusiveAccessNotice(HostView* view,
+                                      const base::DictValue& notice) override {
+    if (!Scripted::Find("exclusive_access")) {
+      return platform_->ShowExclusiveAccessNotice(view, notice);
+    }
+    return Scripted::Present("exclusive_access", notice,
+                             [](const base::DictValue&) {});
   }
 
   std::unique_ptr<FindBar> ShowFindBar(HostView* view,

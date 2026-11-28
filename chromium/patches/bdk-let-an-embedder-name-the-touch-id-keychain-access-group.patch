@@ -1,0 +1,93 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BDK Patches <patches@bdk.invalid>
+Date: Fri, 27 Nov 2026 11:37:48 -0800
+Subject: [PATCH] bdk: let an embedder name the Touch ID keychain access group
+
+The Touch ID authenticator keeps its credentials in a keychain access
+group, and is offered only when the main executable is entitled to it
+(TouchIdContext::TouchIdAvailableImpl checks
+ExecutableHasKeychainAccessGroupEntitlement). The group is compiled in
+as MAC_TEAM_IDENTIFIER_STRING.MAC_BUNDLE_IDENTIFIER_STRING.webauthn,
+Chrome's team and bundle identifier, which no application signed by
+another team can be entitled to. ChromeWebAuthenticationDelegate is
+final and TouchIdAuthenticatorConfigForProfile() is static and called
+from the delegate, local credential management and profile statistics,
+so no override can change it for all of them.
+
+Add embedder_touch_id_keychain_group.h, a small header with a settable
+group (no new target: it is inline), read by
+TouchIdAuthenticatorConfigForProfile(). Empty, Chrome's group is used,
+so Chrome is unchanged. Nothing widely included changes.
+
+Used by: the BDK engine (//bdk/engine/chromium_main_mac.mm), T-UIR-11.
+---
+ .../chrome_web_authentication_delegate.cc     |  7 +++-
+ .../embedder_touch_id_keychain_group.h        | 34 +++++++++++++++++++
+ 2 files changed, 40 insertions(+), 1 deletion(-)
+
+diff --git a/chrome/browser/webauthn/chrome_web_authentication_delegate.cc b/chrome/browser/webauthn/chrome_web_authentication_delegate.cc
+index 0f9b546cbbab17b1433386a10f1263a6cde4deab..92aeeb82253c7b92036fa77fc17db2b196cabe82 100644
+--- a/chrome/browser/webauthn/chrome_web_authentication_delegate.cc
++++ b/chrome/browser/webauthn/chrome_web_authentication_delegate.cc
+@@ -33,6 +33,7 @@
+ #include "chrome/browser/signin/identity_manager_factory.h"
+ #include "chrome/browser/sync/sync_service_factory.h"
+ #include "chrome/browser/ui/passwords/passwords_client_ui_delegate.h"
++#include "chrome/browser/webauthn/embedder_touch_id_keychain_group.h"
+ #include "chrome/browser/webauthn/passkey_model_factory.h"
+ #include "chrome/browser/webauthn/unexportable_key_utils.h"
+ #include "chrome/browser/webauthn/webauthn_pref_names.h"
+@@ -404,8 +405,12 @@ ChromeWebAuthenticationDelegate::TouchIdAuthenticatorConfigForProfile(
+         base::Base64Encode(base::as_byte_span(metadata_secret)));
+   }
+ 
++  const std::string& embedder_group =
++      embedder_touch_id_keychain_group::Group();
+   return TouchIdAuthenticatorConfig{
+-      .keychain_access_group = kKeychainAccessGroup,
++      .keychain_access_group =
++          embedder_group.empty() ? std::string(kKeychainAccessGroup)
++                                 : embedder_group,
+       .metadata_secret = std::move(metadata_secret)};
+ }
+ 
+diff --git a/chrome/browser/webauthn/embedder_touch_id_keychain_group.h b/chrome/browser/webauthn/embedder_touch_id_keychain_group.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..9c62ec4dcad6c955ffb94161294a4955e6e45479
+--- /dev/null
++++ b/chrome/browser/webauthn/embedder_touch_id_keychain_group.h
+@@ -0,0 +1,34 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_WEBAUTHN_EMBEDDER_TOUCH_ID_KEYCHAIN_GROUP_H_
++#define CHROME_BROWSER_WEBAUTHN_EMBEDDER_TOUCH_ID_KEYCHAIN_GROUP_H_
++
++#include <string>
++#include <utility>
++
++#include "base/no_destructor.h"
++
++// A hook for Chromium embedders whose application is signed by another team
++// and bundle identifier than Chrome's. The Touch ID authenticator keeps its
++// credentials in a keychain access group that the executable must be entitled
++// to, and Chrome compiles in its own
++// (MAC_TEAM_IDENTIFIER_STRING.MAC_BUNDLE_IDENTIFIER_STRING.webauthn), which no
++// other application can hold. An embedder names the group its application is
++// entitled to; empty, Chrome's is used. Only embedders set it, once, before
++// any page uses a passkey.
++namespace embedder_touch_id_keychain_group {
++
++inline std::string& Group() {
++  static base::NoDestructor<std::string> group;
++  return *group;
++}
++
++inline void SetGroup(std::string group) {
++  Group() = std::move(group);
++}
++
++}  // namespace embedder_touch_id_keychain_group
++
++#endif  // CHROME_BROWSER_WEBAUTHN_EMBEDDER_TOUCH_ID_KEYCHAIN_GROUP_H_

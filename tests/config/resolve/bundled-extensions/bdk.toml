@@ -1,0 +1,15 @@
+[browser]
+name = "Cove"
+
+[extensions]
+developer_mode = "on"
+
+[extensions.install]
+blocklist = ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]
+
+[extensions.bundled]
+notes = "Extensions/Notes"
+
+[extensions.bundled.reader]
+path = "Extensions/Reader"
+required = true

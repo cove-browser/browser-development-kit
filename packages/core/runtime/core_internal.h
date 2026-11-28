@@ -37,7 +37,8 @@ enum Type : uint8_t {
     T_CONTEXT,
     T_TASK,
     T_HELLO,
-    T_PROVIDER_CALL /* providers.cc */
+    T_PROVIDER_CALL, /* providers.cc */
+    T_DECISION       /* navigation_policy.cc */
 };
 
 struct Err {
@@ -55,6 +56,7 @@ struct UserScript;    /* automation_internal.h */
 class TaskPort;       /* automation_internal.h */
 struct ProviderTable; /* providers.cc */
 struct RouteTable;    /* routes.h */
+struct PolicyTable;   /* navigation_policy.h */
 
 struct Sub {
     bool active = true;
@@ -135,6 +137,7 @@ struct ContentsState {
     double progress = 0.0;
     uint32_t security = BDK_SECURITY_UNKNOWN;
     uint32_t audio = 0;
+    uint32_t capture = 0;
     uint32_t visibility = BDK_VISIBILITY_VISIBLE;
     bool focused = false;
     double zoom = 1.0;
@@ -235,9 +238,20 @@ struct Window {
 };
 
 /* [extensions] of the resolved configuration (configuration.md 3.7), read at start by
-   extension_configure (extension_policy.cc). Keys with status Added (developer_mode, blocklist,
-   bundled) are not in the schema yet and are not read. */
+   extension_configure (extension_policy.cc). */
 struct ExtensionConfig {
+    /* developer_mode: whether loading unpacked extensions is the user's setting, always on or
+       unavailable. */
+    enum class DeveloperMode : uint8_t { kUser, kOn, kOff };
+    /* An extension shipped inside the application bundle ([extensions.bundled], S6). path is
+       relative to the bundle's Contents/Resources. */
+    struct Bundled {
+        std::string name, path;
+        bool required = false;
+    };
+    DeveloperMode developer_mode = DeveloperMode::kUser;
+    std::vector<std::string> blocklist; /* identifiers that never install or load */
+    std::vector<Bundled> bundled;       /* in the order the resolved file lists them */
     bool enabled = true;
     bool allow_all = false;     /* install_policy = "allow_all" */
     bool private_never = false; /* allow_in_private = "never" */
@@ -245,6 +259,13 @@ struct ExtensionConfig {
     bool any_update_url = true;
     std::vector<std::string> update_urls; /* patterns, when not any */
     std::vector<std::string> stores;      /* named store sources the application enabled */
+};
+
+/* [web_apps] and [services.push] of the resolved configuration (web-apps.md, runtime/web_apps.cc).
+ */
+struct WebAppConfig {
+    bool enabled = false;
+    std::string push_provider = "none";
 };
 
 /* An application setting (`app.`), declared with bdk_app_setting_register. */
@@ -280,13 +301,16 @@ struct Runtime {
     std::shared_ptr<RouteTable> routes;                  /* routes.h */
     std::vector<std::weak_ptr<CallCtx>> native_contexts; /* native page requests not answered */
     std::shared_ptr<ProviderTable> provider_table;       /* providers_internal.h */
+    std::shared_ptr<PolicyTable> policy;                 /* navigation_policy.h */
     std::map<uint32_t, UiHandler> ui_handlers;
     std::map<uint32_t, UiMode> ui_modes; /* by surface; a surface not listed is kDefault */
     std::map<std::pair<bdk_contents_t, uint32_t>, UiQueue> ui_queues;
     std::vector<std::shared_ptr<Request>> requests;
     std::vector<std::shared_ptr<Window>> windows; /* registered, in order */
     ExtensionConfig extensions;
+    WebAppConfig web_apps;
     std::string browser_name; /* [browser] name, for text BDK shows */
+    std::string bundle_path;  /* the start configuration's bundle_path, for bundled extensions */
     bdk_log_cb log_cb = nullptr;
     void* log_ctx = nullptr;
     bdk_release_cb log_rel = nullptr;
@@ -317,6 +341,12 @@ class Backend {
     virtual void Shutdown(Runtime& rt, std::function<void()> done) = 0;
     /* The manifest of the runtime, as JSON. Any thread. */
     virtual std::string ManifestJson() = 0;
+    /* The profile snapshot and downgrade policy (profile_versions.h, T-PKG-05): the data directory
+       this start will use and the engine's version ("158.0.8127.37"). Called before Start; when
+       either is empty the policy is not applied. The Chromium engine does not supply them yet
+       (T-PKG-05). */
+    virtual std::string ProfileDataDirectory(const bdk_start_config_t&, const std::string&);
+    virtual std::string EngineVersion();
 
     /* Profiles. The core keeps the list and the names; the backend keeps what is on disk. */
     virtual void ProfilesChanged(Runtime& rt) = 0;
@@ -467,12 +497,16 @@ bdk_string_t view(const std::string&);
 bool string_ok(bdk_string_t);
 bool valid_json(const std::string&, bool* is_object = nullptr);
 std::string json_escape(const std::string&);
+/* What bdk_contents_load accepts as a URL: it has a scheme separator and no whitespace. */
+bool plausible_url(const std::string&);
 
 bdk_error_t make_error(const std::string& domain, const std::string& code,
                        const std::string& message);
 bdk_status_t fail(bdk_error_t* out, const char* domain, const char* code,
                   const std::string& message);
 void clear_out(bdk_error_t* out);
+/* Whether a native handle is the platform's input event that confirmed a grant (ui_router.cc). */
+bool is_gesture_event(const bdk_native_handle_t& g);
 bdk_buffer_t make_buffer(const std::string& data);
 
 std::shared_ptr<Runtime> current_runtime();
@@ -567,6 +601,11 @@ void release_window_handlers(Window&);
    [extensions.ui] modes into the surface modes. Called by bdk_runtime_start after ui_configure. */
 bdk_status_t extension_configure(Runtime&, const std::string& resolved_config,
                                  bdk_error_t* out_error);
+/* Web apps (web_apps.cc). Reads [web_apps] and [services.push] of the resolved configuration into
+   rt.web_apps. Called by bdk_runtime_start before providers_configure, which needs the push
+   provider for the Google key rule. */
+bdk_status_t web_apps_configure(Runtime&, const std::string& resolved_config,
+                                bdk_error_t* out_error);
 /* The keyboard handler of the page: the reserve answer, and the unhandled report. */
 bool reserve_key(Contents&, bdk_native_handle_t key_event);
 void report_unhandled_key(Contents&, bdk_native_handle_t key_event);

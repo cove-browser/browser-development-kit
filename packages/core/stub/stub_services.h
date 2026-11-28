@@ -59,6 +59,15 @@ bdk_status_t extensions_activate(bdkcore::Runtime& rt,
                                  const std::string& id, const std::string& command,
                                  std::string* result, bdk_error_t* err);
 
+/* Web apps (stub_web_apps.cc). */
+void web_apps_reset();
+/* The webApps.* commands; false for any other command. */
+bool web_apps_execute(bdkcore::Runtime& rt, const std::shared_ptr<bdkcore::BuiltinCall>& call);
+/* A page committed url: a page launched as an app reports leaving or re-entering its scope. */
+void web_apps_committed(const std::shared_ptr<bdkcore::Contents>& contents, const std::string& url);
+/* The stub's app identifier for a manifest id. */
+std::string make_web_app_id(const std::string& manifest_id);
+
 /* Makes the request the one bdk_stub_send_ui_update and bdk_stub_last_ui_update address, and
    records the application's updates to it (stub_backend.cc). */
 void track_request(const std::shared_ptr<bdkcore::Request>& request);

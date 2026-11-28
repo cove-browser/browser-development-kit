@@ -114,6 +114,7 @@ struct Pending {
     std::string input;
     bdk_invoke_options_t options{};
     bool gesture = false;
+    bool confirmed = false; /* BuiltinCall::confirmed */
     /* Set by the lookup. */
     const CommandDef* def = nullptr;
     Command app{};
@@ -270,8 +271,11 @@ void validate_and_run(const std::shared_ptr<Pending>& p) {
     call->profile = p->profile;
     call->contents = p->contents;
     call->caller = p->caller;
+    call->confirmed = p->confirmed;
     call->control =
         std::make_shared<CommandControl>(p->call, (p->def->flags & table::kProgress) != 0);
+    if (p->name == "runtime.info")
+        call->control->AppendMembers(web_apps_runtime_info(*p->rt));
     /* Weak: the control holds the call, so a strong reference here would keep every finished call
        alive. The BuiltinCall the backend holds keeps the control alive while it works. */
     std::weak_ptr<CommandControl> control = call->control;
@@ -280,6 +284,8 @@ void validate_and_run(const std::shared_ptr<Pending>& p) {
             c->Stop();
     };
     if (settings_call && app_settings_execute(*p->rt, call, parsed))
+        return;
+    if (web_apps_refuse(*p->rt, call))
         return;
     if (core_execute_command(*p->rt, call, parsed))
         return;
@@ -445,10 +451,14 @@ bool invoke_options_ok(const bdk_invoke_options_t* o) {
     return true;
 }
 
-bdk_call_t broker_submit(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Caller>& caller,
-                         const CommandRef& command, const std::string& arguments_json,
-                         const bdk_invoke_options_t* options, bool gesture, bdk_result_cb cb,
-                         bdk_progress_cb prog, void* ctx, bdk_release_cb rel) {
+namespace {
+
+std::shared_ptr<Pending> submit(const std::shared_ptr<Runtime>& rt,
+                                const std::shared_ptr<Caller>& caller, const CommandRef& command,
+                                const std::string& arguments_json,
+                                const bdk_invoke_options_t* options, bool gesture, bool confirmed,
+                                bdk_result_cb cb, bdk_progress_cb prog, void* ctx,
+                                bdk_release_cb rel) {
     auto call = new_call(rt, cb, prog, ctx, rel);
     auto p = std::make_shared<Pending>();
     p->rt = rt;
@@ -457,6 +467,7 @@ bdk_call_t broker_submit(const std::shared_ptr<Runtime>& rt, const std::shared_p
     p->ref = command;
     p->input = arguments_json;
     p->gesture = gesture;
+    p->confirmed = confirmed;
     p->options = read_invoke_options(options);
     if (caller->kind != CallerKind::kHost) {
         auto& calls = caller->calls;
@@ -466,7 +477,37 @@ bdk_call_t broker_submit(const std::shared_ptr<Runtime>& rt, const std::shared_p
         calls.push_back(call);
     }
     post([p] { dispatch(p); });
-    return call->handle;
+    return p;
+}
+
+} // namespace
+
+bdk_call_t broker_submit(const std::shared_ptr<Runtime>& rt, const std::shared_ptr<Caller>& caller,
+                         const CommandRef& command, const std::string& arguments_json,
+                         const bdk_invoke_options_t* options, bool gesture, bdk_result_cb cb,
+                         bdk_progress_cb prog, void* ctx, bdk_release_cb rel) {
+    return submit(rt, caller, command, arguments_json, options, gesture, false, cb, prog, ctx, rel)
+        ->call->handle;
+}
+
+bdk_call_t broker_invoke_confirmed(bdk_runtime_t h, const std::string& name, bdk_string_t args,
+                                   const bdk_invoke_options_t* opts, bdk_native_handle_t gesture,
+                                   bdk_result_cb cb, void* ctx, bdk_release_cb rel) {
+    if (check_thread() != BDK_OK || !cb || !string_ok(args))
+        return 0;
+    auto rt = runtime_of(h);
+    if (!rt || !invoke_options_ok(opts))
+        return 0;
+    if (gesture.kind != BDK_NATIVE_NSEVENT) {
+        auto call = new_call(rt, cb, nullptr, ctx, rel);
+        finish_call(call, BDK_DOMAIN_UI, BDK_CODE_GESTURE_REQUIRED,
+                    "'" + name + "' needs the event that confirmed it", "");
+        return call->handle;
+    }
+    CommandRef ref;
+    ref.name = name;
+    return submit(rt, host_caller(), ref, str(args), opts, false, true, cb, nullptr, ctx, rel)
+        ->call->handle;
 }
 
 bdk_call_t broker_invoke_abi(bdk_runtime_t h, const std::string* name, uint32_t id,
@@ -661,6 +702,13 @@ void CommandControl::Progress(double fraction, const std::string& message) {
 }
 
 void CommandControl::Resolve(const std::string& result_json) {
+    if (!append_.empty() && result_json.size() >= 2 && result_json.front() == '{' &&
+        result_json.back() == '}') {
+        const bool empty = result_json.find_first_not_of(" \t\r\n", 1) == result_json.size() - 1;
+        resolve_call(call_, result_json.substr(0, result_json.size() - 1) + (empty ? "" : ",") +
+                                append_ + "}");
+        return;
+    }
     resolve_call(call_, result_json);
 }
 
@@ -688,6 +736,10 @@ void CommandControl::OnCancel(std::function<void()> stop) {
         return;
     }
     stop_ = std::move(stop);
+}
+
+void CommandControl::AppendMembers(std::string members) {
+    append_ = std::move(members);
 }
 
 void CommandControl::Stop() {

@@ -81,8 +81,10 @@ public final class BDKUIHandlers {
         surface(.reputationWarnings)
     }
     public var devTools: Surface<DevToolsRequest> { surface(.devTools) }
-    public var deviceChoosers: Surface<BDKRawUIRequest> { surface(.deviceChoosers) }
-    public var screenCapture: Surface<BDKRawUIRequest> { surface(.screenCapture) }
+    /// Receives `DeviceChooserRequest`.
+    public var deviceChoosers: Surface<DeviceChooserRequest> { surface(.deviceChoosers) }
+    /// Receives `ScreenCaptureRequest`.
+    public var screenCapture: Surface<ScreenCaptureRequest> { surface(.screenCapture) }
     /// One request per step of a passkey or security-key ceremony (`WebAuthnRequest`).
     public var webAuthn: Surface<WebAuthnRequest> { surface(.webAuthn) }
     public var externalProtocols: Surface<ExternalProtocolRequest> { surface(.externalProtocols) }
@@ -94,6 +96,11 @@ public final class BDKUIHandlers {
     public var extensionUninstalls: Surface<ExtensionUninstallRequest> {
         surface(.extensionUninstalls)
     }
+    /// Receives `UnresponsivePageRequest` and `BlockedPopupRequest`.
+    public var pageHealth: Surface<BDKUIRequest> { surface(.pageHealth) }
+    public var payments: Surface<PaymentRequest> { surface(.payments) }
+    public var identity: Surface<IdentityRequest> { surface(.identity) }
+    public var webAppInstalls: Surface<WebAppInstallRequest> { surface(.webAppInstalls) }
 
     private func surface<Request: BDKUIRequest>(_ kind: BDKUISurface) -> Surface<Request> {
         Surface(owner: self, kind: kind)
@@ -241,16 +248,25 @@ extension BDKUIRequest {
         .certificateErrors: { CertificateErrorRequest($0, runtime: $1) },
         .reputationWarnings: { ReputationWarningRequest($0, runtime: $1) },
         .devTools: { DevToolsRequest($0, runtime: $1) },
+        .deviceChoosers: { DeviceChooserRequest($0, runtime: $1) },
+        .screenCapture: { ScreenCaptureRequest($0, runtime: $1) },
         .webAuthn: { WebAuthnRequest($0, runtime: $1) },
         .externalProtocols: { ExternalProtocolRequest($0, runtime: $1) },
         .extensionPopups: { ExtensionPopupRequest($0, runtime: $1) },
         .extensionSidePanels: { ExtensionSidePanelRequest($0, runtime: $1) },
         .extensionInstalls: { ExtensionInstallRequest($0, runtime: $1) },
         .extensionUninstalls: { ExtensionUninstallRequest($0, runtime: $1) },
+        .pageHealth: {
+            BDKUIPayload($0).string("kind") == "blockedPopups"
+                ? BlockedPopupRequest($0, runtime: $1) : UnresponsivePageRequest($0, runtime: $1)
+        },
+        .payments: { PaymentRequest($0, runtime: $1) },
+        .identity: { IdentityRequest($0, runtime: $1) },
+        .webAppInstalls: { WebAppInstallRequest($0, runtime: $1) },
     ]
 
-    /// The typed request for a delivery. Surfaces without a typed request (device
-    /// choosers, screen capture) deliver a `BDKRawUIRequest`.
+    /// The typed request for a delivery. A surface without a typed request delivers a
+    /// `BDKRawUIRequest`.
     static func make(_ delivery: BDKUIDelivery, runtime: BDKRuntime) -> BDKUIRequest {
         let factory = BDKUISurface(rawValue: delivery.surface).flatMap { factories[$0] }
         return factory?(delivery, runtime) ?? BDKRawUIRequest(delivery, runtime: runtime)

@@ -21,7 +21,8 @@
         "AUTOMATION": "automation",
         "PLATFORM": "platform",
         "EXTENSION": "extension",
-        "DEVTOOLS": "devtools"
+        "DEVTOOLS": "devtools",
+        "WEB_APPS": "webApps"
       }
     },
     {
@@ -64,12 +65,16 @@
         "NOT_SERIALIZABLE": "notSerializable",
         "NO_ELEMENT": "noElement",
         "SOURCE_NOT_ALLOWED": "sourceNotAllowed",
+        "BLOCKLISTED": "blocklisted",
+        "NOT_REMOVABLE": "notRemovable",
         "INCOMPATIBLE": "incompatible",
         "SURFACE_DISABLED": "surfaceDisabled",
         "MANIFEST_INVALID": "manifestInvalid",
         "NOT_UNPACKED": "notUnpacked",
         "PRIVATE_NOT_ALLOWED": "privateNotAllowed",
-        "BUDGET_EXCEEDED": "budgetExceeded"
+        "BUDGET_EXCEEDED": "budgetExceeded",
+        "PRIVATE_PROFILE": "privateProfile",
+        "NOT_INSTALLABLE": "notInstallable"
       }
     },
     {
@@ -100,7 +105,9 @@
         "RENDERER_GONE": 8,
         "VISIBILITY_CHANGED": 9,
         "FIND_RESULT": 10,
-        "TRANSLATION": 11
+        "TRANSLATION": 11,
+        "WEB_APP": 12,
+        "CAPTURE_CHANGED": 13
       }
     },
     {
@@ -121,6 +128,13 @@
       "prefix": "BDK_AUDIO_",
       "comment": "bdk_contents_state_t.audio flags",
       "values": { "AUDIBLE": 1, "MUTED": 2 }
+    },
+    {
+      "group": "capture",
+      "kind": "flags",
+      "prefix": "BDK_CAPTURE_",
+      "comment": "bdk_contents_state_t.capture flags: what the page captures (DISPLAY: a screen, a window or a page), and whether another page captures it (CAPTURED). BDK_CONTENTS_EVENT_CAPTURE_CHANGED reports each change.",
+      "values": { "CAMERA": 1, "MICROPHONE": 2, "DISPLAY": 4, "CAPTURED": 8 }
     },
     {
       "group": "security",
@@ -173,7 +187,11 @@
         "EXTENSION_OPTIONS_PAGES": 29,
         "EXTENSION_DEVTOOLS": 30,
         "EXTENSION_INSTALLS": 31,
-        "EXTENSION_UNINSTALLS": 32
+        "EXTENSION_UNINSTALLS": 32,
+        "PAGE_HEALTH": 33,
+        "PAYMENTS": 34,
+        "IDENTITY": 35,
+        "WEB_APP_INSTALLS": 37
       }
     },
     {
@@ -189,6 +207,13 @@
       "prefix": "BDK_NATIVE_PAGE_",
       "comment": "bdk_native_page_complete's result: the handler showed the page itself, or the navigation shows the standard error page",
       "values": { "HANDLED": 1, "BLOCKED": 2 }
+    },
+    {
+      "group": "navigationDecisions",
+      "kind": "enum",
+      "prefix": "BDK_NAVIGATION_",
+      "comment": "bdk_navigation_policy_decide's action (swift-api.md 6.3): let the navigation go on, cancel it, or cancel it and load another URL",
+      "values": { "ALLOW": 1, "CANCEL": 2, "REDIRECT": 3 }
     },
     {
       "group": "pageCommands",

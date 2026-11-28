@@ -25,9 +25,12 @@ extension BDKWebContents {
         public let url: URL?
         /// The network error, or 0 when the navigation was stopped or superseded.
         public let netError: Int32
-        /// "superseded", "aborted" or "netError".
+        /// "superseded", "aborted", "handledNatively", "cancelledByPolicy", "redirectedByPolicy"
+        /// or "netError".
         public let reason: String
         public let isErrorPage: Bool
+        /// For "redirectedByPolicy": the URL the navigation policy loads instead.
+        public let redirectURL: URL?
 
         /// The failure as the error `load` throws.
         public var error: BDKError {
@@ -43,6 +46,10 @@ extension BDKWebContents {
                 BDKError(
                     domain: .navigation, code: "handledNatively",
                     message: "the route's native handler showed the page")
+            case "cancelledByPolicy":
+                BDKError(
+                    domain: .navigation, code: "cancelledByPolicy",
+                    message: "the application's navigation policy cancelled the navigation")
             default:
                 BDKError(
                     domain: .navigation, code: "netError",
@@ -70,6 +77,11 @@ extension BDKWebContents {
         case findResult(FindSession.Result)
         /// The page's translation changed phase or progress.
         case translation(BDKTranslationState)
+        /// A page launched as an installed web app left its app's scope or came back into it
+        /// (`webApp.isInScope`).
+        case webAppScope(appID: String, isInScope: Bool)
+        /// What the page captures changed (`captureActivity`).
+        case captureChanged(CaptureActivity)
         /// A kind this version does not know, from a newer runtime.
         case unknown(kind: UInt32)
     }
@@ -89,6 +101,13 @@ extension BDKJSValue {
         }
         return value
     }
+
+    fileprivate func number(_ key: String) -> Double? {
+        guard case .object(let object) = self, case .number(let value) = object[key] else {
+            return nil
+        }
+        return value
+    }
 }
 
 extension BDKWebContents.Event {
@@ -104,7 +123,8 @@ extension BDKWebContents.Event {
             self = .navigationFailed(
                 BDKWebContents.NavigationFailure(
                     url: info.url, netError: event.net_error,
-                    reason: detail?.string("code") ?? "netError", isErrorPage: info.isErrorPage))
+                    reason: detail?.string("code") ?? "netError", isErrorPage: info.isErrorPage,
+                    redirectURL: detail?.string("redirectUrl").flatMap(URL.init(string:))))
         case BDK_CONTENTS_EVENT_LOAD_FINISHED:
             self = .navigationFinished(info)
         case BDK_CONTENTS_EVENT_TITLE_CHANGED:
@@ -132,6 +152,12 @@ extension BDKWebContents.Event {
                 try? BDKServiceCoding.decode(BDKTranslationState.self, from: $0.jsonString)
             }
             .map { .translation($0) } ?? .unknown(kind: kind)
+        case BDK_CONTENTS_EVENT_WEB_APP:
+            .webAppScope(
+                appID: detail?.string("appId") ?? "", isInScope: detail?.bool("isInScope") ?? true)
+        case BDK_CONTENTS_EVENT_CAPTURE_CHANGED:
+            .captureChanged(
+                BDKWebContents.CaptureActivity(rawValue: UInt32(detail?.number("capture") ?? 0)))
         default:
             .unknown(kind: kind)
         }

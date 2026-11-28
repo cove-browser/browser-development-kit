@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "bdk_version": "0.0.0",
-  "config_digest": "sha256:4ed4173989ef88206d56f725354ddbe941a3bed30c917e2399cdaeaf509d0042",
+  "config_digest": "sha256:69c19a75d1ffe965a573ba990f062c0d2b691ecc21b9fe5492b777996ccb84a9",
   "browser": {
     "name": "Cove",
     "internal_scheme": "cove",
@@ -25,30 +25,43 @@
     "permissions": "default",
     "javascript_dialogs": "default",
     "http_auth": "default",
+    "client_certificates": "default",
     "file_pickers": "default",
     "context_menus": "default",
     "new_windows": "default",
     "downloads": "default",
     "passwords": "default",
     "autofill": "default",
+    "autofill_suggestions": "default",
     "printing": "default",
     "translation": "default",
     "find": "default",
     "fullscreen": "default",
+    "exclusive_access": "default",
     "notifications": "default",
     "certificate_errors": "default",
     "reputation_warnings": "default",
-    "devtools": "default"
+    "devtools": "default",
+    "device_choosers": "default",
+    "screen_capture": "default",
+    "webauthn": "default",
+    "external_protocols": "default",
+    "page_health": "default",
+    "identity": "default",
+    "payments": "default",
+    "web_app_installs": "default"
   },
   "extensions": {
     "enabled": true,
     "install_policy": "reject_known_incompatible",
     "allow_in_private": "user",
+    "developer_mode": "user",
     "install": {
       "unpacked": true,
       "crx": true,
       "update_urls": "any",
-      "stores": []
+      "stores": [],
+      "blocklist": []
     },
     "ui": {
       "actions": "default",
@@ -59,6 +72,9 @@
       "devtools": "default"
     },
     "bundled": {}
+  },
+  "web_apps": {
+    "enabled": false
   },
   "services": {
     "translation": {
@@ -73,10 +89,16 @@
     "geolocation": {
       "provider": "system"
     },
+    "webauthn": {
+      "phones": false
+    },
     "credentials": {
       "provider": "chromium"
     },
     "leak_check": {
+      "provider": "none"
+    },
+    "push": {
       "provider": "none"
     }
   },

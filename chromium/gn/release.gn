@@ -32,3 +32,11 @@ use_clang_modules = false
 # it changes only google_apis' buildflag header, so it rebuilds google_apis.
 # No key is built in: without one, nothing BDK runs has a key.
 support_external_google_api_key = true
+
+# Third-party notices (T-REL-02): run tools/licenses/licenses.py credits to
+# write gen/components/resources/about_credits.html, which is both
+# chrome://credits and THIRD_PARTY_NOTICES.html in the packaged runtime. The
+# default (is_official_build) copies a placeholder, which packaging refuses.
+# Declared in components/resources/BUILD.gn; only that file's action, its
+# buildflag header and components_resources.pak depend on it.
+generate_about_credits = true

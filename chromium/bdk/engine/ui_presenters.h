@@ -87,6 +87,30 @@ class FindBar {
   virtual void Focus() = 0;
 };
 
+// The default device chooser being shown (ui_device_chooser.h). Destroying
+// it takes it down without an answer.
+class DeviceChooserSheet {
+ public:
+  virtual ~DeviceChooserSheet() = default;
+  // The devices to offer now: the request's "devices" list.
+  virtual void SetDevices(const base::ListValue& devices) = 0;
+};
+
+// The default screen-capture picker being shown (ui_screen_capture.h).
+// Destroying it takes it down without an answer.
+class ScreenCaptureSheet {
+ public:
+  virtual ~ScreenCaptureSheet() = default;
+  // The sources to offer now: the request's "sources" list.
+  virtual void SetSources(const base::ListValue& sources) = 0;
+};
+
+// What the person chose in the screen-capture picker.
+struct ScreenCaptureChoice {
+  std::string source;  // the source's id
+  bool audio = false;
+};
+
 class UiPresenters {
  public:
   virtual ~UiPresenters() = default;
@@ -165,6 +189,36 @@ class UiPresenters {
       HostView* view,
       const base::DictValue& payload,
       base::OnceCallback<void(base::DictValue)> answer) = 0;
+  // payload: the device_choosers request payload. `answer` gets the id of
+  // the device the person chose, or nothing when they cancelled. A script
+  // answers {"device": name} to choose the device of that name as soon as it
+  // is offered, or {"answer": "cancel"}.
+  virtual std::unique_ptr<DeviceChooserSheet> ShowDeviceChooser(
+      HostView* view,
+      const base::DictValue& payload,
+      base::OnceCallback<void(std::optional<std::string>)> answer) = 0;
+  // payload: the screen_capture request payload. `answer` gets the chosen
+  // source, or nothing when the person cancelled. A script answers {"source":
+  // name, "audio"?} to share the source of that name as soon as it is
+  // offered, or {"answer": "cancel"}.
+  virtual std::unique_ptr<ScreenCaptureSheet> ShowScreenCapturePicker(
+      HostView* view,
+      const base::DictValue& payload,
+      base::OnceCallback<void(std::optional<ScreenCaptureChoice>)> answer) = 0;
+  // The "sharing" bar in the window of `view` while its page shares a
+  // screen, a window or a page: {origin, kind, name}. `stop` runs when the
+  // person stops sharing. Scripted as "sharing_indicator": {"answer":
+  // "stop"} stops at once.
+  virtual Dismisser ShowSharingBar(HostView* view,
+                                   const base::DictValue& sharing,
+                                   base::OnceClosure stop) = 0;
+  // The default presenter of an exclusive_access notice (ui-requests.md
+  // 5.12): `notice`'s exitInstruction across the top of the window of `view`
+  // for a few seconds. Scripted as "exclusive_access" (recorded; nothing to
+  // answer).
+  virtual Dismisser ShowExclusiveAccessNotice(
+      HostView* view,
+      const base::DictValue& notice) = 0;
   // payload: the find request payload (initialText).
   virtual std::unique_ptr<FindBar> ShowFindBar(HostView* view,
                                                const base::DictValue& payload,

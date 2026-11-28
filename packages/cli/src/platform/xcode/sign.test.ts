@@ -188,6 +188,25 @@ describe("signBundle", () => {
     }
   });
 
+  it("copies the runtime's third-party notices into the application before signing", async () => {
+    const { appPath, versionDir } = await fakeApp();
+    await writeFile(join(versionDir, "Resources", "THIRD_PARTY_NOTICES.html"), "<p>libfoo</p>");
+    const { runner } = fakeRunner({});
+    const outcome = await signBundle({ appPath, identity: "-" }, runner);
+    expect(outcome.diagnostics).toEqual([]);
+    expect(
+      await readFile(join(appPath, "Contents", "Resources", "THIRD_PARTY_NOTICES.html"), "utf8"),
+    ).toBe("<p>libfoo</p>");
+  });
+
+  it("warns when the runtime has no notices, and still signs", async () => {
+    const { appPath } = await fakeApp();
+    const { runner } = fakeRunner({});
+    const outcome = await signBundle({ appPath, identity: "-" }, runner);
+    expect(outcome.diagnostics.map((d) => d.code)).toEqual(["sign.notices_missing"]);
+    expect(outcome.signed.at(-1)?.split("/").pop()).toBe("Demo.app");
+  });
+
   it("passes the application's entitlements file to codesign for the app only", async () => {
     const { appPath } = await fakeApp();
     const dir = await tempDir();
@@ -258,7 +277,7 @@ describe("signBundle", () => {
       { appPath, identity: "ID", team: "TEAM123" },
       fakeRunner({}).runner,
     );
-    expect(ok.diagnostics).toEqual([]);
+    expect(ok.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     const error = await signBundle(
       { appPath, identity: "ID", team: "OTHER" },
       fakeRunner({}).runner,

@@ -9,18 +9,6 @@ import { dotted, isRecord, type Reporter, typeName } from "./reporter.js";
 // Ajv is CommonJS; its constructor is both the module and its `default` export.
 const Ajv2020 = Ajv2020Module.default;
 
-/** Surfaces proposed in S3 and not yet accepted: reported as ordinary unknown keys. */
-const UNACCEPTED_SURFACES = new Set([
-  "client_certificates",
-  "autofill_suggestions",
-  "exclusive_access",
-  "device_choosers",
-  "screen_capture",
-  "webauthn",
-  "external_protocols",
-  "page_health",
-]);
-
 const SURFACE_MODES = new Set(["default", "custom", "disabled"]);
 
 const compiled = new WeakMap<object, ValidateFunction>();
@@ -124,8 +112,7 @@ function check(error: ErrorObject, path: string[], reporter: Reporter): void {
       const valid = surfaceKeys(error);
       const near = nearestKey(key, valid);
       const hint = near ? ` Did you mean "${dotted([...path, near])}"?` : "";
-      const surface =
-        ((inSurfaces && !UNACCEPTED_SURFACES.has(key)) || inExtensionSurfaces) && path.length === 2;
+      const surface = (inSurfaces || inExtensionSurfaces) && path.length === 2;
       reporter.error(
         surface ? "ui.surface_unknown" : "config.unknown_key",
         surface
@@ -236,6 +223,9 @@ function patternHint(path: KeyPath): string {
   if (last === "update_interval") return "Write a duration such as 30m, 1h or 1d.";
   if (last === "endpoint") return "Write an http or https URL.";
   if (path.includes("bundled_languages")) return "Write a language code such as en or pt-BR.";
+  if (path.includes("blocklist")) return "Write an extension identifier: 32 letters from a to p.";
+  if (last === "bundled")
+    return 'Name a bundled extension with a lower-case letter, then letters, digits, "_" or "-".';
   return "It does not match the format this key requires.";
 }
 
@@ -244,8 +234,9 @@ export function checkSchema(schema: object, data: unknown, reporter: Reporter): 
   const validate = compile(schema);
   if (validate(data)) return true;
   for (const error of validate.errors ?? []) {
-    // The branches of an anyOf are summarised by the anyOf error itself.
-    if (/\/anyOf\/\d+\//.test(error.schemaPath)) continue;
+    // The branches of an anyOf are summarised by the anyOf error itself, and a property name
+    // that fails its pattern by the pattern error.
+    if (/\/anyOf\/\d+\//.test(error.schemaPath) || error.keyword === "propertyNames") continue;
     check(error, pointerToPath(error.instancePath), reporter);
   }
   return false;

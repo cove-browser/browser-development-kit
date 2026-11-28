@@ -1,0 +1,7 @@
+[browser]
+name = "Cove"
+
+[extensions.bundled]
+broken = "Extensions/Broken"
+empty = "Extensions/Empty"
+missing = "Extensions/Missing"

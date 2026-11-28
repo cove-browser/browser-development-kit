@@ -5,6 +5,7 @@
 #include "bdk/engine/chromium_main.h"
 
 #import <AppKit/AppKit.h>
+#include <Security/Security.h>
 
 #include <memory>
 #include <string>
@@ -12,6 +13,8 @@
 #include <utility>
 #include <variant>
 
+#include "base/apple/foundation_util.h"
+#include "base/apple/scoped_cftyperef.h"
 #include "base/check.h"
 #include "base/command_line.h"
 #include "base/functional/callback.h"
@@ -19,6 +22,7 @@
 #include "base/no_destructor.h"
 #include "base/sampling_heap_profiler/poisson_allocation_sampler.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/strings/sys_string_conversions.h"
 #include "base/time/time.h"
 #include "bdk/engine/content_browser_client.h"
 #include "chrome/app/chrome_main.h"
@@ -26,6 +30,7 @@
 #include "chrome/app/chrome_main_mac.h"
 #include "chrome/app/startup_timestamps.h"
 #include "chrome/browser/lifetime/browser_shutdown.h"
+#include "chrome/browser/webauthn/embedder_touch_id_keychain_group.h"  // nogncheck
 #include "components/keep_alive_registry/keep_alive_types.h"
 #include "components/keep_alive_registry/scoped_keep_alive.h"
 #include "content/public/app/content_main.h"
@@ -138,6 +143,35 @@ ChromiumStartOptions::ChromiumStartOptions(const ChromiumStartOptions&) =
     default;
 ChromiumStartOptions::~ChromiumStartOptions() = default;
 
+bool ApplicationDeclaresBluetoothUse() {
+  return [NSBundle.mainBundle
+             objectForInfoDictionaryKey:@"NSBluetoothAlwaysUsageDescription"] !=
+         nil;
+}
+
+std::string ApplicationTouchIdKeychainGroup() {
+  base::apple::ScopedCFTypeRef<SecCodeRef> code;
+  base::apple::ScopedCFTypeRef<SecStaticCodeRef> static_code;
+  base::apple::ScopedCFTypeRef<CFDictionaryRef> information;
+  if (SecCodeCopySelf(kSecCSDefaultFlags, code.InitializeInto()) !=
+          errSecSuccess ||
+      SecCodeCopyStaticCode(code.get(), kSecCSDefaultFlags,
+                            static_code.InitializeInto()) != errSecSuccess ||
+      SecCodeCopySigningInformation(static_code.get(), kSecCSSigningInformation,
+                                    information.InitializeInto()) !=
+          errSecSuccess) {
+    return std::string();
+  }
+  CFStringRef team = base::apple::GetValueFromDictionary<CFStringRef>(
+      information.get(), kSecCodeInfoTeamIdentifier);
+  NSString* bundle = NSBundle.mainBundle.bundleIdentifier;
+  if (!team || CFStringGetLength(team) == 0 || bundle.length == 0) {
+    return std::string();
+  }
+  return base::SysCFStringRefToUTF8(team) + "." +
+         base::SysNSStringToUTF8(bundle) + ".webauthn";
+}
+
 bool StartChromium(const ChromiumStartOptions& options, std::string* error) {
   CHECK([NSThread isMainThread]);
   State& state = GetState();
@@ -151,6 +185,10 @@ bool StartChromium(const ChromiumStartOptions& options, std::string* error) {
              "subclass of it";
     return false;
   }
+  // Touch ID passkeys are kept in the application's own keychain access group
+  // (T-UIR-11): Chromium offers the authenticator only to an executable
+  // entitled to it.
+  embedder_touch_id_keychain_group::SetGroup(ApplicationTouchIdKeychainGroup());
   state.started = true;
 
   state.args.push_back(options.program.value());
@@ -173,14 +211,27 @@ bool StartChromium(const ChromiumStartOptions& options, std::string* error) {
   // at a check), and that BDK neither routes nor shows a sheet for yet
   // (ui-requests.md 8.2, T-UIR-10). HTTPS-First then asks with its
   // interstitial page, in the page, as it did before the dialog. The others'
-  // APIs are absent from pages, so a site sees them as unsupported: Payment
-  // Request and Secure Payment Confirmation, FedCM, the Digital Credentials
-  // API, and Web Bluetooth (its chooser is refused, ui_browser_dialogs.h, and
-  // its adapter would need the application's Bluetooth usage string).
+  // APIs are absent from pages, so a site sees them as unsupported: Secure
+  // Payment Confirmation and the Digital Credentials API (Payment Request and
+  // FedCM follow their surfaces: engine_backend.cc). Pages ask for web
+  // app installs only through beforeinstallprompt, which [web_apps] enabled
+  // governs (web-apps.md 10, T-PWA-06): navigator.install() and the <install>
+  // element reach views dialogs whether installs are on or off, so both are
+  // absent (WebAppInstallation, InstallElement).
   disabled_features +=
-      ",HttpsFirstDialogUi,WebPayments,SecurePaymentConfirmation,FedCm,"
+      ",HttpsFirstDialogUi,SecurePaymentConfirmation,"
       "WebIdentityDigitalCredentials,WebIdentityDigitalCredentialsCreation,"
-      "WebBluetooth";
+      "WebAppInstallation,InstallElement";
+  // Installed web apps stay in the application's windows (web-apps.md
+  // 10.5): links do not open in an app, and no app is preinstalled.
+  disabled_features += ",PwaNavigationCapturing,DefaultWebAppInstallation";
+  // Web Bluetooth's chooser is a device_choosers request (T-UIR-13), but its
+  // adapter needs the application's Bluetooth usage string: macOS ends a
+  // process that uses Bluetooth without one. With none, navigator.bluetooth is
+  // absent, so a site sees Bluetooth as unsupported.
+  if (!ApplicationDeclaresBluetoothUse()) {
+    disabled_features += ",WebBluetooth";
+  }
   // The heavy-ad intervention's opt-out store is kept in memory, as Chrome
   // keeps it for an off-the-record profile. On disk, it opens a database at
   // best-effort priority when the profile starts; a profile deleted before

@@ -176,4 +176,7 @@ async function main(): Promise<void> {
   }
 }
 
-if (isMain(import.meta.url)) await main();
+// No top-level await: the bdk CLI bundles this module into a CommonJS executable (packages/cli).
+if (isMain(import.meta.url)) {
+  main().catch((e: unknown) => fail(e instanceof Error ? e.message : String(e)));
+}

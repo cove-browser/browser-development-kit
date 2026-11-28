@@ -1,0 +1,133 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: BDK Patches <patches@bdk.invalid>
+Date: Fri, 27 Nov 2026 10:53:56 -0800
+Subject: [PATCH] bdk: let an embedder present the Payment Request sheet
+
+ChromePaymentRequestDelegate::ShowDialog() makes Chrome's sheet,
+PaymentRequestDialogView, a views dialog shown with
+constrained_window::ShowWebModalDialogViews(), which needs a views
+widget to parent it. An embedder whose windows have no views cannot show
+it, and no ContentBrowserClient method creates the delegate or the
+dialog: the delegate is made in payments::CreatePaymentRequest() and
+bound in Chrome's binder map, and SetPaymentRequestFactoryForTesting()
+is for tests.
+
+Add embedder_payment_request_dialog.h, a small header with a settable
+factory (no new target: it is inline), and ask it first for a Payment
+Request's dialog. PaymentRequestDialog is already an abstract interface,
+and the dialog it returns owns itself until CloseDialog(), as Chrome's
+does. A null return declines and Chrome's sheet is shown, so Chrome is
+unchanged. Secure Payment Confirmation keeps its own controller.
+
+show() is refused unless the page is the active tab of the active
+browser window (IsBrowserWindowActive()). An embedder's pages need not
+be tabs of a window of Chromium's: the header also lets it have the
+check follow the page's visibility instead, as
+embedder_prompt_visibility.h does for permission prompts. Unset, the
+check is Chrome's. Nothing widely included changes.
+
+Used by: the BDK engine (//bdk/engine/ui_payments.cc), T-UIR-14.
+---
+ .../chrome_payment_request_delegate.cc        | 13 ++++-
+ .../embedder_payment_request_dialog.h         | 55 +++++++++++++++++++
+ 2 files changed, 67 insertions(+), 1 deletion(-)
+
+diff --git a/chrome/browser/payments/chrome_payment_request_delegate.cc b/chrome/browser/payments/chrome_payment_request_delegate.cc
+index 6b1023872f5fa82d199ae22260ccd81a1e677c02..fc228e2f3ec78ac836b3e40d36c5cde6efb98df4 100644
+--- a/chrome/browser/payments/chrome_payment_request_delegate.cc
++++ b/chrome/browser/payments/chrome_payment_request_delegate.cc
+@@ -19,6 +19,7 @@
+ #include "chrome/browser/autofill/validation_rules_storage_factory.h"
+ #include "chrome/browser/browser_process.h"
+ #include "chrome/browser/net/system_network_context_manager.h"
++#include "chrome/browser/payments/embedder_payment_request_dialog.h"
+ #include "chrome/browser/payments/payment_request_display_manager_factory.h"
+ #include "chrome/browser/profiles/profile.h"
+ #include "chrome/browser/signin/identity_manager_factory.h"
+@@ -100,7 +101,12 @@ void ChromePaymentRequestDelegate::ShowDialog(
+ 
+   switch (dialog_type_) {
+     case DialogType::PAYMENT_REQUEST:
+-      shown_dialog_ = PaymentRequestDialogView::Create(request);
++      if (const auto& factory = embedder_payment_request_dialog::GetFactory()) {
++        shown_dialog_ = factory.Run(request);
++      }
++      if (!shown_dialog_) {
++        shown_dialog_ = PaymentRequestDialogView::Create(request);
++      }
+       break;
+     case DialogType::SECURE_PAYMENT_CONFIRMATION:
+       spc_dialog_ =
+@@ -182,6 +188,11 @@ bool ChromePaymentRequestDelegate::IsBrowserWindowActive() const {
+   if (!FrameSupportsPayments(rfh))
+     return false;
+ 
++  if (embedder_payment_request_dialog::FollowsVisibilityFlag()) {
++    return content::WebContents::FromRenderFrameHost(rfh)->GetVisibility() ==
++           content::Visibility::VISIBLE;
++  }
++
+   BrowserWindowInterface* browser =
+       GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
+           content::WebContents::FromRenderFrameHost(rfh));
+diff --git a/chrome/browser/payments/embedder_payment_request_dialog.h b/chrome/browser/payments/embedder_payment_request_dialog.h
+new file mode 100644
+index 0000000000000000000000000000000000000000..3d1f16a7910e9a3924ac3776e811fdc928f9c07c
+--- /dev/null
++++ b/chrome/browser/payments/embedder_payment_request_dialog.h
+@@ -0,0 +1,55 @@
++// Copyright 2026 The Chromium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_PAYMENTS_EMBEDDER_PAYMENT_REQUEST_DIALOG_H_
++#define CHROME_BROWSER_PAYMENTS_EMBEDDER_PAYMENT_REQUEST_DIALOG_H_
++
++#include <utility>
++
++#include "base/functional/callback.h"
++#include "base/memory/weak_ptr.h"
++#include "base/no_destructor.h"
++
++namespace payments {
++class PaymentRequest;
++class PaymentRequestDialog;
++}  // namespace payments
++
++// A hook for Chromium embedders that present the Payment Request sheet
++// themselves. Chrome's sheet is a views dialog that a window without views
++// cannot show. When a factory is set, the payment request delegate asks it
++// first for the dialog of a Payment Request (not of Secure Payment
++// Confirmation); the dialog it returns owns itself, as Chrome's does, until
++// CloseDialog(). A null return declines, and Chrome's sheet is shown. Only
++// embedders set one, once, before any page asks to pay.
++namespace embedder_payment_request_dialog {
++
++using Factory = base::RepeatingCallback<base::WeakPtr<
++    payments::PaymentRequestDialog>(base::WeakPtr<payments::PaymentRequest>)>;
++
++inline Factory& GetFactory() {
++  static base::NoDestructor<Factory> factory;
++  return *factory;
++}
++
++inline void SetFactory(Factory factory) {
++  GetFactory() = std::move(factory);
++}
++
++// Whether a page may show the sheet when it is visible, instead of only when
++// it is the active tab of the active browser window. An embedder whose pages
++// are not tabs of a window of Chromium's sets it, so that a page the person
++// sees can ask to pay.
++inline bool& FollowsVisibilityFlag() {
++  static bool follows = false;
++  return follows;
++}
++
++inline void SetFollowsVisibility(bool follows) {
++  FollowsVisibilityFlag() = follows;
++}
++
++}  // namespace embedder_payment_request_dialog
++
++#endif  // CHROME_BROWSER_PAYMENTS_EMBEDDER_PAYMENT_REQUEST_DIALOG_H_

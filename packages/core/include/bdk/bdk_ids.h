@@ -26,6 +26,7 @@ extern "C" {
 #define BDK_DOMAIN_PLATFORM "platform"
 #define BDK_DOMAIN_EXTENSION "extension"
 #define BDK_DOMAIN_DEVTOOLS "devtools"
+#define BDK_DOMAIN_WEB_APPS "webApps"
 
 #define BDK_CODE_VERSION_MISMATCH "versionMismatch"
 #define BDK_CODE_HASH_MISMATCH "hashMismatch"
@@ -62,12 +63,16 @@ extern "C" {
 #define BDK_CODE_NOT_SERIALIZABLE "notSerializable"
 #define BDK_CODE_NO_ELEMENT "noElement"
 #define BDK_CODE_SOURCE_NOT_ALLOWED "sourceNotAllowed"
+#define BDK_CODE_BLOCKLISTED "blocklisted"
+#define BDK_CODE_NOT_REMOVABLE "notRemovable"
 #define BDK_CODE_INCOMPATIBLE "incompatible"
 #define BDK_CODE_SURFACE_DISABLED "surfaceDisabled"
 #define BDK_CODE_MANIFEST_INVALID "manifestInvalid"
 #define BDK_CODE_NOT_UNPACKED "notUnpacked"
 #define BDK_CODE_PRIVATE_NOT_ALLOWED "privateNotAllowed"
 #define BDK_CODE_BUDGET_EXCEEDED "budgetExceeded"
+#define BDK_CODE_PRIVATE_PROFILE "privateProfile"
+#define BDK_CODE_NOT_INSTALLABLE "notInstallable"
 
 /* Runtime event kinds (bdk_runtime_event_cb). Provisional: c-abi.md names the callback but not
  * its kinds. */
@@ -89,6 +94,8 @@ extern "C" {
 #define BDK_CONTENTS_EVENT_VISIBILITY_CHANGED 9u
 #define BDK_CONTENTS_EVENT_FIND_RESULT 10u
 #define BDK_CONTENTS_EVENT_TRANSLATION 11u
+#define BDK_CONTENTS_EVENT_WEB_APP 12u
+#define BDK_CONTENTS_EVENT_CAPTURE_CHANGED 13u
 
 /* bdk_contents_event_t.flags */
 #define BDK_EVENT_FLAG_MAIN_FRAME 0x1u
@@ -99,6 +106,14 @@ extern "C" {
 /* bdk_contents_state_t.audio flags */
 #define BDK_AUDIO_AUDIBLE 0x1u
 #define BDK_AUDIO_MUTED 0x2u
+
+/* bdk_contents_state_t.capture flags: what the page captures (DISPLAY: a screen, a window or a
+ * page), and whether another page captures it (CAPTURED). BDK_CONTENTS_EVENT_CAPTURE_CHANGED
+ * reports each change. */
+#define BDK_CAPTURE_CAMERA 0x1u
+#define BDK_CAPTURE_MICROPHONE 0x2u
+#define BDK_CAPTURE_DISPLAY 0x4u
+#define BDK_CAPTURE_CAPTURED 0x8u
 
 /* bdk_contents_state_t.security */
 #define BDK_SECURITY_UNKNOWN 0u
@@ -144,6 +159,10 @@ extern "C" {
 #define BDK_SURFACE_EXTENSION_DEVTOOLS 30u
 #define BDK_SURFACE_EXTENSION_INSTALLS 31u
 #define BDK_SURFACE_EXTENSION_UNINSTALLS 32u
+#define BDK_SURFACE_PAGE_HEALTH 33u
+#define BDK_SURFACE_PAYMENTS 34u
+#define BDK_SURFACE_IDENTITY 35u
+#define BDK_SURFACE_WEB_APP_INSTALLS 37u
 
 /* bdk_page_handler_register's mode: how a logical route is served (architecture.md 8.1) */
 #define BDK_PAGE_MODE_CHROMIUM 1u
@@ -155,6 +174,12 @@ extern "C" {
  * the standard error page */
 #define BDK_NATIVE_PAGE_HANDLED 1u
 #define BDK_NATIVE_PAGE_BLOCKED 2u
+
+/* bdk_navigation_policy_decide's action (swift-api.md 6.3): let the navigation go on, cancel it,
+ * or cancel it and load another URL */
+#define BDK_NAVIGATION_ALLOW 1u
+#define BDK_NAVIGATION_CANCEL 2u
+#define BDK_NAVIGATION_REDIRECT 3u
 
 /* bdk_contents_perform_command and bdk_contents_can_perform_command (swift-api.md section 9) */
 #define BDK_PAGE_COMMAND_BACK 1u
@@ -363,6 +388,12 @@ extern "C" {
 #define BDK_COMMAND_EXTENSIONS_COMMANDS 157u
 #define BDK_COMMAND_EXTENSIONS_SET_COMMAND_SHORTCUT 158u
 #define BDK_COMMAND_EXTENSIONS_ACTIONS 159u
+#define BDK_COMMAND_WEB_APPS_LIST 160u
+#define BDK_COMMAND_WEB_APPS_GET 161u
+#define BDK_COMMAND_WEB_APPS_INSTALLABILITY 162u
+#define BDK_COMMAND_WEB_APPS_INSTALL 163u
+#define BDK_COMMAND_WEB_APPS_UNINSTALL 164u
+#define BDK_COMMAND_WEB_APPS_LAUNCH 165u
 
 /* Event identifiers (bdk_subscribe). Assigned once from interface/ids.json, never reused. */
 #define BDK_EVENT_AUTOFILL_CHANGED 1u
@@ -413,6 +444,10 @@ extern "C" {
 #define BDK_EVENT_EXTENSIONS_UNLOADED 46u
 #define BDK_EVENT_EXTENSIONS_ERROR_ADDED 47u
 #define BDK_EVENT_EXTENSIONS_ACTION_CHANGED 48u
+#define BDK_EVENT_WEB_APPS_INSTALLED 49u
+#define BDK_EVENT_WEB_APPS_UPDATED 50u
+#define BDK_EVENT_WEB_APPS_UNINSTALLED 51u
+#define BDK_EVENT_WEB_APPS_BADGE_CHANGED 52u
 
 #ifdef __cplusplus
 }

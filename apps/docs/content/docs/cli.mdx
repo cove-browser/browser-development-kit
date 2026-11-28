@@ -1,0 +1,104 @@
+---
+title: CLI
+description: bdk init, bdk doctor, bdk patch and the build steps Xcode runs.
+---
+
+`bdk` is one self-contained executable: a developer who writes no JavaScript installs no Node. Inside a
+project, use the `bdk` that ships with the BDK package the project resolved, so the CLI, the SDK and the
+runtime are one version. The design is
+[cli.md](https://github.com/cove-browser/browser-development-kit/blob/main/docs/planning/sdk/cli.md).
+
+| Command | Purpose |
+| --- | --- |
+| `bdk init` | Create an application project ([Getting started](./getting-started.mdx)) |
+| `bdk doctor` | Check the machine, the project, compatibility and a built application |
+| `bdk patch` | Manage the application's Chromium patches in source mode |
+| `bdk build` | The steps the Xcode build phases run |
+
+## Global behaviour
+
+| Topic | Rule |
+| --- | --- |
+| Project | The nearest ancestor directory with `bdk.toml`, or `--project <dir>` |
+| Output | Human-readable on a terminal; `--json` prints one JSON document on standard output. Diagnostics go to standard error, as `file:line: error: message` inside Xcode. |
+| Questions | Only `bdk init` asks, only on a terminal, and every question has a flag |
+| Network | `--offline` makes anything that would download fail instead |
+| Telemetry | None |
+| Disk | No command reports disk usage |
+
+| Exit code | Meaning |
+| --- | --- |
+| 0 | Success |
+| 1 | The check or build failed for a reason in the project, including a `bdk doctor` error |
+| 2 | Usage error |
+| 3 | The environment is unusable: a missing toolchain or runtime, a held lock |
+| 4 | A digest or signature did not match |
+
+## bdk doctor
+
+```sh
+bdk doctor [--json] [--bundle <App.app>]
+```
+
+Reports findings in four groups. An error means the application will not build or will not start (exit
+1); a warning means it runs with a risk you should know about; a note is information.
+
+| Group | Checks |
+| --- | --- |
+| Machine | macOS against the runtime's minimum, Apple Silicon, Xcode and Swift versions; Node and a package manager when the project builds pages with Vite or has automation scripts; in source mode, `BDK_HOME`, depot_tools, the managed checkout at the pinned Chromium, and ccache |
+| Project | Every diagnostic of `bdk.toml`, with the template's `Info.plist` and entitlements; the BDK version `Package.resolved` pins; whether this version has a published runtime; the resolved runtime against its manifest; the capabilities granted to each page |
+| Compatibility | The runtime's ABI version and hash against the Swift package's, and its Chromium against the pin; in source mode, the application's patch series |
+| Built application, with `--bundle` | The bundled configuration against `bdk.toml`, the signature, every helper signed by the application's team, and a stapled notarization ticket |
+
+The project group lists whatever the configuration resolver reports, so a new diagnostic appears in
+`bdk doctor` as soon as `bdk build config` reports it: for example `services.push_google` when push
+messages go through Google, and the note `web_apps.push_unconfigured` when web apps are on with no push
+provider.
+
+## bdk patch
+
+Source mode (`runtime.mode = "source"`) is for applications that need to change Chromium. The
+application's patches are applied after BDK's own series, and the resulting runtime records them in its
+manifest, so a release can be audited.
+
+```text
+Chromium/
+└── patches/
+    ├── series              # one patch file name per line, in order
+    └── app-change.patch    # git format-patch output with a message that says why
+```
+
+| Command | Does |
+| --- | --- |
+| `bdk patch status` | Lists the application's patches and the files each touches, and the state of the managed checkout |
+| `bdk patch apply` | Applies BDK's series, then the application's, to the managed checkout under `$BDK_HOME/chromium/managed/src` |
+| `bdk patch new <name>` | Makes sure the checkout is the pin plus both series, and says where to make the change |
+| `bdk patch export` | Writes the commits on top of BDK's series into the project's patch directory; exporting twice changes nothing |
+| `bdk patch check` | Applies both series to a sparse checkout of the pinned Chromium, with no build, for CI |
+| `bdk patch rebase <tag>` | The same against another Chromium tag, reporting each patch that conflicts |
+
+`apply`, `new` and `export` take the checkout's lock; if another build holds it they fail at once and name
+the holder. A conflict names the patch and every conflicting file.
+
+## bdk build
+
+Called by Xcode's run-script phases; each step can also be run alone.
+
+| Step | Does |
+| --- | --- |
+| `config` | Validates `bdk.toml` and writes `bdk.resolved.json` |
+| `runtime` | Resolves the Chromium runtime into the store under `BDK_HOME`: the one the release publishes, or one built from a BDK checkout with `runtime.mode = "source"` |
+| `codegen` | Writes the `@bdk/*` packages and declarations for editors, `tsc` and Vite |
+| `pages` | Builds and packages the internal pages and the SDK they import |
+| `automation` | Bundles each automation script into one module; `--watch` rebuilds on change |
+| `devtools` | Packages a DevTools front end or overlay |
+| `extensions` | Copies each `[extensions.bundled]` extension into the bundle's `Contents/Resources` |
+| `embed` | Copies the resolved runtime's frameworks into the bundle's `Contents/Frameworks` |
+| `sign` | Re-signs the runtime nested in the application, inside-out, with the application's identity |
+
+This release publishes no prebuilt runtime, so `bdk build runtime` in the default `prebuilt` mode fails
+with `runtime.unpublished`, and the starter's build phases go on without `embed`: the application runs on
+the stub runtime. To run on Chromium, build the runtime from source: set `runtime.mode = "source"` in
+`bdk.toml`, set `BDK_SOURCE_ROOT` to a synced BDK checkout at this version, and run
+`bdk build runtime --allow-source-build` once. The build takes hours; later builds of the same inputs find it
+in the store.

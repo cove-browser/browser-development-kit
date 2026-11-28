@@ -158,7 +158,13 @@
     { "name": "extensions.clearErrors", "id": 156 },
     { "name": "extensions.commands", "id": 157 },
     { "name": "extensions.setCommandShortcut", "id": 158 },
-    { "name": "extensions.actions", "id": 159 }
+    { "name": "extensions.actions", "id": 159 },
+    { "name": "webApps.list", "id": 160 },
+    { "name": "webApps.get", "id": 161 },
+    { "name": "webApps.installability", "id": 162 },
+    { "name": "webApps.install", "id": 163 },
+    { "name": "webApps.uninstall", "id": 164 },
+    { "name": "webApps.launch", "id": 165 }
   ],
   "events": [
     { "name": "autofill.changed", "id": 1 },
@@ -208,7 +214,11 @@
     { "name": "extensions.loaded", "id": 45 },
     { "name": "extensions.unloaded", "id": 46 },
     { "name": "extensions.errorAdded", "id": 47 },
-    { "name": "extensions.actionChanged", "id": 48 }
+    { "name": "extensions.actionChanged", "id": 48 },
+    { "name": "webApps.installed", "id": 49 },
+    { "name": "webApps.updated", "id": 50 },
+    { "name": "webApps.uninstalled", "id": 51 },
+    { "name": "webApps.badgeChanged", "id": 52 }
   ],
   "constants": {
     "domains": [
@@ -225,7 +235,8 @@
       { "name": "AUTOMATION", "id": "automation" },
       { "name": "PLATFORM", "id": "platform" },
       { "name": "DEVTOOLS", "id": "devtools" },
-      { "name": "EXTENSION", "id": "extension" }
+      { "name": "EXTENSION", "id": "extension" },
+      { "name": "WEB_APPS", "id": "webApps" }
     ],
     "codes": [
       { "name": "VERSION_MISMATCH", "id": "versionMismatch" },
@@ -263,12 +274,16 @@
       { "name": "NOT_SERIALIZABLE", "id": "notSerializable" },
       { "name": "NO_ELEMENT", "id": "noElement" },
       { "name": "SOURCE_NOT_ALLOWED", "id": "sourceNotAllowed" },
+      { "name": "BLOCKLISTED", "id": "blocklisted" },
+      { "name": "NOT_REMOVABLE", "id": "notRemovable" },
       { "name": "INCOMPATIBLE", "id": "incompatible" },
       { "name": "SURFACE_DISABLED", "id": "surfaceDisabled" },
       { "name": "MANIFEST_INVALID", "id": "manifestInvalid" },
       { "name": "NOT_UNPACKED", "id": "notUnpacked" },
       { "name": "PRIVATE_NOT_ALLOWED", "id": "privateNotAllowed" },
-      { "name": "BUDGET_EXCEEDED", "id": "budgetExceeded" }
+      { "name": "BUDGET_EXCEEDED", "id": "budgetExceeded" },
+      { "name": "PRIVATE_PROFILE", "id": "privateProfile" },
+      { "name": "NOT_INSTALLABLE", "id": "notInstallable" }
     ],
     "runtimeEvents": [
       { "name": "REGISTRATIONS_FROZEN", "id": 1 },
@@ -287,7 +302,9 @@
       { "name": "RENDERER_GONE", "id": 8 },
       { "name": "VISIBILITY_CHANGED", "id": 9 },
       { "name": "FIND_RESULT", "id": 10 },
-      { "name": "TRANSLATION", "id": 11 }
+      { "name": "TRANSLATION", "id": 11 },
+      { "name": "WEB_APP", "id": 12 },
+      { "name": "CAPTURE_CHANGED", "id": 13 }
     ],
     "eventFlags": [
       { "name": "MAIN_FRAME", "id": 1 },
@@ -296,6 +313,12 @@
       { "name": "ERROR_PAGE", "id": 8 }
     ],
     "audio": [{ "name": "AUDIBLE", "id": 1 }, { "name": "MUTED", "id": 2 }],
+    "capture": [
+      { "name": "CAMERA", "id": 1 },
+      { "name": "MICROPHONE", "id": 2 },
+      { "name": "DISPLAY", "id": 4 },
+      { "name": "CAPTURED", "id": 8 }
+    ],
     "security": [
       { "name": "UNKNOWN", "id": 0 },
       { "name": "NONE", "id": 1 },
@@ -335,7 +358,11 @@
       { "name": "EXTENSION_OPTIONS_PAGES", "id": 29 },
       { "name": "EXTENSION_DEVTOOLS", "id": 30 },
       { "name": "EXTENSION_INSTALLS", "id": 31 },
-      { "name": "EXTENSION_UNINSTALLS", "id": 32 }
+      { "name": "EXTENSION_UNINSTALLS", "id": 32 },
+      { "name": "PAGE_HEALTH", "id": 33 },
+      { "name": "PAYMENTS", "id": 34 },
+      { "name": "IDENTITY", "id": 35 },
+      { "name": "WEB_APP_INSTALLS", "id": 37 }
     ],
     "pageModes": [
       { "name": "CHROMIUM", "id": 1 },
@@ -383,6 +410,11 @@
       { "name": "ADDRESS_BAR", "id": 1 },
       { "name": "EXTENSIONS", "id": 2 },
       { "name": "DOWNLOADS", "id": 3 }
+    ],
+    "navigationDecisions": [
+      { "name": "ALLOW", "id": 1 },
+      { "name": "CANCEL", "id": 2 },
+      { "name": "REDIRECT", "id": 3 }
     ]
   }
 }

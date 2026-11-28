@@ -70,6 +70,8 @@ bdk_status_t bdk_harness_page_bind(bdk_runtime_t, bdk_contents_t, int subframe,
                                    bdk_harness_caller_t* out, bdk_error_t*);
 /* A navigation the page starts (a link or location.href), not the application. */
 bdk_status_t bdk_harness_page_navigate(bdk_contents_t, const char* url);
+/* The server answers every later request for url with a redirect to `to`. */
+bdk_status_t bdk_harness_script_redirect(bdk_runtime_t, const char* url, const char* to);
 /* Subscribes to an event as that caller; 0 on refusal with *out_error set. */
 bdk_subscription_t bdk_harness_subscribe_as(bdk_runtime_t, bdk_harness_caller_t, const char* event,
                                             bdk_event_cb, void* ctx, bdk_release_cb,

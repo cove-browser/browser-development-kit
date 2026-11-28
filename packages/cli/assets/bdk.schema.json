@@ -13,6 +13,7 @@
     "pages": { "$ref": "#/$defs/pages" },
     "ui": { "$ref": "#/$defs/ui" },
     "extensions": { "$ref": "#/$defs/extensions" },
+    "web_apps": { "$ref": "#/$defs/web_apps" },
     "services": { "$ref": "#/$defs/services" },
     "automation": { "$ref": "#/$defs/automation" },
     "devtools": { "$ref": "#/$defs/devtools" },
@@ -187,6 +188,10 @@
               "$ref": "#/$defs/surfaceModeDefaultCustom",
               "description": "HTTP and proxy authentication."
             },
+            "client_certificates": {
+              "$ref": "#/$defs/surfaceModeDefaultCustom",
+              "description": "Client certificate selection."
+            },
             "file_pickers": {
               "$ref": "#/$defs/surfaceModeAny",
               "description": "File and directory choosers."
@@ -211,6 +216,10 @@
               "$ref": "#/$defs/surfaceModeAny",
               "description": "Save address or card; fill confirmation."
             },
+            "autofill_suggestions": {
+              "$ref": "#/$defs/surfaceModeDefaultCustom",
+              "description": "The suggestion list under a form field. Cannot be disabled; a disabled autofill surface turns it off."
+            },
             "printing": {
               "$ref": "#/$defs/surfaceModeAny",
               "description": "Print preview and the system print dialog."
@@ -227,6 +236,10 @@
               "$ref": "#/$defs/surfaceModeAny",
               "description": "HTML fullscreen."
             },
+            "exclusive_access": {
+              "$ref": "#/$defs/surfaceModeDefaultCustom",
+              "description": "Keyboard-lock and pointer-lock notices. Cannot be disabled."
+            },
             "notifications": {
               "$ref": "#/$defs/surfaceModeAny",
               "description": "Web notifications."
@@ -242,8 +255,52 @@
             "devtools": {
               "$ref": "#/$defs/surfaceModeAny",
               "description": "The DevTools front end."
+            },
+            "device_choosers": {
+              "$ref": "#/$defs/surfaceModeAny",
+              "description": "WebUSB, Web Bluetooth, WebHID and Web Serial device choosers."
+            },
+            "screen_capture": {
+              "$ref": "#/$defs/surfaceModeAny",
+              "description": "The getDisplayMedia source picker."
+            },
+            "webauthn": {
+              "$ref": "#/$defs/surfaceModeAny",
+              "description": "Passkey and security-key dialogs."
+            },
+            "external_protocols": {
+              "$ref": "#/$defs/surfaceModeAny",
+              "description": "Opening a link in another application."
+            },
+            "page_health": {
+              "$ref": "#/$defs/surfaceModeDefaultCustom",
+              "description": "An unresponsive page; blocked popups. Cannot be disabled."
+            },
+            "identity": {
+              "$ref": "#/$defs/surfaceModeAny",
+              "description": "FedCM: signing in to a site with an account of an identity provider. disabled: pages have no IdentityCredential."
+            },
+            "payments": {
+              "$ref": "#/$defs/surfaceModeAny",
+              "description": "Payment Request: choosing the payment app that pays. disabled: pages have no PaymentRequest."
+            },
+            "web_app_installs": {
+              "$ref": "#/$defs/surfaceModeDefaultCustom",
+              "description": "The install prompt of an installable web app. Turn installs off with [web_apps] enabled = false, not here."
             }
           }
+        }
+      }
+    },
+    "web_apps": {
+      "type": "object",
+      "description": "Installable web apps. See web-apps.md.",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether a page may offer itself for installation and the webApps commands work. Push messages are [services.push]."
         }
       }
     },
@@ -266,6 +323,11 @@
           "enum": ["user", "never"],
           "default": "user",
           "description": "Whether the user may allow an extension in private profiles."
+        },
+        "developer_mode": {
+          "enum": ["user", "on", "off"],
+          "default": "user",
+          "description": "Whether loading unpacked extensions is a user setting, always on, or unavailable."
         },
         "install": {
           "type": "object",
@@ -297,6 +359,36 @@
               "items": {
                 "enum": ["chrome-web-store"],
                 "description": "A store BDK ships an adapter for."
+              }
+            },
+            "blocklist": {
+              "type": "array",
+              "default": [],
+              "description": "Extension identifiers that never install or load, from any source.",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-p]{32}$",
+                "description": "An extension identifier: 32 letters from a to p."
+              }
+            }
+          }
+        },
+        "bundled": {
+          "type": "object",
+          "description": "Extensions shipped inside the application bundle: name = \"Extensions/<directory>\", or a table with path and required. They load with no prompt in every persistent profile and cannot be uninstalled.",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9_-]*$" },
+          "additionalProperties": {
+            "type": ["string", "object"],
+            "description": "The extension's directory, a path relative to the directory of bdk.toml that the build copies into Contents/Resources; or a table with path and required.",
+            "minLength": 1,
+            "additionalProperties": false,
+            "required": ["path"],
+            "properties": {
+              "path": { "$ref": "#/$defs/pathString" },
+              "required": {
+                "type": "boolean",
+                "default": false,
+                "description": "The user cannot disable it."
               }
             }
           }
@@ -394,6 +486,30 @@
               "description": "system is the operating system's provider, app is a Swift registration."
             },
             "endpoint": { "$ref": "#/$defs/endpoint" }
+          }
+        },
+        "webauthn": {
+          "type": "object",
+          "description": "Passkeys and security keys. Not a provider table: WebAuthn has no provider to choose.",
+          "additionalProperties": false,
+          "properties": {
+            "phones": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether a passkey on a phone (QR code, Bluetooth, the phone's tunnel service) is offered. Off by default because an Android phone's tunnel service is a Google host; on also needs NSBluetoothAlwaysUsageDescription."
+            }
+          }
+        },
+        "push": {
+          "type": "object",
+          "description": "Web Push, for any site that subscribes, installed as a web app or not.",
+          "additionalProperties": false,
+          "properties": {
+            "provider": {
+              "enum": ["none", "google"],
+              "default": "none",
+              "description": "none: pages have no Push API and no messaging host is contacted. google: Google's messaging service, through Chromium's own push client, which registers with Google as Chrome does; it needs no Google project or key."
+            }
           }
         }
       }

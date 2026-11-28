@@ -146,7 +146,7 @@ describe("bdk build sign", () => {
     const ctx = testContext();
     expect(await run(["build", "config", "--bundle", "A.app"], ctx)).toBe(2);
     expect(ctx.err.join("")).toContain(
-      "applies to `bdk build pages`, `bdk build automation`, `bdk build devtools`, `bdk build sign`",
+      "applies to `bdk build pages`, `bdk build automation`, `bdk build devtools`, `bdk build extensions`, `bdk build embed`, `bdk build sign`",
     );
     const identity = testContext();
     expect(await run(["build", "config", "--identity", "-"], identity)).toBe(2);

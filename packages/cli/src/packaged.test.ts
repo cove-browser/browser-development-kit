@@ -55,7 +55,9 @@ describe.skipIf(!packaged)("packaged executable (skipped when dist/bdk is absent
   it("prints help", () => {
     const result = bdk(["--help"]);
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("Steps: config, codegen, pages, automation, devtools, sign");
+    expect(result.stdout).toContain(
+      "Steps: config, runtime, codegen, pages, automation, devtools, extensions, embed, sign",
+    );
   });
 
   it("exits 2 for an unknown command", () => {
@@ -159,9 +161,72 @@ describe.skipIf(!packaged)("packaged executable (skipped when dist/bdk is absent
     expect(html).toMatch(/src="\.\/assets\/Settings-[\w-]+\.js"/);
   });
 
+  it("bundles an automation script with the project's own Rolldown and no node on PATH", async () => {
+    const project = await tempProject();
+    writeFileSync(
+      join(project.dir, "bdk.toml"),
+      '[browser]\nname = "Demo"\n\n[automation]\nenabled = true\n',
+    );
+    mkdirSync(join(project.dir, "Automation"));
+    writeFileSync(join(project.dir, "Automation", "hello.ts"), "export default () => 1;\n");
+    mkdirSync(join(project.dir, "node_modules"));
+    symlinkSync(
+      realpathSync(join(cliRoot, "node_modules", "rolldown")),
+      join(project.dir, "node_modules", "rolldown"),
+    );
+    writeFileSync(join(project.dir, "package.json"), "{}");
+    const app = join(await tempDir(), "Demo.app");
+    const result = bdk(["build", "config", "automation", "--bundle", app], project.dir);
+    expect(result).toMatchObject({ status: 0, stderr: "" });
+    expect(existsSync(join(app, "Contents", "Resources", "BDK", "Automation", "hello.js"))).toBe(
+      true,
+    );
+  });
+
   it("finds no project outside one, exit 1", async () => {
     const result = bdk(["build", "config"], await tempDir());
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("[config.missing]");
+  });
+
+  it("creates a project from the embedded templates with `init` and every flag, asking nothing", async () => {
+    const cwd = await tempDir();
+    const result = bdk(
+      [
+        "init",
+        "App",
+        "--name",
+        "Cove",
+        "--bundle-id",
+        "com.example.cove",
+        "--pages",
+        "plain",
+        "--starter-pages",
+        "new-tab,history",
+        "--no-git",
+        "--json",
+      ],
+      cwd,
+    );
+    expect(result).toMatchObject({ status: 0, stderr: "" });
+    const pbxproj = readFileSync(join(cwd, "App", "Cove.xcodeproj", "project.pbxproj"), "utf8");
+    // The packaged executable names itself as the project's BDK_CLI.
+    expect(pbxproj).toContain(`BDK_CLI = "${realpathSync(exe)}";`);
+    expect(existsSync(join(cwd, "App", "Pages", "History", "starter.js"))).toBe(true);
+    // The new project resolves with the same executable.
+    expect(bdk(["build", "config"], join(cwd, "App")).status).toBe(0);
+  });
+
+  it("runs `doctor` with the embedded release facts, and `patch` with the embedded series", async () => {
+    const project = await tempProject();
+    const doctor = bdk(["doctor", "--json"], project.dir);
+    expect(JSON.parse(doctor.stdout).result.groups.machine).toBeDefined();
+    writeFileSync(
+      join(project.dir, "bdk.toml"),
+      '[browser]\nname = "Demo"\n\n[runtime]\nmode = "source"\n',
+    );
+    const status = bdk(["patch", "status", "--json"], project.dir);
+    expect(status.status).toBe(0);
+    expect(JSON.parse(status.stdout).result.patches.length).toBeGreaterThan(0);
   });
 });

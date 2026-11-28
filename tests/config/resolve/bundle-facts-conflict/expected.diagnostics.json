@@ -14,12 +14,6 @@
       "file": "entitlements"
     },
     {
-      "code": "plist.passkeys_phone",
-      "severity": "note",
-      "message": "Info.plist has no NSBluetoothAlwaysUsageDescription, so passkeys on a phone are not offered. Security keys still work.",
-      "file": "Info.plist"
-    },
-    {
       "code": "plist.principal_class",
       "severity": "error",
       "message": "Info.plist has no NSPrincipalClass. It must be BDKApplication or a subclass.",

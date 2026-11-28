@@ -1,0 +1,21 @@
+{
+  "name": "template-pages",
+  "root": "apps/templates/pages",
+  "projectType": "library",
+  "implicitDependencies": [],
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec biome check {projectRoot}"
+      },
+      "inputs": ["default", { "externalDependencies": ["@biomejs/biome"] }]
+    },
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec biome format --write {projectRoot}"
+      }
+    }
+  }
+}

@@ -16,6 +16,7 @@
 #include <utility>
 #include <vector>
 
+#include "base/base64.h"
 #include "base/command_line.h"
 #include "base/compiler_specific.h"
 #include "base/containers/span.h"
@@ -36,10 +37,13 @@
 #include "base/values.h"
 #include "bdk/core/runtime/core_internal.h"
 #include "bdk/engine/bdk_testing.h"
+#include "bdk/engine/client_cert_testing.h"
+#include "bdk/engine/device_chooser_testing.h"
 #include "bdk/engine/engine_contents.h"
 #include "bdk/engine/extensions/extension_testing.h"
 #include "bdk/engine/extensions/extension_ui_testing.h"
 #include "bdk/engine/extensions/panel_testing.h"
+#include "bdk/engine/host_context.h"
 #include "bdk/engine/json_util.h"
 #include "bdk/engine/providers/provider_settings.h"
 #include "bdk/engine/providers/reputation_service.h"
@@ -53,12 +57,17 @@
 #include "bdk/engine/webauthn_testing.h"
 #include "chrome/browser/after_startup_task_utils.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
+#include "chrome/browser/external_protocol/external_protocol_handler.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/resource_coordinator/tab_lifecycle_unit_external.h"
 #include "chrome/browser/ui/dialogs/browser_dialogs.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/heavy_ad_intervention/heavy_ad_features.h"
+#include "components/input/native_web_keyboard_event.h"
 #include "components/prefs/pref_service.h"
+#include "content/browser/web_contents/web_contents_impl.h"  // nogncheck
+#include "content/public/browser/render_widget_host.h"
+#include "content/public/browser/render_widget_host_view.h"
 #include "content/public/browser/storage_partition.h"
 #include "content/public/browser/web_contents.h"
 #include "google_apis/google_api_keys.h"
@@ -67,6 +76,9 @@
 #include "services/network/public/mojom/network_context.mojom.h"
 #include "ui/base/models/dialog_model.h"
 #include "ui/base/mojom/dialog_button.mojom.h"
+#include "ui/events/keycodes/dom/dom_code.h"
+#include "ui/events/keycodes/dom/dom_key.h"
+#include "ui/events/keycodes/keyboard_codes.h"
 #include "url/gurl.h"
 
 namespace bdk {
@@ -267,6 +279,24 @@ bool Run(const std::string& name,
         base::BindOnce([] { AfterStartupTaskRan() = true; }));
     return true;
   }
+  if (name == "protocols.permit") {
+    // Chrome accepts one external-protocol launch until a user gesture
+    // permits the next; a scenario permits it as such a gesture would.
+    ExternalProtocolHandler::PermitLaunchUrl();
+    return true;
+  }
+  if (name == "pages.count") {
+    // What is alive in the process: every WebContents, BDK's pages and their
+    // host contexts (T-REL-03), for scenarios that check nothing is left
+    // behind.
+    result.Set(
+        "webContents",
+        static_cast<int>(content::WebContentsImpl::GetAllWebContents().size()));
+    result.Set("pages", static_cast<int>(EngineContents::All().size()));
+    result.Set("hostContexts",
+               static_cast<int>(HostContexts::Get().ContextCount()));
+    return true;
+  }
   if (name == "startup.state") {
     result.Set("complete", AfterStartupTaskUtils::IsBrowserStartupComplete());
     result.Set("ran", AfterStartupTaskRan());
@@ -352,6 +382,37 @@ bool Run(const std::string& name,
   }
   if (name.starts_with("webauthn.")) {
     return RunWebAuthnTestingCommand(name, args, result);
+  }
+  if (name == "input.key") {
+    // {"contents", "key": "Escape", "type": "down" | "up"}: a key event
+    // through the page's render widget host, as the view sends one, so the
+    // page's delegate sees it first (PreHandleKeyboardEvent).
+    EngineContents* page = PageOf(args);
+    const std::string* key = args.FindString("key");
+    const std::string* type = args.FindString("type");
+    if (!page || !page->web_contents() || !key || *key != "Escape" || !type) {
+      return false;
+    }
+    content::RenderWidgetHostView* view =
+        page->web_contents()->GetRenderWidgetHostView();
+    if (!view) {
+      return false;
+    }
+    input::NativeWebKeyboardEvent event(
+        *type == "up" ? blink::WebInputEvent::Type::kKeyUp
+                      : blink::WebInputEvent::Type::kRawKeyDown,
+        blink::WebInputEvent::kNoModifiers, base::TimeTicks::Now());
+    event.windows_key_code = ui::VKEY_ESCAPE;
+    event.dom_key = ui::DomKey::ESCAPE;
+    event.dom_code = static_cast<int>(ui::DomCode::ESCAPE);
+    view->GetRenderWidgetHost()->ForwardKeyboardEvent(event);
+    return true;
+  }
+  if (name.starts_with("clientcert.")) {
+    return RunClientCertTestingCommand(name, args, result);
+  }
+  if (name.starts_with("chooser.")) {
+    return RunChooserTestingCommand(name, PageOf(args), args, result);
   }
   if (name == "reputation.list") {
     // {"json"}: the default provider's list, as a checked download would load
@@ -478,15 +539,22 @@ bool Run(const std::string& name,
     return true;
   }
   if (name == "script_page") {
-    // A page with content: {"url", "body", "contentType", "headers"}.
+    // A page with content: {"url", "body" or "bodyBase64" (binary, an image),
+    // "contentType", "headers"}.
     const std::string* url = args.FindString("url");
     const std::string* body = args.FindString("body");
-    if (!url || !body) {
+    const std::string* body_base64 = args.FindString("bodyBase64");
+    std::string decoded;
+    if (body_base64 && !base::Base64Decode(*body_base64, &decoded)) {
+      return false;
+    }
+    if (!url || (!body && !body_base64)) {
       return false;
     }
     const std::string* content_type = args.FindString("contentType");
     const std::string* headers = args.FindString("headers");
-    ScriptPageForTesting(*url, *body, content_type ? *content_type : "",
+    ScriptPageForTesting(*url, body ? *body : decoded,
+                         content_type ? *content_type : "",
                          headers ? *headers : "");
     return true;
   }

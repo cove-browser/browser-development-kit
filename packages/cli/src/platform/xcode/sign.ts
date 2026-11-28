@@ -1,6 +1,7 @@
-import { mkdtemp, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import type { Diagnostic } from "../../core/diagnostics.js";
 import { CliError, ExitCode } from "../../core/exit-codes.js";
 import { checkAppEntitlements } from "../../core/signing/entitlements.js";
 import { type BundleLayout, type PlanAction, planSigning } from "../../core/signing/plan.js";
@@ -208,6 +209,7 @@ export async function signBundle(request: SignRequest, runner: ToolRunner): Prom
   }
 
   const layout = await discoverLayout(request.appPath, runner);
+  const diagnostics = await copyNotices(layout);
   const plan = planSigning({
     layout,
     adHoc: request.identity === AD_HOC,
@@ -280,5 +282,35 @@ export async function signBundle(request: SignRequest, runner: ToolRunner): Prom
   } finally {
     await rm(scratch, { recursive: true, force: true });
   }
-  return { diagnostics: [], signed };
+  return { diagnostics, signed };
+}
+
+export const NOTICES = "THIRD_PARTY_NOTICES.html";
+
+/**
+ * The runtime's third-party notices (T-REL-02), which packaging puts in the framework's Resources,
+ * copied to the application's `Contents/Resources` before it is signed, so its signature covers them
+ * and they ship where a person looks for them. A runtime without them is a warning: an older runtime.
+ */
+async function copyNotices(layout: BundleLayout): Promise<Diagnostic[]> {
+  const from = join(dirname(layout.frameworkPlist), NOTICES);
+  const to = join(layout.appPath, "Contents", "Resources", NOTICES);
+  const found = await stat(from).then(
+    (s) => s.isFile(),
+    () => false,
+  );
+  if (!found) {
+    return [
+      {
+        code: "sign.notices_missing",
+        severity: "warning",
+        message: `The runtime framework has no ${NOTICES}, so the application ships no third-party notices.`,
+        file: from,
+        fix: "Embed a runtime packaged with its notices (chromium/runtime-files.json notices.also_in).",
+      },
+    ];
+  }
+  await mkdir(dirname(to), { recursive: true });
+  await copyFile(from, to);
+  return [];
 }

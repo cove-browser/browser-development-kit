@@ -75,6 +75,14 @@ class BdkContentBrowserClient : public ChromeContentBrowserClient {
   content::UsbDelegate* GetUsbDelegate() override;
   content::SerialDelegate* GetSerialDelegate() override;
   content::HidDelegate* GetHidDelegate() override;
+  // The engine scenarios' client identity when one is set
+  // (client_cert_testing.h), and otherwise Chrome's Keychain store.
+  std::unique_ptr<net::ClientCertStore> CreateClientCertStore(
+      content::BrowserContext* browser_context) override;
+  // FedCM's steps are identity requests (ui_identity.h).
+  std::unique_ptr<content::IdentityRequestDialogController>
+  CreateIdentityRequestDialogController(
+      content::WebContents* web_contents) override;
   base::OnceClosure SelectClientCertificate(
       content::BrowserContext* browser_context,
       content::ChildProcessId process_id,
@@ -82,6 +90,8 @@ class BdkContentBrowserClient : public ChromeContentBrowserClient {
       net::SSLCertRequestInfo* cert_request_info,
       net::ClientCertIdentityList client_certs,
       std::unique_ptr<content::ClientCertificateDelegate> delegate) override;
+  std::unique_ptr<ui::SelectFilePolicy> CreateSelectFilePolicy(
+      content::WebContents* web_contents) override;
 
  private:
   std::unique_ptr<content::BluetoothDelegate> bluetooth_delegate_;

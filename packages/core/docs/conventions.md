@@ -38,7 +38,11 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
 * Contents cannot be created before the freeze (`BDK_ERR_NOT_STARTED`).
 * Errors: `bdk_status_t` plus a trailing `bdk_error_t* out_error`, set to 0 on entry and filled only with
   `BDK_ERR_FAILED`. Domains and codes are strings (`bdk_ids.h` has the ones used so far).
-* Coordinates are window coordinates in device-independent pixels, origin top-left. Paths are UTF-8 strings.
+* Coordinates are window coordinates in device-independent pixels, origin top-left. Screen coordinates (a
+  window request's `frame`, Swift's `BDKWindow` frames) are Chromium's: device-independent pixels, origin at the
+  top-left of the primary display, y downwards; only macOS converts (T-XPL-01, X8). Paths are UTF-8 strings: a
+  runtime converts them at the edge from UTF-8 (`char8_t`, `base::FilePath::FromUTF8Unsafe`), never through
+  `std::filesystem::path(std::string)`, which reads the ANSI code page on Windows (X6).
 
 ## Decisions where c-abi.md was silent or sketched (provisional)
 
@@ -114,6 +118,69 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
     `routes.cc`, checked at the pin; packages/cli lists the same routes. Internal pages are not recorded in history,
     as in Chrome. Page subscriptions take no filter yet.
 
+16. Navigation policy (`runtime/navigation_policy.{h,cc}`, T-SWF-10, M9). The core owns the handler, the pending
+    decisions and the rules in `bdk_contents.h`; a backend only calls `ask_navigation_policy` where a navigation
+    would send its request (after its start event) and at each server redirect, waits for `done`, and carries
+    `policy_redirects` from a redirect decision to the load it starts. `ask_navigation_policy` returns null, and
+    the backend goes on at once, when there is no handler or for the start of a load a redirect decision began,
+    so with no handler nothing changes. A decision is its own handle type (`T_DECISION`), a `bdk_context_t` that
+    `bdk_release` refuses like a call context; it goes stale when it is answered, when the backend withdraws it
+    (`withdraw_navigation_policy`: stopped, superseded), when the page is destroyed (`destroy_contents`) and at
+    shutdown. The answer runs on a later task. The handler is set with `bdk_navigation_policy_set_handler` at any
+    time, like `bdk_log_set_handler`, because Swift's `runtime.navigationPolicy` is a property, not part of the
+    configuration; a handler removed before a decision is delivered lets that navigation go on. The twenty-first
+    redirect decision in a row is `kTooManyRedirects` (net error -310, the error page). The stub asks before its
+    reputation check and its route handling (a native route is asked like any other URL) and simulates server
+    redirects with `bdk_stub_script_redirect` (`bdk_harness_script_redirect`, a page hook). The engine (T-SWF-11)
+    is `engine/navigation_policy_throttle.cc`, the first throttle of a BDK page's navigations (before the route
+    table's, so a native route is asked like any other URL): `WillStartRequest` and `WillRedirectRequest`
+    return `DEFER` for the outermost main frame (the primary page or a prerender), then `Resume`, or
+    `CancelDeferredNavigation(CANCEL_AND_IGNORE)` with the page noting the policy's detail
+    (`EngineContents::NotePolicyEnd`), or `{CANCEL, ERR_TOO_MANY_REDIRECTS}`. A redirect decision posts
+    `EngineContents::LoadForPolicy`, which hands `policy_redirects` to the throttle of the load it starts
+    (set before `LoadURLWithParams`, which can ask the throttle from inside the call). A navigation the route
+    table drops, or restarts as the browser's own, is not asked; its restart is. The throttle withdraws its
+    decision when it is destroyed (stopped, superseded, closed). Chromium runs no throttle for a page
+    activation, so a prerender is asked at its own start (a prerender the policy does not allow as it is is
+    discarded) and, while a handler is set, `EngineContents` keeps each committed page out of the
+    back/forward cache (`navigation_policy_active`); a page cached before the handler was set can still be
+    restored unasked. The engine reports a navigation another replaced as `superseded`, as the stub does
+    (`GetNavigationDiscardReason`). The engine has no page hooks, so the three page-hook tests skip there;
+    `tests_engine_navigation_policy.c` covers links, script navigations, server redirects and `window.open`
+    against a loopback server that records each request.
+
+17. Profile snapshots and the downgrade policy (`runtime/profile_versions.{h,cc}`, T-PKG-05, M9). Before the
+    backend starts, the core reads `runtime.downgrade` and `runtime.snapshot_on_upgrade`, asks the backend for
+    the data directory and the engine version (`Backend::ProfileDataDirectory`, `Backend::EngineVersion`; both
+    default to empty, which skips the policy) and applies the rule to that directory with Chromium's own files:
+    `Last Version` and `Snapshots/<version>/`, valid when it holds its own `Last Version`. A newer milestone
+    snapshots what the last version left (caches and the process singleton are left out; the three newest
+    snapshots are kept, Chromium's default retention); an older milestone restores the newest snapshot no newer
+    than the engine, and with none fails start with `runtime.downgradeRefused` (`refuse`) or renames the
+    directory to `<name>.newer-<version>` beside it and starts empty (`fresh-profile`). A change within a
+    milestone does nothing, as in Chromium. The core first takes `<data dir>.bdk-lock` (`data_directory_lock.h`,
+    `flock` in `data_directory_lock_posix.cc`, kept for the rest of the process); held by another process it is
+    `runtime.dataDirectoryInUse`. A restore is journalled in `.bdk-restore` (phase, snapshot, engine) and resumed
+    by the next start; the process singleton and crash state stay in place. Other failures are
+    `runtime.profileMigrationFailed`. The codes are
+    strings, not `bdk_ids.h` constants, like `noDataDirectory`. The stub applies it to `user_data_path_override`
+    as engine version `1.0.0.0`. The Chromium engine reports the directory it will open and its version, at the
+    first start of the process only (Chromium has the directory open after that). `bdk_harness_own_data_directory`
+    says whether a harness lets a start name its own data directory; the engine's does not, so
+    `tests_profile_versions.c` runs on the stub only, and the engine's scenarios (`tests_engine_profile_versions.c`)
+    each have a launch of their own: `scripts/test-engine.sh` runs every `engine_launch_*` scenario alone, and the
+    harness calls `bdk_engine_launch_prepare` before its first start, which opens Chromium, so the scenario can
+    write the data directory and choose that start's policy.
+
+18. Robustness (`tests/tests_robustness.c`, T-REL-03). Pages opened, loaded, closed and destroyed many times;
+    the runtime shut down with pages open and started again; a renderer crashed and the page reloaded; peak
+    resident size bounded. `BDK_ROBUSTNESS_ITERATIONS` sets the rounds: 100 by default in `core:test`,
+    50000 in `core:test-release` (about three seconds on the stub), where the memory bound applies. The stub
+    treats a load of `chrome://crash` as Chromium does: the page's renderer goes (`reason` `crashed`) and
+    nothing commits. On the engine the suite runs from a run-loop timer inside Chromium's main loop, not
+    as a Chromium task, and the harness's pump drains an autorelease pool between steps: run as one task,
+    nothing the pages freed was released (PartitionAlloc's scheduler-loop quarantine, amendments 2.28).
+
 ### The UI request router
 
 `runtime/ui_router.cc` (T-UIR-01) is the one place that decides what happens to a request. The backend raises it with
@@ -133,6 +200,9 @@ c-abi.md was silent, and how the ABI hash works. Tasks T-ABI-01 (headers, versio
 | Dropped | An uncompleted request released by the application finishes `kCancelled`, never granted. |
 | Gesture kind | The core checks that the gesture is an `NSEVENT`. That it is recent and went to a window of this application is the backend's: while a completion's `on_finish` runs, `Request::gesture` holds the borrowed event so the engine can check it (the Chromium engine does: mouse-up or key-down, under 10 s old, delivered to one of the application's windows; anything less grants nothing). `withdraw_ui_request` withdraws one request, for a backend whose own UI went away. |
 | WebAuthn (`webauthn`, T-UIR-09) | One request per step of a ceremony (ui-requests.md 5.18). Completions are `accept`, `grant` and `deny` only (`ui.completionNotAllowed`). `grant` names one of the payload's `accounts` by `id`, and needs the gesture like every grant; `accept` with an `account` is refused (`ui.completionNotAllowed`). `accept` names one of the payload's `mechanisms`, or gives a `pin` where the payload has `pin`, or asks for `{"action":"otherMechanisms"}` where it has `otherMechanismsLabel`, or, with none of these, presses the button of a payload with `acceptLabel`; anything else is `ui.widensRequest`. A non-string `account`, `mechanism`, `pin` or `action` is `BDK_ERR_INVALID_ARGUMENT`. |
+| Autofill suggestions (`autofill_suggestions`, T-UIR-15) | Completed by `grant` or `accept` (both grant, so both need the gesture) naming one of the payload's `suggestions` by `id` (`ui.widensRequest` otherwise), or `deny`; anything else is `ui.completionNotAllowed`. `bdk_ui_update` takes only `{"preview": id}` for an offered suggestion or `{"preview": null}` (`ui.widensRequest` otherwise); the core checks every other surface's updates only for being an object. |
+| Exclusive access (`exclusive_access`, T-UIR-15) | A notice: `accept` only (`ui.completionNotAllowed`). A rejected or dropped one finishes `kDefaulted`, because the exit instruction must be shown (ui-requests.md 5.12). |
+| Page health (`page_health`, surface 33, T-UIR-15) | Two kinds by the payload's `kind` (ui-requests.md 5.19). `unresponsive`: `accept` with `{"action":"wait"}` or `{"action":"terminate"}`, or `deny` (waits). `blockedPopups`: `grant` with exactly one of `{"popup": id}` (one of the payload's `popups`) and `{"always": true}`, or `deny`. Other answers are `ui.widensRequest` or `ui.completionNotAllowed`; a non-string `action` or `popup`, or a non-literal `always`, is `BDK_ERR_INVALID_ARGUMENT`. It cannot be disabled. The stub raises both itself (`bdk_stub_page_unresponsive`, `bdk_stub_page_responsive`, `bdk_stub_block_popup`); the harness's `bdk_harness_page_*` and `bdk_harness_block_popup` reach them, and answer `BDK_ERR_INVALID_ARGUMENT` on a runtime without them, which the tests skip. |
 | Extension surfaces | See "Extensions" below. |
 
 ### Extensions (M5)
@@ -186,8 +256,14 @@ where it was silent (2026-11-20):
    manifest needs (`inspect_manifest`: manifest version and `minimum_chrome_version` against the engine's
    `EngineFacts`, permissions for APIs BDK lacks, surfaces the configuration disables, `update_url` against
    `update_urls`). A blocking finding refuses the install or update unless `install_policy = "allow_all"`, which
-   shows the findings in the prompt instead (`install_refused`). The keys with status Added (`developer_mode`,
-   `blocklist`, `[extensions.bundled]`) are not in the schema yet and are not read.
+   shows the findings in the prompt instead (`install_refused`). Since T-EXT-14 (2026-11-25) it also reads
+   `developer_mode` (`"off"` refuses unpacked directories in `source_refusal`; `"user"` behaves as `"on"` until the
+   setting `extensions.developerMode` exists), `[extensions.install] blocklist` (`blocklisted`: refused from every
+   source with `extension.blocklisted`, which `allow_all` does not override) and `[extensions.bundled]` (each
+   `{path, required}`, with `path` relative to the bundle's `Contents/Resources`, `bundled_directory`). The stub loads
+   bundled extensions, with no prompt, the first time a persistent profile's extensions are asked for, refuses to
+   uninstall them and to disable a required one (`extension.notRemovable`), and reads their manifest from a package
+   registered as `bundled` with the declared path, or from the bundle.
 7. Gestures from the host. `bdk_extension_action_activate`, `bdk_extension_command_perform` and
    `bdk_extension_menu_present` (`bdk_extensions.h`) take the confirming event, like a granting completion: the core
    checks its kind (`ui.gestureRequired`), the engine that it is recent and went to one of the application's windows.
@@ -203,6 +279,39 @@ where it was silent (2026-11-20):
    `bdk_window_active_contents` and `bdk_window_extension_id` answer from the backend
    (`Backend::WindowForContents`, `WindowContents`, `WindowExtensionId`); a backend with no attachments answers 0,
    an empty list and -1.
+
+### Web apps (M9)
+
+Specification: [web-apps.md](../../../docs/planning/sdk/web-apps.md). Tasks T-PWA-02 and T-PWA-03 (stub, core, ABI, Swift);
+the engine is T-PWA-04. Decided where it was silent (2026-11-25):
+
+1. Configuration. `runtime/web_apps.cc` reads `web_apps.enabled` (default false) and `services.push.provider` (`none`, the
+   default, or `google`) into `Runtime::web_apps` at start, before the providers (a value of the wrong kind is
+   `config.resolvedInvalid`). Push through Google takes no Google key (T-PWA-05, web-apps.md 7 and 10.6): it does not
+   count for the key rule of "Providers", so a key given for push alone is `config.keyUnused`. The core adds `"webApps":{"enabled"}` and `"push":{"provider"}` to every `runtime.info` answer
+   (`CommandControl::AppendMembers`), so no backend reports them.
+2. Refusals for every runtime, before the backend (`web_apps_refuse`): every `webApps.*` command fails `webApps.disabled`
+   while web apps are off; in a private profile `list` answers `[]`, `installability` not installable, `get`
+   `webApps.notFound`, and `install`, `uninstall` and `launch` `webApps.privateProfile`.
+3. Surface. `web_app_installs` is `BDK_SURFACE_WEB_APP_INSTALLS` 37, the place it has in the ui-requests.md table after the
+   T-UIR-14 surfaces; modes default and custom; its granting completions are `grant` and `install`. Payload `{app, source,
+   screenshots}` (web-apps.md 4.1). Only `grant`/`install` installs; anything else installs nothing.
+4. Confirmed host calls. `bdk_web_app_install` and `bdk_web_app_uninstall` (`bdk_web_apps.h`) run the command as the host
+   with `BuiltinCall::confirmed` set, so the backend installs without raising the request; an event that is not an
+   `NSEvent` fails the call later with `ui.gestureRequired` (`broker_invoke_confirmed`). The engine also checks the event
+   is recent and went to a window of the application, as for every grant.
+5. Launch and scope. `webApps.launch` creates the page in the app's profile, raises a `new_windows` request of kind
+   `webApp` with no opener and `webApp` the app, and answers `{contents}`; a rejected launch destroys the page. A page
+   launched as an app reports `BDK_CONTENTS_EVENT_WEB_APP` (12), detail `{appId, isInScope}`, on each committed
+   navigation that leaves the app's scope or comes back.
+6. The stub (`stub/stub_web_apps.cc`). A registry per profile id. A page's manifest is the one a test registered for its
+   URL (`bdk_stub_web_app_manifest`); relative URLs resolve against it. It is installable with a name, an icon, a display
+   other than `browser`, and a start URL on the page's origin inside the scope; the app id is 32 letters a to p hashed
+   from the manifest id (default: the start URL). `bdk_stub_web_app_prompt` acts as the page's `prompt()` (needs a user
+   gesture; refused while off and in a private profile), `bdk_stub_web_app_set_badge` as `setAppBadge`. With no handler
+   the request defaults and installs nothing: the stub has no presenter that can ask. `hasPendingUpdate` is always false
+   and icons carry no `data`. The conformance tests are `tests/tests_web_apps.c` (`webapps.*`); the hooks are
+   `tests/harness_web_apps.h`, and a runtime without them skips the tests that need the registry.
 
 ### Named in c-abi.md and not declared (nothing states their shape)
 
@@ -380,7 +489,7 @@ taken where the specification was silent (2026-11-20):
    application gets it through its callback with a `bdk_context_t` and answers once, now or later, with
    `bdk_automation_hello_accept` (a live session) or `_refuse` (a `closed` frame with `capability.denied` and its
    message). At most 64 connections at a time. A transport thread (`std::thread`, `poll`) moves bytes; everything
-   else is on the UI thread. `local_socket_posix.cc` is the core's one platform file; Windows replaces it.
+   else is on the UI thread. `local_socket_posix.cc` and `data_directory_lock_posix.cc` are the core's platform files; Windows replaces them.
 
    A client that does not read keeps its connection (T-AUT-07). The transport queues each connection's frames
    (under the one mutex the UI thread and the transport thread share) and takes them from the queue 256 KiB at a
@@ -438,6 +547,7 @@ Choosing a provider. `bdk_runtime_start` reads `services` from the resolved conf
 | `reputation` | `default`, `app`, `google` | `web-risk`: `config.providerUnavailable` | Only with `default`: where the lists are fetched (https, or http on the loopback address) |
 | `geolocation` | `system`, `app`, `google` | | `config.endpointUnsupported`: the network provider's host is a constant (T-PRV-14) |
 | `credentials`, `leak_check` | Only their defaults (`chromium`, `none`); S14 and S16 are proposals | Anything else: `config.providerUnavailable` | |
+| `webauthn` | Not a provider table: `phones`, a boolean, false when absent (T-UIR-12). `webauthn_phones_allowed` (`providers_internal.h`) gives it to the backend | | |
 
 An unknown name or a value of the wrong kind is `config.resolvedInvalid` (the CLI's `services.provider_unknown` comes
 first). The Google key is `google_api_key` in `bdk_start_config_t`, not `bdk_provider_set_key`, because Chromium reads
@@ -545,14 +655,26 @@ Implement `tests/harness.h` for the runtime (pump the UI thread, run a function 
 navigation, raise and withdraw a UI request, simulate a key) and, if it has the broker test hooks,
 `tests/harness_broker.h` (otherwise link `tests/harness_broker_unsupported.c`, which skips those tests), then
 configure with
-`-DBDK_RUNTIME_LIBRARY=<library> -DBDK_HARNESS_SOURCES=<harness.cc>`. `bdk_conformance --list` and `--run <name>`
-select tests.
+`-DBDK_RUNTIME_LIBRARY=<library> -DBDK_HARNESS_SOURCES=<harness.cc>`. `bdk_conformance --list` and `--run <pattern>`
+select tests: a name, a prefix ending in `*`, several of those separated by commas (run in the suite's order,
+to reproduce what one scenario leaves for another), or `!` before any of them for every test that matches none.
 
 ## Cross-platform checklist (c-abi.md section 11) for this skeleton
 
 No AppKit, Win32 or toolkit type appears; native objects cross only as `bdk_native_handle_t` (kinds exist for NSView,
 NSWindow, NSApplication, NSEvent, HWND, X11 and Wayland). The stub uses only the C++23 standard library and
 pthreads, and builds on macOS and Linux.
+
+Reviewed for Windows, Linux and a .NET binding in T-XPL-01: [docs/release/cross-platform-review.md](../../../docs/release/cross-platform-review.md).
+From it:
+
+* Hosts are 64-bit only (x64 and arm64), so no calling convention is named in the headers (X4).
+* Whether a native handle is the user's confirming event is decided in one place, `is_gesture_event`
+  (`runtime/ui_router.cc`); a new platform adds its input event's kind there and nowhere else (X1, X2).
+* Functions returning `bdk_string_t` return a 16-byte struct by value: a hidden pointer on Windows x64, two
+  registers elsewhere. Blittable for .NET (X5).
+* A .NET or other managed binding calls `bdk_runtime_start` on its UI thread and receives every callback there
+  (X11).
 
 ## Running the suite against the engine
 

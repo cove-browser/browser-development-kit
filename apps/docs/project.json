@@ -6,17 +6,33 @@
   "targets": {
     "build": {
       "executor": "nx:run-commands",
-      "cache": false,
       "options": {
-        "command": "echo 'docs-site:build: not implemented until M9'"
-      }
+        "commands": [
+          "pnpm --dir apps/docs exec next build",
+          "pnpm exec tsx apps/docs/scripts/check-links.ts"
+        ],
+        "parallel": false
+      },
+      "inputs": [
+        "default",
+        { "env": "BDK_DOCS_BASE_PATH" },
+        { "externalDependencies": ["next", "fumadocs-core", "fumadocs-mdx", "fumadocs-ui"] }
+      ],
+      "outputs": ["{projectRoot}/out"]
     },
     "dev": {
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "echo 'docs-site:dev: not implemented until M9'"
+        "command": "pnpm --dir apps/docs exec next dev"
       }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm exec vitest run --root apps/docs/scripts"
+      },
+      "inputs": ["default", { "externalDependencies": ["vitest"] }]
     },
     "format": {
       "executor": "nx:run-commands",
@@ -26,10 +42,14 @@
     },
     "lint": {
       "executor": "nx:run-commands",
-      "cache": false,
       "options": {
-        "command": "echo 'docs-site:lint: not implemented until M9'"
-      }
+        "commands": [
+          "pnpm exec biome check {projectRoot}",
+          "pnpm exec tsc -p apps/docs/scripts/tsconfig.json"
+        ],
+        "parallel": false
+      },
+      "inputs": ["default", { "externalDependencies": ["@biomejs/biome", "typescript"] }]
     }
   }
 }

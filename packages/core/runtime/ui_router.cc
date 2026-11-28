@@ -62,6 +62,10 @@ constexpr SurfaceInfo kSurfaces[] = {
     {"extension_devtools", BDK_SURFACE_EXTENSION_DEVTOOLS, kDCX, ""},
     {"extension_installs", BDK_SURFACE_EXTENSION_INSTALLS, kDC, ""},
     {"extension_uninstalls", BDK_SURFACE_EXTENSION_UNINSTALLS, kDC, ""},
+    {"page_health", BDK_SURFACE_PAGE_HEALTH, kDC, ""},
+    {"payments", BDK_SURFACE_PAYMENTS, kDCX, "grant"},
+    {"identity", BDK_SURFACE_IDENTITY, kDCX, "grant"},
+    {"web_app_installs", BDK_SURFACE_WEB_APP_INSTALLS, kDC, "install"},
 };
 // clang-format on
 
@@ -392,6 +396,11 @@ void finish_request(Request& r, UiOutcome outcome, std::string completion = "",
         completion = "go_back";
         args = "{}";
     }
+    /* The exit instruction of keyboard or pointer lock is always shown (ui-requests.md 5.12): a
+       notice the application rejected or dropped goes to the default presenter instead. */
+    if (r.surface == BDK_SURFACE_EXCLUSIVE_ACCESS &&
+        (outcome == UiOutcome::kRejected || outcome == UiOutcome::kCancelled))
+        outcome = UiOutcome::kDefaulted;
     r.finished = true;
     release_withdrawn(r);
     release_update(r);
@@ -612,14 +621,16 @@ void withdraw_contents_requests(const std::shared_ptr<Runtime>& rt, bdk_contents
 
 /* ---- Completing ---------------------------------------------------------------------------- */
 
-namespace {
-
 /* A user gesture is the operating system's event that confirmed the grant. The ABI has one such
-   kind. A runtime with a window system can check more (that it is recent, that it went to a window
-   of this application); that is the backend's to add when it presents UI. */
-bool is_gesture(const bdk_native_handle_t& g) {
+   kind, BDK_NATIVE_NSEVENT; a Windows or Linux runtime adds its input event's kind here and nowhere
+   else (T-XPL-01, docs/release/cross-platform-review.md). A runtime with a window system can check
+   more (that it is recent, that it went to a window of this application); that is the backend's to
+   add when it presents UI. */
+bool is_gesture_event(const bdk_native_handle_t& g) {
     return g.kind == BDK_NATIVE_NSEVENT;
 }
+
+namespace {
 
 /* A string array under key, or false when it is there but is not one. */
 bool string_set(const Json& object, const char* key, std::vector<std::string>* out, bool* present) {
@@ -650,6 +661,28 @@ bool offers(const Json& payload, const char* key, const std::string& id) {
     return false;
 }
 
+/* The string under key in args, or BDK_ERR_INVALID_ARGUMENT when it is there and is not one. */
+bdk_status_t string_arg(const Json& args, const char* key, std::string* out) {
+    const Json* v = args.find(key);
+    if (!v)
+        return BDK_OK;
+    if (v->kind != Json::kString)
+        return BDK_ERR_INVALID_ARGUMENT;
+    *out = v->text;
+    return BDK_OK;
+}
+
+/* Reads a completion's arguments (an object, or nothing) and the request's payload (an empty
+   object when it is not one). */
+bdk_status_t read_completion(const Request& r, const std::string& arguments, Json* args,
+                             Json* payload) {
+    if (!arguments.empty() && (!read_json(arguments, args) || args->kind != Json::kObject))
+        return BDK_ERR_INVALID_ARGUMENT;
+    if (!read_json(r.payload, payload) || payload->kind != Json::kObject)
+        *payload = Json{};
+    return BDK_OK;
+}
+
 /* WebAuthn (ui-requests.md 5.18): a completion chooses only what the step offers. "grant" chooses
    an account (and so needs the gesture, as every grant does); "accept" chooses a mechanism, gives
    the PIN, asks for the other mechanisms or presses the step's own button; "deny" cancels. */
@@ -660,25 +693,13 @@ bdk_status_t check_webauthn(const Request& r, const std::string& completion,
                     "a WebAuthn request is completed by accept, grant or deny only");
     if (completion == "deny")
         return BDK_OK;
-    Json args;
-    if (!arguments.empty() && (!read_json(arguments, &args) || args.kind != Json::kObject))
-        return BDK_ERR_INVALID_ARGUMENT;
-    Json payload;
-    if (!read_json(r.payload, &payload) || payload.kind != Json::kObject)
-        payload = Json{};
-    auto string_arg = [&](const char* key, std::string* out) -> bdk_status_t {
-        const Json* v = args.find(key);
-        if (!v)
-            return BDK_OK;
-        if (v->kind != Json::kString)
-            return BDK_ERR_INVALID_ARGUMENT;
-        *out = v->text;
-        return BDK_OK;
-    };
+    Json args, payload;
+    if (bdk_status_t st = read_completion(r, arguments, &args, &payload))
+        return st;
     std::string account, mechanism, pin, action;
     for (auto [key, out] : {std::pair{"account", &account}, std::pair{"mechanism", &mechanism},
                             std::pair{"pin", &pin}, std::pair{"action", &action}}) {
-        if (bdk_status_t st = string_arg(key, out))
+        if (bdk_status_t st = string_arg(args, key, out))
             return st;
     }
     if (completion == "grant") {
@@ -713,6 +734,102 @@ bdk_status_t check_webauthn(const Request& r, const std::string& completion,
     return BDK_OK;
 }
 
+/* Autofill suggestions (ui-requests.md 5.8): "grant" (or "accept") fills one of the suggestions the
+   list offers, and needs the gesture either way; "deny" closes the list. */
+bdk_status_t check_autofill_suggestions(const Request& r, const std::string& completion,
+                                        const std::string& arguments, bdk_error_t* err) {
+    if (completion == "deny")
+        return BDK_OK;
+    if (completion != "grant" && completion != "accept")
+        return fail(err, BDK_DOMAIN_UI, "completionNotAllowed",
+                    "a suggestion list is completed by grant, accept or deny only");
+    Json args, payload;
+    if (bdk_status_t st = read_completion(r, arguments, &args, &payload))
+        return st;
+    std::string suggestion;
+    if (bdk_status_t st = string_arg(args, "suggestion", &suggestion))
+        return st;
+    if (!offers(payload, "suggestions", suggestion))
+        return fail(err, BDK_DOMAIN_UI, "widensRequest",
+                    "the suggestion \"" + suggestion + "\" is not one the list offers");
+    return BDK_OK;
+}
+
+/* Exclusive access (ui-requests.md 5.12): a notice the application acknowledges with "accept". */
+bdk_status_t check_exclusive_access(const std::string& completion, bdk_error_t* err) {
+    if (completion != "accept")
+        return fail(err, BDK_DOMAIN_UI, "completionNotAllowed",
+                    "an exclusive-access notice is acknowledged by accept only");
+    return BDK_OK;
+}
+
+/* Page health (ui-requests.md 5.19). An unresponsive page is answered by "accept" with the action
+   "wait" or "terminate", or by "deny", which waits. Blocked popups are answered by "grant", which
+   opens one popup the notice lists or always allows the site's popups and needs the gesture as
+   every grant does, or by "deny", which dismisses the notice. */
+bdk_status_t check_page_health(const Request& r, const std::string& completion,
+                               const std::string& arguments, bdk_error_t* err) {
+    Json args, payload;
+    if (bdk_status_t st = read_completion(r, arguments, &args, &payload))
+        return st;
+    const Json* kind = payload.find("kind");
+    const bool popups = kind && kind->kind == Json::kString && kind->text == "blockedPopups";
+    if (completion == "deny")
+        return BDK_OK;
+    if (!popups) {
+        if (completion != "accept")
+            return fail(err, BDK_DOMAIN_UI, "completionNotAllowed",
+                        "an unresponsive page is answered by accept or deny only");
+        std::string action;
+        if (bdk_status_t st = string_arg(args, "action", &action))
+            return st;
+        if (action != "wait" && action != "terminate")
+            return fail(err, BDK_DOMAIN_UI, "widensRequest",
+                        "an unresponsive page offers the actions wait and terminate only");
+        return BDK_OK;
+    }
+    if (completion != "grant")
+        return fail(err, BDK_DOMAIN_UI, "completionNotAllowed",
+                    "blocked popups are answered by grant or deny only");
+    std::string popup;
+    if (bdk_status_t st = string_arg(args, "popup", &popup))
+        return st;
+    const Json* always = args.find("always");
+    if (always && always->kind != Json::kOther)
+        return BDK_ERR_INVALID_ARGUMENT;
+    const bool always_allow = always && always->is_true();
+    if (always_allow == (args.find("popup") != nullptr))
+        return fail(
+            err, BDK_DOMAIN_UI, "widensRequest",
+            "a grant opens one blocked popup or always allows the site, not both or neither");
+    if (!always_allow && !offers(payload, "popups", popup))
+        return fail(err, BDK_DOMAIN_UI, "widensRequest",
+                    "the popup \"" + popup + "\" is not one the notice lists");
+    return BDK_OK;
+}
+
+/* What an open request's application side may send (bdk_ui_update). A suggestion list takes
+   {"preview": id} for one of its suggestions, or {"preview": null} to clear the preview. */
+bdk_status_t check_update(const Request& r, const std::string& update_json, bdk_error_t* err) {
+    if (r.surface != BDK_SURFACE_AUTOFILL_SUGGESTIONS)
+        return BDK_OK;
+    Json update, payload;
+    if (bdk_status_t st = read_completion(r, update_json, &update, &payload))
+        return st;
+    const Json* preview = update.find("preview");
+    if (!preview || update.members.size() != 1)
+        return fail(err, BDK_DOMAIN_UI, "widensRequest",
+                    "a suggestion list takes only {\"preview\": id or null}");
+    if (preview->kind == Json::kOther && preview->text == "null")
+        return BDK_OK;
+    if (preview->kind != Json::kString)
+        return BDK_ERR_INVALID_ARGUMENT;
+    if (!offers(payload, "suggestions", preview->text))
+        return fail(err, BDK_DOMAIN_UI, "widensRequest",
+                    "the suggestion \"" + preview->text + "\" is not one the list offers");
+    return BDK_OK;
+}
+
 } // namespace
 
 bdk_status_t ui_complete(Request& r, const std::string& completion, const std::string& arguments,
@@ -724,7 +841,7 @@ bdk_status_t ui_complete(Request& r, const std::string& completion, const std::s
     if (interstitial && completion != "go_back" && completion != "proceed")
         return fail(err, BDK_DOMAIN_UI, "completionNotAllowed",
                     "an interstitial is completed by go_back or proceed only");
-    if (completion_grants(r.surface, completion) && !is_gesture(gesture))
+    if (completion_grants(r.surface, completion) && !is_gesture_event(gesture))
         return fail(err, BDK_DOMAIN_UI, BDK_CODE_GESTURE_REQUIRED,
                     "a granting completion needs the gesture event");
 
@@ -740,10 +857,17 @@ bdk_status_t ui_complete(Request& r, const std::string& completion, const std::s
                         "this interstitial cannot be proceeded past");
     }
 
-    if (r.surface == BDK_SURFACE_WEBAUTHN) {
-        if (bdk_status_t st = check_webauthn(r, completion, arguments, err))
-            return st;
-    }
+    bdk_status_t checked = BDK_OK;
+    if (r.surface == BDK_SURFACE_WEBAUTHN)
+        checked = check_webauthn(r, completion, arguments, err);
+    else if (r.surface == BDK_SURFACE_AUTOFILL_SUGGESTIONS)
+        checked = check_autofill_suggestions(r, completion, arguments, err);
+    else if (r.surface == BDK_SURFACE_EXCLUSIVE_ACCESS)
+        checked = check_exclusive_access(completion, err);
+    else if (r.surface == BDK_SURFACE_PAGE_HEALTH)
+        checked = check_page_health(r, completion, arguments, err);
+    if (checked != BDK_OK)
+        return checked;
 
     /* A completion accepts a subset of what the request asked for, never more. */
     if (r.surface == BDK_SURFACE_PERMISSIONS && completion == "grant" && !arguments.empty()) {
@@ -816,6 +940,8 @@ bdk_status_t ui_receive_update(const std::shared_ptr<Runtime>& rt,
     bool object = false;
     if (!valid_json(update_json, &object) || !object)
         return BDK_ERR_INVALID_ARGUMENT;
+    if (bdk_status_t st = check_update(*r, update_json, err))
+        return st;
     post([rt, r, update_json] {
         if (rt->shutting || r->finished || !r->on_update)
             return;

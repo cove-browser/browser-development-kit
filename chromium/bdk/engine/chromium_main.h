@@ -37,6 +37,18 @@ bool StartChromium(const ChromiumStartOptions& options, std::string* error);
 // True between a successful StartChromium() and the end of StopChromium().
 bool IsChromiumRunning();
 
+// Whether the application declares why it uses Bluetooth
+// (NSBluetoothAlwaysUsageDescription on macOS). Without that the operating
+// system ends a process that opens the Bluetooth adapter, so Web Bluetooth is
+// off and the serial chooser lists no Bluetooth ports.
+bool ApplicationDeclaresBluetoothUse();
+
+// The keychain access group of the application's Touch ID passkeys,
+// "<team>.<bundle identifier>.webauthn" from the running application's
+// signature, or empty when it is not signed by a team. Chromium offers Touch
+// ID only when the application is entitled to the group (T-UIR-11).
+std::string ApplicationTouchIdKeychainGroup();
+
 // Runs `task` on the main thread from the application's run loop, in order.
 // Usable when Chromium is not running (before it starts, after it stops),
 // from any thread.

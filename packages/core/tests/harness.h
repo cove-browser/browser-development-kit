@@ -28,6 +28,11 @@ const char* bdk_harness_session_format(void);
    returns its length. */
 size_t bdk_harness_newer_session_state(uint8_t* out, size_t cap);
 
+/* Non-zero when a start may name a data directory of its own in user_data_path_override. A runtime
+   that keeps one data directory per process (the engine: Chromium starts once) returns 0, and the
+   tests of the profile snapshot and downgrade policy (tests_profile_versions.c) are skipped. */
+int bdk_harness_own_data_directory(void);
+
 /* Runs every pending callback and simulated step on the calling (UI) thread until idle. Returns the
  * count. */
 size_t bdk_harness_pump(void);
@@ -60,6 +65,15 @@ typedef struct bdk_harness_ui_outcome {
 } bdk_harness_ui_outcome_t;
 
 bdk_status_t bdk_harness_last_ui_outcome(bdk_runtime_t, bdk_harness_ui_outcome_t* out);
+
+/* Page health (ui-requests.md 5.19). Acts as Chromium finding the page's renderer hung, the
+   renderer answering again, and the popup blocker stopping a popup the page opened without a
+   gesture (*out_blocked is 0 when the site's popups are allowed and the popup opened). A runtime
+   that cannot act so answers BDK_ERR_INVALID_ARGUMENT, and the tests that need it are skipped; the
+   engine's own scenarios use real pages. */
+bdk_status_t bdk_harness_page_unresponsive(bdk_contents_t);
+bdk_status_t bdk_harness_page_responsive(bdk_contents_t);
+bdk_status_t bdk_harness_block_popup(bdk_contents_t, const char* url, uint8_t* out_blocked);
 
 /* Acts as the native view delivering a key event to the contents' keyboard handler. */
 bdk_status_t bdk_harness_simulate_key(bdk_contents_t, uint8_t* out_reserved);

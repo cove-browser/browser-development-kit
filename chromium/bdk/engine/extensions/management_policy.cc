@@ -15,6 +15,7 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/single_thread_task_runner.h"
 #include "bdk/core/include/bdk/bdk_ids.h"
+#include "bdk/engine/extensions/bundled_extensions.h"
 #include "bdk/engine/extensions/extension_info.h"
 #include "bdk/engine/extensions/extension_support.h"
 #include "chrome/browser/extensions/error_console/error_console.h"
@@ -22,6 +23,7 @@
 #include "chrome/browser/profiles/profile.h"
 #include "extensions/browser/extension_error.h"
 #include "extensions/browser/extension_prefs.h"
+#include "extensions/browser/extension_registrar.h"
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/extension_registry_observer.h"
 #include "extensions/browser/extension_system.h"
@@ -91,15 +93,58 @@ class Provider : public extensions::ManagementPolicy::Provider {
     Evaluation evaluation = EvaluateExtension(profile_, *extension);
     std::u16string error;
     if (evaluation.refused) {
-      error =
-          base::UTF8ToUTF16(std::string(evaluation.code == BDK_CODE_INCOMPATIBLE
-                                            ? kRefusalIncompatible
-                                            : kRefusalSource) +
-                            evaluation.message);
+      const char* marker =
+          evaluation.code == BDK_CODE_INCOMPATIBLE  ? kRefusalIncompatible
+          : evaluation.code == BDK_CODE_BLOCKLISTED ? kRefusalBlocklisted
+                                                    : kRefusalSource;
+      error = base::UTF8ToUTF16(std::string(marker) + evaluation.message);
     }
     const bool allowed = !evaluation.refused;
     Evaluations()[{profile_.get(), extension->id()}] = std::move(evaluation);
     std::move(callback).Run({allowed, std::move(error)});
+  }
+
+  // An extension the configuration blocklists after it was installed stays
+  // installed and disabled; BDK keeps no other extension disabled, so the
+  // reason reads as "blocklisted" (extension_info.cc).
+  bool MustRemainDisabled(
+      const Extension* extension,
+      extensions::disable_reason::DisableReason* reason) const override {
+    std::shared_ptr<bdkcore::Runtime> runtime = CurrentRuntime();
+    if (!runtime ||
+        !bdkcore::ext::blocklisted(runtime->extensions, extension->id())) {
+      return false;
+    }
+    if (reason) {
+      *reason = extensions::disable_reason::DISABLE_BLOCKED_BY_POLICY;
+    }
+    return true;
+  }
+
+  // A bundled extension ships with the application (extensions.md 9).
+  bool MustRemainInstalled(const Extension* extension,
+                           std::u16string* error) const override {
+    if (!FindBundledExtension(extension->path())) {
+      return false;
+    }
+    if (error) {
+      *error = u"it ships with the application ([extensions.bundled])";
+    }
+    return true;
+  }
+
+  bool MustRemainEnabled(const Extension* extension,
+                         std::u16string* error) const override {
+    const BundledExtension* bundled = FindBundledExtension(extension->path());
+    if (!bundled || !bundled->required) {
+      return false;
+    }
+    if (error) {
+      *error =
+          u"the application requires it ([extensions.bundled] required = "
+          u"true)";
+    }
+    return true;
   }
 
  private:
@@ -120,8 +165,13 @@ class Hooks : public ExtensionPolicyHooks,
     // Developer mode lets Chromium accept an unpacked extension and records
     // the extensions' errors (ErrorConsole); BDK refuses unpacked packages
     // itself where the configuration says so (the provider and the install
-    // flow), so it is on for the profile as the engine's own switch.
-    extensions::util::SetDeveloperModeForProfile(profile, true);
+    // flow). It follows [extensions] developer_mode: off with "off", on
+    // otherwise ("user" is "on" until the setting extensions.developerMode
+    // exists). A bundled extension loads either way.
+    std::shared_ptr<bdkcore::Runtime> runtime = CurrentRuntime();
+    extensions::util::SetDeveloperModeForProfile(
+        profile, !runtime || runtime->extensions.developer_mode !=
+                                 bdkcore::ExtensionConfig::DeveloperMode::kOff);
     registry_observation_.Observe(extensions::ExtensionRegistry::Get(profile));
     // What loaded before BDK was watching.
     std::vector<scoped_refptr<const Extension>> loaded;
@@ -167,6 +217,23 @@ class Hooks : public ExtensionPolicyHooks,
     }
     std::shared_ptr<bdkcore::Runtime> runtime = CurrentRuntime();
     if (!runtime) {
+      return;
+    }
+    if (bdkcore::ext::blocklisted(runtime->extensions, extension.id())) {
+      // Installed before the configuration blocklisted it: Chromium asks the
+      // provider at install, not when an installed extension loads, so it is
+      // disabled here, not from inside the load that announced it.
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+          FROM_HERE,
+          base::BindOnce(
+              [](base::WeakPtr<Hooks> self, extensions::ExtensionId id) {
+                if (self) {
+                  extensions::ExtensionRegistrar::Get(self->profile_)
+                      ->DisableExtension(id, {extensions::disable_reason::
+                                                  DISABLE_BLOCKED_BY_POLICY});
+                }
+              },
+              weak_factory_.GetWeakPtr(), extension.id()));
       return;
     }
     WithholdDisabledApis(*runtime, extension);
@@ -252,6 +319,14 @@ Evaluation EvaluateExtension(Profile* profile, const Extension& extension) {
     return evaluation;
   };
 
+  // The blocklist wins over every source and over allow_all.
+  if (bdkcore::ext::blocklisted(config, extension.id())) {
+    return refuse(BDK_CODE_BLOCKLISTED,
+                  bdkcore::ext::blocklist_refusal(extension.id()));
+  }
+  // A bundled extension is the application's own: no source rule applies.
+  const bool bundled = FindBundledExtension(extension.path()) != nullptr;
+
   // The store: its installs and updates need the store enabled.
   if (extension.from_webstore() && !StoreEnabled(config, kChromeWebStore)) {
     return refuse(BDK_CODE_SOURCE_NOT_ALLOWED,
@@ -261,7 +336,8 @@ Evaluation EvaluateExtension(Profile* profile, const Extension& extension) {
   // A package that is not installed yet comes from a source the configuration
   // must allow (a source switched off does not disable what is installed, so
   // only new ids are held to it).
-  if (extensions::Manifest::IsUnpackedLocation(extension.location()) &&
+  if (!bundled &&
+      extensions::Manifest::IsUnpackedLocation(extension.location()) &&
       !config.unpacked &&
       !extensions::ExtensionRegistry::Get(ExtensionProfile(profile))
            ->GetInstalledExtension(extension.id())) {

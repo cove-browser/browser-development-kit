@@ -28,19 +28,23 @@ import {
   ContentMismatchError,
   DamagedStoreEntryError,
   MissingFilesError,
+  PackagingError,
   packageRuntime,
+  SAMPLE_CREDITS_MARKER,
 } from "./packager.js";
 import { parsePin, readPin, writePin } from "./pin.js";
 import { publishRuntime } from "./publisher.js";
 import { checkReproducible } from "./reproducible.js";
 import { resolveRuntime } from "./resolver.js";
-import { BUILD_STAMP_NAME } from "./stamp.js";
+import { readRuntimeFiles } from "./runtime-files.js";
+import { BUILD_STAMP_NAME, writeBuildStamp } from "./stamp.js";
 import { removeTree } from "./store.js";
 import {
   BUILDER,
   FAKE_ABI_HASH,
   makeOut,
   makeSandbox,
+  NOTICES_FROM,
   packageOptions,
   stampOut,
   tempDir,
@@ -229,6 +233,55 @@ describe("packaging guards", () => {
     expect((error as Error).message).toContain("rm -rf");
     await removeTree(r.runtimeDir);
     await expect(packageRuntime(packageOptions(s))).resolves.toMatchObject({ status: "created" });
+  });
+});
+
+describe("an application's patches (source mode, T-CLI-03)", () => {
+  function appPatches(root: string, text = "From 0 Mon Sep 17 00:00:00 2001\n"): string {
+    const dir = join(root, "app", "Chromium", "patches");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "series"), "app-change.patch\n");
+    writeFileSync(join(dir, "app-change.patch"), text);
+    return dir;
+  }
+
+  it("are recorded in the identity and the manifest, and give the runtime its own key", async () => {
+    const s = await sandbox("app-patches");
+    const dir = appPatches(s.root);
+    const plain = await computeSourceIdentity({ repoRoot: s.repo });
+    const withApp = await computeSourceIdentity({ repoRoot: s.repo, appPatchesDir: dir });
+    expect(plain.application).toBeUndefined();
+    expect(withApp.application).toEqual({
+      patches_digest: expect.stringMatching(/^[0-9a-f]{64}$/),
+      patches: ["app-change.patch"],
+    });
+    expect(sourceKey(withApp)).not.toBe(sourceKey(plain));
+    await writeBuildStamp(s.outDir, withApp);
+    const r = await packageRuntime(packageOptions(s, { appPatchesDir: dir }));
+    expect(r.sourceKey).toBe(sourceKey(withApp));
+    const m = parseManifest(readFileSync(join(r.runtimeDir, "manifest.json"), "utf8"));
+    expect(m.application).toEqual(withApp.application);
+    // A changed application patch is a different runtime.
+    writeFileSync(join(dir, "app-change.patch"), "From 1 Mon Sep 17 00:00:00 2001\n");
+    const changed = await computeSourceIdentity({ repoRoot: s.repo, appPatchesDir: dir });
+    expect(sourceKey(changed)).not.toBe(r.sourceKey);
+  });
+
+  it("leave the key alone when the application's series is empty", async () => {
+    const s = await sandbox("app-patches-empty");
+    const dir = appPatches(s.root);
+    writeFileSync(join(dir, "series"), "# none yet\n");
+    expect(await keyOf(s.repo)).toBe(
+      sourceKey(await computeSourceIdentity({ repoRoot: s.repo, appPatchesDir: dir })),
+    );
+  });
+
+  it("refuse packaging when the build was stamped without them", async () => {
+    const s = await sandbox("app-patches-stale");
+    const dir = appPatches(s.root);
+    await expect(packageRuntime(packageOptions(s, { appPatchesDir: dir }))).rejects.toThrow(
+      /application/,
+    );
   });
 });
 
@@ -645,5 +698,76 @@ describe("pin.json schema", () => {
 
   it("the repository's own pin.json parses", () => {
     expect(() => readPin(join(import.meta.dirname, "..", "..", ".."))).not.toThrow();
+  });
+});
+
+describe("T-REL-02 third-party notices in the packaged runtime", () => {
+  it("copies Chromium's credits to THIRD_PARTY_NOTICES.html and lists it in the manifest", async () => {
+    const s = await sandbox("notices", { notices: true });
+    const r = await packageRuntime(packageOptions(s));
+    expect(r.manifest.files["THIRD_PARTY_NOTICES.html"]).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(readFileSync(join(r.runtimeDir, "THIRD_PARTY_NOTICES.html"), "utf8")).toContain(
+      "libfoo",
+    );
+    await verifyRuntimeDir(r.runtimeDir, r.sourceKey);
+  });
+
+  it("refuses Chromium's placeholder credits page", async () => {
+    const s = await sandbox("notices-sample", { notices: true });
+    writeFileSync(join(s.outDir, NOTICES_FROM), `<html>${SAMPLE_CREDITS_MARKER}</html>\n`);
+    await expect(packageRuntime(packageOptions(s))).rejects.toThrow(PackagingError);
+    await expect(packageRuntime(packageOptions(s))).rejects.toThrow(/generate_about_credits/);
+  });
+
+  it("fails naming the notices when the build wrote none", async () => {
+    const s = await sandbox("notices-missing", { notices: true });
+    rmSync(join(s.outDir, NOTICES_FROM));
+    const error = await packageRuntime(packageOptions(s)).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(MissingFilesError);
+    expect((error as MissingFilesError).missing).toEqual([NOTICES_FROM]);
+  });
+
+  it("copies the notices into a declared directory too, the framework's Resources", async () => {
+    const alsoIn = "Chromium.app/Contents/Frameworks/Chromium Framework.framework/Resources";
+    const s = await sandbox("notices-also", { notices: true, noticesAlsoIn: alsoIn });
+    const file = join(s.repo, "chromium/runtime-files.json");
+    const rf = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+    const r = await packageRuntime(packageOptions(s));
+    // Resources is a link to Versions/Current/Resources: the copy lands in the version directory.
+    const inFramework =
+      "Chromium.app/Contents/Frameworks/Chromium Framework.framework/Versions/158.0.8127.37/Resources/THIRD_PARTY_NOTICES.html";
+    expect(r.manifest.files[inFramework]).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(readFileSync(join(r.runtimeDir, inFramework), "utf8")).toContain("libfoo");
+    writeFileSync(
+      file,
+      JSON.stringify({
+        ...rf,
+        notices: {
+          from: NOTICES_FROM,
+          to: "THIRD_PARTY_NOTICES.html",
+          also_in: "Elsewhere/Resources",
+        },
+      }),
+    );
+    expect(() => readRuntimeFiles(s.repo)).toThrow(/also_in/);
+  });
+
+  it("declaring notices changes the source key; notices.to must be a top-level name", async () => {
+    const plain = await sandbox("notices-key1");
+    const noted = await sandbox("notices-key2", { notices: true });
+    expect(await keyOf(plain.repo)).not.toBe(await keyOf(noted.repo));
+    const file = join(noted.repo, "chromium/runtime-files.json");
+    const rf = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+    writeFileSync(file, JSON.stringify({ ...rf, notices: { from: NOTICES_FROM, to: "a/b.html" } }));
+    expect(() => readRuntimeFiles(noted.repo)).toThrow(/notices.to/);
+  });
+
+  it("the repository's runtime declares its notices", () => {
+    const rf = readRuntimeFiles(join(import.meta.dirname, "..", "..", ".."));
+    expect(rf.notices).toEqual({
+      from: NOTICES_FROM,
+      to: "THIRD_PARTY_NOTICES.html",
+      also_in: "Chromium.app/Contents/Frameworks/Chromium Framework.framework/Resources",
+    });
   });
 });

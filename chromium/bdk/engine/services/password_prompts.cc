@@ -17,6 +17,7 @@
 #include "bdk/core/include/bdk/bdk_ids.h"
 #include "bdk/engine/engine_contents.h"
 #include "bdk/engine/host_view.h"
+#include "bdk/engine/ui_page_health.h"
 #include "bdk/engine/ui_presenters.h"
 #include "bdk/engine/ui_request.h"
 #include "chrome/browser/ui/passwords/credential_manager_dialog_controller.h"
@@ -104,6 +105,26 @@ void BdkTabDialogs::ShowManagePasswordsBubble(bool user_action) {
     controller->OnNoInteraction();
     controller->OnBubbleHidden();
   }
+}
+
+void BdkTabDialogs::ShowHungRendererDialog(
+    content::RenderWidgetHost* render_widget_host,
+    base::RepeatingClosure hang_monitor_restarter) {
+  if (content::WebContents* contents = contents_.get()) {
+    ShowUnresponsivePage(contents, render_widget_host,
+                         std::move(hang_monitor_restarter));
+  }
+}
+
+void BdkTabDialogs::HideHungRendererDialog(content::RenderWidgetHost*) {
+  if (content::WebContents* contents = contents_.get()) {
+    HideUnresponsivePage(contents);
+  }
+}
+
+bool BdkTabDialogs::IsShowingHungRendererDialog() {
+  content::WebContents* contents = contents_.get();
+  return contents && IsShowingUnresponsivePage(contents);
 }
 
 void BdkTabDialogs::OnPageNavigated() {

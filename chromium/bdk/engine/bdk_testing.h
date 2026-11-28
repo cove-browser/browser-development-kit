@@ -140,8 +140,9 @@ BDK_EXPORT bdk_status_t bdk_testing_tab_info(bdk_contents_t,
    delegate is put in again on the page's profile after its download manager
    exists, as for the profile Chromium loads at startup downloads.danger {"on"}
    every download is held as dangerous content (this build has no Safe Browsing
-   or file-type policy to flag a real one before M6) script_page {"url", "body",
-   "contentType", "headers"}  serves later navigations to url with this content
+   or file-type policy to flag a real one before M6) script_page {"url", "body"
+   (or "bodyBase64" for a binary body), "contentType", "headers"}  serves
+   later navigations to url with this content
    reputation.list {"json"} -> {"loaded", "error"}  gives the default
    reputation provider a block list, as a download whose signature was checked
    would providers.settings -> {"componentUpdatesDisabled", "syncDisabled",
@@ -154,6 +155,10 @@ BDK_EXPORT bdk_status_t bdk_testing_tab_info(bdk_contents_t,
    maps to the loopback address) startup.post  posts a task as Chromium posts
    its after-start-up work; startup.state -> {"complete", "ran"} whether
    Chromium's start-up is complete and whether that task ran
+   protocols.permit  Chrome accepts the next external-protocol launch, as after
+   a user gesture
+   pages.count -> {"webContents", "pages", "hostContexts"}  what is alive in
+   the process: every WebContents, BDK's pages and their host contexts
    extensions.pack {"dir", "crx", "key"} -> {"id"}  packs the directory into the
    CRX with Chromium's ExtensionCreator, signed with the key in the file `key`
    (made when missing), so a second package of the same key is an update of the
@@ -186,6 +191,17 @@ BDK_EXPORT bdk_status_t bdk_testing_tab_info(bdk_contents_t,
    authenticator; webauthn.inject {"rpId", "userId",
    "name", "displayName"} -> {"injected"}  a passkey on it; webauthn.state ->
    {"installed", "credentials"}; webauthn.clear  the real authenticators again
+   chooser.open {"contents", "kind", "devices": [names]}  a device chooser of
+   those devices on the page, shown as WebUSB's is (a device_choosers request);
+   chooser.add {"name"} and chooser.remove {"name"} change its list;
+   chooser.result -> {"ended", "chosen"? (the name; absent when cancelled)}.
+   clientcert.identity {"certificate", "key"} (PEM) -> {"set"}  the one client
+   identity every profile offers, instead of the Keychain's; {} clears it
+   input.key {"contents", "key": "Escape", "type": "down" | "up"}  a key event
+   through the page's render widget host, which the page's delegate sees first
+   (it reaches the page only while its view has focus)
+   present.script on "device_choosers" answers {"device": name} or
+   {"answer": "cancel"}
 
    Extensions, windows and side panels (extensions/panel_testing.cc; "window"
    is a decimal bdk_window_t string):

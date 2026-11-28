@@ -14,6 +14,7 @@
 #include "bdk_runtime.h"
 #include "bdk_ui.h"
 #include "bdk_view.h"
+#include "bdk_web_apps.h"
 #include "bdk_window.h"
 
 #endif /* BDK_H_ */

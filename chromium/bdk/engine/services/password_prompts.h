@@ -33,6 +33,13 @@ class BdkTabDialogs : public TabDialogsViews {
   // TabDialogs:
   void ShowManagePasswordsBubble(bool user_action) override;
   void HideManagePasswordsBubble() override;
+  // The hung-renderer dialog is a page_health request (ui_page_health.h).
+  void ShowHungRendererDialog(
+      content::RenderWidgetHost* render_widget_host,
+      base::RepeatingClosure hang_monitor_restarter) override;
+  void HideHungRendererDialog(
+      content::RenderWidgetHost* render_widget_host) override;
+  bool IsShowingHungRendererDialog() override;
 
  private:
   // What the user (or the application on their behalf) chose.

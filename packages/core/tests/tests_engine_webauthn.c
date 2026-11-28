@@ -338,6 +338,21 @@ static void test_navigating_away_withdraws_the_open_step(void) {
     finish(c);
 }
 
+/* Touch ID follows the application's signature (T-UIR-11): Chromium offers the platform
+   authenticator only to an executable entitled to the keychain access group
+   "<team>.<bundle id>.webauthn", which the engine names from the running application. The suite's
+   app is ad hoc signed, so a page finds no platform authenticator; signed by a team with that
+   group (BDK_TEST_TOUCH_ID=1, see packages/core/scripts/sign-engine-for-touch-id.sh) it finds
+   one. */
+static void test_touch_id_follows_the_applications_signature(void) {
+    bdk_contents_t c = start_page(1, NULL);
+    run(c, "PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()"
+           ".then(v => document.title = 'platform ' + v)");
+    const char* signed_for = getenv("BDK_TEST_TOUCH_ID");
+    CHECK(wait_for_title(c, signed_for && *signed_for == '1' ? "platform true" : "platform false"));
+    finish(c);
+}
+
 const t_test_t t_engine_webauthn_tests[] = {
     {"engine_webauthn_a_request_with_no_handler_is_shown_by_the_default_presenter",
      test_a_request_with_no_handler_is_shown_by_the_default_presenter},
@@ -358,5 +373,7 @@ const t_test_t t_engine_webauthn_tests[] = {
      test_the_default_presenter_takes_the_pin},
     {"engine_webauthn_navigating_away_withdraws_the_open_step",
      test_navigating_away_withdraws_the_open_step},
+    {"engine_webauthn_touch_id_follows_the_applications_signature",
+     test_touch_id_follows_the_applications_signature},
     {NULL, NULL},
 };

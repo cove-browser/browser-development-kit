@@ -343,6 +343,26 @@ describe("links and names in project directories", () => {
     );
   });
 
+  it("rejects a link inside a bundled extension that leads back to it, before hashing it", async () => {
+    await withProject(
+      '[browser]\nname = "Cove"\n\n[extensions.bundled]\nreader = "Extensions/Reader"\n',
+      (dir) => {
+        const extension = join(dir, "Extensions", "Reader");
+        mkdirSync(extension, { recursive: true });
+        writeFileSync(
+          join(extension, "manifest.json"),
+          JSON.stringify({ name: "Reader", version: "1.0", manifest_version: 3 }),
+        );
+        symlinkSync(".", join(extension, "loop"));
+      },
+      (result) => {
+        expect(result.resolved).toBeUndefined();
+        expect(result.diagnostics.map((d) => d.code)).toEqual(["extensions.bad_link"]);
+        expect(result.diagnostics[0]?.message).toContain('"Extensions/Reader/loop"');
+      },
+    );
+  });
+
   it("keeps a script called __proto__", async () => {
     await withProject(
       '[browser]\nname = "Cove"\n\n[automation]\nenabled = true\n',

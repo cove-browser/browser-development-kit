@@ -12,6 +12,7 @@
 #include "test_support.h"
 
 void bdk_harness_engine_show(bdk_contents_t contents, int visible);
+extern const char* bdk_harness_engine_surfaces;
 
 /* http://localhost is a secure context, which every API below needs, and the engine's
    interceptor serves it. */
@@ -81,6 +82,12 @@ static bdk_contents_t start_page(const char* url) {
     return c;
 }
 
+/* Runs script in the page with no user gesture. */
+static void run_no_gesture(bdk_contents_t c, const char* js) {
+    REQUIRE(bdk_testing_execute_script(c, S(js), 0) == BDK_OK);
+    t_pump();
+}
+
 /* Runs script in the page with a user gesture. */
 static void run(bdk_contents_t c, const char* js) {
     REQUIRE(bdk_testing_execute_script(c, S(js), 1) == BDK_OK);
@@ -137,6 +144,70 @@ static void test_an_external_protocol_asks_with_a_sheet(void) {
     finish(c);
 }
 
+/* The question is an external_protocols request (T-UIR-13): a handler answers it and no sheet is
+   shown; with the surface disabled nothing is asked and nothing opens. */
+typedef struct protocol_seen {
+    int calls;
+    char payload[1024];
+} protocol_seen_t;
+
+static protocol_seen_t g_protocol;
+
+static bdk_ui_response_t deny_protocol(void* ctx, const bdk_ui_request_info_t* info) {
+    protocol_seen_t* seen = (protocol_seen_t*)ctx;
+    ++seen->calls;
+    snprintf(seen->payload, sizeof seen->payload, "%.*s", (int)info->payload_json.length,
+             info->payload_json.data ? info->payload_json.data : "");
+    bdk_native_handle_t none;
+    memset(&none, 0, sizeof none);
+    bdk_error_t err = 0;
+    CHECK(bdk_ui_complete(info->request, S("deny"), S(""), none, &err) == BDK_OK);
+    return BDK_UI_HANDLED;
+}
+
+static void test_an_external_protocol_is_a_request_to_a_handler(void) {
+    memset(&g_protocol, 0, sizeof g_protocol);
+    t_start();
+    control("present.clear", "{}", NULL, 0);
+    script("external_protocols", "cancel");
+    bdk_error_t err = 0;
+    REQUIRE(bdk_ui_set_handler(t_runtime, BDK_SURFACE_EXTERNAL_PROTOCOLS, deny_protocol,
+                               &g_protocol, NULL, &err) == BDK_OK);
+    t_freeze();
+    g_profile = t_new_profile("Protocols");
+    bdk_contents_t c = t_new_contents(g_profile);
+    REQUIRE(bdk_contents_load(c, S(PAGE), &err) == BDK_OK);
+    t_pump();
+    bdk_harness_engine_show(c, 1);
+    REQUIRE(bdk_contents_focus(c) == BDK_OK);
+    t_pump();
+    /* An earlier scenario's launch used up the one Chrome accepts before a gesture. */
+    control("protocols.permit", "{}", NULL, 0);
+    run(c, "location.href = 'maps:?q=BDK'");
+    for (int i = 0; i < 200 && g_protocol.calls == 0; ++i)
+        t_pump();
+    CHECK(g_protocol.calls == 1);
+    CHECK(strstr(g_protocol.payload, "\"url\":\"maps:?q=BDK\"") != NULL);
+    CHECK(strstr(g_protocol.payload, "\"initiatingOrigin\":\"http://localhost\"") != NULL);
+    char out[4096];
+    record("external_protocols", out, sizeof out);
+    CHECK(json_int(out, "shown") <= 0);
+    finish(c);
+}
+
+static void test_a_disabled_external_protocol_surface_asks_nothing(void) {
+    bdk_harness_engine_surfaces = "{\"external_protocols\":\"disabled\"}";
+    bdk_contents_t c = start_page(PAGE);
+    script("external_protocols", "open");
+    run(c, "location.href = 'maps:?q=BDK'");
+    for (int i = 0; i < 100; ++i)
+        t_pump();
+    char out[4096];
+    record("external_protocols", out, sizeof out);
+    CHECK(json_int(out, "shown") <= 0);
+    finish(c);
+}
+
 /* chrome::ShowTabModal (File System Access's and DevTools' questions) shows the model as a sheet,
    and the model's own callbacks run: accept, cancel, and a sheet dismissed with no answer. */
 static void tab_modal(bdk_contents_t c, const char* answer, int default_cancel, const char* want) {
@@ -176,41 +247,14 @@ static void test_a_tab_modal_dialog_model_is_a_sheet(void) {
     finish(c);
 }
 
-/* The device choosers were views bubbles anchored to a BrowserView; they are refused as a person
-   cancelling would, so each request rejects or comes back empty, and Web Bluetooth is absent. */
-static void test_device_choosers_are_refused(void) {
-    bdk_contents_t c = start_page(PAGE);
-    run(c, "(async () => { const r = [];"
-           "try { await navigator.usb.requestDevice({filters: []}); r.push('usb'); }"
-           "  catch (e) { r.push(e.name); }"
-           "try { await navigator.serial.requestPort(); r.push('serial'); }"
-           "  catch (e) { r.push(e.name); }"
-           "try { r.push(String((await navigator.hid.requestDevice({filters: []})).length)); }"
-           "  catch (e) { r.push(e.name); }"
-           "r.push(typeof navigator.bluetooth);"
-           "document.title = r.join(','); })()");
-    CHECK(wait_for_title(c, "NotFoundError,NotFoundError,0,undefined"));
-    finish(c);
-}
-
-/* getDisplayMedia's source picker was a tab-modal views dialog; it is refused as the
-   screen_capture surface's disabled mode would refuse it. */
-static void test_screen_capture_is_refused(void) {
-    bdk_contents_t c = start_page(PAGE);
-    run(c, "navigator.mediaDevices.getDisplayMedia({video: true})"
-           ".then(() => { document.title = 'shared'; },"
-           "      e => { document.title = e.name; })");
-    CHECK(wait_for_title(c, "NotAllowedError"));
-    finish(c);
-}
-
 /* The APIs whose UI is views only are off at start, so a site finds them unsupported, and a page
-   never offers itself as an application to install. */
+   never offers itself as an application to install. Payment Request and FedCM are routed since
+   T-UIR-14 (tests_engine_payments.c and tests_engine_identity.c check each absent when its surface
+   is disabled). */
 static void test_apis_with_views_only_ui_are_absent(void) {
     bdk_contents_t c = start_page(PAGE);
-    run(c, "document.title = [typeof PaymentRequest, typeof IdentityCredential,"
-           " typeof DigitalCredential, typeof navigator.bluetooth].join(',')");
-    CHECK(wait_for_title(c, "undefined,undefined,undefined,undefined"));
+    run(c, "document.title = [typeof DigitalCredential, typeof navigator.bluetooth].join(',')");
+    CHECK(wait_for_title(c, "undefined,undefined"));
     char args[256], handle[32], out[256];
     contents_arg(c, handle, sizeof handle);
     snprintf(args, sizeof args,
@@ -218,6 +262,27 @@ static void test_apis_with_views_only_ui_are_absent(void) {
     control("pref.json", args, out, sizeof out);
     CHECK(strstr(out, "\"value\":false") != NULL);
     finish(c);
+}
+
+/* navigator.install() and the <install> element reach views dialogs whether web app installs are
+   on or off (web-apps.md 10, T-PWA-06): both are absent, with [web_apps] enabled false and true,
+   and the runtime keeps running. */
+static void test_page_initiated_install_apis_are_absent(void) {
+    for (int on = 0; on <= 1; ++on) {
+        t_config_extra = on ? "\"web_apps\":{\"enabled\":true}" : NULL;
+        bdk_contents_t c = start_page(PAGE);
+        run(c, "(async () => { const r = [typeof navigator.install];"
+               "try { await navigator.install(); r.push('installed'); }"
+               "  catch (e) { r.push(e.name); }"
+               "const el = document.createElement('install');"
+               "document.body.appendChild(el); el.click();"
+               "r.push(el instanceof HTMLUnknownElement ? 'unknown' : 'element');"
+               "document.title = r.join(','); })()");
+        CHECK(wait_for_title(c, "undefined,TypeError,unknown"));
+        finish(c);
+        t_stop();
+        t_config_extra = NULL;
+    }
 }
 
 /* navigator.credentials.get({password: true}) showed the account chooser as a views dialog. It is
@@ -248,16 +313,144 @@ static void test_the_password_account_chooser_is_a_sheet(void) {
     finish(c);
 }
 
+/* ---- page health (ui-requests.md 5.19, T-UIR-15) ---- */
+
+typedef struct health_seen {
+    int calls;
+    char payload[1024];
+    const char* completion; /* how the handler answers; NULL leaves the request to the default */
+    const char* args;
+} health_seen_t;
+
+static health_seen_t g_health;
+
+static bdk_ui_response_t on_health(void* ctx, const bdk_ui_request_info_t* info) {
+    health_seen_t* seen = (health_seen_t*)ctx;
+    ++seen->calls;
+    snprintf(seen->payload, sizeof seen->payload, "%.*s", (int)info->payload_json.length,
+             info->payload_json.data ? info->payload_json.data : "");
+    if (!seen->completion)
+        return BDK_UI_USE_DEFAULT;
+    bdk_native_handle_t none;
+    memset(&none, 0, sizeof none);
+    bdk_error_t err = 0;
+    CHECK(bdk_ui_complete(info->request, S(seen->completion), S(seen->args ? seen->args : ""), none,
+                          &err) == BDK_OK);
+    return BDK_UI_HANDLED;
+}
+
+/* A runtime with (or without) a page_health handler and a page at `url`, shown. */
+static bdk_contents_t start_health_page(int with_handler, const char* url) {
+    memset(&g_health, 0, sizeof g_health);
+    t_start();
+    control("present.clear", "{}", NULL, 0);
+    if (with_handler) {
+        bdk_error_t err = 0;
+        REQUIRE(bdk_ui_set_handler(t_runtime, BDK_SURFACE_PAGE_HEALTH, on_health, &g_health, NULL,
+                                   &err) == BDK_OK);
+    }
+    t_freeze();
+    g_profile = t_new_profile("Health");
+    bdk_contents_t c = t_new_contents(g_profile);
+    bdk_error_t err = 0;
+    REQUIRE(bdk_contents_load(c, S(url), &err) == BDK_OK);
+    t_pump();
+    bdk_harness_engine_show(c, 1);
+    t_pump();
+    return c;
+}
+
+static int shown_count(const char* surface) {
+    char out[2048];
+    record(surface, out, sizeof out);
+    return json_int(out, "shown");
+}
+
+/* window.open with no gesture is blocked by Chromium's popup blocker: a notice listing it, to the
+   handler, or with none to the default presenter. */
+static void test_a_blocked_popup_raises_a_page_health_notice(void) {
+    for (int with_handler = 1; with_handler >= 0; --with_handler) {
+        bdk_contents_t c = start_health_page(with_handler, PAGE);
+        if (with_handler) {
+            g_health.completion = "deny";
+        } else {
+            script("page_health", "done");
+        }
+        run_no_gesture(c,
+                       "window.open('http://localhost/blocked-popup'); document.title = 'opened'");
+        CHECK(wait_for_title(c, "opened"));
+        for (int i = 0;
+             i < 100 && (with_handler ? g_health.calls == 0 : shown_count("page_health") <= 0); ++i)
+            t_pump();
+        if (with_handler) {
+            CHECK(g_health.calls == 1);
+            CHECK(strstr(g_health.payload, "\"kind\":\"blockedPopups\"") != NULL);
+            CHECK(strstr(g_health.payload, "http://localhost/blocked-popup") != NULL);
+        } else {
+            CHECK(shown_count("page_health") == 1);
+        }
+        finish(c);
+        t_stop();
+    }
+}
+
+/* A page that never yields to an input event: Chromium's hang monitor, after its delay, asks
+   whether to wait or end the page. The handler ends it, and so does the default presenter as the
+   script answers. */
+static void test_a_hung_page_raises_a_page_health_request(void) {
+    for (int with_handler = 1; with_handler >= 0; --with_handler) {
+        bdk_contents_t c = start_health_page(with_handler, PAGE);
+        t_events_t ev;
+        t_ev_init(&ev);
+        REQUIRE(bdk_contents_subscribe(c, t_on_contents_event, &ev, t_on_event_release) != 0);
+        if (with_handler) {
+            g_health.completion = "accept";
+            g_health.args = "{\"action\":\"terminate\"}";
+        } else {
+            script("page_health", "terminate");
+        }
+        run_no_gesture(c, "document.addEventListener('mousedown', () => {});"
+                          "setTimeout(() => { for (;;) {} }, 50)");
+        bdk_testing_run_for(0.5);
+        /* Input the renderer must answer, and never does, starts the hang monitor: the page
+           listens for the click on its main thread, which the loop holds. */
+        REQUIRE(bdk_testing_click(c, 20, 20, 0) == BDK_OK);
+        int gone = 0;
+        for (int i = 0; i < 90 && !gone; ++i) {
+            bdk_testing_run_for(0.5);
+            for (int k = 0; k < ev.count; ++k)
+                gone |= ev.kind[k] == BDK_CONTENTS_EVENT_RENDERER_GONE;
+        }
+        CHECK(gone);
+        if (with_handler) {
+            CHECK(g_health.calls == 1);
+            CHECK(strstr(g_health.payload, "\"kind\":\"unresponsive\"") != NULL);
+        } else {
+            CHECK(shown_count("page_health") == 1);
+        }
+        finish(c);
+        t_stop();
+    }
+}
+
 const t_test_t t_engine_dialogs_tests[] = {
     {"engine_dialogs_https_first_asks_with_its_interstitial_page",
      test_https_first_asks_with_its_interstitial_page},
     {"engine_dialogs_an_external_protocol_asks_with_a_sheet",
      test_an_external_protocol_asks_with_a_sheet},
+    {"engine_dialogs_an_external_protocol_is_a_request_to_a_handler",
+     test_an_external_protocol_is_a_request_to_a_handler},
+    {"engine_dialogs_a_disabled_external_protocol_surface_asks_nothing",
+     test_a_disabled_external_protocol_surface_asks_nothing},
     {"engine_dialogs_a_tab_modal_dialog_model_is_a_sheet",
      test_a_tab_modal_dialog_model_is_a_sheet},
-    {"engine_dialogs_device_choosers_are_refused", test_device_choosers_are_refused},
-    {"engine_dialogs_screen_capture_is_refused", test_screen_capture_is_refused},
     {"engine_dialogs_apis_with_views_only_ui_are_absent", test_apis_with_views_only_ui_are_absent},
+    {"engine_dialogs_a_blocked_popup_raises_a_page_health_notice",
+     test_a_blocked_popup_raises_a_page_health_notice},
+    {"engine_dialogs_a_hung_page_raises_a_page_health_request",
+     test_a_hung_page_raises_a_page_health_request},
+    {"engine_dialogs_page_initiated_install_apis_are_absent",
+     test_page_initiated_install_apis_are_absent},
     {"engine_dialogs_the_password_account_chooser_is_a_sheet",
      test_the_password_account_chooser_is_a_sheet},
     {NULL, NULL},

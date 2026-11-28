@@ -1,0 +1,23 @@
+{
+  "name": "@bdk/docs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The BDK documentation site: Fumadocs on Next.js, MDX content, static export.",
+  "dependencies": {
+    "fumadocs-core": "16.18.4",
+    "fumadocs-mdx": "15.5.3",
+    "fumadocs-ui": "16.18.4",
+    "next": "16.4.6",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.5",
+    "@types/mdx": "2.0.14",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "postcss": "8.5.33",
+    "tailwindcss": "4.3.5"
+  }
+}

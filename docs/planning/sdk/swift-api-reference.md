@@ -118,6 +118,7 @@ Nothing here can change what `bdk.toml` decided about capabilities, surfaces or 
 | `ui` | `BDKUIHandlers` | R | Section 10 |
 | `commands` | `BDKCommands` | R | Section 12 |
 | `automation` | `BDKAutomation` | R | Section 13 |
+| `navigationPolicy` | `NavigationPolicy?` | RW | Section 6.3. Nil: every navigation is allowed |
 | `diagnostics` | `BDKDiagnostics` | R | Section 15 |
 | `system` | `BDKSystem` | R | Default-browser registration |
 | `events` | `Events` | AS | `RuntimeEvent` |
@@ -304,7 +305,17 @@ All read-only unless marked, on the main actor, each with a matching event.
 | Transition | History ranking and autocomplete use it. Address bar passes `.typed`, bookmark passes `.bookmark`. |
 | Internal URLs | The application may navigate to any branded internal URL. A web page may not. |
 | Native route | Calls the registered handler and throws `navigation.handledNatively`. |
-| Later | A navigation policy hook. Not in v1. |
+| Navigation policy | `runtime.navigationPolicy` allows, cancels or redirects a navigation before it starts ([swift-api.md](swift-api.md) 6.3). Built on the stub (T-SWF-10) and the engine (T-SWF-11), M9. |
+
+| Navigation policy | Detail |
+|---|---|
+| `BDKRuntime.NavigationPolicy` | `@MainActor (BDKWebContents?, BDKWebContents.NavigationAction) async -> BDKWebContents.NavigationDecision`. The page is nil when the application holds no object for it yet. Set, replaced or removed at any time. |
+| `BDKWebContents.NavigationDecision` | `.allow`, `.cancel`, `.redirect(URL)` |
+| `BDKWebContents.NavigationAction` | `url`, `kind` (`.load`, `.reload`, `.history`), `method`, `isUserInitiated`, `redirectedFrom`, `isRedirect`, `initiator` (`.application`, `.page(origin:)`, `.browser`), `isPrerender` |
+| Asked | Main-frame navigations before the request, and each server redirect. Not subframes, same-document navigations, back/forward cache restores or prerender activations, or the start of a load a redirect began. |
+| Waiting | The navigation waits; no timeout. A stop, a newer navigation or closing the page ends it, and the answer is ignored. |
+| Cancel | No request; the page stays. `navigate(to:)` throws `navigation.cancelledByPolicy`. |
+| Redirect | The URL loads as the application's own load (GET, no body, no referrer); `navigate(to:)` returns its commit. The twenty-first redirect in a row without a commit commits the error page for net error -310. |
 
 ### 6.4 Events (`page.events`, AS)
 
@@ -699,7 +710,7 @@ BDK uploads nothing.
 | `config` | `resolvedMissing`, `resolvedInvalid`, `registrationAfterStart`, `handlerMissing`, `providerMissing`, `keyMissing`, `nameNotApp`, `routeUnknown` |
 | `profile` | `notFound`, `inUse`, `nameTaken`, `isPrivate` |
 | `contents` | `stale`, `crashed`, `stateTooNew`, `internalPage` |
-| `navigation` | `aborted`, `superseded`, `blocked`, `handledNatively`, `netError` |
+| `navigation` | `aborted`, `superseded`, `blocked`, `handledNatively`, `cancelledByPolicy`, `netError` |
 | `broker` | `unknownCommand`, `invalidArguments`, `cancelled`, `timeout`, `payloadTooLarge` |
 | `capability` | `denied`, `gestureRequired`, `reauthenticationFailed`, `outOfScope` |
 | `extension` | `incompatible`, `sourceNotAllowed`, `notFound`, `surfaceDisabled`, `installCancelled` |

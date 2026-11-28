@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { INTERNAL_MODULES_PREFIX } from "../../asset-sources.js";
 import type { Diagnostic } from "../diagnostics.js";
 import { hasErrors } from "../diagnostics-format.js";
@@ -12,7 +12,7 @@ import {
   pagesDirectory,
   readBundledRoutes,
 } from "../pages/routes.js";
-import { buildPage, findViteConfig, loadVite } from "../pages/vite.js";
+import { buildPage, builtWithVite, findViteConfig, loadVite } from "../pages/vite.js";
 import { RESOLVED_FILE } from "./config.js";
 import type { Step, StepResult } from "./step.js";
 
@@ -63,8 +63,7 @@ export const pagesStep: Step = {
       const pages: { route: BundledRoute; source: string; files: PageFile[] }[] = [];
       for (const route of routes) {
         const source = join(project.dir, route.path);
-        // Vite builds a page that is a direct child of the pages directory. An override elsewhere is copied.
-        if (build !== undefined && viteConfig !== undefined && dirname(source) === pagesRoot) {
+        if (build !== undefined && viteConfig !== undefined && builtWithVite(pagesRoot, source)) {
           const outDir = join(work, route.route);
           await buildPage(build, {
             pagesDir: pagesRoot,

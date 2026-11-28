@@ -13,6 +13,34 @@
       "message": "Surface \"find\" does not allow the mode \"disabled\". Allowed modes: \"default\", \"custom\".",
       "file": "bdk.toml",
       "line": 6
+    },
+    {
+      "code": "ui.surface_mode",
+      "severity": "error",
+      "message": "Surface \"client_certificates\" does not allow the mode \"disabled\". Allowed modes: \"default\", \"custom\".",
+      "file": "bdk.toml",
+      "line": 8
+    },
+    {
+      "code": "ui.surface_mode",
+      "severity": "error",
+      "message": "Surface \"autofill_suggestions\" does not allow the mode \"disabled\". Allowed modes: \"default\", \"custom\".",
+      "file": "bdk.toml",
+      "line": 9
+    },
+    {
+      "code": "ui.surface_mode",
+      "severity": "error",
+      "message": "Surface \"exclusive_access\" does not allow the mode \"disabled\". Allowed modes: \"default\", \"custom\".",
+      "file": "bdk.toml",
+      "line": 10
+    },
+    {
+      "code": "ui.surface_mode",
+      "severity": "error",
+      "message": "Surface \"page_health\" does not allow the mode \"disabled\". Allowed modes: \"default\", \"custom\".",
+      "file": "bdk.toml",
+      "line": 11
     }
   ]
 }

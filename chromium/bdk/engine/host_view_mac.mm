@@ -40,6 +40,11 @@
 
 - (void)resizeSubviewsWithOldSize:(NSSize)oldSize {
   for (NSView* view in self.subviews) {
+    if ([view isKindOfClass:NSTextField.class]) {
+      // The origin notice keeps its height at the top.
+      view.frame = NSMakeRect(0, 0, NSWidth(self.bounds), NSHeight(view.frame));
+      continue;
+    }
     view.frame = self.bounds;
   }
 }
@@ -134,6 +139,10 @@ class HostViewMac : public HostView {
 
   bool IsInWindow() override { return view_.window != nil; }
 
+  bool IsShown() override {
+    return view_.window && !view_.isHiddenOrHasHiddenAncestor;
+  }
+
   bdk_native_handle_t Window() override {
     NSWindow* window = view_.window;
     return window ? bdk_native_handle_t{BDK_NATIVE_NSWINDOW,
@@ -199,7 +208,26 @@ class HostViewMac : public HostView {
             rect.size.width, rect.size.height};
   }
 
+  void SetOriginNotice(const std::string& text) override {
+    [notice_ removeFromSuperview];
+    notice_ = nil;
+    if (text.empty()) {
+      return;
+    }
+    NSTextField* notice =
+        [NSTextField labelWithString:base::SysUTF8ToNSString(text)];
+    notice.drawsBackground = YES;
+    notice.backgroundColor = NSColor.windowBackgroundColor;
+    notice.alignment = NSTextAlignmentCenter;
+    notice.frame = NSMakeRect(0, 0, NSWidth(view_.bounds), 22);
+    notice.autoresizingMask = NSViewWidthSizable | NSViewMaxYMargin;
+    // The host view is flipped: y 0 is the top.
+    [view_ addSubview:notice positioned:NSWindowAbove relativeTo:nil];
+    notice_ = notice;
+  }
+
  private:
+  NSTextField* __strong notice_ = nil;
   BDKContentsHostView* __strong view_;
   BDKMenuTarget* __strong objc_target_;
   bool window_made_fullscreen_ = false;

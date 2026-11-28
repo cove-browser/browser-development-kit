@@ -1,0 +1,91 @@
+---
+title: Getting started
+description: Create an application with bdk init, open it in Xcode and run it.
+---
+
+## What you need
+
+| Need | Detail |
+| --- | --- |
+| A Mac with Apple Silicon | v1 runtimes are built for arm64 only. |
+| macOS 14 or later | A runtime's manifest can raise the minimum. |
+| Xcode 26 or later | With Swift 6. |
+| Node and a package manager | Only if your internal pages are built with Vite, or you write automation scripts. A project with no JavaScript needs neither. |
+
+`bdk doctor` checks all of this, and the project; run it before filing a bug.
+
+## Create a project
+
+`bdk init` asks for each choice in turn on a terminal. Every question also has a flag, so the same
+project can be made with no questions, in a script or in CI:
+
+```sh
+bdk init Cove --name Cove --bundle-id com.example.cove --scheme cove \
+  --pages vite --framework react --starter-pages new-tab,settings --yes
+```
+
+It prints that command at the end of an interactive run, so you can record the choices you made. The
+choices and their defaults:
+
+| Question | Flag | Default |
+| --- | --- | --- |
+| Display name | `--name` | none: required |
+| Directory | the first argument | the name, without spaces |
+| Bundle identifier | `--bundle-id` | none: required |
+| Internal scheme | `--scheme` | derived from the name, then written explicitly |
+| Template | `--template` | `swift-browser` |
+| Internal pages | `--pages none\|plain\|vite` | `none`: Chromium's built-in pages |
+| Framework | `--framework vanilla\|react\|preact` | `vanilla` (Vite pages only) |
+| Language | `--language ts\|js` | `ts` (Vite pages only) |
+| Styling | `--styling css\|tailwind` | `css` (Vite pages only) |
+| Starter pages | `--starter-pages` | `new-tab`; any of `new-tab`, `settings`, `history`, `bookmarks`, `downloads` |
+| Package manager | `--package-manager` | the one that ran `bdk`, else the first installed (Vite pages only) |
+| Install packages now | `--no-install` | install (Vite pages only) |
+| Automation host | `--automation` | off |
+| Runtime | `--runtime prebuilt\|source` | `prebuilt` |
+| Git repository | `--no-git` | create one |
+
+`--yes` takes the default for every choice not given as a flag; `--no-input` and a run without a
+terminal do the same and never ask. A flag whose question would not be asked, such as `--framework`
+with `--pages plain`, is a usage error. A directory that is not empty is refused unless `--force`, which
+adds files and never overwrites one.
+
+## What it creates
+
+```text
+Cove/
+├── Cove.xcodeproj          # the application, its tests, and the BDKRuntime target
+├── bdk.toml                # every answer that is configuration, written out
+├── Sources/                # AppDelegate.swift, BrowserWindow.swift: one window, one page, an address field
+├── Resources/              # Info.plist (NSPrincipalClass = BDKApplication), App.entitlements, Assets.xcassets
+├── Tests/                  # one unit test against the stub runtime
+├── BuildPhases/            # the scripts Xcode's run-script phases call: bdk build ...
+├── Pages/                  # with --pages plain or vite: the starter pages
+└── Automation/             # with --automation: an example script
+```
+
+Each starter page is a small working page that uses `@bdk/internal/*`, and comes with the
+`[pages.capabilities.<route>]` table it needs in `bdk.toml`, so its grants are visible from the first
+commit. Framework and page configuration belong to you after `init`; later BDK versions do not rewrite
+them.
+
+## Build and run
+
+Open the project in Xcode and press Run. The `BDKRuntime` target runs `bdk build config runtime codegen`
+first; the application target then runs `bdk build pages automation extensions embed` after its resources
+are copied, and `bdk build sign` last. The phases find `bdk` through the `BDK_CLI` build setting.
+
+<Callout type="warn" title="Today the application runs on the stub runtime">
+  This release publishes no prebuilt runtime, so `bdk build runtime` warns and the build leaves out
+  `embed`. A new application links `BDKTestSupport` and starts the in-memory stub runtime: it opens its
+  window and its pages, renders nothing and runs no JavaScript. To run on Chromium, build the runtime from
+  source (see [bdk build](./cli.mdx#bdk-build)), then change `Sources/RuntimeSource.swift`, the one file
+  that chooses the runtime.
+</Callout>
+
+## Next
+
+- Change what the browser does in [bdk.toml](./configuration.mdx).
+- Drive it from Swift: the [Swift API](./swift-api.mdx).
+- Write internal pages and automation scripts: the [JavaScript APIs](./javascript-apis.mdx).
+- Everything the CLI does: the [CLI](./cli.mdx).

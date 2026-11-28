@@ -64,6 +64,16 @@
         "command": "pnpm exec tsx tooling/src/chromium/publish.ts"
       }
     },
+    "compare-runtimes": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "pnpm exec tsx tooling/src/chromium/compare-runtimes.ts" }
+    },
+    "release-check": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "pnpm exec tsx tooling/src/release/release-check.ts" }
+    },
     "experiment": {
       "executor": "nx:run-commands",
       "cache": false,

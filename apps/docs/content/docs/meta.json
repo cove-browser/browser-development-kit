@@ -1,0 +1,17 @@
+{
+  "title": "BDK",
+  "pages": [
+    "index",
+    "getting-started",
+    "---Reference---",
+    "configuration",
+    "cli",
+    "swift-api",
+    "javascript-apis",
+    "---Policies---",
+    "versioning",
+    "security-patches",
+    "compatibility",
+    "experimental"
+  ]
+}

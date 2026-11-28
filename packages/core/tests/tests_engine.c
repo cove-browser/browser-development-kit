@@ -1403,7 +1403,50 @@ static void test_engine_a_page_is_captured_as_an_image_and_as_a_pdf(void) {
     CHECK(file_prefix(pdf, head, 4) == 4 && memcmp(head, "%PDF", 4) == 0);
 }
 
+/* ---- nothing left behind (T-REL-03) ---- */
+
+static int count_of_kind(const char* json, const char* key) {
+    char pattern[48];
+    snprintf(pattern, sizeof pattern, "\"%s\":", key);
+    const char* at = strstr(json, pattern);
+    return at ? atoi(at + strlen(pattern)) : -1;
+}
+
+/* Pages opened, loaded, closed and destroyed leave no WebContents, page or host context behind:
+   the robustness suite's memory bound depends on it. */
+static void test_engine_closed_pages_leave_nothing_behind(void) {
+    t_start_frozen();
+    bdk_profile_t p = t_new_profile("Leak");
+    char before[256], after[256];
+    /* One round first, so the profile's own contexts exist. */
+    for (int round = 0; round < 31; ++round) {
+        if (round == 1)
+            REQUIRE(bdk_testing_command(t_runtime, S("pages.count"), S("{}"), before,
+                                        sizeof before) == BDK_OK);
+        bdk_contents_t c = t_new_contents(p);
+        bdk_error_t err = 0;
+        REQUIRE(bdk_contents_load(c, S((round & 1) ? "https://bdk.test/a" : "https://bdk.test/b"),
+                                  &err) == BDK_OK);
+        for (int i = 0; i < 20; ++i)
+            t_pump();
+        REQUIRE(bdk_contents_close(c, &err) == BDK_OK);
+        for (int i = 0; i < 20; ++i)
+            t_pump();
+        REQUIRE(bdk_contents_destroy(c) == BDK_OK);
+        t_pump();
+    }
+    for (int i = 0; i < 20; ++i)
+        t_pump();
+    REQUIRE(bdk_testing_command(t_runtime, S("pages.count"), S("{}"), after, sizeof after) ==
+            BDK_OK);
+    printf("    before %s, after %s\n", before, after);
+    CHECK(count_of_kind(after, "webContents") == count_of_kind(before, "webContents"));
+    CHECK(count_of_kind(after, "pages") == count_of_kind(before, "pages"));
+    CHECK(count_of_kind(after, "hostContexts") == count_of_kind(before, "hostContexts"));
+}
+
 const t_test_t t_engine_tests[] = {
+    {"engine_closed_pages_leave_nothing_behind", test_engine_closed_pages_leave_nothing_behind},
     {"engine_window_open_with_features_raises_a_popup_request",
      test_engine_window_open_with_features_raises_a_popup_request},
     {"engine_window_open_without_features_raises_a_new_page_request",

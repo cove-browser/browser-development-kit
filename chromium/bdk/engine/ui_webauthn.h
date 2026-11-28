@@ -27,7 +27,9 @@ namespace bdk {
 // when the application has no Bluetooth metadata in its Info.plist (macOS ends
 // a process that calls Bluetooth without it). Called once, from
 // InstallPromptHooks.
-void InstallWebAuthnDialogHook();
+// `phones` is [services.webauthn] phones (T-UIR-12): without it no phone is
+// offered.
+void InstallWebAuthnDialogHook(bool phones);
 
 }  // namespace bdk
 

@@ -49,10 +49,36 @@ describe("createAssets, listing and the SDK modules", () => {
       assetsDir: assets,
       internalDir: internal,
       sdkDirs: {},
+      repositoryRoot: await tempDir(),
     });
     expect(list.list("js/internal/")).toEqual(["js/internal/index.js", "js/internal/settings.js"]);
-    expect(list.list("")).toEqual(["a.json", "js/internal/index.js", "js/internal/settings.js"]);
+    expect(list.list("")).toEqual([
+      "a.json",
+      "bdk-release.json",
+      "js/internal/index.js",
+      "js/internal/settings.js",
+    ]);
     expect(list.readText("js/internal/settings.js")).toBe("export const s = 1;");
+  });
+
+  it("carries BDK's patch series, the templates and the release facts from the repository", async () => {
+    const root = await tempDir();
+    await mkdir(join(root, "chromium", "patches"), { recursive: true });
+    await writeFile(join(root, "chromium", "patches", "series"), "a.patch\n");
+    await writeFile(join(root, "chromium", "patches", "README.md"), "docs");
+    await mkdir(join(root, "apps", "templates", "pages", "node_modules", "x"), { recursive: true });
+    await writeFile(join(root, "apps", "templates", "pages", "versions.json"), "{}");
+    await writeFile(join(root, "apps", "templates", "pages", "project.json"), "{}");
+    await writeFile(join(root, "apps", "templates", "pages", "node_modules", "x", "i.js"), "");
+    const assets = createAssets({ packaged: false, sdkDirs: {}, repositoryRoot: root });
+    expect(assets.list("chromium/")).toEqual(["chromium/patches/series"]);
+    expect(assets.list("templates/")).toEqual(["templates/pages/versions.json"]);
+    expect(assets.readText("chromium/patches/series")).toBe("a.patch\n");
+    expect(() => assets.readText("chromium/patches/README.md")).toThrow(AssetNotFoundError);
+    // The release facts come from the repository this bdk was built from.
+    const release = JSON.parse(createAssets({ packaged: false }).readText("bdk-release.json"));
+    expect(release.chromium.commit).toMatch(/^[0-9a-f]{40}$/);
+    expect(release.abi.hash).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("lists nothing when the SDK has not been built", async () => {

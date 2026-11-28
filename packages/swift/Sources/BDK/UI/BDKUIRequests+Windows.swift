@@ -147,6 +147,14 @@ public final class NewWindowRequest: BDKUIRequest {
         case pictureInPicture
         case extensionWindow
         case application
+        /// An installed web app being launched, or opening a window inside its scope.
+        case webApp
+        /// A payment handler's own page, while it takes a payment (`PaymentRequest`). It closes
+        /// when the payment ends.
+        case paymentHandler
+        /// An identity provider's sign-in or other page during FedCM (`IdentityRequest`). It
+        /// closes when the sign-in moves on.
+        case identityProvider
     }
 
     public enum Disposition: String, Sendable {
@@ -174,6 +182,9 @@ public final class NewWindowRequest: BDKUIRequest {
     /// The extension that asked for the page (its options page, a link in its popup), or nil when a
     /// page asked.
     public let initiatorExtensionID: String?
+    /// Kind `.webApp` only: the installed app being launched. Its page is `newContents`, in the
+    /// app's profile, and reports `webApp` until it is closed (web-apps.md 4.2).
+    public let webApp: BDKWebAppInfo?
     private let newContentsHandle: UInt64?
     private var adoptedContents: BDKWebContents?
 
@@ -190,6 +201,9 @@ public final class NewWindowRequest: BDKUIRequest {
         // The payload names it "userGesture" (engine_contents.cc, tests_engine.c).
         isUserGesture = fields.bool("userGesture")
         initiatorExtensionID = fields.object("initiator")?.string("extensionId")
+        webApp = fields.fields["webApp"].flatMap {
+            try? BDKServiceCoding.decode(BDKWebAppInfo.self, from: $0.jsonString)
+        }
         newContentsHandle = fields.handle("newContents")
         super.init(delivery, runtime: runtime)
         // A page an extension opened is announced as such (amendments 2.18, T-EXT-12).
@@ -203,6 +217,7 @@ public final class NewWindowRequest: BDKUIRequest {
     public var newContents: BDKWebContents? {
         if adoptedContents == nil, let newContentsHandle, let owner = profile ?? opener?.profile {
             adoptedContents = adoptPage(handle: newContentsHandle, in: owner)
+            if let webApp { adoptedContents?.noteWebApp(webApp) }
         }
         return adoptedContents
     }

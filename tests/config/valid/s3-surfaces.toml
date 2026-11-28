@@ -1,0 +1,13 @@
+# The S3 surfaces, accepted on 2026-11-25 (amendments 2.23), in modes each allows.
+[browser]
+name = "Cove"
+
+[ui.surfaces]
+client_certificates = "custom"
+autofill_suggestions = "default"
+exclusive_access = "custom"
+device_choosers = "disabled"
+screen_capture = "custom"
+webauthn = "disabled"
+external_protocols = "default"
+page_health = "custom"

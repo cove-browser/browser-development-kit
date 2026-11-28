@@ -9,6 +9,8 @@
 #include "base/command_line.h"
 #include "bdk/core/include/bdk/bdk_ids.h"
 #include "bdk/core/runtime/core_internal.h"
+#include "bdk/engine/client_cert_testing.h"
+#include "bdk/engine/navigation_policy_throttle.h"
 #include "bdk/engine/pages/bundled_page_ui.h"
 #include "bdk/engine/pages/page_broker.mojom.h"
 #include "bdk/engine/pages/page_routes.h"
@@ -20,6 +22,8 @@
 #include "bdk/engine/testing.h"
 #include "bdk/engine/ui_auth.h"
 #include "bdk/engine/ui_browser_dialogs.h"
+#include "bdk/engine/ui_identity.h"
+#include "bdk/engine/ui_select_file.h"
 #include "chrome/browser/chrome_browser_main.h"
 #include "chrome/browser/chrome_browser_main_extra_parts.h"
 #include "content/public/browser/bluetooth_delegate.h"
@@ -34,8 +38,11 @@
 #include "content/public/browser/url_loader_request_interceptor.h"
 #include "content/public/browser/usb_delegate.h"
 #include "content/public/browser/web_ui_browser_interface_broker_registry.h"
+#include "content/public/browser/webid/identity_request_dialog_controller.h"
 #include "extensions/common/constants.h"
+#include "net/ssl/client_cert_store.h"
 #include "services/device/public/cpp/geolocation/location_provider.h"
+#include "ui/shell_dialogs/select_file_policy.h"
 
 namespace bdk {
 
@@ -77,6 +84,9 @@ class DevToolsExtensionThrottle : public content::NavigationThrottle {
 // What BDK does at the stages of Chrome's browser start.
 class BdkBrowserMainExtraParts : public ChromeBrowserMainExtraParts {
  public:
+  // Once Chromium's features exist, and before any service reads a key.
+  void PreEarlyInitialization() override { InstallGoogleKey(); }
+
   // After the threads exist and before Chrome's own platform setup, which
   // installs the operating system's location permission unless one is.
   void PostCreateThreads() override {
@@ -141,7 +151,10 @@ void BdkContentBrowserClient::BrowserURLHandlerCreated(
 
 void BdkContentBrowserClient::CreateThrottlesForNavigation(
     content::NavigationThrottleRegistry& registry) {
-  // First, so a navigation the route table refuses runs no other throttle.
+  // The application's navigation policy first, so it is asked before the
+  // route table hands a native route to its handler (conventions.md 16), then
+  // the route table, so a navigation it refuses runs no other throttle.
+  NavigationPolicyThrottle::MaybeCreateAndAdd(registry);
   PagesNavigationThrottle::MaybeCreateAndAdd(registry);
   ChromeContentBrowserClient::CreateThrottlesForNavigation(registry);
   registry.AddThrottle(std::make_unique<DevToolsExtensionThrottle>(registry));
@@ -220,6 +233,22 @@ content::HidDelegate* BdkContentBrowserClient::GetHidDelegate() {
   return hid_delegate_.get();
 }
 
+std::unique_ptr<content::IdentityRequestDialogController>
+BdkContentBrowserClient::CreateIdentityRequestDialogController(
+    content::WebContents* web_contents) {
+  return CreateIdentityDialogController(web_contents);
+}
+
+std::unique_ptr<net::ClientCertStore>
+BdkContentBrowserClient::CreateClientCertStore(
+    content::BrowserContext* browser_context) {
+  if (std::unique_ptr<net::ClientCertStore> store =
+          CreateTestingClientCertStore()) {
+    return store;
+  }
+  return ChromeContentBrowserClient::CreateClientCertStore(browser_context);
+}
+
 base::OnceClosure BdkContentBrowserClient::SelectClientCertificate(
     content::BrowserContext* browser_context,
     content::ChildProcessId process_id,
@@ -230,6 +259,12 @@ base::OnceClosure BdkContentBrowserClient::SelectClientCertificate(
   return bdk::SelectClientCertificate(
       browser_context, web_contents, cert_request_info, std::move(client_certs),
       std::move(delegate));
+}
+
+std::unique_ptr<ui::SelectFilePolicy>
+BdkContentBrowserClient::CreateSelectFilePolicy(
+    content::WebContents* web_contents) {
+  return bdk::CreateSelectFilePolicy(web_contents);
 }
 
 }  // namespace bdk

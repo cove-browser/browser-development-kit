@@ -34,6 +34,7 @@ const HandlerTable& Handlers() {
     AddDevToolsHandlers(t);
     AddTranslationHandlers(t);
     AddSearchHandlers(t);
+    AddWebAppsHandlers(t);
     return t;
   }());
   return *table;

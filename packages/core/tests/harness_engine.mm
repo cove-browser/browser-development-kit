@@ -10,6 +10,9 @@
 #import <AppKit/AppKit.h>
 #include <libproc.h>
 #import <objc/runtime.h>
+
+extern "C" void* objc_autoreleasePoolPush(void);
+extern "C" void objc_autoreleasePoolPop(void*);
 #include <unistd.h>
 
 #include <arpa/inet.h>
@@ -31,6 +34,16 @@
 #include "harness_engine_windows.h"
 extern "C" {
 #include "test_support.h"
+/* tests_engine_profile_versions.c: prepares the launch for the scenario `name`, if it is one. */
+void bdk_engine_launch_prepare(const char* name);
+/* From tests_engine_web_apps.c and tests_engine_providers.c: launches that need Chromium started
+   with Google push, or with the application's Google key. */
+void bdk_engine_push_launch_prepare(const char* name);
+void bdk_engine_google_key_launch_prepare(const char* name);
+/* From tests_engine_payments.c: a start with the payments surface disabled. */
+void bdk_engine_payments_launch_prepare(const char* name);
+/* From tests_engine_identity.c: a start with the identity surface disabled. */
+void bdk_engine_identity_launch_prepare(const char* name);
 }
 
 @interface BDKHarnessApplication : BDKApplicationBase
@@ -172,6 +185,14 @@ static const std::string& fixture_bundle(void) {
     return bundle;
 }
 
+const char* bdk_harness_engine_bundle_path(void) {
+    return fixture_bundle().c_str();
+}
+
+const char* bdk_harness_engine_data_dir(void) {
+    return g_data_dir.c_str();
+}
+
 void bdk_harness_prepare_start_config(bdk_start_config_t* config) {
     /* The suite expects each runtime to start with no profiles, as with a new data directory. */
     if (!bdk_harness_engine_keep_profiles)
@@ -206,7 +227,29 @@ int bdk_harness_engine_open_descriptors(void) {
     return proc_pidinfo(getpid(), PROC_PIDLISTFDS, 0, nullptr, 0) / (int)sizeof(proc_fdinfo);
 }
 
+static size_t PumpUntilIdle(void);
+
+/* The autorelease pool the outermost pump leaves for the scenario's code until the next pump.
+   The suite runs as one Chromium task, inside one pass of the run loop, so nothing would drain
+   what the scenarios autorelease: a page's views were kept after it was destroyed (T-REL-03). An
+   application's events each drain their own. */
+static void* g_scenario_pool;
+static int g_pump_depth;
+
 size_t bdk_harness_pump(void) {
+    if (g_pump_depth == 0 && g_scenario_pool) {
+        objc_autoreleasePoolPop(g_scenario_pool);
+        g_scenario_pool = nullptr;
+    }
+    ++g_pump_depth;
+    size_t slices = PumpUntilIdle();
+    --g_pump_depth;
+    if (g_pump_depth == 0)
+        g_scenario_pool = objc_autoreleasePoolPush();
+    return slices;
+}
+
+static size_t PumpUntilIdle(void) {
     static size_t last_windows;
     if (getenv("BDK_TEST_TRACE")) {
         size_t windows = bdk_testing_chrome_window_count();
@@ -257,6 +300,19 @@ bdk_status_t bdk_harness_last_ui_outcome(bdk_runtime_t rt, bdk_harness_ui_outcom
     memcpy(out->completion, o.completion, sizeof out->completion);
     memcpy(out->arguments_json, o.arguments_json, sizeof out->arguments_json);
     return BDK_OK;
+}
+
+/* Page health is not raised by the engine yet (T-UIR-15): the tests that need these skip. */
+bdk_status_t bdk_harness_page_unresponsive(bdk_contents_t) {
+    return BDK_ERR_INVALID_ARGUMENT;
+}
+
+bdk_status_t bdk_harness_page_responsive(bdk_contents_t) {
+    return BDK_ERR_INVALID_ARGUMENT;
+}
+
+bdk_status_t bdk_harness_block_popup(bdk_contents_t, const char*, uint8_t*) {
+    return BDK_ERR_INVALID_ARGUMENT;
 }
 
 bdk_status_t bdk_harness_simulate_key(bdk_contents_t c, uint8_t* out_reserved) {
@@ -417,6 +473,13 @@ size_t bdk_harness_newer_session_state(uint8_t* out, size_t cap) {
     size_t n = sizeof newer < cap ? sizeof newer : cap;
     memcpy(out, newer, n);
     return n;
+}
+
+int bdk_harness_own_data_directory(void) {
+    /* Chromium starts once per process, with g_data_dir. The engine's half of the snapshot and
+       downgrade policy is tests_engine_profile_versions.c, whose scenarios each prepare the data
+       directory of a launch of their own (bdk_engine_launch_prepare, scripts/test-engine.sh). */
+    return 0;
 }
 
 void bdk_harness_engine_show(bdk_contents_t contents, int visible) {
@@ -747,10 +810,24 @@ void RunSuite(void*) {
 @implementation BDKHarnessDelegate
 
 - (void)applicationDidFinishLaunching:(NSNotification*)notification {
+    /* A scenario of the downgrade policy, run alone, writes the data directory Chromium is about
+       to open, and makes the starts that must fail before Chromium starts
+       (tests_engine_profile_versions.c). */
+    for (int i = 1; i + 1 < g_argc; ++i) {
+        if (strcmp(g_argv[i], "--run") == 0) {
+            bdk_engine_launch_prepare(g_argv[i + 1]);
+            bdk_engine_push_launch_prepare(g_argv[i + 1]);
+            bdk_engine_google_key_launch_prepare(g_argv[i + 1]);
+            bdk_engine_payments_launch_prepare(g_argv[i + 1]);
+            bdk_engine_identity_launch_prepare(g_argv[i + 1]);
+        }
+    }
     /* Starts Chromium with a first runtime. Its nested main loop is queued on the run loop; the
        block after it runs inside that loop. */
     bdk_start_config_t config;
     t_fill_start_config(&config);
+    if (t_first_start_google_key)
+        config.google_api_key = S(t_first_start_google_key);
     bdk_runtime_t warmup = 0;
     bdk_error_t error = 0;
     if (bdk_runtime_start(&config, &warmup, &error) != BDK_OK) {
@@ -759,6 +836,7 @@ void RunSuite(void*) {
                 message.data ? message.data : "");
         exit(2);
     }
+    t_config_extra = NULL;
     bdk_testing_intercept_all(1);
     /* Frontmost, so its windows become key: Chromium counts focus only in the key window. */
     if (!Silent()) {
@@ -768,9 +846,23 @@ void RunSuite(void*) {
 #pragma clang diagnostic pop
     }
     g_warmup = warmup;
-    /* Posted through the engine, so it runs as a Chromium task inside Chromium's main loop, which
-       must be the outer one for the suite's nested pumping to let Chromium work. */
-    bdk_post_to_ui_thread(RunSuite, nullptr);
+    /* The suite runs inside Chromium's main loop, which must be the outer one for the suite's
+       nested pumping to let Chromium work, but not inside a Chromium task: it runs where an
+       application's own code does, from the run loop between tasks. PartitionAlloc purges what a
+       task freed only when the outermost task ends, so a suite run as one task kept everything
+       freed while it ran, about 2.4 MB a page (T-REL-03). A task posted through the engine runs
+       once Chromium's loop has started; it adds a one-shot timer, which that loop fires after the
+       task has ended. */
+    bdk_post_to_ui_thread(
+        [](void*) {
+            CFRunLoopTimerRef timer = CFRunLoopTimerCreateWithHandler(
+                kCFAllocatorDefault, CFAbsoluteTimeGetCurrent(), 0, 0, 0, ^(CFRunLoopTimerRef) {
+                  RunSuite(nullptr);
+                });
+            CFRunLoopAddTimer(CFRunLoopGetMain(), timer, kCFRunLoopCommonModes);
+            CFRelease(timer);
+        },
+        nullptr);
 }
 
 @end
@@ -791,9 +883,12 @@ int main(int argc, char** argv) {
         /* Chromium starts once per process and registers the branded scheme then: the page
            tests' scheme, conf, is named here for the whole run, whatever the first runtime's
            configuration says. */
+        /* Chromium offers a page for installation only after the person has engaged with the
+           site for a while; the web app scenarios install at once, as Chromium's own tests do. */
         setenv("BDK_ENGINE_SWITCHES",
                "disable-features=SuppressFullscreenFromUnfocusedView,"
-               "RWHVMacHasFocusReturnsFalseForNonKeyWindow bdk-internal-scheme=conf",
+               "RWHVMacHasFocusReturnsFalseForNonKeyWindow bdk-internal-scheme=conf "
+               "bypass-app-banner-engagement-checks",
                0);
         if (Silent()) {
             /* Behind other windows a page is occluded, and Chromium stops drawing it. */

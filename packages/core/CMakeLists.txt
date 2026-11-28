@@ -82,9 +82,11 @@ add_custom_target(bdk_abi_hash_check ALL
 add_library(bdk_stub STATIC runtime/core.cc runtime/core_host.cc runtime/core_windows.cc runtime/ui_router.cc
   runtime/extension_policy.cc runtime/app_settings.cc runtime/broker.cc runtime/routes.cc
   runtime/broker_args.cc runtime/automation.cc runtime/contents_commands.cc runtime/local_socket_posix.cc
-  runtime/providers.cc runtime/translation.cc runtime/reputation_lists.cc
+  runtime/data_directory_lock_posix.cc
+  runtime/providers.cc runtime/translation.cc runtime/reputation_lists.cc runtime/navigation_policy.cc
+  runtime/profile_versions.cc runtime/web_apps.cc
   stub/stub_backend.cc stub/stub_services.cc stub/stub_extensions.cc stub/stub_broker.cc stub/stub_automation.cc
-  stub/stub_providers.cc)
+  stub/stub_providers.cc stub/stub_web_apps.cc)
 target_include_directories(bdk_stub
   PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/stub"
   PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/runtime" "${CMAKE_CURRENT_SOURCE_DIR}/generated")
@@ -120,6 +122,8 @@ add_executable(bdk_conformance
   tests/test_support.c tests/tests_base.c tests/tests_runtime.c tests/tests_broker.c
   tests/tests_profile.c tests/tests_contents.c tests/tests_ui.c tests/tests_automation.c
   tests/tests_endpoint.c tests/tests_providers.c tests/tests_pages.c tests/tests_extensions.c
+  tests/tests_navigation_policy.c tests/tests_profile_versions.c tests/tests_robustness.c
+  tests/tests_web_apps.c
   ${BDK_HARNESS_SOURCES} ${BDK_BROKER_HARNESS_SOURCES})
 target_include_directories(bdk_conformance PRIVATE tests)
 target_link_libraries(bdk_conformance PRIVATE bdk_headers ${BDK_RUNTIME_LIBRARY})
@@ -152,12 +156,14 @@ if(BDK_ENGINE_FRAMEWORK AND APPLE)
     tests/test_support.c tests/tests_base.c tests/tests_runtime.c tests/tests_broker.c
     tests/tests_profile.c tests/tests_contents.c tests/tests_ui.c tests/tests_automation.c
     tests/tests_endpoint.c tests/tests_providers.c tests/tests_pages.c tests/tests_extensions.c tests/tests_engine.c
+    tests/tests_navigation_policy.c tests/tests_profile_versions.c tests/tests_robustness.c
+    tests/tests_web_apps.c
     tests/tests_engine_ui.c tests/tests_engine_prompts.c tests/tests_engine_automation.c
     tests/tests_engine_providers.c tests/tests_engine_privacy.c tests/tests_engine_pages.c
     tests/tests_engine_extensions.c tests/tests_engine_ext_ui.c tests/tests_engine_ext_panels.c
     tests/tests_engine_ext_probe.c tests/tests_engine_webauthn.c tests/tests_engine_dialogs.c
-    tests/tests_engine_arc.c
-    tests/engine_ext_support.c
+    tests/tests_engine_choosers.c tests/tests_engine_web_apps.c tests/tests_engine_payments.c tests/tests_engine_client_certificates.c tests/tests_engine_identity.c tests/tests_engine_arc.c tests/tests_engine_navigation_policy.c tests/tests_engine_profile_versions.c
+    tests/engine_ext_support.c tests/engine_http_server.c
     tests/harness_engine.mm tests/harness_engine_ext.mm
     tests/harness_broker_unsupported.c tests/harness_automation_unsupported.c tests/harness_providers_unsupported.c)
   target_compile_definitions(bdk_engine_conformance PRIVATE BDK_HARNESS_OWNS_MAIN BDK_HARNESS_ENGINE_TESTS)

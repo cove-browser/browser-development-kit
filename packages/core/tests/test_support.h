@@ -26,6 +26,10 @@ extern const t_test_t t_automation_tests[];
 extern const t_test_t t_endpoint_tests[];
 extern const t_test_t t_provider_tests[];
 extern const t_test_t t_pages_tests[];
+extern const t_test_t t_navigation_policy_tests[];
+extern const t_test_t t_profile_version_tests[];
+extern const t_test_t t_robustness_tests[];
+extern const t_test_t t_web_app_tests[];
 #ifdef BDK_HARNESS_ENGINE_TESTS
 extern const t_test_t t_engine_tests[];
 extern const t_test_t t_engine_ui_tests[];
@@ -40,7 +44,14 @@ extern const t_test_t t_engine_privacy_tests[];
 extern const t_test_t t_engine_pages_tests[];
 extern const t_test_t t_engine_webauthn_tests[];
 extern const t_test_t t_engine_dialogs_tests[];
+extern const t_test_t t_engine_chooser_tests[];
+extern const t_test_t t_engine_web_app_tests[];
+extern const t_test_t t_engine_payment_tests[];
+extern const t_test_t t_engine_client_certificate_tests[];
+extern const t_test_t t_engine_identity_tests[];
 extern const t_test_t t_engine_arc_tests[];
+extern const t_test_t t_engine_navigation_policy_tests[];
+extern const t_test_t t_engine_profile_version_tests[];
 #endif
 #ifdef BDK_HARNESS_OWNS_MAIN
 int bdk_conformance_main(int argc, char** argv);
@@ -80,6 +91,9 @@ void t_fill_start_config(bdk_start_config_t* c);
    "\"automation\":{...}"); NULL for none. A harness that writes its own configuration keeps them.
    The runner resets it after each test. */
 extern const char* t_config_extra;
+/* The Google key of the harness's first start, which Chromium keeps for the process: set by a
+   launch's prepare hook (engine harness only; tests_engine_providers.c). */
+extern const char* t_first_start_google_key;
 void t_pump(void);
 
 /* Records the callbacks of an asynchronous call. */
