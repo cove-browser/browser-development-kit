@@ -31,7 +31,7 @@ build phases leave them out with a warning (T-CLI-04). `RuntimeSource.swift` say
 | Script | Target | Runs | Steps missing from this `bdk` today |
 |---|---|---|---|
 | `BuildPhases/bdk-runtime.sh` | `BDKRuntime` (aggregate, no sources) | `bdk build config runtime codegen`; when the release publishes no runtime, a warning instead of `runtime` | none |
-| `BuildPhases/bdk-bundle.sh` | The application, after Copy Bundle Resources | `bdk build pages automation embed`, `embed` only when a runtime is resolved (`.bdk/runtime.json`), then copies `bdk.resolved.json` into `Contents/Resources` | none |
+| `BuildPhases/bdk-bundle.sh` | The application, after Copy Bundle Resources | `bdk build pages automation extensions embed`, `embed` only when a runtime is resolved (`.bdk/runtime.json`), then copies `bdk.resolved.json` into `Contents/Resources` | none |
 | `BuildPhases/bdk-sign.sh` | The application, the last phase | `bdk build sign`, only when a runtime framework is embedded | none |
 
 Each script sources `bdk-steps.sh`, which runs the steps the CLI has and prints an Xcode `warning:` for each one it

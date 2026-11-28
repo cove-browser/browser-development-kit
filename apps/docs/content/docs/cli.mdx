@@ -87,10 +87,18 @@ Called by Xcode's run-script phases; each step can also be run alone.
 | Step | Does |
 | --- | --- |
 | `config` | Validates `bdk.toml` and writes `bdk.resolved.json` |
+| `runtime` | Resolves the Chromium runtime into the store under `BDK_HOME`: the one the release publishes, or one built from a BDK checkout with `runtime.mode = "source"` |
 | `codegen` | Writes the `@bdk/*` packages and declarations for editors, `tsc` and Vite |
 | `pages` | Builds and packages the internal pages and the SDK they import |
 | `automation` | Bundles each automation script into one module; `--watch` rebuilds on change |
 | `devtools` | Packages a DevTools front end or overlay |
+| `extensions` | Copies each `[extensions.bundled]` extension into the bundle's `Contents/Resources` |
+| `embed` | Copies the resolved runtime's frameworks into the bundle's `Contents/Frameworks` |
 | `sign` | Re-signs the runtime nested in the application, inside-out, with the application's identity |
 
-`runtime` (download or build the runtime) and `embed` (copy it into the bundle) are not built yet.
+This release publishes no prebuilt runtime, so `bdk build runtime` in the default `prebuilt` mode fails
+with `runtime.unpublished`, and the starter's build phases go on without `embed`: the application runs on
+the stub runtime. To run on Chromium, build the runtime from source: set `runtime.mode = "source"` in
+`bdk.toml`, set `BDK_SOURCE_ROOT` to a synced BDK checkout at this version, and run
+`bdk build runtime --allow-source-build` once. The build takes hours; later builds of the same inputs find it
+in the store.

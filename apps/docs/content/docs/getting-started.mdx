@@ -71,15 +71,16 @@ them.
 
 ## Build and run
 
-Open the project in Xcode and press Run. The `BDKRuntime` target runs `bdk build config codegen` first;
-the application target then runs `bdk build pages automation` after its resources are copied, and
-`bdk build sign` last. The phases find `bdk` through the `BDK_CLI` build setting.
+Open the project in Xcode and press Run. The `BDKRuntime` target runs `bdk build config runtime codegen`
+first; the application target then runs `bdk build pages automation extensions embed` after its resources
+are copied, and `bdk build sign` last. The phases find `bdk` through the `BDK_CLI` build setting.
 
 <Callout type="warn" title="Today the application runs on the stub runtime">
-  `bdk build runtime` and `bdk build embed`, which put the Chromium runtime in the bundle, are not built
-  yet. Until they are, a new application links `BDKTestSupport` and starts the in-memory stub runtime: it
-  opens its window and its pages, renders nothing and runs no JavaScript. `Sources/RuntimeSource.swift` is
-  the one file to change when the runtime can be embedded.
+  This release publishes no prebuilt runtime, so `bdk build runtime` warns and the build leaves out
+  `embed`. A new application links `BDKTestSupport` and starts the in-memory stub runtime: it opens its
+  window and its pages, renders nothing and runs no JavaScript. To run on Chromium, build the runtime from
+  source (see [bdk build](./cli.mdx#bdk-build)), then change `Sources/RuntimeSource.swift`, the one file
+  that chooses the runtime.
 </Callout>
 
 ## Next

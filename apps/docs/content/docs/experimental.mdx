@@ -26,7 +26,7 @@ These appear in the reference and do not work yet. Each is tracked in the plan's
 
 | Item | State |
 | --- | --- |
-| `bdk build runtime`, `bdk build embed` | Not built: an application from `bdk init` runs on the stub runtime until they are. |
+| A prebuilt runtime | Not published: `bdk build runtime` and `bdk build embed` work, but only with a runtime built from source (`runtime.mode = "source"`). Without one, an application from `bdk init` runs on the stub runtime. |
 | `bdk build pages --watch` | Not built; `bdk build automation --watch` is. |
 | `bdk doctor --fix`, and the check that the pinned Chromium is behind the newest release | Not built. |
 | `bdk init --search-engine` | Not offered: the `[search]` table is an Added item that has not been accepted. |

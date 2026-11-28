@@ -133,7 +133,7 @@
 				BD0000000000000000000041 /* Sources */,
 				BD0000000000000000000042 /* Frameworks */,
 				BD0000000000000000000043 /* Resources */,
-				BD0000000000000000000044 /* bdk build pages automation embed */,
+				BD0000000000000000000044 /* bdk build pages automation extensions embed */,
 				BD0000000000000000000045 /* bdk build sign */,
 			);
 			buildRules = (
@@ -249,7 +249,7 @@
 			shellPath = /bin/bash;
 			shellScript = "\"$SRCROOT/BuildPhases/bdk-runtime.sh\"\n";
 		};
-		BD0000000000000000000044 /* bdk build pages automation embed */ = {
+		BD0000000000000000000044 /* bdk build pages automation extensions embed */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -259,7 +259,7 @@
 			);
 			inputPaths = (
 			);
-			name = "bdk build pages automation embed";
+			name = "bdk build pages automation extensions embed";
 			outputFileListPaths = (
 			);
 			outputPaths = (

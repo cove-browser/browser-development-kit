@@ -462,7 +462,7 @@ The template project has two targets.
 | Target | Kind | Contents |
 |---|---|---|
 | `BDKRuntime` | Aggregate | One run-script phase: `bdk build config runtime codegen`. It has no sources. |
-| The application | Application | Depends on `BDKRuntime`. Links the `BDK` package product. Two run-script phases: `bdk build pages automation embed` after resources are copied, and `bdk build sign` as the last phase. |
+| The application | Application | Depends on `BDKRuntime`. Links the `BDK` package product. Two run-script phases: `bdk build pages automation extensions embed` after resources are copied, and `bdk build sign` as the last phase. |
 
 | Topic | Detail |
 |---|---|
