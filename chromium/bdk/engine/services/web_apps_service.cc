@@ -202,7 +202,8 @@ void ResolveInstall(const std::shared_ptr<ServiceCall>& call,
 // webApps.install {url} (web-apps.md 10.3): the URL loads in a hidden page
 // of the profile, which gives the manifest and its id; Chromium then reads
 // what to install in a hidden page of its own and installs it, so nothing
-// depends on a page being on screen. It owns itself until it answers.
+// depends on a page being on screen. It owns itself until it answers or the
+// caller cancels; a cancel closes the hidden page and asks nothing.
 class UrlInstall : public content::WebContentsObserver {
  public:
   static void Start(std::shared_ptr<ServiceCall> call, GURL url) {
@@ -218,6 +219,15 @@ class UrlInstall : public content::WebContentsObserver {
       : call_(std::move(call)), url_(std::move(url)) {}
 
   void Load() {
+    base::WeakPtr<UrlInstall> weak = weak_factory_.GetWeakPtr();
+    call_->control().OnCancel([weak] {
+      if (weak) {
+        weak->Finish();
+      }
+    });
+    if (finished_) {
+      return;  // Cancelled already: OnCancel ran at once.
+    }
     hidden_ = content::WebContents::Create(
         content::WebContents::CreateParams(call_->profile()));
     Observe(hidden_.get());
@@ -227,6 +237,9 @@ class UrlInstall : public content::WebContentsObserver {
 
   // content::WebContentsObserver:
   void DidFinishNavigation(content::NavigationHandle* navigation) override {
+    if (Stopped()) {
+      return;
+    }
     if (navigation->IsInPrimaryMainFrame() &&
         (!navigation->HasCommitted() || navigation->IsErrorPage())) {
       Fail(BDK_CODE_NOT_INSTALLABLE, url_.spec() + " could not be loaded");
@@ -234,7 +247,7 @@ class UrlInstall : public content::WebContentsObserver {
   }
 
   void DidStopLoading() override {
-    if (asked_manifest_ || finished_) {
+    if (asked_manifest_ || Stopped()) {
       return;
     }
     asked_manifest_ = true;
@@ -250,7 +263,7 @@ class UrlInstall : public content::WebContentsObserver {
   }
 
   void OnManifest(const webapps::InstallableData& data) {
-    if (finished_) {
+    if (Stopped()) {
       return;
     }
     web_app::WebAppProvider* provider = ProviderOf(call_);
@@ -269,7 +282,8 @@ class UrlInstall : public content::WebContentsObserver {
   }
 
   void OnInstallInfo(std::unique_ptr<web_app::WebAppInstallInfo> info) {
-    if (finished_) {
+    // A cancelled command raises no install request.
+    if (Stopped()) {
       return;
     }
     if (!info) {
@@ -300,7 +314,7 @@ class UrlInstall : public content::WebContentsObserver {
 
   void OnAnswer(std::unique_ptr<web_app::WebAppInstallInfo> info,
                 bool installed) {
-    if (finished_) {
+    if (Stopped()) {
       return;
     }
     if (!installed) {
@@ -312,7 +326,7 @@ class UrlInstall : public content::WebContentsObserver {
 
   void Install(std::unique_ptr<web_app::WebAppInstallInfo> info) {
     web_app::WebAppProvider* provider = ProviderOf(call_);
-    if (!provider || call_->cancelled()) {
+    if (!provider) {
       Fail(BDK_CODE_NOT_INSTALLABLE, "the profile has gone");
       return;
     }
@@ -332,6 +346,15 @@ class UrlInstall : public content::WebContentsObserver {
   void Fail(const char* code, const std::string& message) {
     call_->Reject(BDK_DOMAIN_WEB_APPS, code, message);
     Finish();
+  }
+
+  // Whether to stop: it answered, or the caller cancelled (then it finishes
+  // without answering; the broker has answered the command).
+  bool Stopped() {
+    if (!finished_ && call_->cancelled()) {
+      Finish();
+    }
+    return finished_;
   }
 
   // The hidden page may be in one of its own callbacks: it goes later.
